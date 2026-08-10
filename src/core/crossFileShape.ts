@@ -40,8 +40,21 @@ import {
   tsFieldTypeCursor,
   tsRenderDerivedDef,
 } from "./tsExtraction";
-import { CS_STD_TYPE_NAMES, csFieldTypeCursor, csFieldsFromMembers, csQualifyStatics, csSignatureRefTypes } from "./csExtraction";
-import { pyEnumBaseDecl } from "./pyExtraction";
+import {
+  CS_STD_TYPE_NAMES,
+  csFieldTypeCursor,
+  csFieldsFromMembers,
+  csQualifyStatics,
+  csRenderDerivedDef,
+  csSignatureRefTypes,
+} from "./csExtraction";
+import {
+  pyClassBodyLineRange,
+  pyEnumBaseDecl,
+  pyFieldTypeCursor,
+  pyFieldsFromMembers,
+  pyRenderDerivedDef,
+} from "./pyExtraction";
 import { GO_STD_TYPE_NAMES, goElideDef, goFieldTypeCursor, parseGoHoverFields } from "./goExtraction";
 import { isBareTraitHover, recoverElidedSurface, recoverTraitSurface } from "./rustHoverRecovery";
 
@@ -89,7 +102,7 @@ export interface DerivedType {
    *  type it drops; this is the same promise one level down, for the members of
    *  a type it kept. Without it a 38-member Python class ships 31 members and
    *  nothing anywhere says which seven went (session-v49 phase 3). */
-  cappedMembers?: Array<{ name: string; cause: "count" | "budget" }>;
+  cappedMembers?: Array<{ name: string; cause: "count" | "budget" | "unusable" }>;
   /** The URI of the file the type is DEFINED in (from `definition()`). Feeds the
    *  import-path hint so a blind test imports the type from where it lives
    *  instead of guessing `crate::` root. Undefined only on a synthesized type. */
@@ -129,6 +142,12 @@ export interface CrossFileShape {
    *  apart sends its reader hunting in the wrong subsystem. Absent unless the walk
    *  was given a visibility rule. */
   hidden?: Array<{ type: string; member: CompletionMember }>;
+  /** Types a field at the DEPTH FRONTIER named, that the bound refused to expand.
+   *  Not `dropped`: dropped means a cap refused a type the walk was ready to
+   *  resolve, this means the walk never asked. Absent when the frontier named
+   *  nothing new, so "the walk expanded everything it saw" and "the walk saw
+   *  nothing" stay different answers. */
+  frontier?: string[];
 }
 
 /** The visibility pass as the resolver takes it: the language's rule and its
@@ -341,6 +360,14 @@ export interface CrossFileShapeHooks {
     members: readonly CompletionMember[],
     defLines: readonly string[],
   ) => Array<{ name: string; typeName: string }>;
+  /** The line range of the type's own declaration BODY, which the field anchor
+   *  searches. Rust default: brace matching from the def cursor.
+   *
+   *  A hook because Python has no braces, and the brace default answers undefined
+   *  for every Python class, which skips the anchor entirely and drops every
+   *  candidate. The leg then looks alive from every other angle - fields parsed,
+   *  candidates named - and reaches nothing. Absent: brace matching, unchanged. */
+  bodyLineRange?: (defText: string, cursor: SourceCursor) => { open: number; close: number } | undefined;
   /** Anchor a field's own type token inside the def body for the recursive hop
    *  (Rust default: the line-anchored fieldTypeCursor). */
   fieldTypeCursor: (
@@ -436,7 +463,11 @@ export const tsShapeHooks: CrossFileShapeHooks = {
 export const csShapeHooks: CrossFileShapeHooks = {
   parseFields: (_signature, members) => csFieldsFromMembers(members),
   fieldTypeCursor: csFieldTypeCursor,
-  renderDef: (t) => t.signature,
+  // The hover head plus a body synthesised from the derived fields
+  // (session-v50 phase 2). It used to be the head alone, which is all a Roslyn
+  // hover carries, and that is why C# derived its fields and then had nothing
+  // to print them in.
+  renderDef: csRenderDerivedDef,
   stdTypeNames: CS_STD_TYPE_NAMES,
   // C# has no field body to walk, so its collaborator graph is projected through
   // member SIGNATURES instead: the types named in return/param/property positions,
@@ -467,6 +498,12 @@ export const PY_STD_TYPE_NAMES = new Set([
   "Mapping", "MutableMapping", "Generator", "Awaitable", "Coroutine", "AsyncIterator",
   "AsyncIterable", "Literal", "Final", "ClassVar", "Annotated", "TypeVar", "Generic",
   "Protocol", "NamedTuple", "TypedDict", "Self", "Never", "NoReturn", "Object",
+  // pyright's placeholder for a type it could not infer. It appears inside real
+  // hovers on this box (`DiGraph[Unknown, dict[str, Any], dict[str, Any]]`) and
+  // it is not a type: without this it queues a definition round trip per
+  // partially-inferred generic and then lands on the drop list, which is the
+  // same waste `GO_STD_TYPE_NAMES` was wired to stop in v49.
+  "Unknown",
 ]);
 
 /** The Python hooks: a pyright class hover is `class Foo` with no field body, so
@@ -476,9 +513,15 @@ export const PY_STD_TYPE_NAMES = new Set([
  *  pyright hover, so Python gets its own empty field parser rather than falling to
  *  the Rust default. */
 export const pyShapeHooks: CrossFileShapeHooks = {
-  parseFields: () => [],
-  fieldTypeCursor: () => undefined,
-  renderDef: (t) => t.signature,
+  // THE FIELD LEG IS LIT (session-v50 phase 3). It answered `[]` for as long as
+  // the seam could only see a hover, and that was correct for its input: a
+  // pyright class hover is `(class) Foo`. The fields were never missing, they
+  // arrive on `membersOfType` with their types bought by the transport's hover
+  // fan-out, which is the seam session-v49 widened.
+  parseFields: (_signature, members) => pyFieldsFromMembers(members),
+  fieldTypeCursor: pyFieldTypeCursor,
+  bodyLineRange: pyClassBodyLineRange,
+  renderDef: pyRenderDerivedDef,
   stdTypeNames: PY_STD_TYPE_NAMES,
   // An Enum's variants resolve with no signature, same hole C# fills with
   // `enumMemberLine` — but pyright's hover never names the base class
@@ -740,45 +783,115 @@ async function safe<T>(p: Promise<T>): Promise<T | undefined> {
 // Hover at a freshly resolved def can lag a didOpen; poll briefly so a real
 // struct is not read as an unresolved miss. undefined only after the buffer
 // stays unresolved past the window (a genuine non-struct / unresolved edge).
+//
+// BOUNDED BY THE GESTURE'S HOVER ALLOWANCE (session-v50 phase 1). 12 x 50ms is
+// 600ms per TYPE, which is five times the member loop this phase was sent to
+// kill, and it was charged per type with no ceiling anywhere above it: a gesture
+// resolving 8 candidates could spend 4.8s here. One type's patience is unchanged
+// - the first type to need the full 600ms still gets it - and the gesture cannot
+// spend it more than once.
 async function hoverWithSettle(
   extractor: SurfaceExtractor,
   cursor: SourceCursor,
+  allowance: SettleAllowance,
 ): Promise<{ signature: string } | undefined> {
   for (let i = 0; i < 12; i++) {
     const hover = await safe(extractor.hoverSurface(cursor));
     if (hover) {
       return hover;
     }
-    await delay(50);
+    if (allowance.hoverMs < HOVER_SETTLE_STEP_MS) {
+      break;
+    }
+    allowance.hoverMs -= HOVER_SETTLE_STEP_MS;
+    await delay(HOVER_SETTLE_STEP_MS);
   }
   return undefined;
 }
+
+// The two settle steps, and the allowance each gets for a whole GESTURE.
+//
+// Both allowances are ONE TYPE'S WORTH of what the loop below them used to spend
+// per type: 3 x 40ms for the member re-poll, 12 x 50ms for the hover poll. So the
+// slowest single type is exactly as patient as it was, and a fat graph cannot
+// multiply that patience by its own size.
+const SETTLE_STEP_MS = 40;
+const SETTLE_ALLOWANCE_MS = 120;
+const HOVER_SETTLE_STEP_MS = 50;
+const HOVER_SETTLE_ALLOWANCE_MS = 600;
+
+/** The sleep a whole gesture may spend waiting for a server to settle, split by
+ *  which loop spends it. Threaded in by the caller so every walk in one prompt
+ *  shares it: `resolvePrefill` drives up to `resolveCap` walks (8 shipped, 32 at
+ *  the frontier stop), and an allowance minted per walk would multiply by that
+ *  count. Omitted, each walk mints its own, which is the single-walk case and
+ *  the headless probe's. */
+export interface SettleAllowance {
+  memberMs: number;
+  hoverMs: number;
+}
+
+export const freshSettleAllowance = (): SettleAllowance => ({
+  memberMs: SETTLE_ALLOWANCE_MS,
+  hoverMs: HOVER_SETTLE_ALLOWANCE_MS,
+});
 
 // membersOfType right after a cold-file didOpen can return [] before RA has the
 // documentSymbol ready (the cold-file race). When the type
 // itself resolved (hover succeeded), retry briefly; an empty result after the
 // window is the honest "no file-local members" (e.g. a field-only struct).
+//
+// THE LOOP IS BOUNDED, NOT TUNED AND NOT DELETED (session-v50 phase 1), because
+// measured on real corpora it was almost all cost and almost no recovery:
+//
+//   Go   (v42-corpus/pgx, gopls)   3879ms of a 5043ms run was this loop. 77%.
+//   C#   (Contoso dotnet, Roslyn)  1269ms of a 1463ms run. 87%.
+//
+// Three Go rows landed within 8ms of each other at ~1025ms, which is not a graph
+// cost. It is 8 stuck cursors x 3 re-polls x 40ms. Every re-polled cursor's
+// answer sequence was recorded across five languages: Go 32 re-polled cursors,
+// C# 9, Rust 0, Python 0, TypeScript 0. **41 cursors, ZERO recovered a
+// renderable member**, every one answering identically all four times.
+//
+// THE BOUND IS THE GESTURE'S ALLOWANCE AND NOTHING ELSE. A no-progress stop was
+// built first and then removed, and why is worth keeping: it ended the loop when
+// a re-poll returned the same member count and the same signed count as the
+// answer before it. That is precisely the v21 case at its MEASURED shape.
+// `session-v21/surface-p3b.md` §1b recorded a cold `membersOfType` answering
+// **11 members with 1 signed** in 52ms against a 50ms fan-out budget, warming to
+// 7 rendered. The count is complete from the first answer, because documentSymbol
+// is cheap; what is missing is SIGNATURES, and a server still cold 40ms later is
+// cut by the same wall clock and answers 11/1 again. The stop would have fired
+// one poll before the answer the loop exists to reach. Found by the phase 1
+// adversarial review, which reproduced it against the pre-bound code: 3 calls and
+// 10 rendered methods before, 2 calls and 0 after.
+//
+// The allowance carries the whole win anyway. Every after-side row at the ceiling
+// (`ConnConfig` 122ms, `Config` 125ms, `ConnectError` 121ms, `FallbackConfig`
+// 130ms) is bound by the allowance; the stop only moved rows that were already
+// under it.
+//
+// NOT DELETED, and that is a decision against the raw number. The loop's case is
+// real and written down, and the two blind-authored rows that hold it were
+// written against a live spike measurement rather than a fixture built to match
+// the code of the day. The corpora never produce the case, because a probe that
+// pre-opens and settles every file cannot; "no server on this box did it today"
+// is not "no server does it", and this project has already put a HIGH regression
+// back by deleting a guard whose case a review called unreachable.
+//
+// The re-poll only ever fires when nothing renders AND a re-poll could plausibly
+// change that: the set is empty, OR an UNSIGNED callable member is pending its
+// signature, OR the fan-out already SIGNED the constructor (proof it is landing
+// answers). A set whose only members are unsigned NON-callables is a fully
+// settled data struct (Rust's shape, and why Rust never enters this loop) and
+// matches none of them.
 async function membersWithSettle(
   extractor: SurfaceExtractor,
   cursor: SourceCursor,
   typeName: string,
   hadHover: boolean,
+  allowance: SettleAllowance,
 ): Promise<CompletionMember[]> {
-  // Re-poll while nothing renders AND a re-poll could plausibly change that. The
-  // first membersOfType touch of a just-opened def file has its hover fan-out cut by
-  // HOVER_FANOUT_BUDGET_MS, and the one member that answers cold is often the
-  // constructor - which renderMethods drops - leaving a set that renders to nothing;
-  // settling only on `length === 0` never re-polls it, so a seven-method type reads
-  // as a type with none (session-v21 goal item 8 / §1b). But re-polling on
-  // `renderMethods === 0` ALONE also fires on a FULLY-SETTLED field-only struct
-  // whose members carry no signature (a Rust data struct: fields render bare), which
-  // burns 3x40ms=120ms recovering nothing - the very shape this session began at
-  // (goal item 8 review F2). So re-poll only when the set is empty, OR a re-poll
-  // could still add a renderable method: an UNSIGNED callable member is pending its
-  // signature, or the fan-out already SIGNED the constructor (proof it is landing
-  // answers, so the rest are likely coming). A set whose only members are unsigned
-  // NON-callables (a pure field/data struct) matches none of these and does not
-  // re-poll.
   const isCallable = (m: CompletionMember) => m.kind === "method" || m.kind === "function";
   const mayRepollHelp = (ms: CompletionMember[]) =>
     ms.length === 0 ||
@@ -786,7 +899,11 @@ async function membersWithSettle(
     ms.some((m) => m.signature !== undefined && isConstructionMember(m.name, typeName));
   let members = (await safe(extractor.membersOfType(cursor))) ?? [];
   for (let i = 0; i < 3 && hadHover && renderMethods(members, typeName).length === 0 && mayRepollHelp(members); i++) {
-    await delay(40);
+    if (allowance.memberMs < SETTLE_STEP_MS) {
+      break; // the gesture has spent its settle budget; this type takes what it has
+    }
+    allowance.memberMs -= SETTLE_STEP_MS;
+    await delay(SETTLE_STEP_MS);
     members = (await safe(extractor.membersOfType(cursor))) ?? [];
   }
   return members;
@@ -826,6 +943,13 @@ export async function resolveCrossFileShape(
   // injection, which this phase must not move a byte of. Absent means no
   // visibility pass ran and every member survives, unchanged.
   visibility?: VisibilityPass,
+  // The sleep budget for the whole GESTURE, when the caller drives more than one
+  // walk per prompt. `resolvePrefill` runs up to `resolveCap` of them (8 at the
+  // install default, 32 at the frontier stop), so an allowance minted per walk
+  // multiplies by that count and bounds nothing a developer can feel. Omitted:
+  // a fresh allowance per walk, which is what a single-walk caller and the
+  // headless probe want.
+  settle?: SettleAllowance,
 ): Promise<CrossFileShape> {
   const parseFields = hooks?.parseFields ?? parseStructHoverFields;
   const anchorFieldType = hooks?.fieldTypeCursor ?? fieldTypeCursor;
@@ -862,6 +986,7 @@ export async function resolveCrossFileShape(
   const visited = new Set<string>(); // names already emitted (emit-once, cycle/diamond stop)
   const queuedSig = new Set<string>(); // signature-edge names already queued (dedup the by-name LS anchor)
 
+  const frontierSet = new Set<string>(); // named by a field at D_MAX, never asked about
   const narrowed: CompletionMember[] = []; // root members the construction narrowing removed
   const hidden: Array<{ type: string; member: CompletionMember }> = []; // members the visibility pass removed
 
@@ -879,6 +1004,13 @@ export async function resolveCrossFileShape(
   // pass ran at all" stay different answers at every exit.
   const shapeSoFar = (): CrossFileShape => {
     const shape: CrossFileShape = { types, dropped: [...droppedSet].filter((d) => !types.has(d)) };
+    // Only names that are STILL unresolved at the end: a frontier type another
+    // branch reached at a shallower depth was expanded, and reporting it as
+    // unexpanded would be a lie the reader cannot check.
+    const frontier = [...frontierSet].filter((n) => !types.has(n) && !droppedSet.has(n));
+    if (frontier.length > 0) {
+      shape.frontier = frontier;
+    }
     if (constructionStyle) {
       shape.narrowed = narrowed;
     }
@@ -918,6 +1050,13 @@ export async function resolveCrossFileShape(
     { refSite: rootSite, depth: 0, name: root },
   ];
 
+  // ONE GESTURE, ONE SETTLE ALLOWANCE, spent in resolution order. The queue is
+  // FIFO from the root, so the root and its nearest collaborators get first call
+  // on it and a fat tail of stuck cursors cannot spend 40ms each. The caller
+  // supplies it so every walk in one prompt shares it; absent, this walk mints
+  // its own, which is the single-walk case.
+  const settleAllowance = settle ?? freshSettleAllowance();
+
   while (queue.length > 0) {
     const { refSite, depth, name, viaAlias } = queue.shift() as {
       refSite: SourceCursor;
@@ -950,7 +1089,7 @@ export async function resolveCrossFileShape(
 
     // hover is RA-indexed and does NOT need the def file open, so it works even
     // for a cross-crate def we cannot sync; it is the field-shape floor.
-    const hover = await hoverWithSettle(extractor, defCursor);
+    const hover = await hoverWithSettle(extractor, defCursor, settleAllowance);
     if (hover !== undefined && hooks?.refuseHover?.(hover.signature)) {
       droppedSet.add(name); // chrome hover (a type parameter, not a type): stop edge
       continue;
@@ -967,7 +1106,7 @@ export async function resolveCrossFileShape(
     // in hand — resolving them twice would be a second chance to disagree.
     let resolvedMembers: readonly CompletionMember[] = [];
     if (defText !== undefined) {
-      const members = await membersWithSettle(extractor, defCursor, name, hover !== undefined);
+      const members = await membersWithSettle(extractor, defCursor, name, hover !== undefined, settleAllowance);
       // TWO PASSES, and they stay two. Visibility asks whether the target may
       // call the member at all and KEEPS when it cannot tell; role asks whether
       // the member belongs on THIS target's surface and drops a public instance
@@ -1039,16 +1178,38 @@ export async function resolveCrossFileShape(
       // and so accidentally satisfied the proxy.
       //
       // So the gate is now the hook's own answer. A hook that recognises the
-      // type as an enum spells every variant and those lines replace the member
-      // list; a hook that recognises nothing changes nothing, which is every
-      // non-enum type and every language with no hook at all.
+      // type as an enum spells every variant it recognises; a hook that
+      // recognises nothing changes nothing, which is every non-enum type and
+      // every language with no hook at all.
+      //
+      // AND IT MERGES, it does not replace. Replacing was the v49 shape, and it
+      // ate the enum's own methods: an `IntEnum` subclass declaring
+      // `def describe(self) -> str` rendered `["LodBand.CONTINENTAL",
+      // "LodBand.REGIONAL"]` and `describe` was gone from the prompt. The old
+      // `methods.length === 0` gate hid that, because the leg never fired on a
+      // type that rendered anything, so this is a loss that arrived from the
+      // other side of the fix. The hook is asked of every member, the ones it
+      // spells contribute their spelling, and the ones it declines keep the
+      // exact line they would have rendered with no enum leg at all.
+      //
+      // Asked of `spelled`, not `kept`, because `spelled` is what renders and
+      // the merge has to line the two up member by member. For C# that is the
+      // same list by identity: `csQualifyStatics` returns an unsigned member
+      // unchanged, and an enum variant is unsigned.
       if (enumMemberLine !== undefined) {
         const defLines = defText.split("\n");
-        const variantLines = kept
-          .map((m) => enumMemberLine(m, name, hover?.signature, defLines))
-          .filter((line): line is string => line !== undefined);
+        const variantLines: string[] = [];
+        const survivors: CompletionMember[] = [];
+        for (const m of spelled) {
+          const line = enumMemberLine(m, name, hover?.signature, defLines);
+          if (line !== undefined) {
+            variantLines.push(line);
+          } else {
+            survivors.push(m);
+          }
+        }
         if (variantLines.length > 0) {
-          methods = variantLines;
+          methods = [...variantLines, ...renderMethods(survivors, name, narrowing !== undefined)];
         }
       }
       methodsResolved = true;
@@ -1120,14 +1281,37 @@ export async function resolveCrossFileShape(
     // and the renderer that drops these members is the one that must say so.
     const cappedMembers = resolvedMembers
       .filter((m) => m.capped !== undefined)
-      .map((m) => ({ name: m.name, cause: m.capped as "count" | "budget" }));
+      .map((m) => ({ name: m.name, cause: m.capped as "count" | "budget" | "unusable" }));
     if (cappedMembers.length > 0) {
       emittedType.cappedMembers = cappedMembers;
     }
     types.set(name, emittedType);
 
     if (depth >= bound.D_MAX) {
-      continue; // at the depth frontier — no further edges from here
+      // AT THE DEPTH FRONTIER, AND IT IS NAMED NOW (session-v50 phase 2).
+      //
+      // Every edge from here is refused by the bound, and until this it was
+      // refused SILENTLY: the type was neither emitted nor added to `dropped`,
+      // so a reader of the channel could not tell "no collaborator there" from
+      // "a collaborator we chose not to expand". Measured on the real C# graph
+      // in the session-v48 scout: `JobStatus` sits at
+      // `CustomerSite -> DpmMonitor -> RetroJob -> JobStatus`, depth 3, and it
+      // is an ENUM, which is the exact shape the v38 enum gate exists for -
+      // a repair round once saw a type named and never learned a variant.
+      //
+      // DISCLOSURE, NOT REACH. Depth does not move; these names are reported and
+      // not walked. Kept separate from `dropped`, because dropped means a cap
+      // refused a type the walk was ready to resolve, and this means the walk
+      // never asked.
+      for (const f of fields) {
+        for (const cand of candidateTypesOf(f.typeName, stdNames)) {
+          if (skipCandidate(cand, f.typeName) || visited.has(cand) || types.has(cand)) {
+            continue;
+          }
+          frontierSet.add(cand);
+        }
+      }
+      continue;
     }
 
     // TIER-2 ALIAS CHASE (Rust no-hooks path). An alias's hover is one line
@@ -1179,7 +1363,7 @@ export async function resolveCrossFileShape(
     if (defText === undefined) {
       continue; // no def source to anchor FIELD edges in
     }
-    const bodyRange = structBodyLineRange(defText, defCursor);
+    const bodyRange = (hooks?.bodyLineRange ?? structBodyLineRange)(defText, defCursor);
     const defLines = defText.split("\n");
     for (const f of fields) {
       for (const cand of candidateTypesOf(f.typeName, stdNames)) {

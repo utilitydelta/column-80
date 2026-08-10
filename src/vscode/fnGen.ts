@@ -57,6 +57,7 @@ import {
   pyShapeHooks,
   resolveCrossFileShape,
   surfaceStillTruncated,
+  freshSettleAllowance,
   toResolveStruct,
   tsShapeHooks,
 } from "../core/crossFileShape";
@@ -1524,8 +1525,15 @@ function cappedMemberLine(type: string, derived: DerivedType): string | undefine
     return undefined;
   }
   const by = (cause: string) => capped.filter((c) => c.cause === cause).map((c) => c.name);
-  const parts = [`count cap: ${by("count").join(", ")}`, `fan-out budget: ${by("budget").join(", ")}`]
-    .filter((p) => !p.endsWith(": "));
+  const parts = [
+    `count cap: ${by("count").join(", ")}`,
+    `fan-out budget: ${by("budget").join(", ")}`,
+    // The third cause exists so this line points at the right dial. A member
+    // whose hover answered instantly with text the language's builder refused is
+    // not a budget problem, and a reader sent to the fan-out clock for it is
+    // sent to the wrong place (v49 S49-13).
+    `refused reply: ${by("unusable").join(", ")}`,
+  ].filter((p) => !p.endsWith(": "));
   return (
     `[fngen] pre-fill could not sign ${capped.length} member(s) of \`${type}\`, so they are ABSENT ` +
     `from its block rather than bare (${parts.join("; ")})`
@@ -2330,6 +2338,10 @@ export async function resolvePrefill(
     // where the shared budget is threaded, so the per-prompt drop list is
     // collected by the same seam that causes most of the drops.
     droppedBy: new Map(),
+    // session-v50 phase 2. Member-block dedup, kept APART from `visited`, which
+    // dedups data shapes. See SharedWalkState's own comment for what happened
+    // when C# got a walk and the two shared one set.
+    memberBlocks: new Set<string>(),
   };
   const blocks: string[] = [];
   // The type names each block put a header on, PARALLEL to `blocks` - the same
@@ -2391,6 +2403,11 @@ export async function resolvePrefill(
     shape: CrossFileShape | undefined;
     derived: DerivedType | undefined;
   }[] = [];
+
+  // The gesture's sleep budget, minted once and spent across every candidate
+  // this loop resolves. See `SettleAllowance`: a walk's own allowance bounds one
+  // walk, and this loop runs up to `budget.resolveCap` of them.
+  const settleAllowance = freshSettleAllowance();
 
   for (const type of candidates) {
     if (admitted >= typeCap || resolveCount >= budget.resolveCap || looked >= budget.provenanceCap) {
@@ -2478,6 +2495,11 @@ export async function resolvePrefill(
         isReceiver ? type : undefined,
         isReceiver && receiver.job === "build" ? lang.receiver.memberReturn : undefined,
         visibility,
+        // ONE SETTLE ALLOWANCE FOR THE WHOLE GESTURE, not per candidate. This
+        // loop runs up to `resolveCap` times (8 at the install default, 32 at
+        // the frontier stop), so a per-walk allowance would let one gesture
+        // sleep for seconds while every individual walk looked well behaved.
+        settleAllowance,
       );
     } catch {
       shape = undefined;
@@ -3812,11 +3834,33 @@ function csFindTypeReference(
   return undefined;
 }
 
-// The C# injection block for a resolver-derived type: its member signatures,
-// cs-fenced, SIGNATURES-ONLY (no data-shape/field walk; a C#
-// type hover carries no field body, and the methods come from membersOfType).
-// When the member cap truncates, the header says so (the honest subset wording).
-// Sibling of tsShapeBlock; the Rust shapeBlock stays frozen.
+// The C# injection block: a DATA SHAPE for every type whose fields the walk
+// derived, then the member signatures, both cs-fenced.
+//
+// SESSION-V50 PHASE 2 ADDED THE FIRST HALF. C# has derived its fields since v49
+// and thrown the shape away, because a Roslyn hover is `class Contoso.Widget`
+// and stops there, so there was nothing to print them in. `csRenderDerivedDef`
+// synthesises the body from what the walk found, and `walkDataShape` nests the
+// collaborators to depth 2 the way it already does for Rust, TypeScript and Go.
+//
+// THE MEMBER LIST SHEDS WHAT THE SHAPE BLOCK PRINTED, PER TYPE, and Go's guards
+// transfer verbatim because they are the reason that trade is safe:
+//
+//  - no shape block for a type means its member list is byte-identical to today
+//    (a walk that resolved nothing must not cost a developer the list they have);
+//  - a type whose def the walk TRUNCATED (`... N more fields`) sheds nothing.
+//    The walk cuts fields at TOK_MAX and the member list cuts at memberCap; both
+//    are honest caps, and shedding on one side while the other is already cutting
+//    is how a field disappears from both. Fields may be cut from one place or the
+//    other, never from both;
+//  - which member lines ARE fields is not guessed from their text. Roslyn writes
+//    both a field and a method as `Name : Something`, so a line is a field line
+//    exactly when its first token is a name in that type's parsed field list;
+//  - shedding is keyed per type. A collaborator's block is decided by ITS own
+//    rendered def, never by the root's.
+//
+// Both blocks still run through the same shared budget, so a fat graph competes
+// with itself rather than growing without limit.
 function csShapeBlock(
   type: string,
   shape: CrossFileShape,
@@ -3837,14 +3881,85 @@ function csShapeBlock(
   // ONE candidate, SEVERAL headers, which is why the emitted names come back
   // through `onEmit`: the instruction's scope is every block in the payload, and
   // a type the budget or the dedup dropped rendered no header to be scoped to.
+  const parts: string[] = [];
+  const derived = shape.types.get(type);
+  // THE MEMBER LIST IS NOT THE FLOOR IN C#, AND THAT IS AN OPEN DEFECT.
+  //
+  // C# is the one language whose member blocks spend the shared per-prompt
+  // budget: `csShapeGraphBlock` renders a block per collaborator and stops when
+  // the budget runs out. Data-shape blocks now spend the same budget and they
+  // spend it first, so a fat graph can take a member block a developer had
+  // before this session. Measured at 8 types x 15 fields on the install default:
+  // two types lose the member block they had, and one ends up in the prompt with
+  // neither block. `test/review-v50-p4-starvation.test.cjs` P4-7 is that
+  // measurement and it is RED on purpose.
+  //
+  // It breaks the guard stated below, and Go and Python both hold that guard
+  // because their member halves do not touch the aggregate at all.
+  //
+  // A reservation inside this function was built and does NOT fix it: the budget
+  // is spent ACROSS ROOTS, and by the time a starved root reaches here the
+  // earlier roots' shape blocks have already taken it. The fix has to price the
+  // whole prompt's member blocks before the render loop starts, which is
+  // `resolvePrefill`'s scope and a change to how the aggregate is apportioned.
+  // Left as a reported defect rather than a rushed apportionment.
+  // NO FIELDS, NO SHAPE BLOCK, the same decision `goShapeBlock` makes and for the
+  // same reason: an enum, an interface, or a service class whose members are all
+  // callables would otherwise start carrying a second block that repeats its own
+  // declaration head and names no collaborator. Pure cost on a path where the
+  // budget is the whole risk.
+  const walk =
+    derived && derived.fields.length > 0
+      ? walkDataShape(type, toResolveStruct(shape, csShapeHooks), profile.dataShape, sharedWalk)
+      : { block: "", defs: [] as Array<{ name: string; def: string }>, dropped: [] as string[], droppedBy: [] };
+  if (walk.block) {
+    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}cs\n${walk.block}\n${FENCE}`);
+  }
+  // Outside the block-produced branch on purpose: an empty block IS the total
+  // loss case, and it is the one that must not be silent.
+  if (walk.dropped.length > 0) {
+    log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${droppedNames(walk.droppedBy, profile.dataShape)}`);
+  }
+  // THE DEPTH FRONTIER, NAMED. A type a field at depth 2 pointed at was never
+  // asked about, so it is neither emitted nor dropped, and until this line a
+  // reader could not tell that from "there was nothing there". Measured on the
+  // real C# graph: `JobStatus` sits at `CustomerSite -> DpmMonitor -> RetroJob ->
+  // JobStatus` and it is an enum, which is exactly the shape the v38 enum gate
+  // exists for. Depth does not move this session; the name does.
+  if (shape.frontier !== undefined && shape.frontier.length > 0) {
+    log(
+      `[fngen] data-shape walk \`${type}\` reached ${shape.frontier.length} type(s) at the depth ` +
+        `limit and did not expand them: ${shape.frontier.join(", ")} (depth=${profile.dataShape.D_MAX})`,
+    );
+  }
+
+  // Which fields each type may shed: the ones its OWN rendered def printed, and
+  // only when that def is complete.
+  const shedByType = new Map<string, Set<string>>();
+  for (const d of walk.defs) {
+    const t = shape.types.get(d.name);
+    if (t === undefined || t.fields.length === 0) {
+      continue;
+    }
+    if (/\.\.\.\s+\d+\s+more fields/.test(d.def)) {
+      continue; // the walk already cut this type's fields; the member list keeps them all
+    }
+    shedByType.set(d.name, new Set(t.fields.map((f) => f.name)));
+  }
+  const firstToken = (line: string) => /^\s*([A-Za-z_]\w*)/.exec(line)?.[1];
+
   const order = [type, ...[...shape.types.keys()].filter((n) => n !== type)];
-  const types = order.map((name) => ({ name, methods: shape.types.get(name)?.methods ?? [] }));
+  const types = order.map((name) => {
+    const methods = shape.types.get(name)?.methods ?? [];
+    const shed = shedByType.get(name);
+    return { name, methods: shed ? methods.filter((m) => !shed.has(firstToken(m) ?? "")) : methods };
+  });
   const budget = { remaining: sharedWalk.remainingChars };
   const emitted: string[] = [];
   const out = csShapeGraphBlock(types, {
     memberCap: profile.memberCap,
     fence: FENCE,
-    visited: sharedWalk.visited,
+    visited: sharedWalk.memberBlocks ?? sharedWalk.visited,
     budget,
     onEmit: (name) => emitted.push(name),
     onTruncate: (name, total, dropped) =>
@@ -3852,7 +3967,14 @@ function csShapeBlock(
     onBudget: (name) => log(`[fngen] pre-fill budget exhausted; \`${name}\` block dropped`),
   });
   sharedWalk.remainingChars = budget.remaining;
-  return out === undefined ? undefined : { text: out, types: emitted };
+  if (out !== undefined) {
+    parts.push(out);
+  }
+  // The shape block counts as injecting the ROOT even when no member block
+  // survived the budget: it carries that type's fields and its collaborators'
+  // names, which is the thing the instruction is scoped to.
+  const types_ = out === undefined && walk.block ? [type] : emitted;
+  return parts.length > 0 ? { text: parts.join("\n\n"), types: types_ } : undefined;
 }
 
 const CS_PREFILL_LANG: PrefillLang = {
@@ -3867,10 +3989,15 @@ const CS_PREFILL_LANG: PrefillLang = {
   exampleFallback: false,
   firmInstruction: CS_FIRM_INSTRUCTION,
   memberVisibility: visibilityFor("csharp"),
-  // No data-shape walk (see csShapeBlock), so breadth reaches nothing here; the
-  // gather's depth and total-type bound still decide how many collaborators get
-  // a block, because C# is the one language with signature-edge recursion.
-  dialReach: "graph",
+  // WALK, as of session-v50 phase 2. `csShapeBlock` now runs `walkDataShape` over
+  // `csShapeHooks`, whose def renderer synthesises a field body from the members
+  // Roslyn returns, so breadth, depth and the total-type cap all reach this
+  // language the way they reach Rust, TypeScript and Go. Changed in the SAME
+  // commit as the render that lights it, because the channel line this drives
+  // told every C# gesture that breadth and depth buy nothing here, and a field
+  // walk makes that false with nothing else anywhere turning red. That is what
+  // the v49 tripwire was built for.
+  dialReach: "walk",
 };
 
 // PYTHON-OWNED prompt text: unpinned constants, never shared
@@ -3962,7 +4089,7 @@ function pyFindTypeReference(
 function pyShapeBlock(
   type: string,
   shape: CrossFileShape,
-  _sharedWalk: SharedWalkState,
+  sharedWalk: SharedWalkState,
   log: (line: string) => void,
   profile: PrefillProfile,
 ): RenderedBlock | undefined {
@@ -3972,23 +4099,55 @@ function pyShapeBlock(
   }
   // Python is the language this line exists for. Pylance fills `detail` on
   // nothing, so EVERY Python member's signature is bought by the hover fan-out,
-  // and every one of them is exposed to its two caps.
+  // and every one of them is exposed to its two caps. With a field leg live, a
+  // capped member is a lost EDGE and not only a lost line.
   const cappedLine = cappedMemberLine(type, derived);
   if (cappedLine !== undefined) {
     log(cappedLine);
   }
-  let methods = derived.methods;
+  // THE DATA SHAPE (session-v50 phase 3), same shape and same guards as Go's and
+  // C#'s. No fields, no block: a service class whose members are all callables
+  // would otherwise carry a second block repeating its own `class Foo` line.
+  const parts: string[] = [];
+  const walk =
+    derived.fields.length > 0
+      ? walkDataShape(type, toResolveStruct(shape, pyShapeHooks), profile.dataShape, sharedWalk)
+      : { block: "", defs: [] as Array<{ name: string; def: string }>, dropped: [] as string[], droppedBy: [] };
+  if (walk.block) {
+    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}python\n${walk.block}\n${FENCE}`);
+  }
+  if (walk.dropped.length > 0) {
+    log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${droppedNames(walk.droppedBy, profile.dataShape)}`);
+  }
+  if (shape.frontier !== undefined && shape.frontier.length > 0) {
+    log(
+      `[fngen] data-shape walk \`${type}\` reached ${shape.frontier.length} type(s) at the depth ` +
+        `limit and did not expand them: ${shape.frontier.join(", ")} (depth=${profile.dataShape.D_MAX})`,
+    );
+  }
+
+  // The member list sheds exactly the fields the shape block rendered, and only
+  // when the root's own def rendered COMPLETE. A Python def carries no braces, so
+  // the walk emits it atomically and there is no `... N more fields` shell to
+  // read; the test is whether the def is there at all.
+  const ownDef = walk.defs.find((d) => d.name === type);
+  const shed = ownDef !== undefined && walk.block.length > 0;
+  const fieldNames = new Set(derived.fields.map((f) => f.name));
+  const firstToken = (line: string) => /^\s*([A-Za-z_]\w*)/.exec(line)?.[1];
+  const all = shed ? derived.methods.filter((m) => !fieldNames.has(firstToken(m) ?? "")) : derived.methods;
+  let methods = all;
   if (methods.length === 0) {
-    return undefined;
+    return parts.length > 0 ? { text: parts.join("\n\n"), types: [type] } : undefined;
   }
   let header = `Members of \`${type}\` (real signatures, use these exact names, do not invent):`;
   if (methods.length > profile.memberCap) {
     const dropped = methods.slice(profile.memberCap);
     methods = methods.slice(0, profile.memberCap);
-    header = `Members of \`${type}\` (a subset — the first ${profile.memberCap} of ${derived.methods.length}; real signatures, use these exact names, do not invent):`;
-    log(`[fngen] pre-fill truncated \`${type}\` members: kept ${profile.memberCap} of ${derived.methods.length} (dropped ${dropped.join(", ")})`);
+    header = `Members of \`${type}\` (a subset — the first ${profile.memberCap} of ${all.length}; real signatures, use these exact names, do not invent):`;
+    log(`[fngen] pre-fill truncated \`${type}\` members: kept ${profile.memberCap} of ${all.length} (dropped ${dropped.join(", ")})`);
   }
-  return { text: `${header}\n${FENCE}python\n${methods.join("\n")}\n${FENCE}`, types: [type] };
+  parts.push(`${header}\n${FENCE}python\n${methods.join("\n")}\n${FENCE}`);
+  return { text: parts.join("\n\n"), types: [type] };
 }
 
 const PY_PREFILL_LANG: PrefillLang = {
@@ -4003,10 +4162,15 @@ const PY_PREFILL_LANG: PrefillLang = {
   // No memberVisibility: Python spells visibility nowhere, and the standing
   // decision to keep single-underscore members is a human call, not a filter.
   firmInstruction: PY_FIRM_INSTRUCTION,
-  // pyShapeBlock renders the root's member list and nothing else, and the
-  // gather has no field edges (parseHoverFields answers []), so depth, breadth
-  // and the total-type cap are all inert on this path.
-  dialReach: "signatures",
+  // WALK, as of session-v50 phase 3. `pyShapeHooks.parseFields` derives fields
+  // from the resolved members and `pyShapeBlock` runs `walkDataShape` over them,
+  // so depth, breadth and the total-type cap all reach this language now. This
+  // line drives `contextStopLine`, and while it said `signatures` every Python
+  // gesture printed that breadth and depth buy nothing here while the walk was
+  // running. Caught by the agent re-cutting the v49 tripwire rows, which checked
+  // the diff before moving a value and found the render had shipped without its
+  // declaration.
+  dialReach: "walk",
 };
 
 // GO-OWNED prompt text: unpinned constants, never shared

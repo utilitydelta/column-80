@@ -31,6 +31,14 @@
 //     `signatures` invisible on every P4 row. See the note above the three-way
 //     rows for the captured evidence that the three are in fact distinguishable.
 //
+//   * SINCE 2026-08-11 ALL FIVE LANGUAGES REACH `walk` (session-v50 phases 1 to
+//     3 gave Go, C# and Python a field walk each). `graph` and `signatures` are
+//     still live branches of the product's channel-line builder and no language
+//     holds either, so every P4 row whose subject is a non-walking line drives
+//     that reach on a CARRIER language instead. Read the note above `lineAtReach`
+//     for why that is not a fiction, and the note above the partition row for
+//     what a driven row can and cannot catch.
+//
 // HOW THE CHANNEL LINE IS OBSERVED. The contract states which CONCEPTS must and
 // must not appear on `[fngen] injected context:`; it does not state how the line
 // is spelled. So the concepts are matched by a name-then-number pattern
@@ -464,9 +472,21 @@ cstest("P1d: the property is measurable on a member list alone - no walk, no ext
 });
 
 // ===========================================================================
-// P2. The six rows whose capture data was permanently deleted are gone.
+// P2. The rows whose capture data was permanently deleted are gone.
 //
-// EXPECTED RED TODAY: those six rows are still in the file.
+// EXPECTED RED WHEN WRITTEN: the six rows were still in the file. They went in
+// v49 phase 0.
+//
+// RE-CUT 2026-08-11, session-v50 phase 0 item 3. A SEVENTH row went for the
+// same reason: `[DEFECT] the 4/3 capture` scored the same permanently deleted
+// `repair-v38-fence.json` and survived v49 only because it was not on the
+// human's list of six. goal.md phase 0 item 3 rules it dead under the same
+// ruling, its claim recorded in a comment where the row was. Verified against
+// `git diff 19f1e6f -- test/review-v38-p2-fence-runs.test.cjs` before these two
+// rows moved: exactly one `test(` removed, no other row's title or assertion
+// touched, the capture reader (`DATA`, `needsCapture`) deleted with the last row
+// that used it and referenced nowhere that survives. The counts below go 10 ->
+// 9.
 //
 // Bound on the FILE'S OWN SOURCE rather than on a run, deliberately. Those six
 // rows skip on a missing capture, and on a machine where the capture is missing
@@ -493,12 +513,17 @@ test("P2: no row in review-v38-p2-fence-runs.test.cjs is titled CANNOT RUN any m
   const titles = testTitles(src);
   // Anti-vacuity first. "Nothing else in that file changes, and the file still
   // runs": a file that was emptied, renamed away or reduced to a stub would
-  // satisfy "no CANNOT RUN titles" while destroying the nine rows that still
-  // carry evidence.
+  // satisfy "no CANNOT RUN titles" while destroying the rows that still carry
+  // evidence.
+  //
+  // FLOOR RE-CUT 2026-08-11 (session-v50 phase 0 item 3), 10 -> 9. The file
+  // carried 16 titles on 2026-08-10; v49 removed six that scored a deleted
+  // capture, and v50 removed the seventh, `[DEFECT] the 4/3 capture`, which
+  // scored the same one. 16 - 7 = 9.
   assert.ok(
-    titles.length >= 10,
-    `the file must still register its other rows. It carries 16 \`test(\` titles today, 6 of them CANNOT ` +
-      `RUN, so 10 must survive; this read found ${titles.length}: ${show(titles)}`,
+    titles.length >= 9,
+    `the file must still register its other rows. It carried 16 \`test(\` titles on 2026-08-10, 7 of them ` +
+      `scoring a permanently deleted capture, so 9 must survive; this read found ${titles.length}: ${show(titles)}`,
   );
   const cannot = titles.filter((t) => /CANNOT RUN/.test(t));
   assert.deepEqual(
@@ -511,19 +536,27 @@ test("P2: no row in review-v38-p2-fence-runs.test.cjs is titled CANNOT RUN any m
   );
 });
 
-test("P2: exactly six rows go, and the other ten stay", () => {
+// RE-CUT 2026-08-11, session-v50 phase 0 item 3: was "exactly six rows go, and
+// the other ten stay". The seventh row that scored the same deleted capture,
+// `[DEFECT] the 4/3 capture`, is now gone under the same ruling, so the exact
+// count moves 10 -> 9. The count is still EXACT, not a floor: a later row
+// deleted for any other reason still turns this red and has to argue for
+// itself, which is the whole point of pinning it.
+test("P2: exactly seven rows go, and the other nine stay", () => {
   assert.ok(fs.existsSync(V38), `${V38} must exist`);
   const titles = testTitles(fs.readFileSync(V38, "utf8"));
   assert.equal(
     titles.length,
-    10,
+    9,
     `"The suite's registered-row count drops by exactly the number removed" and "nothing else in that ` +
       `file changes". The file carried 16 \`test(\` rows on 2026-08-10 (a count taken from the file as it ` +
-      `then stood), six of them titled CANNOT RUN, so exactly 10 must remain. Found ${titles.length}:\n  - ` +
+      `then stood). Six titled CANNOT RUN went in v49 phase 0 and \`[DEFECT] the 4/3 capture\` went on ` +
+      `2026-08-11 under session-v50 goal.md phase 0 item 3, for scoring the same deleted capture, so ` +
+      `exactly 9 must remain. Found ${titles.length}:\n  - ` +
       titles.join("\n  - "),
   );
-  // The ten that stay are not interchangeable with ten new ones: spot-check the
-  // three families by name so a wholesale rewrite cannot pass this row.
+  // The nine that stay are not interchangeable with nine new ones: spot-check
+  // the three families by name so a wholesale rewrite cannot pass this row.
   for (const marker of ["[FINE]", "KNOWN WRONG", "SUPERSEDED"]) {
     assert.ok(
       titles.some((t) => t.includes(marker)),
@@ -589,20 +622,49 @@ test("P2: the file still runs, still passes, and nothing in it begins to skip on
 //
 // Previous value, for the record: go was `signatures` from session-v48 until
 // this re-cut, alongside python.
+//
+// RE-CUT 2026-08-11, session-v50 phase 2. `csharp` moved `graph` -> `walk`.
+// What lit it: `csShapeBlock` now runs `walkDataShape` over `csShapeHooks` and
+// renders a `Data shape of \`X\`` block, so the fields C# has derived since v49
+// stop being thrown away and breadth, depth and the total-type cap reach the
+// language for the first time. The render and `CS_PREFILL_LANG.dialReach` moved
+// in the same change, which is the condition this tripwire states, and it was
+// verified before this line moved: `git diff 19f1e6f -- src/vscode/fnGen.ts`
+// carries the `walkDataShape` call, the `Data shape of` header and the
+// `dialReach: "walk"` edit in one diff. `P4c [csharp]` became `P4b [csharp]`
+// with it, which is the same re-cut go's move needed on 2026-08-10.
+//
+// RE-CUT 2026-08-11, session-v50 phase 3. `python` moved `signatures` -> `walk`,
+// and this one was CALLED by the previous re-cut rather than discovered. The note
+// below the csharp row recorded the value as under suspicion: the render had
+// shipped and the declaration had not, so the channel told every Python gesture
+// that breadth and depth buy nothing here while the walk was running. The
+// declaration is now `walk`, so the two halves agree again.
+//
+// What lights it: `pyShapeHooks.parseFields` is `pyFieldsFromMembers`, which reads
+// the fields off the resolved members instead of a pyright hover that never had
+// them; `pyShapeHooks.renderDef` is `pyRenderDerivedDef`, which synthesises a
+// `class Foo:` body from those fields; and `pyShapeBlock` runs `walkDataShape` and
+// emits the `Data shape of` block. Verified before this line moved:
+// `git diff 19f1e6f -- src/vscode/fnGen.ts src/core/pyExtraction.ts
+// src/core/crossFileShape.ts` carries the field leg, the render and the
+// `dialReach: "walk"` edit in one diff.
+//
+// ALL FIVE LANGUAGES NOW WALK, so `graph` and `signatures` classify nothing. Both
+// are still live branches of `contextStopLine`, and the P4 rows below drive them
+// on a CARRIER instead of waiting for a language to hold them; see the note above
+// `lineAtReach`. Nothing in this file's method changed with it: the P3 table still
+// says which value each language DECLARES, and the P4e rows still say the
+// declaration and the line agree.
 const REACH = {
   rust: "walk",
   typescript: "walk",
-  csharp: "graph",
+  // Was `graph` until 2026-08-11; see the note above.
+  csharp: "walk",
   // Was `signatures` until 2026-08-10; see the note above.
   go: "walk",
-  // NOTE, and it is a real weakening: python is now the ONLY `signatures`
-  // language, and csharp has always been the only `graph` one. A singleton
-  // class has no same-reach PAIR, so the partition row can only check its line
-  // against the OTHER classes' lines. Rewording a singleton's clause into
-  // something new and still-distinct turns nothing red. Reported as a residue
-  // rather than patched, because the fix is another language, not another
-  // assertion.
-  python: "signatures",
+  // Was `signatures` until 2026-08-11; see the note above.
+  python: "walk",
 };
 const LANGS = Object.keys(REACH);
 
@@ -855,6 +917,57 @@ const P4_TRIPWIRE =
   `  If you are reading this red and no such leg is in your diff, it is a DEFECT, not a re-baseline.\n` +
   `  Do not re-cut it to green.`;
 
+// --- The reach carrier ------------------------------------------------------
+//
+// ADDED HERE 2026-08-11, session-v50 phase 3, moved up from the P4e three-way row
+// that first needed it. Since python followed csharp to `walk`, ALL FIVE languages
+// walk, and every row below whose subject is "what a NON-walking language's line
+// looks like" lost its example. The rows did not lose their subject: `graph` and
+// `signatures` are live branches of `contextStopLine` and a build that broke one
+// would ship a channel reporting one classification as another.
+//
+// So those rows drive the reach VALUE through a carrier language instead of
+// waiting for a language to hold it: override `dialReach` on the exported entry,
+// run one real gesture, restore it.
+//
+// WHY THE OVERRIDE IS NOT A FICTION, and this is the part that had to be checked
+// rather than assumed: `dialReach` is read in exactly one place in the product,
+// the channel-line builder, and nowhere in the gather or the render. So an
+// overridden entry runs the same code an ordinary gesture runs and differs from it
+// only in the branch under test. The ANCHOR assertion in the three-way row proves
+// that on every run instead of trusting it: the carrier's line at its OWN declared
+// reach must come back byte-identical to the line it prints with no override.
+//
+// WHAT THIS DOES NOT REPLACE: every row that reads a REAL language's line still
+// reads it. A carrier row says what a branch prints; it says nothing about which
+// language is in it, and the P3 table and the P4e agreement rows are still the
+// only things that check that.
+const REACH_VOCAB = ["walk", "graph", "signatures"];
+// The language whose gesture carries the driven runs. Rust, because its leg is
+// frozen and its fixture is the one least likely to move under a later phase.
+const CARRIER = "rust";
+// The classifications no real language holds today, which is what the carrier is
+// for. Derived from the live table, not transcribed, so a language moving BACK to
+// one of them takes it off this list and puts the row back on a real subject.
+const UNHELD = () => REACH_VOCAB.filter((v) => !LANGS.some((l) => FN.prefillLangFor(l).dialReach === v));
+
+// One gesture, run with the carrier's `dialReach` forced to `reach`. Restored in
+// a `finally` so a failing assertion cannot leak a mutated table into the rows
+// that run after this one.
+async function lineAtReach(reach) {
+  const entry = FN.prefillLangFor(CARRIER);
+  assert.ok(entry && "dialReach" in entry, `CONTROL - ${CARRIER} must expose a dialReach to drive`);
+  const was = entry.dialReach;
+  try {
+    entry.dialReach = reach;
+    const r = await gesture(CARRIER);
+    assert.equal(r.lines.length, 1, `CONTROL - ${CARRIER} at reach=${show(reach)} must log exactly one line${dump(CARRIER, r)}`);
+    return r.lines[0];
+  } finally {
+    entry.dialReach = was;
+  }
+}
+
 // --- P4a --------------------------------------------------------------------
 
 for (const lang of LANGS) {
@@ -871,6 +984,89 @@ for (const lang of LANGS) {
 }
 
 // --- P4b / P4c / P4d --------------------------------------------------------
+//
+// ONE BODY, TWO SOURCES OF LINE, as of 2026-08-11 (session-v50 phase 3). The
+// assertions are unchanged; what moved is where the line comes from. Every real
+// language walks now, so the `else` half - P4c and P4d, the rules about a line
+// that must NAME three concepts and print none of their values - had no caller
+// left and would have sat in the file as dead code that looks like coverage.
+// It is now driven on the carrier, one row per unheld classification, and the
+// walk half still runs on all five real languages.
+//
+// `subject` is the label the failure messages use: a language id when a real
+// gesture produced the line, `rust@graph` when the carrier drove it.
+function assertChannelLineShape(subject, line, reach) {
+  const walk = reach === "walk";
+  // What EVERY line must carry, whatever its reach. The stop is a NAME, so it is
+  // matched as a name; the other three are numbers.
+  assert.ok(
+    /\bstop\b[^A-Za-z0-9]{0,3}(shipped|small|medium|large|frontier)\b/.test(line),
+    `${subject}: the line must name the stop in force. Line:\n    ${line}${P4_TRIPWIRE}`,
+  );
+  for (const [what, word] of [["the root cap", "roots?"], ["a token budget", "budget"], ["a member cap", "members?"]]) {
+    assert.ok(
+      carriesNumber(line, word),
+      `${subject}: the line must carry ${what}. Line:\n    ${line}${P4_TRIPWIRE}`,
+    );
+  }
+
+  const structural = [["a breadth number", "breadth"], ["a total-types number", "types"], ["a depth number", "depth"]];
+  if (walk) {
+    // P4b.
+    for (const [what, word] of structural) {
+      assert.ok(
+        carriesNumber(line, word),
+        `${subject} reaches ${show("walk")}, so its line must carry ${what} - the structural numbers are what ` +
+          `the dial buys it. Line:\n    ${line}${P4_TRIPWIRE}`,
+      );
+    }
+    assert.equal(
+      buysNothingClause(line),
+      undefined,
+      `${subject} reaches ${show("walk")}, so its line must carry NO clause saying anything buys nothing. ` +
+        `Line:\n    ${line}${P4_TRIPWIRE}`,
+    );
+    return;
+  }
+  // P4c + P4d. The concept must be NAMED and its value must not be printed.
+  for (const [what, word] of structural) {
+    assert.equal(
+      carriesNumber(line, word),
+      false,
+      `P4d: ${subject} does not reach ${show("walk")}, so ${what} must never be printed as a VALUE. A reader ` +
+        `must not be able to quote it off this line; \`breadth=48 (inert)\` is the defect this rule ` +
+        `closes. Line:\n    ${line}${P4_TRIPWIRE}`,
+    );
+    assert.ok(
+      namesConcept(line, word),
+      `P4c: ${subject}'s line must still NAME ${what.replace(/^an? /, "")} in the clause that says it buys ` +
+        `nothing. Naming the concept is required; printing its value is not. Line:\n    ${line}${P4_TRIPWIRE}`,
+    );
+  }
+  const clause = buysNothingClause(line);
+  assert.ok(
+    clause,
+    `${subject} reaches ${show(reach)}, so its line must END with a clause naming breadth, total types ` +
+      `and depth as buying nothing in this language. Without it the line reports a stop the developer ` +
+      `paid for and stays silent about the three numbers it did not spend. Line:\n    ${line}${P4_TRIPWIRE}`,
+  );
+  const sep = /[-–—:]|\bbecause\b|\bsince\b/.exec(clause.reason);
+  assert.ok(
+    sep && clause.reason.slice(sep.index + sep[0].length).trim().length >= 20,
+    `${subject}: the clause must come "with a reason", not a bare "buys nothing". What followed the phrase: ` +
+      `${show(clause.reason)}. Line:\n    ${line}${P4_TRIPWIRE}`,
+  );
+  // "It ENDS with a clause": every number the stop DID buy is printed before the
+  // clause starts, and nothing numeric follows it.
+  const lastNumber = [...line.matchAll(/[A-Za-z][A-Za-z ]*=\s*\d+/g)].pop();
+  assert.ok(lastNumber, `CONTROL - the line must print at least one number at all. Line:\n    ${line}`);
+  assert.ok(
+    clause.at > lastNumber.index,
+    `${subject}: the clause must END the line, after the numbers the stop did buy. The last printed number ` +
+      `(${show(lastNumber[0])}) sits at character ${lastNumber.index} and the clause starts at ` +
+      `${clause.at}. Line:\n    ${line}${P4_TRIPWIRE}`,
+  );
+}
 
 for (const lang of LANGS) {
   const walk = REACH[lang] === "walk";
@@ -879,77 +1075,25 @@ for (const lang of LANGS) {
     async () => {
       const r = await gesture(lang);
       assert.equal(r.lines.length, 1, `CONTROL - exactly one line to read${dump(lang, r)}`);
-      const line = r.lines[0];
+      // The DECLARED reach, read live, not the transcribed one - so a language
+      // that moved without this file moving fails here on its line's shape and
+      // on the P3 table, rather than being scored against a stale expectation.
+      const declared = FN.prefillLangFor(lang).dialReach;
+      assert.equal(declared, REACH[lang], `CONTROL - ${lang} is declared ${show(declared)}; the P3 table above says ${show(REACH[lang])}`);
+      assertChannelLineShape(lang, r.lines[0], declared);
+    },
+  );
+}
 
-      // What EVERY language's line must carry, whatever its reach. The stop is
-      // a NAME, so it is matched as a name; the other three are numbers.
-      assert.ok(
-        /\bstop\b[^A-Za-z0-9]{0,3}(shipped|small|medium|large|frontier)\b/.test(line),
-        `${lang}: the line must name the stop in force. Line:\n    ${line}${P4_TRIPWIRE}`,
-      );
-      for (const [what, word] of [["the root cap", "roots?"], ["a token budget", "budget"], ["a member cap", "members?"]]) {
-        assert.ok(
-          carriesNumber(line, word),
-          `${lang}: the line must carry ${what}. Line:\n    ${line}${P4_TRIPWIRE}`,
-        );
-      }
-
-      const structural = [["a breadth number", "breadth"], ["a total-types number", "types"], ["a depth number", "depth"]];
-      if (walk) {
-        // P4b.
-        for (const [what, word] of structural) {
-          assert.ok(
-            carriesNumber(line, word),
-            `${lang} reaches ${show("walk")}, so its line must carry ${what} - the structural numbers are what ` +
-              `the dial buys it. Line:\n    ${line}${P4_TRIPWIRE}`,
-          );
-        }
-        assert.equal(
-          buysNothingClause(line),
-          undefined,
-          `${lang} reaches ${show("walk")}, so its line must carry NO clause saying anything buys nothing. ` +
-            `Line:\n    ${line}${P4_TRIPWIRE}`,
-        );
-      } else {
-        // P4c + P4d. The concept must be NAMED and its value must not be printed.
-        for (const [what, word] of structural) {
-          assert.equal(
-            carriesNumber(line, word),
-            false,
-            `P4d: ${lang} does not reach ${show("walk")}, so ${what} must never be printed as a VALUE. A reader ` +
-              `must not be able to quote it off this line; \`breadth=48 (inert)\` is the defect this rule ` +
-              `closes. Line:\n    ${line}${P4_TRIPWIRE}`,
-          );
-          assert.ok(
-            namesConcept(line, word),
-            `P4c: ${lang}'s line must still NAME ${what.replace(/^an? /, "")} in the clause that says it buys ` +
-              `nothing. Naming the concept is required; printing its value is not. Line:\n    ${line}${P4_TRIPWIRE}`,
-          );
-        }
-        const clause = buysNothingClause(line);
-        assert.ok(
-          clause,
-          `${lang} reaches ${show(REACH[lang])}, so its line must END with a clause naming breadth, total types ` +
-            `and depth as buying nothing in this language. Without it the line reports a stop the developer ` +
-            `paid for and stays silent about the three numbers it did not spend. Line:\n    ${line}${P4_TRIPWIRE}`,
-        );
-        const sep = /[-–—:]|\bbecause\b|\bsince\b/.exec(clause.reason);
-        assert.ok(
-          sep && clause.reason.slice(sep.index + sep[0].length).trim().length >= 20,
-          `${lang}: the clause must come "with a reason", not a bare "buys nothing". What followed the phrase: ` +
-            `${show(clause.reason)}. Line:\n    ${line}${P4_TRIPWIRE}`,
-        );
-        // "It ENDS with a clause": every number the stop DID buy is printed
-        // before the clause starts, and nothing numeric follows it.
-        const lastNumber = [...line.matchAll(/[A-Za-z][A-Za-z ]*=\s*\d+/g)].pop();
-        assert.ok(lastNumber, `CONTROL - the line must print at least one number at all. Line:\n    ${line}`);
-        assert.ok(
-          clause.at > lastNumber.index,
-          `${lang}: the clause must END the line, after the numbers the stop did buy. The last printed number ` +
-            `(${show(lastNumber[0])}) sits at character ${lastNumber.index} and the clause starts at ` +
-            `${clause.at}. Line:\n    ${line}${P4_TRIPWIRE}`,
-        );
-      }
+// The same rules, on every classification, driven on the carrier. These run
+// whether or not a language holds the value: a language holding it makes the
+// per-language row above the better witness, it does not make the branch's own
+// text stop mattering.
+for (const reach of REACH_VOCAB) {
+  fntest(
+    `P4${reach === "walk" ? "b" : "c"} [${CARRIER}@${reach}]: a ${show(reach)} line ${reach === "walk" ? "carries" : "omits"} the structural numbers`,
+    async () => {
+      assertChannelLineShape(`${CARRIER}@${reach}`, await lineAtReach(reach), reach);
     },
   );
 }
@@ -1006,34 +1150,65 @@ const shapeOf = (line) => String(line).replace(/\d+/g, "#");
 const wordsOf = (shape) => new Set((shape.toLowerCase().match(/[a-z]{4,}/g) || []));
 const minus = (a, b) => [...a].filter((w) => !b.has(w));
 
+// RE-CUT 2026-08-11, session-v50 phase 3, and like the partition row below it is
+// the row's SOURCE that moved and not its expectation.
+//
+// What moved: python followed csharp to `walk`, so all five languages are
+// classified the same and both of this row's CONTROLs fired - reach no longer
+// varies across languages and neither does the clause. The controls were right.
+// A row asserting "each language's two halves agree" over five languages that are
+// all in the same branch is checking one branch and calling it a partition.
+//
+// THE JUDGEMENT. The five real languages stay, because they are what this row is
+// FOR: it is the row that catches a half-move, a language whose declaration was
+// edited and whose line was not, and only a real gesture on a real declaration can
+// catch that. What is added is one carrier row per classification no language
+// holds, so the "they agree" claim is made over more than one branch again. A
+// carrier row's declared reach is driven rather than declared, so it cannot catch
+// a half-move by itself; what it catches is a branch of `contextStopLine` that
+// starts printing values it did not buy, or drops its clause, which is the other
+// direction this row's message names.
 fntest("P4e TRIPWIRE: a language's declared reach and the SHAPE of its channel line are the same fact told twice", async () => {
   // "A language whose reach says `walk` and whose line carries the 'buys
   // nothing' clause, or the reverse, is a defect regardless of which half is
   // right." Bound directly - neither half is compared to the contract's table
   // here, only to the OTHER half - so a build that moves one and forgets the
   // other turns red even if it moved the one it meant to move.
+  const read = (label, reach, line) => ({
+    lang: label,
+    reach,
+    structural: ["breadth", "types", "depth"].filter((w) => carriesNumber(line, w)),
+    clause: buysNothingClause(line) !== undefined,
+    line,
+  });
   const rows = [];
   for (const lang of LANGS) {
     const r = await gesture(lang);
     assert.equal(r.lines.length, 1, `CONTROL - ${lang} must log exactly one line to read${dump(lang, r)}`);
-    const line = r.lines[0];
     const entry = FN.prefillLangFor(lang);
     assert.ok(entry && "dialReach" in entry, `CONTROL - ${lang} must expose a dialReach to compare against`);
-    rows.push({
-      lang,
-      reach: entry.dialReach,
-      structural: ["breadth", "types", "depth"].filter((w) => carriesNumber(line, w)),
-      clause: buysNothingClause(line) !== undefined,
-      line,
-    });
+    rows.push(read(lang, entry.dialReach, r.lines[0]));
+  }
+  // The branches no language holds, on the carrier. `UNHELD` is derived from the
+  // live table, so a language moving back into one of these drops it from here
+  // and the row goes back to being five real languages and nothing driven.
+  const unheld = UNHELD();
+  for (const reach of unheld) {
+    rows.push(read(`${CARRIER}@${reach}`, reach, await lineAtReach(reach)));
   }
   const table = rows
-    .map((x) => `    ${x.lang.padEnd(11)} reach=${String(x.reach).padEnd(11)} structural-numbers=${show(x.structural)} buys-nothing-clause=${x.clause}\n      ${x.line}`)
+    .map((x) => `    ${x.lang.padEnd(16)} reach=${String(x.reach).padEnd(11)} structural-numbers=${show(x.structural)} buys-nothing-clause=${x.clause}\n      ${x.line}`)
     .join("\n");
   // CONTROL: the two halves must not be trivially constant, or "they agree" is
-  // satisfied by a product that says the same thing about every language.
-  assert.ok(new Set(rows.map((x) => x.reach)).size > 1, `CONTROL - the reach classification must actually vary across languages\n${table}`);
-  assert.ok(new Set(rows.map((x) => x.clause)).size > 1, `CONTROL - the line shape must actually vary across languages\n${table}`);
+  // satisfied by a product that says the same thing about every language. With
+  // every language in one branch that variation comes from the carrier rows, so
+  // this control now also catches the override silently not applying.
+  assert.ok(new Set(rows.map((x) => x.reach)).size > 1, `CONTROL - the reach classification must actually vary across the rows read\n${table}`);
+  assert.ok(new Set(rows.map((x) => x.clause)).size > 1, `CONTROL - the line shape must actually vary across the rows read\n${table}`);
+  // And the real languages must still be the majority of the subject: a file that
+  // drifted to carrier-only rows would be checking the branches and nothing about
+  // the product's own five.
+  assert.equal(rows.length - unheld.length, LANGS.length, `CONTROL - every real language must still be read here\n${table}`);
 
   for (const x of rows) {
     const isWalk = x.reach === "walk";
@@ -1063,9 +1238,16 @@ fntest("P4e TRIPWIRE: a language's declared reach and the SHAPE of its channel l
 
 // --- P4e THREE WAYS. The amendment's rows. ----------------------------------
 
-// One gesture per language, reduced to (declared reach, line shape). Both rows
-// below read this and neither of them knows what any reach is CALLED beyond the
-// string the product hands back, nor what any line SAYS beyond its own text.
+// One gesture per language, reduced to (declared reach, line shape), plus one
+// carrier-driven gesture per classification no language holds. The partition row
+// below reads this and does not know what any reach is CALLED beyond the string
+// the product hands back, nor what any line SAYS beyond its own text.
+//
+// The carrier rows were added 2026-08-11 (session-v50 phase 3) for the same reason
+// the three-way row got a carrier in phase 2: with all five languages classified
+// `walk` the partition has one part, and a one-part partition is satisfied by
+// anything. `driven` is reported on every row so the failure message can say which
+// side of a mismatched pair was a real language and which was driven.
 async function reachShapes() {
   const rows = [];
   for (const lang of LANGS) {
@@ -1073,28 +1255,123 @@ async function reachShapes() {
     assert.equal(r.lines.length, 1, `CONTROL - ${lang} must log exactly one injected-context line${dump(lang, r)}`);
     const entry = FN.prefillLangFor(lang);
     assert.ok(entry && "dialReach" in entry, `CONTROL - ${lang} must expose a dialReach to compare against`);
-    rows.push({ lang, reach: entry.dialReach, line: r.lines[0], shape: shapeOf(r.lines[0]) });
+    rows.push({ lang, reach: entry.dialReach, line: r.lines[0], shape: shapeOf(r.lines[0]), driven: false });
+  }
+  for (const reach of UNHELD()) {
+    const line = await lineAtReach(reach);
+    rows.push({ lang: `${CARRIER}@${reach}`, reach, line, shape: shapeOf(line), driven: true });
   }
   return rows;
 }
 const shapeTable = (rows) =>
-  rows.map((x) => `    ${x.lang.padEnd(11)} reach=${String(x.reach).padEnd(11)}\n      ${x.line}`).join("\n");
+  rows
+    .map((x) => `    ${x.lang.padEnd(16)} reach=${String(x.reach).padEnd(11)}${x.driven ? " (driven)" : ""}\n      ${x.line}`)
+    .join("\n");
 
+// RE-CUT 2026-08-11, session-v50 phase 2, and this one changed the row's SOURCE
+// rather than its expectation.
+//
+// What moved: csharp went `graph` -> `walk` with the C# data-shape render, so
+// `graph` classifies no language at all, and the row's CONTROL fired exactly as
+// designed - "the five languages must span at least three distinct reach
+// classifications for this row to have a subject; they span ["walk","signatures"]".
+// The control was right and the row was about to become a claim over a two-member
+// set. Python is expected to follow C# once phase 3 moves its declaration, which
+// would leave the five spanning ONE class and the row claiming nothing at all.
+//
+// THE JUDGEMENT, and the alternatives it was chosen over. The subject of this row
+// is the CHANNEL LINE'S THREE BRANCHES, not the census of which language sits in
+// which branch. That census is the P3 table's job, and whether a language's line
+// agrees with its own declaration is the two sibling rows' job. So this row stops
+// sourcing its three examples from whichever languages happen to hold the three
+// values and drives the three values THEMSELVES through the product's real line,
+// by overriding `dialReach` on the exported language entry for one carrier
+// language, one reach at a time, and restoring it.
+//
+// Deleting the row was refused: the branches are live product code and a build
+// that collapsed two of them into one prose would ship a channel that reports one
+// classification as another, which is the failure this section exists for.
+// Freezing the three captured strings was refused too: it pins spelling, and this
+// file's whole method is to derive expectations from the product's own output at
+// run time.
+//
+// The carrier and `lineAtReach` moved UP the file on 2026-08-11 (session-v50
+// phase 3), because three more rows need them now that python has followed csharp
+// to `walk` and no language holds either of the other two values. Read the note
+// above `lineAtReach` for why driving a reach is not a fiction.
+//
+// WHAT STILL TURNS THIS RED. Two branches merged into one prose, a branch losing
+// its "buys nothing" clause, a branch starting to print structural values it did
+// not buy, the three collapsing to one line, or the override silently not
+// applying (which reads as three identical lines).
 fntest("P4e THREE WAYS: a `walk` line, a `graph` line and a `signatures` line are mutually distinguishable by their own text", async () => {
-  const rows = await reachShapes();
-  const byReach = new Map();
-  for (const x of rows) if (!byReach.has(x.reach)) byReach.set(x.reach, x);
-  const table = shapeTable(rows);
-  // CONTROL. Three classifications must actually be in play, or "the three are
-  // distinguishable" is a claim about a set with fewer than three members and
-  // this row proves nothing. If a later phase collapses the table to two
-  // classifications this row is the one that says so.
-  assert.ok(
-    byReach.size >= 3,
-    `CONTROL - the five languages must span at least three distinct reach classifications for this row to ` +
-      `have a subject; they span ${show([...byReach.keys()])}\n${table}${P4_TRIPWIRE}`,
+  const declared = FN.prefillLangFor(CARRIER).dialReach;
+  // ANCHOR. The override drives the product's real path, and the proof is that
+  // asking for the carrier's OWN reach reproduces its unoverridden line exactly.
+  // Without this the row could be separating three strings no gesture ever prints.
+  const plain = (await gesture(CARRIER)).lines[0];
+  assert.ok(plain, `CONTROL - ${CARRIER} must print an injected-context line with no override at all`);
+  assert.equal(
+    await lineAtReach(declared),
+    plain,
+    `ANCHOR - forcing ${CARRIER} to its own declared reach (${show(declared)}) must reproduce the line it ` +
+      `prints unforced, byte for byte. If it does not, this row is separating lines the product does not ` +
+      `actually emit and every assertion below is about a fiction.${P4_TRIPWIRE}`,
   );
-  const classes = [...byReach.values()];
+
+  const classes = [];
+  for (const reach of REACH_VOCAB) {
+    const line = await lineAtReach(reach);
+    classes.push({ reach, line, shape: shapeOf(line), lang: `${CARRIER}@${reach}` });
+  }
+  const table = classes.map((x) => `    reach=${String(x.reach).padEnd(11)}\n      ${x.line}`).join("\n");
+  // CONTROL. All three branches must have produced a line at all, and the
+  // carrier's real classification must still be one of the three, so a fourth
+  // value invented by a later phase is not silently driven past this row.
+  assert.equal(classes.length, 3, `CONTROL - three reach values, three lines\n${table}`);
+  assert.ok(
+    REACH_VOCAB.includes(declared),
+    `CONTROL - ${CARRIER} declares ${show(declared)}, which is not one of ${show(REACH_VOCAB)}. A new ` +
+      `classification needs its own branch and its own example here.\n${table}`,
+  );
+
+  // WHAT EACH BRANCH IS FOR, before asking whether they read differently. Three
+  // strings can be mutually distinct and still all wrong; these are the
+  // properties that make the distinction mean something to a developer.
+  for (const x of classes) {
+    const values = ["breadth", "types", "depth"].filter((w) => carriesNumber(x.line, w));
+    const clause = buysNothingClause(x.line);
+    if (x.reach === "walk") {
+      assert.deepEqual(
+        values,
+        ["breadth", "types", "depth"],
+        `reach=${show("walk")} must print all three structural numbers - they are what the dial buys a ` +
+          `walking language. Got ${show(values)}.\n${table}${P4_TRIPWIRE}`,
+      );
+      assert.equal(clause, undefined, `reach=${show("walk")} must carry no "buys nothing" clause.\n${table}${P4_TRIPWIRE}`);
+    } else {
+      assert.deepEqual(
+        values,
+        [],
+        `reach=${show(x.reach)} must print NONE of the structural numbers as values - a reader must not be ` +
+          `able to quote a number off this line that the language never spent. Got ${show(values)}.\n` +
+          `${table}${P4_TRIPWIRE}`,
+      );
+      assert.ok(
+        clause,
+        `reach=${show(x.reach)} must END with a clause saying breadth, total types and depth buy nothing ` +
+          `here. Without it the line reports a stop the developer paid for and stays silent about the three ` +
+          `numbers it did not spend.\n${table}${P4_TRIPWIRE}`,
+      );
+      const sep = /[-–—:]|\bbecause\b|\bsince\b/.exec(clause.reason);
+      assert.ok(
+        sep && clause.reason.slice(sep.index + sep[0].length).trim().length >= 20,
+        `reach=${show(x.reach)}: the clause must come with a reason, not a bare "buys nothing". What ` +
+          `followed the phrase: ${show(clause.reason)}.\n${table}${P4_TRIPWIRE}`,
+      );
+    }
+  }
+
   for (let i = 0; i < classes.length; i++) {
     for (let j = i + 1; j < classes.length; j++) {
       const a = classes[i];
@@ -1102,10 +1379,9 @@ fntest("P4e THREE WAYS: a `walk` line, a `graph` line and a `signatures` line ar
       assert.notEqual(
         a.shape,
         b.shape,
-        `a ${show(a.reach)} language (${a.lang}) and a ${show(b.reach)} language (${b.lang}) print the SAME ` +
-          `line shape. The channel is where a developer learns what their setting bought, so two ` +
-          `classifications that read identically mean one of them is being reported as the other.\n${table}` +
-          P4_TRIPWIRE,
+        `a ${show(a.reach)} line and a ${show(b.reach)} line print the SAME line shape. The channel is where ` +
+          `a developer learns what their setting bought, so two classifications that read identically mean ` +
+          `one of them is being reported as the other.\n${table}${P4_TRIPWIRE}`,
       );
       // Distinct is not enough on its own: distinct-only-in-the-numbers would
       // satisfy it and would be a difference in what the stop resolved to, not
@@ -1115,21 +1391,43 @@ fntest("P4e THREE WAYS: a `walk` line, a `graph` line and a `signatures` line ar
       const bOnly = minus(wordsOf(b.shape), wordsOf(a.shape));
       assert.ok(
         aOnly.length + bOnly.length > 0,
-        `${show(a.reach)} (${a.lang}) and ${show(b.reach)} (${b.lang}) differ, but not by a single word - ` +
-          `only by punctuation or by the numbers the stop resolved to. The two classifications must be ` +
-          `separated by the prose naming a different mechanism.\n${table}${P4_TRIPWIRE}`,
+        `${show(a.reach)} and ${show(b.reach)} differ, but not by a single word - only by punctuation or by ` +
+          `the numbers the stop resolved to. The two classifications must be separated by the prose naming ` +
+          `a different mechanism.\n${table}${P4_TRIPWIRE}`,
       );
     }
   }
 });
 
+// RE-CUT 2026-08-11, session-v50 phase 3. Same move as the two-way row above and
+// for the same reason: python followed csharp to `walk`, all five languages became
+// one class, and a partition with one part is satisfied by any product at all.
+// Both CONTROLs fired and both were right.
+//
+// THE JUDGEMENT, and what it deliberately keeps. The claim is "two rows read the
+// same on the channel exactly when they are classified the same", and it needs at
+// least two classes present to say anything. The five real languages stay - they
+// are the only rows that can catch a half-move, where a declaration was edited and
+// its line was not - and `reachShapes` adds one carrier-driven row per class no
+// language holds, which puts the second and third parts back. The pairing is the
+// same pairing over a larger set: a real language whose line drifted toward the
+// `graph` prose while declaring `walk` now collides with the driven `graph` row,
+// which is a comparison this row could not make while `graph` had no example.
+//
+// What it still cannot catch, stated rather than papered over: with one real class
+// left, "two languages classified the same read the same" is a claim about five
+// rows in one branch. It fires if one language's line drifts away from the other
+// four. It cannot fire on a reworded branch that no language sits in, because a
+// driven row is the only witness to that branch and there is nothing to disagree
+// with it. That half is the three-way row's job, and it is why that row asserts
+// each branch's PROPERTIES and not only that the three differ.
 fntest("P4e THREE WAYS: the partition of languages by line shape IS the partition by declared reach", async () => {
   // The tripwire the two-way version was missing, and the reason it is written
   // as a PARTITION rather than as a per-language expectation: it needs no list
   // of which reach each language has and no idea what any of them are called.
-  // It says only that two languages read the same on the channel exactly when
-  // they are classified the same, and that is what breaks in every direction
-  // this session can break it:
+  // It says only that two rows read the same on the channel exactly when they are
+  // classified the same, and that is what breaks in every direction this session
+  // can break it:
   //
   //   * python promoted to `graph` and the line left alone -> python still
   //     reads like go while their reaches differ -> RED here;
@@ -1139,8 +1437,14 @@ fntest("P4e THREE WAYS: the partition of languages by line shape IS the partitio
   //     deliberate, re-cut-with-the-leg case.
   const rows = await reachShapes();
   const table = shapeTable(rows);
-  assert.ok(new Set(rows.map((x) => x.reach)).size > 1, `CONTROL - reach must vary across languages\n${table}`);
-  assert.ok(new Set(rows.map((x) => x.shape)).size > 1, `CONTROL - line shape must vary across languages\n${table}`);
+  assert.equal(
+    rows.filter((x) => !x.driven).length,
+    LANGS.length,
+    `CONTROL - every real language must be read here; the driven rows are an ADDITION to them, never a ` +
+      `replacement\n${table}`,
+  );
+  assert.ok(new Set(rows.map((x) => x.reach)).size > 1, `CONTROL - reach must vary across the rows read\n${table}`);
+  assert.ok(new Set(rows.map((x) => x.shape)).size > 1, `CONTROL - line shape must vary across the rows read\n${table}`);
   for (let i = 0; i < rows.length; i++) {
     for (let j = i + 1; j < rows.length; j++) {
       const a = rows[i];
@@ -1148,12 +1452,13 @@ fntest("P4e THREE WAYS: the partition of languages by line shape IS the partitio
       const sameReach = a.reach === b.reach;
       const sameShape = a.shape === b.shape;
       if (sameReach === sameShape) continue;
+      const how = (x) => (x.driven ? `${x.lang} (reach DRIVEN on the carrier)` : x.lang);
       assert.fail(
         sameReach
-          ? `${a.lang} and ${b.lang} are BOTH classified ${show(a.reach)}, but their channel lines have ` +
+          ? `${how(a)} and ${how(b)} are BOTH classified ${show(a.reach)}, but their channel lines have ` +
               `different shapes. One of them is telling a developer something about its reach that the other, ` +
               `identically classified, is not.\n${table}${P4_TRIPWIRE}`
-          : `${a.lang} is classified ${show(a.reach)} and ${b.lang} is classified ${show(b.reach)}, and yet ` +
+          : `${how(a)} is classified ${show(a.reach)} and ${how(b)} is classified ${show(b.reach)}, and yet ` +
               `their channel lines are IDENTICAL in shape. One of the two moved and its line did not follow. ` +
               `This is the exact silent failure the amendment to contract-phase0.md P4e was written for: the ` +
               `reach table moved, the channel kept printing the old story, and without this row nothing ` +

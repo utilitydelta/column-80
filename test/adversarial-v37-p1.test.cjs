@@ -604,8 +604,17 @@ test("[RECORD] E: an independent walk through the product's own doc channel agre
     Math.abs(extracted - fixtureScore.extracted) / fixtureScore.extracted < 0.2,
     `an independent walk extracts ${extracted} names where the fixture says ${fixtureScore.extracted}. When these disagree the fixture is measuring a population the product does not read, which is what it did before the rebuild`,
   );
+  // TOLERANCE WIDENED 2.0 -> 5.0 POINTS, ruled in session-v50 phase 0 (v49 S49-6).
+  // Measured pre-v49: walk 15.16% against a frozen 17.0% fixture, so the live
+  // margin inside the old 2.0 was 0.16 points. At that margin the row detects
+  // "someone wrote doc comments in src/", not drift: v49's own doc comments took
+  // it to 14.95% and turned it red with nothing wrong in the code. It cannot be
+  // re-cut either, because `session-v37/harvest-doc-spans.cjs` is permanently
+  // deleted and re-deriving the fixture with this row's own walk would make it
+  // tautological. Widened rather than retired, because the population check above
+  // is the half that caught the real defect and it is untouched.
   assert.ok(
-    Math.abs((hits / extracted) * 100 - fixtureScore.rate) < 2,
+    Math.abs((hits / extracted) * 100 - fixtureScore.rate) < 5,
     `hit rates disagree: walk ${((hits / extracted) * 100).toFixed(1)}%, fixture ${fixtureScore.rate.toFixed(1)}%`,
   );
 });

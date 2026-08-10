@@ -1760,6 +1760,50 @@ async function fiveGesture(languageId) {
 // same shape. Shape carries the classification; the numbers carry the stop.
 const shapeOfLine = (line) => String(line).replace(/\d+/g, "#");
 
+// ADDED 2026-08-11, session-v50 phase 3. The three classifications the product's
+// channel-line builder branches on, and one CARRIER language to drive them.
+//
+// Why a carrier is needed at all: session-v50 gave C# and Python a field walk of
+// their own, so all five languages now declare `walk` and neither `graph` nor
+// `signatures` is held by anything. The row below compares rows PAIRWISE, and
+// five rows in one class make every pair trivially agree.
+//
+// Driving a reach runs the product's real path. `dialReach` is read in exactly one
+// place, the channel-line builder, and nowhere in the gather or the render, so an
+// overridden entry differs from an ordinary gesture only in the branch under test.
+// The ANCHOR assertion in the row proves that per run rather than assuming it.
+const REACH_VOCAB = ["walk", "graph", "signatures"];
+const CARRIER = "rust";
+const UNHELD = () => REACH_VOCAB.filter((v) => !LANGS.some((l) => FN.prefillLangFor(l).dialReach === v));
+
+// One carrier gesture with `dialReach` forced. Restored in a `finally` so a failed
+// assertion cannot leak a mutated table into the rows that run after this one.
+async function lineAtReach(reach) {
+  const entry = FN.prefillLangFor(CARRIER);
+  assert.ok(entry && "dialReach" in entry, `CONTROL - ${CARRIER} must expose a dialReach to drive`);
+  const was = entry.dialReach;
+  try {
+    entry.dialReach = reach;
+    const r = await fiveGesture(CARRIER);
+    assert.equal(r.lines.length, 1, `CONTROL - ${CARRIER} at reach=${show(reach)} must log exactly one line`);
+    return r.lines[0];
+  } finally {
+    entry.dialReach = was;
+  }
+}
+
+// RE-CUT 2026-08-11, session-v50 phase 3, and it is the row's SOURCE that moved
+// rather than its expectation. Python followed C# to `walk`, so all five languages
+// are classified alike and both CONTROLs fired: reach stopped varying and so did
+// line shape. The controls were right - a pairwise agreement claim over five rows
+// in one class checks one branch and calls it a partition.
+//
+// THE JUDGEMENT. The five real languages stay, because they are what this row is
+// FOR: it catches a half-move, a declaration edited without its line. Added to them
+// is one carrier-driven row per classification no language holds, which puts the
+// other branches back in the comparison. A driven row cannot catch a half-move by
+// itself - its reach is forced - so it is an ADDITION to the five and never a
+// replacement, and the row asserts that count explicitly.
 ftest("P5: a language's declared reach and the SHAPE of its channel line are still one fact told twice", async () => {
   // Neither half is compared to a transcribed table here, only to the OTHER
   // half, so a build that moves one and forgets the other turns red even if it
@@ -1772,20 +1816,44 @@ ftest("P5: a language's declared reach and the SHAPE of its channel line are sti
     assert.equal(r.lines.length, 1, `CONTROL - ${lang} must log exactly one ${show(PREFIX)} line; got ${r.lines.length}`);
     const entry = FN.prefillLangFor(lang);
     assert.ok(entry && "dialReach" in entry, `CONTROL - ${lang} must expose a dialReach`);
-    rows.push({ lang, reach: entry.dialReach, line: r.lines[0], shape: shapeOfLine(r.lines[0]) });
+    rows.push({ lang, reach: entry.dialReach, line: r.lines[0], shape: shapeOfLine(r.lines[0]), driven: false });
   }
-  const table = rows.map((x) => `    ${x.lang.padEnd(11)} reach=${String(x.reach).padEnd(11)}\n      ${x.line}`).join("\n");
-  assert.ok(new Set(rows.map((x) => x.reach)).size > 1, `CONTROL - reach must vary across languages\n${table}`);
-  assert.ok(new Set(rows.map((x) => x.shape)).size > 1, `CONTROL - line shape must vary across languages\n${table}`);
+  // ANCHOR. The override drives the product's real path, and the proof is that
+  // forcing the carrier to its OWN declared reach reproduces its unforced line
+  // byte for byte. Without it the driven rows could be shapes nothing ever prints.
+  const plain = rows.find((x) => x.lang === CARRIER);
+  assert.ok(plain, `CONTROL - ${CARRIER} must be among the languages read`);
+  assert.equal(
+    await lineAtReach(plain.reach),
+    plain.line,
+    `ANCHOR - forcing ${CARRIER} to its own declared reach (${show(plain.reach)}) must reproduce the line it ` +
+      `prints unforced. If it does not, the driven rows below are about a fiction.`,
+  );
+  const unheld = UNHELD();
+  for (const reach of unheld) {
+    const line = await lineAtReach(reach);
+    rows.push({ lang: `${CARRIER}@${reach}`, reach, line, shape: shapeOfLine(line), driven: true });
+  }
+  const table = rows
+    .map((x) => `    ${x.lang.padEnd(16)} reach=${String(x.reach).padEnd(11)}${x.driven ? " (driven)" : ""}\n      ${x.line}`)
+    .join("\n");
+  assert.equal(
+    rows.filter((x) => !x.driven).length,
+    LANGS.length,
+    `CONTROL - every real language must still be read here; the driven rows are an addition to them\n${table}`,
+  );
+  assert.ok(new Set(rows.map((x) => x.reach)).size > 1, `CONTROL - reach must vary across the rows read\n${table}`);
+  assert.ok(new Set(rows.map((x) => x.shape)).size > 1, `CONTROL - line shape must vary across the rows read\n${table}`);
   for (let i = 0; i < rows.length; i++) {
     for (let j = i + 1; j < rows.length; j++) {
       const a = rows[i];
       const b = rows[j];
       if ((a.reach === b.reach) === (a.shape === b.shape)) continue;
+      const how = (x) => (x.driven ? `${x.lang} (reach DRIVEN on the carrier)` : x.lang);
       assert.fail(
         a.reach === b.reach
-          ? `${a.lang} and ${b.lang} are both classified ${show(a.reach)} and print DIFFERENT line shapes.\n${table}`
-          : `${a.lang} is ${show(a.reach)} and ${b.lang} is ${show(b.reach)}, and their channel lines are ` +
+          ? `${how(a)} and ${how(b)} are both classified ${show(a.reach)} and print DIFFERENT line shapes.\n${table}`
+          : `${how(a)} is ${show(a.reach)} and ${how(b)} is ${show(b.reach)}, and their channel lines are ` +
               `IDENTICAL in shape. One of the two moved and its line did not follow.\n${table}`,
       );
     }

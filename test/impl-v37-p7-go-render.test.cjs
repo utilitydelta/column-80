@@ -383,21 +383,89 @@ test("channel: the elision line never says `truncated` - that word belongs to th
 });
 
 // ===========================================================================
-// 4. THE OTHER FOUR LANGUAGES DO NOT MOVE. Go used to run the Rust default
-// renderer; taking it off that path must not perturb the path. The same hover
-// text - one the Go rule WOULD elide by 57 bytes - through all five renderers.
+// 4. ONLY GO ELIDES. Go used to run the Rust default renderer; taking it off
+// that path must not perturb the path. The same hover text - one the Go rule
+// WOULD elide by 42 bytes - through all five renderers.
 // ===========================================================================
 
 const SHARED = "type Group struct { // size=32 (0x20)\n\t// ID is the group id.\n\tID string\n}";
 
-test("renderers: Rust, TypeScript, C# and Python return the hover byte for byte; only Go elides", () => {
+// RE-CUT 2026-08-11, session-v50 phases 2 and 3, and the title moved with it.
+// This row read "Rust, TypeScript, C# and Python return the hover byte for byte;
+// only Go elides", and the second half of that is still the point. The first half
+// stopped being true for two languages, by design and in the same change:
+//
+//  * C#. A Roslyn type hover is `class Contoso.Widget` and stops there, so the
+//    fields C# derives had nowhere to print. `csRenderDerivedDef` synthesises a
+//    braced body under that head when the walk found fields.
+//  * Python. A pyright class hover is `(class) Foo`, which is chrome plus a bare
+//    NAME. `pyRenderDerivedDef` puts the `class` keyword back and, when the walk
+//    found fields, an annotated body under it. So Python is not byte-identical to
+//    its hover even with no fields at all.
+//
+// NEITHER OF THOSE IS AN ELISION, and that is the distinction this row now draws
+// rather than assuming: eliding DROPS bytes the server sent, synthesising ADDS
+// bytes the server did not. The first assertion block is the one that stays loud
+// if a language starts eliding when it should not - every line of the input hover,
+// doc comment and layout chrome included, must survive every renderer except Go's.
+test("renderers: only Go ELIDES; the other four keep every byte the server sent", () => {
   const t = { name: "Group", signature: SHARED, fields: [], methods: [], methodsResolved: true };
+  const others = [
+    ["rust", renderDerivedDef(t)],
+    ["typescript", tsRenderDerivedDef(t)],
+    ["csharp", csShapeHooks.renderDef(t)],
+    ["python", pyShapeHooks.renderDef(t)],
+  ];
+  // THE ELISION GUARD. Go's rule drops the layout chrome, the doc comment and the
+  // blank separators; no other renderer may drop any of them. Checked line by
+  // line rather than by byte count, so a renderer that dropped the comment and
+  // added something longer still fails.
+  for (const [lang, out] of others) {
+    for (const line of SHARED.split("\n")) {
+      assert.ok(
+        out.includes(line),
+        `${lang} dropped a line the hover carried: ${JSON.stringify(line)}. Only Go elides.\n  got: ${JSON.stringify(out)}`,
+      );
+    }
+    assert.ok(
+      B(out) >= B(SHARED),
+      `${lang} returned FEWER bytes than the hover it was given, which is an elision. Only Go elides.`,
+    );
+  }
+  // WHICH ARE VERBATIM AND WHICH ARE NOT. Rust, TypeScript and C# hand a resolved
+  // hover straight back. Python's addition is purely a prefix, so the hover text
+  // is still present unchanged and a reader can diff the two.
   assert.equal(renderDerivedDef(t), SHARED, "the Rust default renderer moved");
   assert.equal(tsRenderDerivedDef(t), SHARED, "the TypeScript renderer moved");
-  assert.equal(csShapeHooks.renderDef(t), SHARED, "the C# renderer moved");
-  assert.equal(pyShapeHooks.renderDef(t), SHARED, "the Python renderer moved");
+  assert.equal(csShapeHooks.renderDef(t), SHARED, "the C# renderer moved: with no derived fields it is the head alone");
+  assert.equal(
+    pyShapeHooks.renderDef(t),
+    `class ${SHARED}`,
+    "Python declares its head, because a pyright class hover carries no keyword to inherit",
+  );
+  // Go, unchanged.
   assert.equal(goShapeHooks.renderDef(t), "type Group struct {\n\tID string\n}");
   assert.equal(B(SHARED) - B(goShapeHooks.renderDef(t)), 42, "the Go drop, in bytes");
+});
+
+test("renderers: C# and Python SYNTHESISE a body from derived fields; Rust and TypeScript never do", () => {
+  // The other half of the re-cut above, on heads shaped like the ones those two
+  // servers really answer. A synthesised body is what makes a field walk worth
+  // running in a language whose hover has no field body of its own.
+  assert.equal(
+    csShapeHooks.renderDef({ name: "Widget", signature: "class Contoso.Widget", fields: [{ name: "Monitors", typeName: "List<DpmMonitor>" }] }),
+    "class Contoso.Widget {\n    Monitors : List<DpmMonitor>\n}",
+  );
+  assert.equal(
+    pyShapeHooks.renderDef({ name: "Widget", signature: "(class) Widget", fields: [{ name: "monitors", typeName: "list[Monitor]" }] }),
+    "class Widget:\n    monitors: list[Monitor]",
+  );
+  // Rust and TypeScript get their fields from the hover itself, so a resolved
+  // hover wins and the derived list is not printed a second time. A renderer that
+  // started appending here would double every Rust struct body.
+  const t = { name: "Group", signature: SHARED, fields: [{ name: "ID", typeName: "string" }], methods: [], methodsResolved: true };
+  assert.equal(renderDerivedDef(t), SHARED, "Rust prefers the resolved hover over the derived fields");
+  assert.equal(tsRenderDerivedDef(t), SHARED, "TypeScript prefers the resolved hover over the derived fields");
 });
 
 test("registry: go now dispatches to goShapeHooks and every other id is where it was", () => {

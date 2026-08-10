@@ -56,8 +56,17 @@ export interface CompletionMember {
    *  difference. It exists so the render can DISCLOSE the loss — a bare member
    *  is dropped by `renderMemberSignatures`, and a block that quietly ships 31
    *  of a type's 38 members is the silent-truncation failure this codebase keeps
-   *  removing. Absent means the member's signature status is its own. */
-  capped?: "count" | "budget";
+   *  removing. Absent means the member's signature status is its own.
+   *
+   *  THREE CAUSES, not two (session-v50 phase 3, v49 S49-13). `budget` used to
+   *  cover two different things: a hover that never answered inside the wall
+   *  clock, and a hover that answered INSTANTLY with text the language's builder
+   *  then refused (unparseable, or naming another symbol). Measured in v49: 5
+   *  members, an instant hover returning text that names nobody, all 5 reported
+   *  as `budget` with the clock never involved. Nothing vanished silently, so it
+   *  was a label rather than a hole, but it sends a reader to the fan-out budget
+   *  when the dial that matters is the builder. `unusable` is that case. */
+  capped?: "count" | "budget" | "unusable";
   /** The 0-based line of the member's OWN declaration in the file its type is
    *  defined in, when the transport knew it. Only a documentSymbol node carries
    *  it; a member built from a completion list has none, and a caller that needs
@@ -1182,11 +1191,16 @@ export async function membersWithHoverSignatures(
     }),
     budgetMs,
   );
+  // Which asked members got an ANSWER, whatever became of it. The difference
+  // between "the clock ran out" and "the reply was refused" is only knowable
+  // here, and downstream all that survives is a member with no signature.
+  const answered = new Set<number>();
   asked.forEach((memberIndex, askIndex) => {
     const signature = answers[askIndex];
     if (!signature || signature.trim().length === 0) {
       return;
     }
+    answered.add(memberIndex);
     const { symbol, memberKind } = kept[memberIndex];
     const rebuilt = build(nameOf(symbol), oneLine(signature), memberKind);
     // Two refusals, both degrading to the bare name the member already has.
@@ -1220,7 +1234,8 @@ export async function membersWithHoverSignatures(
     if (members[i].signature !== undefined || positionOf(kept[i].symbol) === undefined) {
       continue; // signed, or never eligible for a hover at all — not a cap loss
     }
-    members[i] = { ...members[i], capped: askedSet.has(i) ? "budget" : "count" };
+    const cause = !askedSet.has(i) ? "count" : answered.has(i) ? "unusable" : "budget";
+    members[i] = { ...members[i], capped: cause };
   }
   return members;
 }

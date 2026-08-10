@@ -28,25 +28,26 @@
 // session-v38's own archive and in S48-1. What is lost is the ability to
 // re-derive the numbers, and that was already true before the rows were removed.
 //
-// ONE ROW THAT SURVIVES AND STILL CANNOT RUN: `[DEFECT] the 4/3 capture` scores
-// the same deleted `repair-v38-fence.json`, so this file legitimately still
-// reports one skip. It was not in the human's six and was not touched; it is
-// raised in session-v49/scraps.md for a ruling of its own.
+// 2026-08-11 (session-v50 phase 0): `[DEFECT] the 4/3 capture` is deleted too.
+// It scored the same deleted `repair-v38-fence.json` and was missed only because
+// it was not on the human's list of six. Same ruling, its claim recorded above
+// the gap where it was. This file now reports zero skips, which is what its own
+// first paragraph has always claimed.
 
 // THE MEASUREMENT RIG LIVES IN A DIFFERENT REPOSITORY (2026-08-10). It and the
 // session archives were split into a private repo because they carry corpora
 // taken against private client code and cannot be published, so a public clone
 // has no `session-complxity-research/` and the rows below have no subject.
 //
-// The whole file skips, with the reason on the channel. It SKIPS rather than
-// passing vacuously: a row that goes green when the thing it tests is absent is
-// the false green this suite exists to prevent. Where a baseline can be
-// vendored instead, vendor it (see test/fixtures/prompt) and do not use this.
-const { RIG_PRESENT, SKIP_REASON } = require("./.rig-present.cjs");
-if (!RIG_PRESENT) {
-  require("node:test")("rig-dependent rows", { skip: SKIP_REASON }, () => {});
-  return;
-}
+// The whole file used to skip on that, with the reason on the channel. IT NO
+// LONGER DOES, and the gate is deleted (session-v50 phase 0). It outlived its
+// last rig-dependent row: the seven capture-scoring rows are gone, every row
+// left carries its own input inline, and the only two file reads left in here
+// read `src/core/*.ts`. A file-level gate over rows that need no rig is the
+// false green this suite exists to prevent, arriving as a skip instead of a
+// pass. Found by the phase 0 adversarial review, which stubbed
+// `.rig-present.cjs` to false and got 1 test, 0 pass, 1 skip on nine
+// self-contained rows.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -67,18 +68,10 @@ const {
 } = mod;
 test.after(cleanup);
 
-const DATA = path.join(__dirname, "..", "session-complxity-research", "data");
-// Every capture this file scores lives under `session-complxity-research/`, which
-// `.gitignore`'s `session*/` excludes: roughly 700KB of measurement output that
-// does not belong in the extension. A clone therefore has the row and not its
-// evidence, and the read throws, which reports a missing artifact as a failed
-// claim. `needsCapture` skips there and runs for real wherever the capture IS
-// present. Added 2026-08-03 with the 1.1.0 release, the first time these v37/v38
-// review files ever ran on CI.
-const needsCapture = (ctx, ...files) =>
-  files.some((f) => !fs.existsSync(path.join(DATA, f)))
-    ? (ctx.skip(`capture(s) absent (gitignored session artifact): ${files.join(", ")}`), true)
-    : false;
+// The capture reader is GONE with the last row that used it (session-v50 phase
+// 0). Every row left in this file carries its own input inline, so nothing here
+// reads `session-complxity-research/data` any more and no row can skip on a
+// missing artifact.
 
 // The fn-gen service's code-fence guard, copied verbatim from
 // src/core/fnGenService.ts (the `text.split("\n").some(...)` line).
@@ -102,25 +95,25 @@ function everyStringIn(v, sink) {
 }
 
 // ---------------------------------------------------------------------------
-// ROW 2 [DEFECT, HIGH]. The concrete cost of ROW 1: that reply was ACCEPTED at
-// HEAD and is REFUSED by the change. A complete 42-line function is thrown away.
+// ROW 2 [DEFECT, HIGH] IS DELETED (session-v50 phase 0, human ruling).
+//
+// It scored `repair-v38-fence.json`, the same permanently deleted capture as the
+// six rows deleted above, and it survived only because it was not on that list.
+// Same ruling, applied for the same reason: a row that can never run again is a
+// title that reads like a guard.
+//
+// WHAT IT ASSERTED, so the claim is not lost with the row: the
+// `capture_replication_snapshot` reply is an open-4 / close-3 fence carrying a
+// complete function; HEAD extracted it and the phase-2 change handed the whole
+// reply to the fence guard, which refused it. The claim was REFUTED by the
+// shipped code, through `close.len === 3 || close.len === open.len`
+// (`src/core/instructPostprocess.ts:88`): a bare run-3 line DOES close a run-4
+// opener, so the block extracts cleanly and the whole reply never reaches the
+// guard. That is the opposite direction to ROW 6's rule below, which is about a
+// LONGER run not closing a shorter opener, and conflating the two is how this
+// note read on its first cut. What is gone is the ability to re-derive it
+// against the real capture, and that was already gone before this deletion.
 // ---------------------------------------------------------------------------
-test("[DEFECT] the 4/3 capture: HEAD extracts a complete function, the change hands the guard the whole reply", (ctx) => {
-  if (needsCapture(ctx, "repair-v38-fence.json")) {
-    return;
-  }
-  const rows = JSON.parse(fs.readFileSync(path.join(DATA, "repair-v38-fence.json"), "utf8"));
-  const row = rows.find((r) => r.id.includes("capture_replication_snapshot"));
-  assert.ok(row, "the capture_replication_snapshot row must still be in the data");
-  const raw = row.rounds[0].raw;
-  const fences = raw.split("\n").filter((l) => runOf(l.trim())).map((l) => l.trim());
-  assert.deepEqual(fences, ["````rust", "```"], "this is the open-4 / close-3 shape");
-  assert.equal(
-    fenceGuardRefuses(postprocessInstructOutput(raw)),
-    false,
-    "a real captured repair that HEAD accepted is now refused by the fence guard",
-  );
-});
 
 // ---------------------------------------------------------------------------
 // ROW 6 [DEFECT, MEDIUM]. A NEW failure mode, and it is worse in kind than the

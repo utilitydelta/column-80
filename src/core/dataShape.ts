@@ -128,6 +128,18 @@ export interface SharedWalkState {
    *  actually bound travels with it (review D3), and the LAST walk to lose a
    *  name overwrites the earlier attribution (review D4). */
   droppedBy?: Map<string, DroppedType>;
+  /** OPTIONAL, session-v50 phase 2: the types that have already been given a
+   *  MEMBER block in this prompt. A second set, and it has to be second.
+   *
+   *  `visited` above dedups DATA SHAPES: a type whose fields one walk rendered
+   *  must not have them rendered again by a sibling walk. C# is the only language
+   *  whose member blocks are also deduped across a prompt (it renders a block per
+   *  collaborator, not one per root), and while C# had no data-shape walk the two
+   *  jobs could share one set without anyone noticing. The moment it got one,
+   *  they collided: the walk marked a type visited and the member renderer read
+   *  that as "already given a member block", so a type's shape shipped and its
+   *  members vanished. Caught by `blind-v34-stdlib-provenance` item 1 point 6. */
+  memberBlocks?: Set<string>;
 }
 
 // The blocks are joined by a blank line, matching the generate-side rendering.

@@ -1451,6 +1451,36 @@ export function dedentCsBody(code: string, known?: string): string {
  *  A member with no signature yields nothing rather than a guess. An enum's
  *  variants arrive exactly that way, which is why an enum contributes no fields
  *  here and keeps its own `enumMemberLine` spelling instead. */
+/** A C# type's DEF as the data-shape block prints it (session-v50 phase 2).
+ *
+ *  A Roslyn class hover is `class Contoso.DataModel.RetroJob` and stops there, so
+ *  until now C# had nothing to render but a head. The fields exist, they arrive
+ *  on `membersOfType` and `csFieldsFromMembers` parses them, so the body is
+ *  synthesised from what the walk derived rather than read from a hover that
+ *  never had one.
+ *
+ *  The head is the hover VERBATIM, fully qualified as Roslyn wrote it. Shortening
+ *  it would be inventing a spelling: `RetroJob` compiles only in a file that
+ *  imports or sits inside that namespace, and this block is read by a model that
+ *  cannot check which.
+ *
+ *  Fields keep Roslyn's own `Name : Type` order, which is what the member lines
+ *  beside them already use, so a reader is not asked to hold two spellings of the
+ *  same fact. A type with no derived fields renders its head alone, unchanged
+ *  from today - an enum, an interface, a type whose members are all callables. */
+export function csRenderDerivedDef(t: {
+  name: string;
+  signature: string;
+  fields: ReadonlyArray<{ name: string; typeName: string }>;
+}): string {
+  const head = t.signature.length > 0 ? t.signature.trim() : `class ${t.name}`;
+  if (t.fields.length === 0) {
+    return head;
+  }
+  const body = t.fields.map((f) => `    ${f.name} : ${f.typeName}`).join("\n");
+  return `${head} {\n${body}\n}`;
+}
+
 export function csFieldsFromMembers(
   members: readonly CompletionMember[],
 ): Array<{ name: string; typeName: string }> {

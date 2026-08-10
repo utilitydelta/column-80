@@ -99,15 +99,85 @@ test("pyTypesInPlay: a signature naming only stdlib/typing/TypeVars yields []", 
 
 // --- pyShapeHooks / PY_STD_TYPE_NAMES: the signatures-only Python hooks. --------
 
-test("pyShapeHooks: signatures-only — parseFields is empty, stdTypeNames is PY_STD_TYPE_NAMES", () => {
+test("pyShapeHooks: the field leg — parseFields reads the MEMBERS, stdTypeNames is PY_STD_TYPE_NAMES", () => {
   // RENAMED 2026-08-10 (session-v49 phase 2): `parseHoverFields(signature)` became
   // `parseFields(signature, members, defLines)`, because C# and Python have their
-  // fields on the resolved MEMBERS and not in any hover. Python still answers []
-  // here — its own leg is phase 3.
-  assert.deepStrictEqual(pyShapeHooks.parseFields("class Foo", [], []), [], "a pyright class hover carries no field body");
-  assert.strictEqual(pyShapeHooks.fieldTypeCursor(), undefined, "no field-edge recursion");
+  // fields on the resolved MEMBERS and not in any hover. Python still answered []
+  // there — its own leg was phase 3.
+  //
+  // RE-CUT 2026-08-11, session-v50 phase 3. Python's leg landed, so three of the
+  // four hooks this row pins are different objects. What shipped alongside:
+  // `pyShapeHooks.parseFields` is now `pyFieldsFromMembers`, `fieldTypeCursor` is
+  // `pyFieldTypeCursor` (two rules: an annotation, then a constructor call) and
+  // `renderDef` is `pyRenderDerivedDef`, which synthesises a class body from the
+  // derived fields because a pyright class hover is `(class) Foo` and carries no
+  // body. `pyShapeBlock` renders the resulting `Data shape of` block. The old row
+  // did not fail on an expectation: it threw, because `fieldTypeCursor()` with no
+  // arguments and `renderDef({signature})` with no `fields` are now calls into
+  // parsers that read their arguments.
+  //
+  // The old claim is not deleted, it is narrowed to the case it was always true
+  // of: a hover with NO members still yields no fields. That is the assertion
+  // below, and it is what stops the leg from inventing a field out of the hover
+  // text the way the Rust struct parser would.
+  assert.deepStrictEqual(
+    pyShapeHooks.parseFields("(class) Foo", [], []),
+    [],
+    "no members, no fields — a pyright class hover carries no field body to fall back on",
+  );
+  assert.deepStrictEqual(
+    pyShapeHooks.parseFields("(class) Foo", [
+      { name: "matcher", kind: "field", signature: "matcher: Matcher" },
+      { name: "events", kind: "field", signature: "events: list[Event]" },
+      { name: "run", kind: "method", signature: "run(self) -> None" },
+      { name: "bare", kind: "field", signature: "bare" },
+    ], []),
+    [{ name: "matcher", typeName: "Matcher" }, { name: "events", typeName: "list[Event]" }],
+    "fields come off the resolved members with the type after the colon; a method and an un-inferred " +
+      "bare name yield nothing rather than a guess",
+  );
+  // The field-edge cursor: the annotated rule, anchored AFTER the colon so a
+  // field whose name matches the type cannot anchor on itself.
+  const lines = ["class Foo:", "    def __init__(self):", "        self.matcher: Matcher = Matcher()", ""];
+  assert.deepStrictEqual(
+    pyShapeHooks.fieldTypeCursor(lines, { open: 0, close: 3 }, "matcher", "Matcher"),
+    { line: 2, character: lines[2].indexOf("Matcher") },
+    "the recursive hop anchors on the field's own type token",
+  );
   assert.strictEqual(pyShapeHooks.stdTypeNames, PY_STD_TYPE_NAMES, "the walk-stop set is the Python one");
-  assert.strictEqual(pyShapeHooks.renderDef({ signature: "class Bar" }), "class Bar", "renderDef returns the raw signature");
+  // renderDef on a head that already reads as Python: the head alone when the
+  // walk derived no fields, and an annotated body when it did.
+  assert.strictEqual(pyShapeHooks.renderDef({ name: "Bar", signature: "class Bar", fields: [] }), "class Bar");
+  assert.strictEqual(
+    pyShapeHooks.renderDef({ name: "Bar", signature: "class Bar", fields: [{ name: "matcher", typeName: "Matcher" }] }),
+    "class Bar:\n    matcher: Matcher",
+    "with fields: a body a reader can type, in the annotated spelling the member lines already use",
+  );
+  // THE REAL HOVER, and the row asks it because the convenient one hides the
+  // defect. pyright hovers a class as `(class) Bar`, byte for byte, plain class
+  // and Enum subclass alike (test/impl-v40-p4-py-enum-render.test.cjs opens on
+  // that fact), so the chrome strip leaves a BARE NAME and not a declaration.
+  //
+  // RE-CUT 2026-08-11, session-v50 phase 3, and this row asked for the re-cut in
+  // its own words. It used to pin `"Bar"` and `"Bar:\n    matcher: Matcher"` as
+  // OBSERVED-AND-A-DEFECT: the block a Python gesture rendered read `Bar:` inside
+  // a ```python fence under a header telling the model these are real
+  // declarations. `pyRenderDerivedDef` now puts the keyword back when the head
+  // does not already declare something, so the two expectations are the ones the
+  // old comment named. The fix is in src/core/pyExtraction.ts and shipped with the
+  // rest of the Python render.
+  assert.strictEqual(pyShapeHooks.renderDef({ name: "Bar", signature: "(class) Bar", fields: [] }), "class Bar");
+  assert.strictEqual(
+    pyShapeHooks.renderDef({ name: "Bar", signature: "(class) Bar", fields: [{ name: "matcher", typeName: "Matcher" }] }),
+    "class Bar:\n    matcher: Matcher",
+    "the real pyright hover renders a declaration, not a bare name with a colon",
+  );
+  // A head that already declares keeps its own spelling: a decorated dataclass
+  // hover must not collect a second `class` in front of the decorator.
+  assert.strictEqual(
+    pyShapeHooks.renderDef({ name: "Bar", signature: "@dataclass\nclass Bar", fields: [{ name: "n", typeName: "int" }] }),
+    "@dataclass\nclass Bar:\n    n: int",
+  );
 });
 
 test("PY_STD_TYPE_NAMES: names the common typing surface, not user types", () => {

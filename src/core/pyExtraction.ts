@@ -183,6 +183,195 @@ export function pyEnumBaseDecl(defLines: readonly string[], typeName: string): b
 }
 
 // ---------------------------------------------------------------------------
+// THE PYTHON FIELD LEG (session-v50 phase 3).
+//
+// Python is the only one of the five that loses the field TYPE and not just the
+// edge. pyright fills `detail` on nothing, so a field arrives as a bare name and
+// the type is one hover away. The product's transport already pays for that
+// hover (`membersWithHoverSignatures`), so by the time the walk asks for fields
+// the answer is sitting on the member: `_events: list[Event]`, with the
+// `(variable) ` chrome already stripped by `renderPyMemberSignature`.
+//
+// So the parse is the easy half. The CURSOR is the interesting one, and it is
+// TWO rules rather than one, because Python has two structurally different
+// attribute shapes and only one of them writes a type at all:
+//
+//     self.matcher: Matcher = Matcher(embeddings)   an ANNOTATION
+//     self.matcher = Matcher(embeddings)            a CONSTRUCTOR CALL
+//
+// The second has no type after a colon. Its type comes from pyright's inference,
+// which is why the member signature knows `Matcher` while the source line only
+// says `Matcher(`. A cursor rule that looks after a colon finds nothing there,
+// and the largest real Python class measured on this box is that shape.
+// ---------------------------------------------------------------------------
+
+/** pyright's placeholder for a type it could not infer. It is not a type and
+ *  never a walk candidate: `DiGraph[Unknown, dict[str, Any], dict[str, Any]]` is
+ *  a real hover from the measured corpus. */
+const PY_UNKNOWN_TYPE = "Unknown";
+
+/** A Python type's named fields with their types, read off the RESOLVED MEMBERS
+ *  rather than the hover, because a pyright class hover is `(class) Foo` and
+ *  carries no body at all.
+ *
+ *  The member signature is already declaration-shaped when it gets here, so the
+ *  parse is "everything after the first colon". A member with no signature yields
+ *  nothing rather than a guess, which is also what a member the fan-out cap cut
+ *  yields: the cap costs an EDGE now and not only a line, which is why the cap
+ *  reports what it drops.
+ *
+ *  Fields only. A method's signature carries a parameter list, and a walk that
+ *  read one would spend round trips on argument types. */
+export function pyFieldsFromMembers(
+  members: readonly CompletionMember[],
+): Array<{ name: string; typeName: string }> {
+  const fields: Array<{ name: string; typeName: string }> = [];
+  for (const m of members) {
+    if (m.kind !== "field" || m.signature === undefined) {
+      continue;
+    }
+    const decl = m.signature.trim();
+    if (!decl.startsWith(m.name)) {
+      continue; // some other symbol's declaration; the transport already refuses these
+    }
+    const at = decl.indexOf(":", m.name.length);
+    if (at < 0) {
+      continue; // a bare name: pyright inferred nothing worth printing
+    }
+    const typeName = decl.slice(at + 1).trim();
+    if (typeName.length === 0 || typeName === PY_UNKNOWN_TYPE) {
+      continue;
+    }
+    fields.push({ name: m.name, typeName });
+  }
+  return fields;
+}
+
+/** A Python type's DEF as the data-shape block prints it.
+ *
+ *  A pyright class hover is `(class) GraphEngine` and carries no body, so the
+ *  body is synthesised from the fields the walk derived. Written as a class with
+ *  annotated attributes, which is Python a reader can type: `matcher: Matcher`
+ *  is what the annotated form of that attribute looks like in source, and the
+ *  member lines beside it already use the same spelling.
+ *
+ *  A type with no derived fields renders its head alone, unchanged from today.
+ *  The `(class) ` chrome goes, because it is Pylance UI text and not Python.
+ *
+ *  NO BRACES, and that costs something worth naming. The walk's render pass
+ *  truncates a def brace-safely, whole field units with a `... N more fields`
+ *  marker; a def with no braces cannot be split, so it is emitted ATOMICALLY,
+ *  whole or dropped, and a drop is disclosed on the channel the way every other
+ *  drop is. The alternative was `class GraphEngine {` inside a ```python fence,
+ *  which is another language's syntax printed under a header telling the model
+ *  these are real declarations. Go's def renderer refuses the same trade for the
+ *  same reason. */
+export function pyRenderDerivedDef(t: {
+  name: string;
+  signature: string;
+  fields: ReadonlyArray<{ name: string; typeName: string }>;
+}): string {
+  // pyright hovers a class as `(class) Foo`, so stripping the chrome leaves the
+  // BARE NAME and not a declaration. A head that does not already declare
+  // something gets the keyword back, or the block renders `Foo:` inside a
+  // ```python fence under a header saying these are real declarations. Found by
+  // the agent re-cutting `impl-v11-phase4`, which called this with the real
+  // hover text instead of a convenient one.
+  const stripped = t.signature.replace(PY_KIND_CHROME, "").trim();
+  const head = stripped.length > 0 ? stripped : t.name;
+  const declared = /^(?:class|@)\b/.test(head) ? head : `class ${head}`;
+  if (t.fields.length === 0) {
+    return declared;
+  }
+  const body = t.fields.map((f) => `    ${f.name}: ${f.typeName}`).join("\n");
+  return `${declared.replace(/:\s*$/, "")}:\n${body}`;
+}
+
+/** The line range of a Python class BODY, for the walk's field-anchoring pass.
+ *
+ *  The shared default is brace-based (`structBodyLineRange`), which is right for
+ *  Rust, TypeScript, Go and C# and finds nothing at all in Python. That is not a
+ *  small miss: with no body range the walk never calls the field-type anchor, so
+ *  every candidate lands on `dropped` and the leg is dark while every other sign
+ *  of it (fields parsed, types named) looks healthy. Found by the phase 3 blind
+ *  oracle, which bound the two cursor rules through the resolver instead of
+ *  calling `pyFieldTypeCursor` directly and got zero definition round trips.
+ *
+ *  Python's body is INDENTATION. From the `class X...:` line, the body is every
+ *  following line that is blank or indented past the header, and it ends at the
+ *  first line that is neither. Multi-line class headers are out of scope the same
+ *  way `pyEnumBaseDecl` puts them out of scope: a header this cannot close on one
+ *  line yields no range, which is dark rather than guessed. */
+export function pyClassBodyLineRange(
+  text: string,
+  cursor: { line: number; character: number },
+): { open: number; close: number } | undefined {
+  const lines = text.split("\n");
+  const header = lines[cursor.line];
+  if (header === undefined || !header.trimEnd().endsWith(":")) {
+    return undefined;
+  }
+  const indentOf = (l: string) => /^[ \t]*/.exec(l)?.[0].length ?? 0;
+  const base = indentOf(header);
+  let close = cursor.line;
+  for (let i = cursor.line + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().length === 0) {
+      continue; // a blank line inside a body does not end it
+    }
+    if (indentOf(line) <= base) {
+      break;
+    }
+    close = i;
+  }
+  return close > cursor.line ? { open: cursor.line, close } : undefined;
+}
+
+/** A source cursor on a Python field's own type token, for the recursive hop.
+ *
+ *  TWO RULES, tried in order, and the second is not a special case of the first:
+ *
+ *   1. ANNOTATION. `self.x: Matcher = ...` or a dataclass body's `position: int`.
+ *      The candidate is matched AFTER the colon, so a field whose own name
+ *      collides with a type name cannot anchor on itself.
+ *   2. CONSTRUCTOR CALL. `self.x = Matcher(...)`. There is no annotation; the
+ *      token that resolves is the callee, and `definition()` handles it. Matched
+ *      only when it is immediately followed by `(`, so an assignment from a
+ *      variable that happens to share a type's name is not mistaken for one.
+ *
+ *  undefined when neither rule finds the candidate inside the type's own body,
+ *  which the walk records as a stop edge rather than passing off as resolved. */
+export function pyFieldTypeCursor(
+  lines: string[],
+  range: { open: number; close: number },
+  fieldName: string,
+  candType: string,
+): { line: number; character: number } | undefined {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // `self.x` or a bare `x` at the head of a declaration, the two ways a Python
+  // attribute is written where it is declared.
+  const declRe = new RegExp(`(?:^|[^.\\w])(?:self\\.)?${esc(fieldName)}\\s*[:=]`);
+  const annotated = new RegExp(`(?:^|[^.\\w])(?:self\\.)?${esc(fieldName)}\\s*:`);
+  const candRe = new RegExp(`\\b${esc(candType)}\\b`);
+  const calledRe = new RegExp(`\\b${esc(candType)}\\s*\\(`);
+  for (let i = range.open; i <= range.close && i < lines.length; i++) {
+    const line = lines[i];
+    const decl = declRe.exec(line);
+    if (!decl) {
+      continue;
+    }
+    if (annotated.test(line)) {
+      const after = line.indexOf(":", decl.index);
+      const m = candRe.exec(line.slice(after + 1));
+      return m ? { line: i, character: after + 1 + m.index } : undefined;
+    }
+    const called = calledRe.exec(line);
+    return called ? { line: i, character: called.index } : undefined;
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Docstring / hover parsing. A pyright hover (and a resolved completion item's
 // documentation) is a ```python signature fence, then optionally `---` and doc
 // prose, then optionally a bare ``` fence holding a `>>>` doctest. The three-way
