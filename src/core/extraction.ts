@@ -48,6 +48,16 @@ export interface CompletionMember {
    *  classifier: `tier` is the classifier, this is the observable it was
    *  derived from. Rust transports stamp it; others may. */
   sortText?: string;
+  /** This member has NO signature because a fan-out CAP cut it, not because it
+   *  has none to give: `"count"` when the per-type ask limit spent its slots
+   *  elsewhere, `"budget"` when the ask went out and did not answer in time.
+   *
+   *  Set only by the hover backfill, which is the one place that knows the
+   *  difference. It exists so the render can DISCLOSE the loss — a bare member
+   *  is dropped by `renderMemberSignatures`, and a block that quietly ships 31
+   *  of a type's 38 members is the silent-truncation failure this codebase keeps
+   *  removing. Absent means the member's signature status is its own. */
+  capped?: "count" | "budget";
   /** The 0-based line of the member's OWN declaration in the file its type is
    *  defined in, when the transport knew it. Only a documentSymbol node carries
    *  it; a member built from a completion list has none, and a caller that needs
@@ -1189,6 +1199,29 @@ export async function membersWithHoverSignatures(
       members[memberIndex] = rebuilt;
     }
   });
+  // MARK WHAT THE CAPS COST, because a member that comes back bare is DROPPED by
+  // the renderer and the block says nothing about it.
+  //
+  // This is the failure class the goal makes Python's ship condition: "a member
+  // past either cap is absent from the block with no marker ... Either the cap
+  // reports what it dropped, on the channel, the way the walk already reports
+  // its own drops, or Python does not ship." Measured on the phase 0 baseline's
+  // own type: `membersOfType(GraphEngine)` answers 38 members and the block
+  // renders 31. Seven members vanish and every number downstream is a silent
+  // lower bound.
+  //
+  // The mark is placed HERE and not at the renderer because only this function
+  // knows WHY a member is bare: it was never asked (the count cap dealt its
+  // slots elsewhere), or it was asked and did not answer inside the budget.
+  // Downstream all that survives is the absence of a signature, which a
+  // genuinely signature-less member has too.
+  const askedSet = new Set(asked);
+  for (let i = 0; i < members.length; i++) {
+    if (members[i].signature !== undefined || positionOf(kept[i].symbol) === undefined) {
+      continue; // signed, or never eligible for a hover at all — not a cap loss
+    }
+    members[i] = { ...members[i], capped: askedSet.has(i) ? "budget" : "count" };
+  }
   return members;
 }
 

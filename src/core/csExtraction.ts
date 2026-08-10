@@ -174,7 +174,7 @@ const CS_DECLARATION_HEADS = new Set([
 export function csMemberTypeName(signature: string | undefined): string | undefined {
   const declared = csMemberDeclaredType(signature);
   // A qualified type contributes its LAST segment: `Atlas.LodBand` is the type
-  // `LodBand` and `Atlas` is a namespace, the same last-segment rule
+  // LodBand and `Atlas` is a namespace, the same last-segment rule
   // csSignatureRefTypes follows.
   return declared?.split(".").pop();
 }
@@ -291,9 +291,116 @@ export function csStaticQualifier(defSignature: string | undefined): string | un
   return last === undefined || last === "" ? undefined : `${last}${m[2] ?? ""}`;
 }
 
-// The `static` modifier on a member's own declaration line. A word, not a
-// substring: `staticLabel` and `StaticCount` are ordinary members.
-const CS_STATIC_MODIFIER = /(?:^|\s)static\s/;
+// The modifiers that make a member unreachable through an INSTANCE, read off its
+// own declaration line. A word, not a substring: staticLabel, StaticCount,
+// `constantCount` and Constants are ordinary members.
+//
+// `const` is here because a C# `const` IS implicitly static — the language says
+// so — and a constant is no more callable through an instance than a static
+// method is. It was missed, and the miss was measured rather than argued: over
+// the live member list of one real 26-member constants class in the C# corpus,
+// 26 members resolved and this test qualified 3. The other 23 are `public const
+// string …` and every one of them rendered BARE, under a block header reading
+// "use these exact names, do not invent", in a spelling that does not compile.
+//
+// One word, and it is independent of every data-shape walk: it reads a member
+// list and a declaration line and nothing else.
+const CS_STATIC_MODIFIER = /(?:^|\s)(?:static|const)\s/;
+
+/** The part of a C# declaration line a MODIFIER can legally appear in: the line
+ *  with its string and character literals blanked, its comments removed, and
+ *  everything from the first `{` onward cut away.
+ *
+ *  Reading the modifier off the raw line was already slightly wrong for
+ *  `static` and became materially wrong when `const` joined it, because `const`
+ *  is an ordinary English word and `static` is not. Every case below was found
+ *  by the phase 0 adversarial review, with a failing row each, and every one of
+ *  them ends with a member being spelled Type.Member when it is reachable
+ *  through an instance — a name that does not compile, which is the exact defect
+ *  the qualifier exists to remove, arriving from the other direction:
+ *
+ *    public string Sql = "select const from t";     <- a literal
+ *    public int Count;  // const-time lookup        <- a comment, and the common one
+ *    [Obsolete("use const path")] public int X;     <- an attribute argument
+ *    public int Get() { const int k = 1; return k; } <- a LOCAL const, in a one-line body
+ *
+ *  The three erasures are each sound rather than merely convenient. A C#
+ *  modifier is a keyword, so it can never be inside a literal. It can never be
+ *  inside a comment. And it always precedes the member's body or accessor list,
+ *  so nothing after the first `{` can be one — which is what makes cutting there
+ *  safe for `public static int P { get; set; }` while still killing a local
+ *  `const` declared inside a single-line body.
+ *
+ *  Literals are BLANKED rather than deleted so the `{` cut and the member-name
+ *  check downstream still see the same column structure. */
+function csModifierRegion(line: string, memberName?: string): string {
+  let out = "";
+  let i = 0;
+  while (i < line.length) {
+    const c = line[i];
+    if (c === "/" && line[i + 1] === "/") {
+      break; // line comment: nothing after it is code
+    }
+    if (c === "/" && line[i + 1] === "*") {
+      const end = line.indexOf("*/", i + 2);
+      const stop = end < 0 ? line.length : end + 2;
+      out += " ".repeat(stop - i);
+      i = stop;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      // A verbatim string (@"…") doubles its quote to escape; every other form
+      // uses a backslash. Both terminate on an unescaped closing quote.
+      const verbatim = c === '"' && line[i - 1] === "@";
+      let j = i + 1;
+      while (j < line.length) {
+        if (!verbatim && line[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (line[j] === c) {
+          if (verbatim && line[j + 1] === c) {
+            j += 2;
+            continue;
+          }
+          j++;
+          break;
+        }
+        j++;
+      }
+      out += " ".repeat(Math.min(j, line.length) - i);
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  // THE BRACE CUT, and it is anchored on the MEMBER rather than on the line.
+  //
+  // Cutting at the first `{` on the line is what a modifier-before-the-body rule
+  // sounds like, and it is wrong for a member that shares a line with its
+  // CONTAINER's opening brace: in `public class Holder { public static int Count
+  // = 0; }` the first brace precedes the member entirely, so cutting there threw
+  // away the member and its `static` with it. That under-qualified a member that
+  // qualified correctly before `const` was ever added — a regression on the
+  // static leg, found by the phase 0 adversarial review.
+  //
+  // The brace that actually ends a member's modifiers is the first one AFTER the
+  // member's own name: a body (`… Log(string m) { const string prefix = …; }`),
+  // or an accessor list (`public string Tag { get { … } }`). Anchored there,
+  // both shapes come out right, and a member with no brace after its name keeps
+  // its whole line.
+  if (memberName !== undefined) {
+    const at = new RegExp(`(?:^|\\W)${escapeCsName(memberName)}(?:\\W|$)`).exec(out);
+    const brace = at === undefined || at === null ? out.indexOf("{") : out.indexOf("{", at.index + at[0].length);
+    if (brace >= 0) {
+      return out.slice(0, brace);
+    }
+    return out;
+  }
+  const brace = out.indexOf("{");
+  return brace >= 0 ? out.slice(0, brace) : out;
+}
 
 /** Qualify every STATIC member's rendered signature with the type it belongs
  *  to, so the surface spells what the caller has to type.
@@ -324,7 +431,7 @@ export function csQualifyStatics(
       line === undefined ||
       line < 0 ||
       line >= defLines.length ||
-      !CS_STATIC_MODIFIER.test(defLines[line]) ||
+      !CS_STATIC_MODIFIER.test(csModifierRegion(defLines[line], member.name)) ||
       !new RegExp(`(?:^|\\W)${escapeCsName(member.name)}(?:\\W|$)`).test(defLines[line]) ||
       member.signature.startsWith(`${qualifier}.`)
     ) {
@@ -1330,4 +1437,74 @@ export function dedentCsBody(code: string, known?: string): string {
     advanceCsLineScan(line, s);
   }
   return dedentToZeroBase(lines, byteExact, known).join("\n");
+}
+
+/** A C# type's fields, derived from its RESOLVED MEMBERS rather than from its
+ *  hover — the C# leg of the widened `parseFields` seam (session-v49 phase 2).
+ *
+ *  Roslyn writes a member as Name : Type, so the type is everything after the
+ *  first ` : `. Only `field` members contribute: a method's signature carries a
+ *  parameter list, not a field type, and a walk that took one would spend round
+ *  trips on the types in a method's arguments — which is the SIGNATURE-edge
+ *  traversal's job (`csSignatureRefTypes`), deliberately kept separate.
+ *
+ *  A member with no signature yields nothing rather than a guess. An enum's
+ *  variants arrive exactly that way, which is why an enum contributes no fields
+ *  here and keeps its own `enumMemberLine` spelling instead. */
+export function csFieldsFromMembers(
+  members: readonly CompletionMember[],
+): Array<{ name: string; typeName: string }> {
+  const fields: Array<{ name: string; typeName: string }> = [];
+  for (const m of members) {
+    if (m.kind !== "field" || m.signature === undefined) {
+      continue;
+    }
+    const at = m.signature.indexOf(" : ");
+    if (at < 0) {
+      continue;
+    }
+    const typeName = m.signature.slice(at + 3).trim();
+    if (typeName.length > 0) {
+      fields.push({ name: m.name, typeName });
+    }
+  }
+  return fields;
+}
+
+/** A source cursor on the candidate type token within a C# field's own
+ *  declaration, for the recursive hop.
+ *
+ *  C# writes the TYPE FIRST (`public List<DpmMonitor> Monitors { get; set; }`),
+ *  which is why the Rust anchor — built for name: Type — finds nothing here.
+ *  The field's declaration line is found by its own name, then the candidate is
+ *  matched on that line.
+ *
+ *  Searching the WHOLE line, not just the part before the name, and that is
+ *  deliberate: a back-reference field spells its own type
+ *  (`public CustomerSite? CustomerSite { get; set; }`) and the first occurrence
+ *  on the line is the type, which is the token that resolves. Anchoring inside
+ *  the field's own declaration rather than searching the file by name is what
+ *  makes `definition()` resolve the type in the declaring scope, so a same-named
+ *  type elsewhere is never walked into.
+ *
+ *  undefined when the field or the candidate is not on a line of the type's own
+ *  body — a stop edge, and the walk records every one of those. */
+export function csFieldTypeCursor(
+  lines: string[],
+  range: { open: number; close: number },
+  fieldName: string,
+  candType: string,
+): { line: number; character: number } | undefined {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const declRe = new RegExp(`(?:^|\\W)${esc(fieldName)}\\s*(?:[;={]|=>|$)`);
+  const candRe = new RegExp(`\\b${esc(candType)}\\b`);
+  for (let i = range.open; i <= range.close && i < lines.length; i++) {
+    const line = lines[i];
+    if (!declRe.test(line)) {
+      continue;
+    }
+    const m = candRe.exec(line);
+    return m ? { line: i, character: m.index } : undefined;
+  }
+  return undefined;
 }

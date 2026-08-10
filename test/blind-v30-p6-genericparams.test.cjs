@@ -151,22 +151,65 @@ const keys = (shape) => [...shape.types.keys()];
 // asserting it is undefined, and both stay green. The assertion is therefore
 // narrowed to what the file actually needs, that Go still runs the DEFAULT field
 // parser, instead of the broader claim that Go has no hooks at all.
-test("0 premise [AMENDED 2026-08-02]: rust runs on the walk's DEFAULTS, and go still uses the default FIELD parser", () => {
+//
+// RE-CUT 2026-08-10, session-v49 phase 1, by the blind non-implementer role.
+//
+// WHAT IT USED TO ASSERT: that Go still ran the DEFAULT (Rust) field parser, by
+// reading `go.parseHoverFields` and comparing it with the other languages'.
+//
+// WHY THAT IS A SUPERSESSION AND NOT A DEFECT. Both halves of the old assertion
+// were changed ON PURPOSE and the session goal predicted this row would die on
+// exactly this change:
+//
+//   1. Go now has its OWN field parser. That is the whole of phase 1 - Go's
+//      data-shape field leg was lit, so it stopped borrowing Rust's `name: Type`
+//      parser, which returned [] for every Go field line (Go fields have no
+//      colon). "Go uses the default field parser" is now a statement of the hole
+//      the session closed.
+//   2. The hook is called `parseFields(signature, members, defLines)` now, not
+//      `parseHoverFields(signature)` (phase 2 widened the seam so a language can
+//      derive fields from members, not only from a hover). The old row read a
+//      key that no longer exists on ANY table, so `notEqual(undefined, undefined)`
+//      failed for a reason that had nothing to do with what it was defending.
+//
+// The premise the FILE needs is not "Go runs the default parser" - it is "Go's
+// field parse is Go's own and nobody else's", and rows 6 and 8 below confirm the
+// generic-parameter rule still holds for Go through its own hooks (both green
+// after phase 1, and row 6 went from vacuous to load-bearing here).
+//
+// The re-cut therefore keeps the claim that mattered and adds the tripwire that
+// would have caught the rename honestly: the peer parsers must themselves be
+// functions, so this row can never again pass or fail on undefined-vs-undefined,
+// and the OLD hook name must be gone from every table, so a half-done rename is
+// a red here rather than a silent no-op somewhere else.
+test("0 premise [AMENDED 2026-08-02, RE-CUT 2026-08-10]: rust runs on the walk's DEFAULTS, and go's FIELD parser is go's own, shared with no one", () => {
   assert.equal(shapeHooksFor("rust"), undefined, "rust has no hooks, so the defaults are its behaviour");
   const go = shapeHooksFor("go");
-  assert.equal(typeof go, "object", "go now brings hooks, for renderDef only (session-v37 item 7)");
-  // The claim that matters: Go did not adopt another language's field parser on
-  // its way to getting a renderer. If it had, every row below measuring "the
-  // defaults" would be measuring that language instead.
+  assert.equal(typeof go, "object", "go brings hooks (session-v37 item 7 for renderDef, session-v49 phase 1 for fields)");
+  assert.equal(
+    typeof go.parseFields,
+    "function",
+    "go now parses its OWN hover fields (session-v49 phase 1). A go table that fell back to the shared default " +
+      "would mean the field leg went dark again, and Rust's `name: Type` parser returns [] for every Go field line.",
+  );
+  // The claim that has always mattered: Go did not adopt another language's
+  // field parser. If it had, every row below measuring "the defaults" would be
+  // measuring that language instead.
   for (const id of ["typescript", "csharp", "python"]) {
-    assert.notEqual(
-      go.parseHoverFields,
-      shapeHooksFor(id).parseHoverFields,
-      `go's field parser must not be ${id}'s; the hooks are for renderDef only`,
-    );
+    const peer = shapeHooksFor(id);
+    assert.equal(typeof peer, "object", `${id} brings its own hooks`);
+    assert.equal(typeof peer.parseFields, "function", `${id} has a real field parser to compare against, not a missing key`);
+    assert.notEqual(go.parseFields, peer.parseFields, `go's field parser must not be ${id}'s`);
   }
-  for (const id of ["typescript", "csharp", "python"]) {
-    assert.equal(typeof shapeHooksFor(id), "object", `${id} brings its own hooks`);
+  // The seam is named `parseFields` everywhere or nowhere. A table still
+  // carrying the pre-v49 name is a half-finished rename, and a hook nobody calls
+  // is worse than a missing one.
+  for (const id of ["go", "typescript", "csharp", "python"]) {
+    assert.equal(
+      shapeHooksFor(id).parseHoverFields,
+      undefined,
+      `${id} must not still carry the retired \`parseHoverFields\` name; the seam is \`parseFields\` since session-v49`,
+    );
   }
 });
 

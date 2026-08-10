@@ -192,10 +192,15 @@ function makeExtractor(files, defTypes) {
 
 // A Go fixture with N same-file struct types, every one doc-named, anchorable,
 // hover-resolvable and carrying one member - only a CAP can hold one back.
-function goFixture(names, { fat = false } = {}) {
+// `fieldCount` (session-v49) makes the struct as fat as a row needs. It was
+// added when Go's data-shape leg lit and 10 fields per type stopped being enough
+// to reach the shared budget - see B1.
+function goFixture(names, { fat = false, fieldCount } = {}) {
   const uri = "file:///work/adv42p2/main.go";
   const fields = (n) =>
-    fat
+    fieldCount
+      ? Array.from({ length: fieldCount }, (_, i) => `\tField${i} ${i % 2 ? "int" : "string"}`).join("\n")
+      : fat
       ? Array.from({ length: 10 }, (_, i) => `\tField${i} ${i % 2 ? "int" : "string"}`).join("\n")
       : "\tN int";
   const decls = names.map((n) => `type ${n} struct {\n${fields(n)}\n}`).join("\n\n");
@@ -429,28 +434,120 @@ btest("R2: the rig's arm guard FIRES when a patched constant cannot reach the re
 // B. THE BYTES CLAIM under the shared data-shape budget.
 // ===========================================================================
 
-btest("B1: RULING - the S39-1 starvation shape is UNREACHABLE for Go prefill: no data-shape block exists to starve, and eight fat types render eight member blocks", async () => {
-  // The attack was: 8 types share DATASHAPE_TOTAL_TOK and the root's def gets
-  // gutted to a marker-only stub. It cannot land: goShapeBlock (fnGen.ts
-  // ~3543) renders MEMBER SIGNATURES ONLY and never reads a def - the field
-  // walk is documented dark for Go, and 0 of the 907 shipped funnel rows
-  // carry a data-shape line. The near-free-bytes claim therefore holds, but
-  // its mechanism is the member-list-only render plus per-type MEMBER_CAP
-  // truncation, not the shared data-shape budget the report's phrasing
-  // gestures at.
+// B1 - RE-OPENED AND RE-ARGUED 2026-08-10, session-v49 phase 1, under HUMAN
+// RULING R2, by the blind non-implementer role.
+//
+// WHAT THE ROW USED TO ASSERT, and why it is gone. The old ruling was that the
+// S39-1 starvation shape - 8 types sharing the data-shape budget until the
+// top-priority type's def is gutted to a marker-only stub - was UNREACHABLE for
+// Go, because Go rendered MEMBER SIGNATURES ONLY and never read a def at all.
+// Its last assertion was `!/Data shape of/` with a failure message saying, in
+// terms, "if this fires the dark-leg premise no longer holds, re-review the
+// starvation angle". It fired. This is that re-review.
+//
+// THIS IS A RE-OPEN, NOT A RE-BASELINE. The premise died by design: session-v49
+// phase 1 lit Go's data-shape field leg, so Go now renders a def and now shares
+// the aggregate budget with everyone else. Deleting the assertion and calling the
+// row green would leave the suite with no claim at all about the thing the
+// original attack was aimed at, which is the outcome the human's ruling forbids:
+// "starvation must be DISCLOSED. Go ships either way - a SILENT starve is the
+// defect, not the starve."
+//
+// MEASURED, both sides, same fixture, same instrument (2026-08-10):
+//
+//   | 8 types            | before phase 1 | after phase 1 |
+//   |--------------------|----------------|---------------|
+//   | 1 field each       | 1148 bytes     | 1868 bytes    |
+//   | 10 fields each     | 1148 bytes     | 2892 bytes    |
+//   | data-shape blocks  | 0              | 8             |
+//   | types starved      | 0 (impossible) | 0             |
+//
+// The before-column is the old ruling in one number: 1148 bytes whether the
+// structs carried one field or ten, because no field ever reached the prompt.
+// Fat types were free precisely because their shape was thrown away.
+//
+// THE NEW RULING. Starvation is REACHABLE for Go now, and it is DISCLOSED. Push
+// the same 8 types to 30 fields each and the shared aggregate does run out: the
+// last types get no shape block. Every one of them is NAMED, twice - once on its
+// own walk's drop line and once on the aggregate line that also names the
+// setting to raise - and every one still carries its full member block, so the
+// member list a developer has today is never the thing that is lost. Zero types
+// vanish silently. That is the whole claim, and it is what this row now pins.
+//
+// The original S39-1 shape - the ROOT gutted while later types render - still
+// does not land: the budget is spent in priority order, so the first type's def
+// renders whole and the starve falls on the tail.
+btest("B1: RULING RE-OPENED - the S39-1 starvation shape is REACHABLE for Go prefill since session-v49, and every starved type is NAMED rather than silently dropped", async () => {
   const names = ["Alpha", "Bravo", "Chart", "Delta", "Echos", "Foxes", "Golfs", "Hotel"];
-  const fx = goFixture(names, { fat: true });
-  const r = await runWith(mod.resolvePrefill, fx);
-  assert.equal(r.disclosed.length, 8, `all eight disclose (got ${r.disclosed.length})`);
+
+  // PART 1 - the premise reversal, stated as an assertion rather than a comment.
+  // Eight fat types now render eight data-shape blocks AND eight member blocks,
+  // and nothing is starved at this width.
+  const fat = await runWith(mod.resolvePrefill, goFixture(names, { fat: true }));
+  assert.equal(fat.disclosed.length, 8, `all eight disclose (got ${fat.disclosed.length})`);
   for (const n of names) {
+    assert.ok(fat.text.includes(`Members of \`${n}\``), `every disclosed type carries its member block.\nPROMPT:\n${fat.text}`);
     assert.ok(
-      r.text.includes(`Members of \`${n}\``),
-      `every disclosed type carries its member block.\nPROMPT:\n${r.text}`,
+      fat.text.includes(`Data shape of \`${n}\``),
+      `Go renders a data-shape block per type since session-v49 phase 1. If this stops, the field leg went dark ` +
+        `again and the OLD ruling is what applies - do not simply re-cut this row.\nPROMPT:\n${fat.text}`,
     );
   }
+
+  // PART 2 - reach the starvation. Same eight types, 30 fields each.
+  const lean = await runWith(mod.resolvePrefill, goFixture(names, { fieldCount: 30 }));
+  assert.equal(lean.disclosed.length, 8, `all eight still disclose (got ${lean.disclosed.length})`);
+  const rendered = names.filter((n) => lean.text.includes(`Data shape of \`${n}\``));
+  const starved = names.filter((n) => !rendered.includes(n));
   assert.ok(
-    !/Data shape of/.test(r.text),
-    `a data-shape block appeared for Go prefill - the dark-leg premise of this ruling no longer holds; re-review the starvation angle.\nPROMPT:\n${r.text}`,
+    starved.length > 0,
+    `THE ROW HAS GONE VACUOUS. 30 fields across 8 types no longer exhausts the shared data-shape budget, so this ` +
+      `row is no longer measuring a starve. Widen the fixture until it does, or the disclosure claim below is ` +
+      `asserting nothing.\nPROMPT:\n${lean.text}`,
+  );
+
+  // THE CLAIM. Every type either RENDERS or is NAMED. Never neither.
+  const dropLines = lean.logs.filter((l) => /dropped/.test(l));
+  for (const n of starved) {
+    assert.ok(
+      dropLines.some((l) => l.includes(n)),
+      `\`${n}\` lost its data shape and NOTHING on the channel says so. A silent starve is the defect this ruling ` +
+        `exists to forbid - the type may be dropped, it may not be dropped quietly.\nLOGS:\n${lean.logs.join("\n")}`,
+    );
+  }
+  // The aggregate line is the one a developer actually reads: it must carry the
+  // count, the names and the way out.
+  const agg = lean.logs.find((l) => /injected context dropped/.test(l));
+  assert.ok(agg, `an aggregate accounting line must name the starve.\nLOGS:\n${lean.logs.join("\n")}`);
+  for (const n of starved) assert.ok(agg.includes(n), `the aggregate line names \`${n}\`.\nLINE: ${agg}`);
+  assert.match(agg, /column80\.injectedContext/, `and it names the setting that buys the shape back.\nLINE: ${agg}`);
+
+  // AND THE MEMBER LIST IS NEVER WHAT IS LOST. A starved type keeps the surface
+  // it had before the field leg existed, which is the guard that makes shipping
+  // this leg strictly better than not shipping it.
+  for (const n of names) {
+    assert.ok(lean.text.includes(`Members of \`${n}\``), `a starved type keeps its member block.\nPROMPT:\n${lean.text}`);
+  }
+
+  // PART 3 - the original S39-1 shape still does not land. The budget is spent
+  // in priority order, so the ROOT renders whole and the starve falls on the
+  // tail. A run where the first type is a marker-only stub while a later type
+  // renders in full is the attack, and it is what this pins against.
+  const shapeOf = (n) => {
+    const i = lean.text.indexOf(`Data shape of \`${n}\``);
+    return i < 0 ? "" : lean.text.slice(i, lean.text.indexOf(`Members of \`${n}\``, i));
+  };
+  const fieldsIn = (n) => (shapeOf(n).match(/\tField/g) || []).length;
+  assert.equal(
+    fieldsIn(names[0]),
+    30,
+    `the highest-priority type's def must survive whole - a gutted root beside fully rendered later types IS the ` +
+      `S39-1 attack.\nPROMPT:\n${lean.text}`,
+  );
+  assert.equal(
+    starved[starved.length - 1],
+    names[names.length - 1],
+    `the starve falls on the tail, in priority order, not at random.\nrendered=${rendered.join(",")} starved=${starved.join(",")}`,
   );
 });
 

@@ -411,12 +411,30 @@ test("registry: go now dispatches to goShapeHooks and every other id is where it
   assert.equal(shapeHooksFor("golang"), undefined, "only the `go` language id dispatches");
 });
 
-test("registry: the Go hooks keep the field leg on the Rust defaults", () => {
-  // Go's hover writes `Name Type` where the Rust parser wants `name: Type`, so
-  // the field leg is dark - and this item did not light it up. A hooks object
-  // that started parsing Go fields would change the walk, which is a different
-  // change with its own measurement.
-  assert.deepEqual(goShapeHooks.parseHoverFields(CORPUS.types["cobra.Command"].hover), []);
+test("registry: the Go hooks now parse Go fields, and bring nothing else", () => {
+  // RE-CUT 2026-08-10 (session-v49 phase 1), and this row asked for it in its
+  // own words. It used to assert `parseHoverFields(...) === []` under the title
+  // "the Go hooks keep the field leg on the Rust defaults", with the comment:
+  // "a hooks object that started parsing Go fields would change the walk, which
+  // is a different change with its own measurement." Session-v49 IS that change
+  // and it carries that measurement, so this is a supersession by content and
+  // not a row bent to go green.
+  //
+  // What it asserts now is the same shape of claim, inverted: the field leg is
+  // LIT, and nothing else about the Go hooks moved with it.
+  const fields = goShapeHooks.parseFields(CORPUS.types["cobra.Command"].hover, [], []);
+  assert.equal(fields.length, 66, "cobra.Command declares 66 fields in its captured hover");
+  assert.deepEqual(fields.slice(0, 3), [
+    { name: "Use", typeName: "string" },
+    { name: "Aliases", typeName: "[]string" },
+    { name: "SuggestFor", typeName: "[]string" },
+  ]);
+  // A Go type that is NOT a struct still yields nothing, which is what keeps the
+  // parser from claiming a shape it cannot read: `FParseErrWhitelist` is a map
+  // type, `ShellCompDirective` an int type, `PositionalArgs` a func type.
+  for (const name of ["cobra.FParseErrWhitelist", "cobra.ShellCompDirective", "cobra.PositionalArgs"]) {
+    assert.deepEqual(goShapeHooks.parseFields(CORPUS.types[name].hover, [], []), [], `${name} is not a struct`);
+  }
   assert.equal(goShapeHooks.refuseHover, undefined);
   assert.equal(goShapeHooks.signatureRefTypes, undefined);
   assert.equal(goShapeHooks.enumMemberLine, undefined);

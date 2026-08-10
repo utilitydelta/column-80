@@ -40,9 +40,9 @@ import {
   tsFieldTypeCursor,
   tsRenderDerivedDef,
 } from "./tsExtraction";
-import { CS_STD_TYPE_NAMES, csQualifyStatics, csSignatureRefTypes } from "./csExtraction";
+import { CS_STD_TYPE_NAMES, csFieldTypeCursor, csFieldsFromMembers, csQualifyStatics, csSignatureRefTypes } from "./csExtraction";
 import { pyEnumBaseDecl } from "./pyExtraction";
-import { goElideDef } from "./goExtraction";
+import { GO_STD_TYPE_NAMES, goElideDef, goFieldTypeCursor, parseGoHoverFields } from "./goExtraction";
 import { isBareTraitHover, recoverElidedSurface, recoverTraitSurface } from "./rustHoverRecovery";
 
 // The recovery lives in its own module (a character-level Rust scanner with its
@@ -81,6 +81,15 @@ export interface DerivedType {
   fields: Array<{ name: string; typeName: string }>;
   methods: string[];
   methodsResolved: boolean;
+  /** Members this type HAS that the signature fan-out's caps left bare, so the
+   *  renderer dropped them. Present only when a cap actually cut something.
+   *
+   *  The block is a "use these exact names" surface, and a member missing from
+   *  it reads as a member the type does not have. The walk already names every
+   *  type it drops; this is the same promise one level down, for the members of
+   *  a type it kept. Without it a 38-member Python class ships 31 members and
+   *  nothing anywhere says which seven went (session-v49 phase 3). */
+  cappedMembers?: Array<{ name: string; cause: "count" | "budget" }>;
   /** The URI of the file the type is DEFINED in (from `definition()`). Feeds the
    *  import-path hint so a blind test imports the type from where it lives
    *  instead of guessing `crate::` root. Undefined only on a synthesized type. */
@@ -256,7 +265,7 @@ function splitTopLevelCommas(s: string): string[] {
 }
 
 /** Parse a struct hover signature into its named fields, each as
- *  `{ name, typeName }` with the type AS WRITTEN. Reads the `{...}` body, splits
+ *  { name, typeName } with the type AS WRITTEN. Reads the `{...}` body, splits
  *  top-level fields, and takes `[pub] name: Type` per field. An enum, a tuple
  *  struct, or a bodyless signature yields [] — the walk then has no field edges,
  *  the honest degrade. Exported for the fidelity oracle's shape check. */
@@ -310,8 +319,28 @@ function candidateTypesOf(typeName: string, std: Set<string> = STD_TYPE_NAMES): 
  * identical to the pre-hook behavior; the frozen Rust suites hang on that.
  */
 export interface CrossFileShapeHooks {
-  /** Def-site hover signature -> named fields (Rust default: parseStructHoverFields). */
-  parseHoverFields: (signature: string | undefined) => Array<{ name: string; typeName: string }>;
+  /** A type's named fields, with the type AS WRITTEN, in declaration order.
+   *
+   *  WIDENED (session-v49 phase 2) from `parseHoverFields(signature)`. The old
+   *  shape could only see the def-site HOVER, which is the right source for
+   *  Rust, TypeScript and Go and is useless for the other two: a Roslyn class
+   *  hover is the class head and nothing else, and a pyright class hover is
+   *  `(class) Foo`. Both of those languages DO have their fields — structured,
+   *  on `members`, which the walk has already resolved by the time it asks this
+   *  question — so the hole was the SHAPE OF THE SEAM rather than a missing
+   *  parser.
+   *
+   *  Three sources, and a language takes whichever one actually carries the
+   *  answer: the hover (Rust, TypeScript, Go), the resolved MEMBERS (C#, and
+   *  Python once its hover fan-out lands), and the declaring file's own LINES
+   *  for anything neither can express.
+   *
+   *  Four of the five implementations ignore everything but `signature`. */
+  parseFields: (
+    signature: string | undefined,
+    members: readonly CompletionMember[],
+    defLines: readonly string[],
+  ) => Array<{ name: string; typeName: string }>;
   /** Anchor a field's own type token inside the def body for the recursive hop
    *  (Rust default: the line-anchored fieldTypeCursor). */
   fieldTypeCursor: (
@@ -379,7 +408,7 @@ export interface CrossFileShapeHooks {
 /** The TS hooks: quickinfo-object-type field parsing, mid-line field anchoring,
  *  `interface X { ... }` def synthesis, lib.d.ts stop names. */
 export const tsShapeHooks: CrossFileShapeHooks = {
-  parseHoverFields: parseTsHoverFields,
+  parseFields: parseTsHoverFields,
   fieldTypeCursor: tsFieldTypeCursor,
   renderDef: tsRenderDerivedDef,
   stdTypeNames: TS_STD_TYPE_NAMES,
@@ -389,16 +418,24 @@ export const tsShapeHooks: CrossFileShapeHooks = {
   skipCandidate: (name) => /^[A-Z]$/.test(name),
 };
 
-/** The C# hooks: a C# type hover is `class Live.Widget` with no field body, so
- *  parseHoverFields yields [] and the walk never recurses on fields — the C#
- *  surface is SIGNATURES-ONLY, its methods resolved through
- *  membersOfType (documentSymbol). No field-edge recursion, so fieldTypeCursor is
- *  never reached; renderDef returns the raw hover for the rare data-shape caller.
- *  The Rust struct-field parser would misread a C# hover, so C# gets its own
- *  empty field parser rather than falling to the Rust default. */
+/** The C# hooks. A Roslyn class hover is `class Live.Widget` and nothing else —
+ *  no field body — so for as long as the field seam could only see a HOVER, C#
+ *  answered `[]` and that was correct behaviour for its input rather than a bug.
+ *
+ *  The fields were never missing. They arrive structured on `membersOfType`,
+ *  written Name : Type with a `declLine` and a `selectionRange` on the name
+ *  token, and they have shipped as member lines all along. What blocked the edge
+ *  was the SHAPE OF THE SEAM, which session-v49 phase 2 widened: `parseFields`
+ *  now sees the resolved members, so C# reads the type off each field member's
+ *  own signature.
+ *
+ *  This buys C# a RENDER and a bound, not new REACH — `signatureRefTypes` below
+ *  already mines those same rendered strings for type names and already reaches
+ *  a collaborator. Said plainly here because the goal asks for it to be said
+ *  plainly. */
 export const csShapeHooks: CrossFileShapeHooks = {
-  parseHoverFields: () => [],
-  fieldTypeCursor: () => undefined,
+  parseFields: (_signature, members) => csFieldsFromMembers(members),
+  fieldTypeCursor: csFieldTypeCursor,
   renderDef: (t) => t.signature,
   stdTypeNames: CS_STD_TYPE_NAMES,
   // C# has no field body to walk, so its collaborator graph is projected through
@@ -407,7 +444,7 @@ export const csShapeHooks: CrossFileShapeHooks = {
   // sets this hook, so only C# gets signature-edge recursion.
   signatureRefTypes: csSignatureRefTypes,
   // Roslyn hovers an enum as `enum Atlas.LodBand` and returns its variants as
-  // signature-less fields. `Type.Variant` is what the model has to type, and it
+  // signature-less fields. Type.Variant is what the model has to type, and it
   // is exactly the shape the diagnostic-keyed leg already renders for the same
   // enum, so the two surfaces read alike wherever both can fire.
   enumMemberLine: (member, typeName, typeSignature) =>
@@ -439,7 +476,7 @@ export const PY_STD_TYPE_NAMES = new Set([
  *  pyright hover, so Python gets its own empty field parser rather than falling to
  *  the Rust default. */
 export const pyShapeHooks: CrossFileShapeHooks = {
-  parseHoverFields: () => [],
+  parseFields: () => [],
   fieldTypeCursor: () => undefined,
   renderDef: (t) => t.signature,
   stdTypeNames: PY_STD_TYPE_NAMES,
@@ -450,10 +487,27 @@ export const pyShapeHooks: CrossFileShapeHooks = {
   // heuristic, not an Enum signal (pyExtraction.ts's pyEnumBaseDecl doc
   // comment has the live evidence). Only the declaration source says the
   // truth, so this reads `defLines` for `class LodBand(IntEnum):` and renders
-  // every no-signature member as `Type.Variant` when it finds one — otherwise
+  // every no-signature member as Type.Variant when it finds one — otherwise
   // undefined, same as an ordinary field staying dark.
+  // NOT keyed on `member.signature === undefined`, and that is the correction.
+  // It used to be, and the product's Python transport fills a signature on every
+  // member through its hover backfill, so the condition was false for every
+  // variant of every real enum and this hook never fired outside a test. The
+  // DECLARATION is the signal and always was: pyright's hover never names the
+  // base class (`(class) LodBand`, plain class and Enum subclass alike) and its
+  // documentSymbol kind for a member turned out to be an ALL_CAPS naming
+  // heuristic rather than an Enum signal (pyExtraction.ts's pyEnumBaseDecl doc
+  // comment carries the live evidence). So this reads `class LodBand(IntEnum):`
+  // out of the declaring source and spells every member of a type that has one.
+  //
+  // A VARIANT, not every member. An Enum subclass may declare ordinary methods
+  // (`class LodBand(IntEnum): def describe(self) -> str`), and LodBand.describe
+  // is not how a caller reaches one of those - it is called on a value. So the
+  // spelling applies to the enum's DATA members and the callables keep their own
+  // signatures, which is the same split the old signature-absence proxy used to
+  // get right by accident on a transport that signed neither.
   enumMemberLine: (member, typeName, _typeSignature, defLines) =>
-    member.signature === undefined && pyEnumBaseDecl(defLines, typeName)
+    member.kind !== "method" && member.kind !== "function" && pyEnumBaseDecl(defLines, typeName)
       ? `${typeName}.${member.name}`
       : undefined,
 };
@@ -465,27 +519,40 @@ export const pyShapeHooks: CrossFileShapeHooks = {
  *  corpus: `cobra.Command` hovers at 8363 bytes and elides to 1944, `gin.Engine`
  *  4255 to 811. Nothing in a prompt reads a byte offset.
  *
- *  The FIELD leg deliberately stays on the Rust defaults, byte for byte. Go's
- *  hover writes `Name Type` where the Rust parser wants `name: Type`, so it
- *  parses nothing and the walk has no field edges — dark, not wrong. Lighting
- *  that leg up is a different change with its own measurement, and this one is
- *  the renderer.
+ *  THE FIELD LEG IS NOW LIT (session-v49 phase 1), and the two functions that
+ *  light it are Go's own. It ran the Rust defaults, byte for byte, and derived
+ *  nothing: Go's hover writes Name Type where the Rust parser wants
+ *  name: Type, so `fields` came back empty, the walk had no edges to follow,
+ *  and Go emitted ONE TYPE, ALWAYS — dark, not wrong. `parseGoHoverFields`
+ *  reads the declaration out of the RIGHT fence (gopls emits several, and one of
+ *  the others is a synthesised promoted-field table shaped almost exactly like a
+ *  struct body), and `goFieldTypeCursor` anchors the hop on a field line that
+ *  has no colon for the Rust anchor to find. Both are measured against the
+ *  captured pgx hovers rather than written from the language spec.
  *
- *  `skipCandidate` is here anyway, and it is the qualifier-aware rule the
- *  warning inside resolveCrossFileShape demands: the Go standard library
- *  declares 186 single-letter structs (`testing.T`, `testing.B`, `testing.F`,
- *  `testing.M`), and the single-letter default would drop every one of them the
- *  day someone lands a Go field parser. A guard whose case is unreachable today
- *  is still the guard that has to be right when the door opens. */
+ *  `skipCandidate` is the qualifier-aware rule the warning inside
+ *  resolveCrossFileShape demands, and THIS is the change that reaches it: the Go
+ *  standard library declares 186 single-letter structs (testing.T,
+ *  testing.B, testing.F, testing.M), and the single-letter default would
+ *  drop every one of them now that a Go field parser exists. It was written for
+ *  a door that had not opened yet. The door is open. */
 export const goShapeHooks: CrossFileShapeHooks = {
-  parseHoverFields: parseStructHoverFields,
-  fieldTypeCursor,
+  parseFields: parseGoHoverFields,
+  fieldTypeCursor: goFieldTypeCursor,
   renderDef: (t) =>
     // A hover-less type names itself and claims nothing about its shape. The
     // Rust default synthesizes `struct X { }` here, which for Go would be an
     // invented declaration in another language's syntax.
     t.signature.length > 0 ? goElideDef(t.signature).text : `type ${t.name}`,
-  stdTypeNames: STD_TYPE_NAMES,
+  // GO'S OWN STOP SET, and it was Rust's until session-v49 phase 1 lit the field
+  // leg and a blind oracle measured what that cost. STD_TYPE_NAMES is Vec,
+  // Box, Option, Rc, Arc, Cow, PathBuf — 37 names, not one of them
+  // Go. `sync.Mutex` was skipped only because Rust happens to declare a Mutex
+  // too; `context.Context` and `time.Time` each bought a full definition() round
+  // trip and then landed on the drop list. Harmless while the field leg was dark
+  // and pure wasted latency the moment it was not, on the two type names that
+  // appear in more Go structs than any others.
+  stdTypeNames: GO_STD_TYPE_NAMES,
   skipCandidate: (name, fieldType) => {
     if (!/^[A-Z]$/.test(name)) {
       return false;
@@ -760,7 +827,7 @@ export async function resolveCrossFileShape(
   // visibility pass ran and every member survives, unchanged.
   visibility?: VisibilityPass,
 ): Promise<CrossFileShape> {
-  const parseFields = hooks?.parseHoverFields ?? parseStructHoverFields;
+  const parseFields = hooks?.parseFields ?? parseStructHoverFields;
   const anchorFieldType = hooks?.fieldTypeCursor ?? fieldTypeCursor;
   const stdNames = hooks?.stdTypeNames ?? STD_TYPE_NAMES;
   const signatureRefTypes = hooks?.signatureRefTypes;
@@ -774,15 +841,15 @@ export async function resolveCrossFileShape(
   // types. Six extractor calls per parameter, eighteen in that one walk, for
   // names that cannot resolve by construction.
   //
-  // Single letter, and deliberately not "short": `Ok`, `Vec`, `T1` and `Kind`
+  // Single letter, and deliberately not "short": `Ok`, Vec, `T1` and `Kind`
   // are real names in these languages and the over-correction would cost far
   // more than the noise does. For RUST that trade is measured at zero: 621 files
   // of `acme-db` declare no single-letter struct, enum, trait or union, and
   // all 17 single-letter field positions in it are parameters.
   //
   // GO IS NOT SAFE UNDER THIS RULE: the Go standard library declares 186
-  // single-letter structs, `testing.T`, `testing.B`, `testing.F` and
-  // `testing.M` among them, and `candidateTypesOf` strips the package qualifier
+  // single-letter structs, testing.T, testing.B, testing.F and
+  // testing.M among them, and `candidateTypesOf` strips the package qualifier
   // so `*testing.T` arrives here as `T`. `goShapeHooks` therefore sets its own
   // qualifier-aware rule, reading the field type AS WRITTEN (see there). Go's
   // field leg is dark today - `parseStructHoverFields` wants Rust's `name: type`
@@ -894,6 +961,11 @@ export async function resolveCrossFileShape(
     const defText = await openFile(defLoc.uri);
     let methods: string[] = [];
     let methodsResolved = false;
+    // Hoisted out of the block below so the FIELD hook can see them. C# and
+    // Python derive their fields from the resolved member list, not from a
+    // hover, and by the time the walk asks for fields the members are already
+    // in hand — resolving them twice would be a second chance to disagree.
+    let resolvedMembers: readonly CompletionMember[] = [];
     if (defText !== undefined) {
       const members = await membersWithSettle(extractor, defCursor, name, hover !== undefined);
       // TWO PASSES, and they stay two. Visibility asks whether the target may
@@ -943,20 +1015,41 @@ export async function resolveCrossFileShape(
       const spelled = hooks?.rewriteMembers
         ? hooks.rewriteMembers(kept, hover?.signature, defText.split("\n"))
         : kept;
+      resolvedMembers = spelled;
       methods = renderMethods(spelled, name, narrowing !== undefined);
-      // An ENUM resolves members with no signature to render: documentSymbol
-      // names its variants and there is no hover or completionItem tail to hang
-      // on them, so renderMemberSignatures drops every one and the type comes
-      // back with nothing at all. That is the whole surface of an enum going
-      // dark, and it is what let a repair round see `LodBand` named and never
-      // learn a single variant (session-v28 live replay). The names ARE the
-      // surface, so the language's hook spells them; a language with no hook is
-      // unchanged, and a type the hook does not recognise as an enum is too.
-      if (methods.length === 0 && enumMemberLine !== undefined) {
+      // AN ENUM'S VARIANTS ARE SPELLED BY THE LANGUAGE, and the spelling WINS
+      // over whatever the member list rendered.
+      //
+      // Type.Variant is what a caller has to type. The variant's own rendered
+      // member line is not: at best it is a bare name, at worst it is
+      // `CONTINENTAL: Literal[0]`, which names the value and not the way to
+      // reach it. This is the hole the v38 enum gate exists for - a repair round
+      // once saw LodBand named and never learned a single variant
+      // (session-v28 live replay).
+      //
+      // THE GATE USED TO BE `methods.length === 0`, and that was a proxy that
+      // stopped holding. It assumed an enum always renders nothing, which is
+      // true only of a transport that leaves variants signature-free. Python's
+      // does not: the product's Python transport backfills every member's
+      // signature from a hover, so its variants arrive WITH signatures, the
+      // proxy read "this type rendered fine", and the enum leg never fired.
+      // Measured by the phase 0 adversarial review: `pyShapeHooks.enumMemberLine`
+      // has been dead IN THE PRODUCT since it was written, and the test that
+      // covered it was green only because the HEADLESS transport had no backfill
+      // and so accidentally satisfied the proxy.
+      //
+      // So the gate is now the hook's own answer. A hook that recognises the
+      // type as an enum spells every variant and those lines replace the member
+      // list; a hook that recognises nothing changes nothing, which is every
+      // non-enum type and every language with no hook at all.
+      if (enumMemberLine !== undefined) {
         const defLines = defText.split("\n");
-        methods = kept
+        const variantLines = kept
           .map((m) => enumMemberLine(m, name, hover?.signature, defLines))
           .filter((line): line is string => line !== undefined);
+        if (variantLines.length > 0) {
+          methods = variantLines;
+        }
       }
       methodsResolved = true;
     }
@@ -1013,9 +1106,9 @@ export async function resolveCrossFileShape(
     // Costs nothing where recovery refuses (the signature is then the raw hover,
     // byte for byte) and nothing in the four hooked languages (they never enter
     // the recovery). An enum gains no fields either way: `parseStructHoverFields`
-    // needs `name: Type` at brace depth zero, and a variant's payload is inside
+    // needs name: Type at brace depth zero, and a variant's payload is inside
     // its own braces.
-    const fields = parseFields(signature);
+    const fields = parseFields(signature, resolvedMembers, defText === undefined ? [] : defText.split("\n"));
     if (!hover && !methodsResolved) {
       droppedSet.add(name); // could resolve nothing about this reference
       continue;
@@ -1023,6 +1116,14 @@ export async function resolveCrossFileShape(
 
     visited.add(name);
     const emittedType: DerivedType = { name, signature, fields, methods, methodsResolved, defUri: defLoc.uri };
+    // Carried on the type rather than logged here: this function has no channel,
+    // and the renderer that drops these members is the one that must say so.
+    const cappedMembers = resolvedMembers
+      .filter((m) => m.capped !== undefined)
+      .map((m) => ({ name: m.name, cause: m.capped as "count" | "budget" }));
+    if (cappedMembers.length > 0) {
+      emittedType.cappedMembers = cappedMembers;
+    }
     types.set(name, emittedType);
 
     if (depth >= bound.D_MAX) {

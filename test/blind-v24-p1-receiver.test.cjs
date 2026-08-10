@@ -521,6 +521,43 @@ const OWNER_MEMBERS = {
   ],
 };
 const OWNER_FIELD = { rust: "slots: u32", csharp: "Slots: int", typescript: "slots: number", python: "slots: int", go: "Slots: uint32" };
+
+// EVERY RENDERING `Owner`'s ONE FIELD IS ALLOWED TO TAKE, per language.
+//
+// RE-CUT 2026-08-10, session-v49 phase 1, by the blind non-implementer role.
+//
+// WHAT THE GO ROWS USED TO ASSERT: that the literal member line `Slots: uint32`
+// appeared in the surface. That string is the MEMBER-LIST rendering of the
+// field, and until phase 1 it was the only place a Go field could appear at all.
+//
+// WHY THE MOVE IS A SUPERSESSION AND NOT A DEFECT. Phase 1 lit Go's data-shape
+// field leg. A Go type now renders a `Data shape of `Owner`` block carrying its
+// declaration verbatim, and the member list sheds EXACTLY the fields that block
+// rendered - methods are never touched. So `Slots` did not disappear from the
+// prompt: it moved from the member list to the shape block, and changed
+// rendering with it, from the member form `Slots: uint32` to Go's own
+// declaration form `Slots uint32` inside `type Owner struct { Slots uint32 }`.
+// Verified on the captured surface: the shape block carries the field, the
+// member list still carries BOTH methods (`RollActive`, `SlotsOf`), and nothing
+// is on the drop channel. Information moved; none was lost.
+//
+// The table exists rather than a rewritten literal because these strings are
+// used in NEGATIVE assertions too ("no field of the unresolved type may appear").
+// Swapping one literal for the other would have left every negative row checking
+// a rendering the product no longer emits - a silent weakening, which is the one
+// thing a re-baseline may never do. Checking the whole set makes the positives
+// honest about where the field lives and the negatives STRICTER than they were.
+const OWNER_FIELD_RENDERS = {
+  rust: [OWNER_FIELD.rust],
+  csharp: [OWNER_FIELD.csharp],
+  typescript: [OWNER_FIELD.typescript],
+  python: [OWNER_FIELD.python],
+  // member-list form (pre-v49, still the form when no shape block renders for
+  // the type) and data-shape form (session-v49 phase 1).
+  go: [OWNER_FIELD.go, "Slots uint32"],
+};
+const hasOwnerField = (text, lang) => OWNER_FIELD_RENDERS[lang].some((s) => text.includes(s));
+const noOwnerField = (text, lang) => OWNER_FIELD_RENDERS[lang].every((s) => !text.includes(s));
 const PRODUCERS = {
   rust: ["new(", "from_widget(", "with_slots("],
   csharp: ["Create(", "Parse("],
@@ -852,9 +889,24 @@ for (const lang of LANGS) {
   btest(`case A [${lang}]: a receiver in the signature injects the enclosing type's fields AND methods, first`, async () => {
     const r = await runPrefill(scenario(lang, "caseA"));
     assert.strictEqual(r.names[0], "Owner", `the enclosing type leads at a receiver target.${dump(r)}`);
-    assert.ok(r.text.includes(OWNER_FIELD[lang]), `case A carries the type's FIELDS.${dump(r)}`);
+    // RE-CUT 2026-08-10, session-v49 phase 1: "the field is in the surface"
+    // rather than "the field is in the member list". See OWNER_FIELD_RENDERS.
+    assert.ok(hasOwnerField(r.text, lang), `case A carries the type's FIELDS, wherever the language renders them.${dump(r)}`);
     for (const m of INSTANCE_ONLY[lang]) {
       assert.ok(r.text.includes(m), `case A carries every method, including the instance method ${m}.${dump(r)}`);
+    }
+    // GO, SESSION-V49 PHASE 1: the render decision, pinned rather than tolerated.
+    // The shape block ships the field and the member list SHEDS it, so the same
+    // bytes are never printed twice. If the field ever came back as a member
+    // line while the shape block also rendered it, that is the duplication the
+    // decision exists to prevent and this row is where it shows up.
+    if (lang === "go") {
+      assert.ok(r.text.includes("Data shape of `Owner`"), `go renders a data-shape block for the receiver.${dump(r)}`);
+      assert.ok(r.text.includes("Slots uint32"), `and the block carries the field in go's own declaration form.${dump(r)}`);
+      assert.ok(
+        !r.text.includes(OWNER_FIELD.go),
+        `and the member list sheds the field the shape block rendered - one field, one place.${dump(r)}`,
+      );
     }
     for (const m of PRODUCERS[lang]) {
       assert.ok(r.text.includes(m), `case A carries the producing members too - it is the fuller surface.${dump(r)}`);
@@ -901,7 +953,7 @@ for (const lang of ["rust", "csharp", "typescript", "python"]) {
         `with no usable tree the enclosing type is unknowable; injecting it means it was read out of file text, ` +
           `which this contract forbids outright.${dump(r)}`,
       );
-      assert.ok(!r.text.includes(OWNER_FIELD[lang]), `no field of the unresolved enclosing type may appear.${dump(r)}`);
+      assert.ok(noOwnerField(r.text, lang), `no field of the unresolved enclosing type may appear, in ANY rendering.${dump(r)}`);
       assert.deepStrictEqual(
         r.logs.filter((l) => /\bOwner\b/.test(l) && !/accounting/.test(l)),
         [],
@@ -928,7 +980,14 @@ for (const d of TREE_DEGRADES) {
       "Owner",
       `\`func (o *Owner) Absorb(...)\` names its own receiver type; the tree is not consulted and its state is irrelevant.${dump(r)}`,
     );
-    assert.ok(r.text.includes(OWNER_FIELD.go), `the resolved receiver carries its fields.${dump(r)}`);
+    // RE-CUT 2026-08-10, session-v49 phase 1. It used to read the member line
+    // `Slots: uint32`; the field now ships inside the type's data-shape block as
+    // `Slots uint32`. Nothing about the TREE-EXEMPTION claim moved - the
+    // receiver still resolves from the signature's own clause with no tree at
+    // all - so this is a rendering supersession, not a defect. See
+    // OWNER_FIELD_RENDERS. The methods are asserted separately below and they
+    // stay in the member list, which is what proves the shed is field-only.
+    assert.ok(hasOwnerField(r.text, "go"), `the resolved receiver carries its fields, wherever they render.${dump(r)}`);
     for (const m of INSTANCE_ONLY.go) assert.ok(r.text.includes(m), `and its methods - this is an ordinary case A.${dump(r)}`);
   });
 }
@@ -1040,7 +1099,7 @@ for (const c of CASE_C_ROWS) {
     );
     if (c.ownerNotMinable) {
       assert.ok(!r.names.includes("Owner"), `the signature does not name the type, so it must not appear at all.${dump(r)}`);
-      assert.ok(!r.text.includes(OWNER_FIELD[c.lang]), `no field of the enclosing type may leak into a case-C surface.${dump(r)}`);
+      assert.ok(noOwnerField(r.text, c.lang), `no field of the enclosing type may leak into a case-C surface, in ANY rendering.${dump(r)}`);
     }
     assert.ok(r.names.includes("Widget"), `the ordinary signature-named candidate is unaffected.${dump(r)}`);
   });
@@ -1473,6 +1532,22 @@ public partial class Owner
 // assertion is never re-baselineable; the instruction one is, under the terms
 // above. If a future change reddens only the second, that is the designed path.
 // If it reddens the first, stop.
+//
+// RE-BASELINED A SECOND TIME, 2026-08-10, GO ROW ONLY, under HUMAN RULING R1.
+//
+// This is the first time the DATA region has been allowed to move, and it took
+// an explicit human ruling taken BEFORE any code was written, not after the row
+// went red. The ruling names three rows (python, csharp, go), holds the freeze
+// for rust, typescript and everything else in this file, and requires the re-cut
+// to be done last, by the blind non-implementer role, with the full before/after
+// diff recorded. Only the GO string actually moved; python and csharp were
+// captured byte-identical and were left alone. The diff and the reasoning sit on
+// the go entry in FREE_CASES below.
+//
+// The terms above are NOT relaxed by this. A data-region diff is still a defect
+// by default and still stops the session; what happened here is that the human
+// ruled a specific, named, pre-identified diff to be a supersession in advance.
+// Absent such a ruling, the answer is still: report it and re-baseline nothing.
 // ===========================================================================
 
 const FREE_RS_URI = "file:///w/v24/free.rs";
@@ -1675,7 +1750,52 @@ const FREE_CASES = [
       spanStart: "func Absorb", spanEnd: `panic("todo")`,
       signature: "func Absorb(w Widget) uint32", docComment: "// Absorb the widget.", symbolName: "Absorb",
     },
+    // RE-BASELINED 2026-08-10, session-v49 phase 1, under HUMAN RULING R1, by
+    // the blind non-implementer role. This is the ONE row in this family whose
+    // data region was allowed to move, and it is a named exception to the
+    // "NEVER RE-BASELINE THIS ONE" line below, not a relaxation of it.
+    //
+    // THE RULING. The freeze holds for rust and typescript and for everything
+    // else in this file. The human explicitly lifted it for the three
+    // python/csharp/go rows, on the grounds that their expected strings are a
+    // recording of the hole session-v49 closes, and required the re-cut to be
+    // done last, blind, with the full before/after diff written down.
+    //
+    // WHAT MOVED, EXACTLY. Python and C# turned out to need NO re-cut at all:
+    // both were captured byte-identical to their frozen strings, because their
+    // field legs are phases 2 and 3 and had not landed. Go's is the only string
+    // that changed, and it gained one leading block and changed nothing else:
+    //
+    //   BEFORE (frozen v1):
+    //     "Members of `Widget` (real signatures, use these exact names, do not invent):\n```go\nMassOf() uint32\n```\n\n
+    //      Use ONLY the members and types of `Widget` that appear in the surface above. ..."
+    //
+    //   AFTER (captured 2026-08-10):
+    //     "Data shape of `Widget` (fields and types, nested):\n```go\ntype Widget struct { Mass uint32 }\n```\n\n
+    //      Members of `Widget` (real signatures, use these exact names, do not invent):\n```go\nMassOf() uint32\n```\n\n
+    //      Use ONLY the members and types of `Widget` that appear in the surface above. ..."
+    //
+    // The member block is byte-identical. The instruction block is
+    // byte-identical (checked separately, and it is still the row's own second
+    // assertion). The whole diff is the added data-shape block.
+    //
+    // WHY THAT IS A SUPERSESSION AND NOT A DEFECT. Go had no field leg at all
+    // before phase 1: it emitted one type, always, member signatures only, and
+    // this string is the recording of that. The block is ADDITIVE here - the
+    // member list sheds a field only when the shape block rendered that same
+    // field, and this fixture's member list carries no fields, only `MassOf`.
+    // So nothing left the prompt; a shape the developer never had arrived.
+    //
+    // THE ONE THING THAT DID NOT SATISFY THE ROW'S OWN TERMS, DISCLOSED. Those
+    // terms say "the whole log array must be unchanged". Go's first log line
+    // changed, from the line declaring that breadth, total types and depth buy
+    // Go nothing because it has no data-shape walk, to the ordinary five-field
+    // dial line every walking language emits. That is contract-phase1 P5 - the
+    // channel was lying about Go and had to stop in the same change that lit the
+    // leg - and this family pins the SURFACE string, not the log array, by its
+    // own header. The injected-count line is unchanged at types=1.
     out:
+      "Data shape of `Widget` (fields and types, nested):\n```go\ntype Widget struct { Mass uint32 }\n```\n\n" +
       "Members of `Widget` (real signatures, use these exact names, do not invent):\n```go\nMassOf() uint32\n```\n\n" +
       "Use ONLY the members and types of `Widget` that appear in the surface above. Do not invent members, fields, or types beyond that surface. " +
       "Everything else in the file is unaffected by this: other values in scope, this function's own locals, sibling functions, " +
@@ -1995,7 +2115,11 @@ btest("mid-edit [go]: gopls dropping the method symbol entirely costs nothing - 
   const tree = GO_TREE().filter((n) => n.name !== "(*Owner).Absorb");
   const r = await runPrefill(scenario("go", "caseA", { tree }));
   assert.strictEqual(r.names[0], "Owner", `the one Go case the measurement found is invisible to a signature-first resolution.${dump(r)}`);
-  assert.ok(r.text.includes(OWNER_FIELD.go), `and it is an ordinary case A, fields and all.${dump(r)}`);
+  // RE-CUT 2026-08-10, session-v49 phase 1, same rendering move as case A: the
+  // field left the member list for the type's data-shape block. The claim this
+  // row defends - that gopls losing the method symbol costs Go nothing, because
+  // Go never reads the tree - is untouched by that. See OWNER_FIELD_RENDERS.
+  assert.ok(hasOwnerField(r.text, "go"), `and it is an ordinary case A, fields and all.${dump(r)}`);
 });
 
 // ===========================================================================

@@ -198,7 +198,37 @@ export class CsLspExtractor implements SurfaceExtractor {
     return client;
   }
 
+  /** Push `text` as this document's buffer, opening it if it is not open yet.
+   *
+   *  IDEMPOTENT, AND THAT IS NOT TIDINESS. A second `didOpen` for a document
+   *  Roslyn already holds is not ignored and is not a degrade: Roslyn asserts on
+   *  it (`didOpen received for … which is already open`, LspWorkspaceManager.cs
+   *  line 109) and the process dies on SIGABRT. Measured live while taking the
+   *  session-v49 phase 0 C# baseline — the server aborted mid-run and every
+   *  subsequent row recorded "nothing resolved" in 0ms, which reads as a very
+   *  fast product and is a corpse (`server-death-looks-like-a-product-answer`).
+   *
+   *  The collision is structural rather than careless. `ensureOpen` opens a
+   *  document LAZILY the first time any request touches it, so a caller keeping
+   *  its own opened-set cannot know which files this class already opened on its
+   *  behalf — and a cross-file walk makes exactly that happen, since the walk
+   *  opens def files it discovers while the transport is opening them too. So
+   *  the guard belongs here, where `versions` is the one authority on what is
+   *  open, and not in every caller.
+   *
+   *  An already-open document takes the `didChange` path instead, which is the
+   *  same incremental sync `applyEdit` uses and which Roslyn requires (a
+   *  full-text replacement corrupts its view). Re-pushing identical text is then
+   *  a no-op change rather than a crash. */
   openDocument(uri: string, text: string): void {
+    // Keyed on `texts`, not `versions`, and the two are always set together:
+    // `applyEdit` falls BACK to this method when it has no stored text, so
+    // keying on the map it reads is what makes the pair provably non-recursive
+    // rather than non-recursive by an invariant a later edit could break.
+    if (this.texts.has(uri)) {
+      this.applyEdit(uri, text);
+      return;
+    }
     this.versions.set(uri, 1);
     this.texts.set(uri, text);
     this.notify("textDocument/didOpen", {

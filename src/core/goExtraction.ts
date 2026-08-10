@@ -92,7 +92,7 @@ function mapGoCompletionKind(kind: number | undefined): MemberKind {
 /** `Enroll` + `func(byLod map[uint8][]Tile) (uint32, error)` renders as the
  *  member's own one-line declaration — name spliced over the `func` keyword
  *  so the injection payload never carries a bare name. A field's detail is
- *  its type; Go idiom is `Name Type`. */
+ *  its type; Go idiom is Name Type. */
 function renderGoSignature(name: string, detail: string | undefined): string | undefined {
   if (detail === undefined || detail.length === 0) {
     return undefined;
@@ -750,4 +750,245 @@ export function goElisionLogLine(typeName: string, e: GoDefElision): string {
     `${e.proseLines} comment line(s) ${e.proseBytes}B, blank separators ${e.blankBytes}B); ` +
     `all ${e.keptBodyLines} field line(s) kept, none cut`
   );
+}
+
+// ===========================================================================
+// 5. THE FIELD LEG (parseGoHoverFields / goFieldTypeCursor). What a gopls
+//    struct hover says about the type's SHAPE, and where to stand to follow it.
+//
+//    Go's fields were never missing from the prompt - `membersOfType` has
+//    always delivered them, and they render as member lines. What was missing
+//    is the EDGE: the shipped hook ran the Rust parser, which wants
+//    name: Type, and a Go field line has no colon, so `fields` came back
+//    empty, so `walkDataShape` had nothing to recurse on and Go emitted one
+//    type, always. These two functions are the edge.
+// ===========================================================================
+
+/** The fenced block of a gopls hover that carries the STRUCT DECLARATION, or
+ *  undefined when the hover has no such block.
+ *
+ *  Scanning for the right fence rather than taking the first one, because gopls
+ *  emits MORE THAN ONE and the extra ones are traps. A struct with an embedded
+ *  type gets a second ```go block holding gopls's own synthesised promoted-field
+ *  table - 27 rows of `Host string // through Config` on ConnConfig - which is
+ *  shaped almost exactly like a struct body and is not one. A third block
+ *  carries the method list. So the block is chosen by what it CONTAINS, not by
+ *  where it sits: the first one declaring a struct.
+ *
+ *  An unfenced hover falls back to the raw text, which is what a transport that
+ *  strips markdown hands over; there is no second fence to confuse in that case
+ *  because there are no fences at all. */
+function goStructDeclBlock(signature: string): string | undefined {
+  const fences = [...signature.matchAll(/```[a-zA-Z]*\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const isDecl = (s: string) => /(^|\n)\s*type\s+[A-Za-z_]\w*(\[[^\]]*\])?\s+struct\s*\{/.test(s);
+  const found = fences.find(isDecl);
+  if (found !== undefined) {
+    return found;
+  }
+  return fences.length === 0 && isDecl(signature) ? signature : undefined;
+}
+
+/** Parse a gopls STRUCT hover into its declared fields, each as
+ *  { name, typeName } with the type AS WRITTEN and in declaration order. The
+ *  Go sibling of `parseStructHoverFields`, which cannot be reused: Rust writes
+ *  name: Type and separates fields with commas, Go writes Name Type one per
+ *  line and separates with newlines.
+ *
+ *  Anything that is not a struct declaration yields [] - an interface, an alias,
+ *  a bodyless hover, a Rust hover. That is the honest degrade the walk already
+ *  knows how to handle, and it is what keeps this parser from claiming a shape
+ *  for a type whose shape it cannot read.
+ *
+ *  WHAT IT SKIPS, each one a real shape from a real capture (session-v48
+ *  capture-go-hovers.json, gopls v0.23.0 over pgx):
+ *
+ *   - `type Conn struct { // size=304 (0x130), class=320 (0x140)` - gopls's
+ *     layout chrome, which sits AFTER the opening brace on the header line and
+ *     would otherwise read as the first field.
+ *   - whole-line doc comments, and blank separator lines, both of which pgx uses
+ *     heavily between field groups.
+ *   - a trailing comment on a field line (`config *ConnConfig // config used
+ *     when establishing this connection`) - the comment is stripped, the field
+ *     is kept.
+ *   - EVERYTHING AT BRACE DEPTH > 0. A field whose type is an anonymous inline
+ *     struct opens a nested body, and its inner lines are that type's fields,
+ *     not this one's. Depth also makes `doneChan chan struct{}` safe, where the
+ *     braces open and close on one line and net to zero.
+ *
+ *  AN EMBEDDED FIELD IS EMITTED UNDER ITS LAST PATH SEGMENT. pgconn.Config
+ *  declares no name, and dropping it would lose a real edge - it is how pgx
+ *  reaches its whole connection config. The last segment is not a guess or a
+ *  convenience: x.Config is exactly how Go spells access to an embedded
+ *  pgconn.Config, so the emitted name is the one a caller has to type.
+ *
+ *  AN ANONYMOUS INLINE STRUCT FIELD keeps its name and gets `struct` as its
+ *  written type, which names no PascalCase type, so the walk queues nothing for
+ *  it. It is present in the shape and refuses to be an edge - deliberately, not
+ *  by omission: there is no name to anchor. */
+export function parseGoHoverFields(signature: string | undefined): Array<{ name: string; typeName: string }> {
+  const block = signature === undefined ? undefined : goStructDeclBlock(signature);
+  if (block === undefined) {
+    return [];
+  }
+  const lines = block.split("\n");
+  const headIdx = lines.findIndex((l) => /(^|\s)type\s+[A-Za-z_]\w*(\[[^\]]*\])?\s+struct\s*\{/.test(l));
+  if (headIdx < 0) {
+    return [];
+  }
+  const fields: Array<{ name: string; typeName: string }> = [];
+  // A ONE-LINE STRUCT puts its whole body on the header line, after the brace:
+  // `type Widget struct { Mass uint32 }`, and `struct{ A int; B string }` with
+  // the Go statement separator. gopls normally expands a declaration over lines,
+  // so every captured hover in the corpus is multi-line — but a one-line struct
+  // is ordinary Go, and a parser that reads the body only from the lines BELOW
+  // the header silently answers "no fields" for it. That is the worst shape of
+  // wrong here: it looks exactly like a type that legitimately has none.
+  const headTail = stripGoLineComment(lines[headIdx].slice(lines[headIdx].indexOf("{") + 1)).replace(/\}\s*$/, "");
+  for (const piece of headTail.split(";")) {
+    const f = goFieldFromBodyLine(piece);
+    if (f) {
+      fields.push(f);
+    }
+  }
+  // Depth 1 is INSIDE the struct's own body: the header line's `{` opened it.
+  let depth = 1;
+  for (let i = headIdx + 1; i < lines.length && depth > 0; i++) {
+    const raw = lines[i];
+    // Strip a trailing line comment before anything else, so a `//` carrying a
+    // brace (`// see struct{}`) cannot move the depth count.
+    const text = stripGoLineComment(raw);
+    const atDepth = depth;
+    depth += braceDelta(text);
+    if (atDepth !== 1) {
+      continue; // inside a nested body: those are another type's fields
+    }
+    const f = goFieldFromBodyLine(text);
+    if (f) {
+      fields.push(f);
+    }
+  }
+  return fields;
+}
+
+// ONE line of a struct body -> its field, or undefined when the line declares
+// none (blank, a closing brace, a whole-line comment). Shared by the one-line
+// and the multi-line paths so a struct cannot be read two different ways
+// depending on how gopls chose to format it.
+function goFieldFromBodyLine(text: string): { name: string; typeName: string } | undefined {
+  // NO trailing-brace strip here. A field type may legitimately END in a brace
+  // (`doneChan chan struct{}`), and stripping it turns a real anonymous-struct
+  // type into the unbalanced `chan struct{`. The ONE-LINE path strips its
+  // body's closing brace once, before splitting, which is where that brace
+  // actually belongs to the declaration rather than to a type.
+  const t = stripGoLineComment(text).trim();
+  if (t.length === 0 || t === "}") {
+    return undefined;
+  }
+  // Name Type - the name, then everything after the run of spaces.
+  const named = /^([A-Za-z_]\w*)\s+(\S[\s\S]*)$/.exec(t);
+  if (named) {
+    return { name: named[1], typeName: named[2].trim() };
+  }
+  // An EMBEDDED field: a lone type, qualified or not, with no name of its own.
+  const embedded = /^(?:([A-Za-z_]\w*)\.)?([A-Za-z_]\w*)$/.exec(t);
+  return embedded ? { name: embedded[2], typeName: t } : undefined;
+}
+
+// The net brace depth a line contributes, ignoring braces inside a string or a
+// rune literal. A Go struct tag is a raw string and can carry anything:
+// `Name string `json:"{name}"`` must not open a body.
+function braceDelta(line: string): number {
+  let delta = 0;
+  let quote: string | undefined;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote !== undefined) {
+      if (c === "\\" && quote !== "`") {
+        i++;
+      } else if (c === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (c === '"' || c === "`" || c === "'") {
+      quote = c;
+    } else if (c === "{") {
+      delta++;
+    } else if (c === "}") {
+      delta--;
+    }
+  }
+  return delta;
+}
+
+// A line with its trailing `//` comment removed. Quote-aware for the same reason
+// as braceDelta: a `//` inside a struct tag is not a comment.
+function stripGoLineComment(line: string): string {
+  let quote: string | undefined;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote !== undefined) {
+      if (c === "\\" && quote !== "`") {
+        i++;
+      } else if (c === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (c === '"' || c === "`" || c === "'") {
+      quote = c;
+    } else if (c === "/" && line[i + 1] === "/") {
+      return line.slice(0, i);
+    }
+  }
+  return line;
+}
+
+/** A source cursor on the candidate type token WITHIN the parent struct's own
+ *  declaration of field `fieldName`, in the DEF SOURCE (not the hover).
+ *
+ *  The Go sibling of the Rust `fieldTypeCursor`, and it exists because the Rust
+ *  one anchors on `^ [pub] name :` and a Go field line has no colon. Run over
+ *  the captured pgx source it returned undefined for every field tried, which is
+ *  the whole reason Go's hop never happened.
+ *
+ *  Anchoring at the field's OWN type token, rather than searching the file for
+ *  the bare name, is what makes `definition()` resolve the type in the PARENT's
+ *  scope - so a same-named type declared elsewhere is never walked into by
+ *  accident.
+ *
+ *  Two line shapes, because Go has two:
+ *   - `config *ConnConfig` - the name, then the candidate somewhere after it.
+ *   - pgconn.Config - an EMBEDDED field, whose "name" is the type's own last
+ *     segment, so there is no name to search past and the candidate is matched
+ *     on the line as it stands.
+ *
+ *  undefined when the field is not found in the body, or when the candidate is
+ *  not on the field's own declaration line. That is a STOP EDGE, and the walk
+ *  records every one of them rather than dropping it silently. */
+export function goFieldTypeCursor(
+  lines: string[],
+  range: { open: number; close: number },
+  fieldName: string,
+  candType: string,
+): { line: number; character: number } | undefined {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const namedRe = new RegExp(`^\\s*${esc(fieldName)}\\s+\\S`);
+  const embeddedRe = new RegExp(`^\\s*(?:[A-Za-z_]\\w*\\.)?${esc(fieldName)}\\s*$`);
+  const candRe = new RegExp(`\\b${esc(candType)}\\b`);
+  for (let i = range.open; i <= range.close && i < lines.length; i++) {
+    const line = stripGoLineComment(lines[i]);
+    const named = namedRe.exec(line);
+    const embedded = named ? null : embeddedRe.exec(line);
+    if (!named && !embedded) {
+      continue;
+    }
+    // Search PAST the field name for a named field, so a field whose own name
+    // equals the candidate (`Config Config`) anchors on the type and not on the
+    // binding. An embedded field is searched whole - the token IS the name.
+    const from = named ? named[0].length - 1 : 0;
+    const m = candRe.exec(line.slice(from));
+    return m ? { line: i, character: from + m.index } : undefined;
+  }
+  return undefined;
 }

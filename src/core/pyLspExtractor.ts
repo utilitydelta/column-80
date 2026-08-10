@@ -44,7 +44,7 @@ import {
   ReferenceQuery,
   SourceCursor,
   SurfaceExtractor,
-  membersFromDocumentSymbols,
+  membersWithHoverSignatures,
   toReferenceLocations,
 } from "./extraction";
 import {
@@ -508,7 +508,7 @@ export class PyLspExtractor implements SurfaceExtractor {
     return firstEditOf(chosen.edit);
   }
 
-  async membersOfType(defCursor: SourceCursor): Promise<CompletionMember[]> {
+  async membersOfType(defCursor: SourceCursor, budgetMs?: number): Promise<CompletionMember[]> {
     await this.ready(defCursor.uri);
     // documentSymbol is AST-syntactic (available once the file is open). The
     // Python role table keeps class-body Variables (attributes) and treats a
@@ -517,7 +517,34 @@ export class PyLspExtractor implements SurfaceExtractor {
     const symbols = await this.request("textDocument/documentSymbol", {
       textDocument: { uri: defCursor.uri },
     });
-    return membersFromDocumentSymbols(symbols, defCursor, pyLspSymbolRole, toPySymbolMember);
+    // THE HOVER BACKFILL, and it is what makes this transport the product's.
+    //
+    // Pyright fills `detail` on NOTHING - not fields, not methods - so a bare
+    // documentSymbol descent returns a member set in which every member has a
+    // name and no signature, and `renderMemberSignatures` drops every one. The
+    // type resolves and its surface is empty.
+    //
+    // Measured, live, on `mcp-graph-engine` while taking the session-v49 phase 0
+    // baseline: membersOfType(GraphEngine) answered 38 members and the walk
+    // rendered 0, on 7 of 7 real classes. That is not a Python fact - the
+    // PRODUCT transport (src/vscode/pyExtractor.ts) has always backfilled
+    // through this same helper, against Pylance's identical empty `detail`.
+    // This class had the comment "the headless transport owns its own signature
+    // path" written about it and owned no such path.
+    //
+    // It matters because this transport is the instrument every headless Python
+    // measurement runs on, and an instrument that renders nothing measures a leg
+    // the product does not have (`harness-must-use-the-product-mapping`). Same
+    // helper, same caps, same budget as the product: no new dependency, and no
+    // second answer to "what are this type's members" that could disagree.
+    return await membersWithHoverSignatures(
+      symbols,
+      defCursor,
+      pyLspSymbolRole,
+      toPySymbolMember,
+      async (at) => (await this.hoverSurface(at))?.signature,
+      budgetMs === undefined ? {} : { budgetMs },
+    );
   }
 
   dispose(): void {

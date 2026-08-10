@@ -280,8 +280,11 @@ export class PyCommandExtractor implements SurfaceExtractor {
   }
 
   async membersOfType(defCursor: SourceCursor, budgetMs?: number): Promise<CompletionMember[]> {
-    // documentSymbol descent of the enclosing class (the product transport's
-    // contract; the headless transport owns its own signature path). The Python
+    // documentSymbol descent of the enclosing class. The headless transport
+    // (src/core/pyLspExtractor.ts) runs the SAME backfill against pyright — it
+    // used to be described here as owning its own signature path and owned
+    // none, which left every headless Python member set signature-free and
+    // every headless Python surface empty (session-v49 phase 0). The Python
     // role table keeps class-body attributes (Variable) and treats a function as
     // a non-container, so a method's body-locals are structurally excluded from
     // the class's member set (the locals filter).

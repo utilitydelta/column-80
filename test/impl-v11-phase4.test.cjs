@@ -99,8 +99,12 @@ test("pyTypesInPlay: a signature naming only stdlib/typing/TypeVars yields []", 
 
 // --- pyShapeHooks / PY_STD_TYPE_NAMES: the signatures-only Python hooks. --------
 
-test("pyShapeHooks: signatures-only — parseHoverFields is empty, stdTypeNames is PY_STD_TYPE_NAMES", () => {
-  assert.deepStrictEqual(pyShapeHooks.parseHoverFields("class Foo"), [], "a pyright class hover carries no field body");
+test("pyShapeHooks: signatures-only — parseFields is empty, stdTypeNames is PY_STD_TYPE_NAMES", () => {
+  // RENAMED 2026-08-10 (session-v49 phase 2): `parseHoverFields(signature)` became
+  // `parseFields(signature, members, defLines)`, because C# and Python have their
+  // fields on the resolved MEMBERS and not in any hover. Python still answers []
+  // here — its own leg is phase 3.
+  assert.deepStrictEqual(pyShapeHooks.parseFields("class Foo", [], []), [], "a pyright class hover carries no field body");
   assert.strictEqual(pyShapeHooks.fieldTypeCursor(), undefined, "no field-edge recursion");
   assert.strictEqual(pyShapeHooks.stdTypeNames, PY_STD_TYPE_NAMES, "the walk-stop set is the Python one");
   assert.strictEqual(pyShapeHooks.renderDef({ signature: "class Bar" }), "class Bar", "renderDef returns the raw signature");

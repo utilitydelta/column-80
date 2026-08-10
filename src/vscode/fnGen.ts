@@ -51,6 +51,7 @@ import {
   DerivedType,
   PY_STD_TYPE_NAMES,
   csShapeHooks,
+  goShapeHooks,
   isRustSysrootDef,
   nestedConstructors,
   pyShapeHooks,
@@ -1502,6 +1503,35 @@ export function prefillRootCap(languageId: string, budget: BudgetProfile): numbe
  * they chose. Making those renderers walk data shapes is a different session;
  * this is the honesty half.
  */
+/**
+ * THE FAN-OUT CAP'S OWN DROP LINE, and it is Python's ship condition.
+ *
+ * A member whose signature the hover fan-out could not buy comes back bare, and
+ * `renderMemberSignatures` drops a bare member — so the block ships a SUBSET of
+ * the type's members under a header saying "use these exact names, do not
+ * invent", and a reader cannot tell that from a type with fewer members.
+ *
+ * The walk has always named the TYPES it dropped. This is the same promise one
+ * level down, for the members of a type it kept. It names which cap did it,
+ * because the two point at different dials: `count` is the per-type ask limit,
+ * `budget` is the fan-out's wall clock.
+ *
+ * Silent on a type that lost nothing, so it costs a clean gesture no bytes.
+ */
+function cappedMemberLine(type: string, derived: DerivedType): string | undefined {
+  const capped = derived.cappedMembers ?? [];
+  if (capped.length === 0) {
+    return undefined;
+  }
+  const by = (cause: string) => capped.filter((c) => c.cause === cause).map((c) => c.name);
+  const parts = [`count cap: ${by("count").join(", ")}`, `fan-out budget: ${by("budget").join(", ")}`]
+    .filter((p) => !p.endsWith(": "));
+  return (
+    `[fngen] pre-fill could not sign ${capped.length} member(s) of \`${type}\`, so they are ABSENT ` +
+    `from its block rather than bare (${parts.join("; ")})`
+  );
+}
+
 function contextStopLine(lang: PrefillLang, budget: BudgetProfile, rootCap: number): string {
   const walks = lang.dialReach === "walk";
   const binds = [`stop=${budget.stop}`, `roots=${rootCap}`];
@@ -2411,7 +2441,7 @@ export async function resolvePrefill(
     // for a full walk, a member enumeration and the visibility pass on a type
     // whose block was then thrown away - and it LOGGED all of that, so a live
     // `create_ca` round emitted six visibility-filter lines naming 21 private
-    // members of `Path`, 19 of `BufReader` and 29 of `PathBuf`, every one of them
+    // members of `Path`, 19 of `BufReader` and 29 of PathBuf, every one of them
     // about a type the next line said injected nothing. Evidence for a decision
     // that was already made reads as evidence for the opposite one.
     let preDefUri: string | undefined;
@@ -3003,8 +3033,8 @@ export async function resolveCallOwners(
     }
     // The std filter, and it is not a nicety. Measured over 61 real call sites
     // in `acme-db`, the route resolves an owner 92% of the time and 18 of
-    // the 56 owners it found were `Vec`, `String`, `HashMap`, `Duration`,
-    // `PathBuf`, `Option`, `Result`, `Box`, `RefCell`, `BTreeMap`, `VecDeque`.
+    // the 56 owners it found were Vec, `String`, `HashMap`, `Duration`,
+    // PathBuf, Option, `Result`, Box, `RefCell`, `BTreeMap`, `VecDeque`.
     // Every one of those spends a resolver round trip and a slot of a cap of
     // four to tell the model what `Vec::push` does. The same per-language stop
     // set `spanTypesInPlay` applies, applied here.
@@ -3595,6 +3625,10 @@ function tsShapeBlock(
   if (!derived) {
     return undefined;
   }
+  const cappedLine = cappedMemberLine(type, derived);
+  if (cappedLine !== undefined) {
+    log(cappedLine);
+  }
   const primitiveAlias = isPrimitiveAliasHover(derived.signature);
   let methods = primitiveAlias ? [] : derived.methods;
   let memberHeader = `Members of \`${type}\` (real signatures, use these exact names, do not invent):`;
@@ -3936,6 +3970,13 @@ function pyShapeBlock(
   if (!derived) {
     return undefined;
   }
+  // Python is the language this line exists for. Pylance fills `detail` on
+  // nothing, so EVERY Python member's signature is bought by the hover fan-out,
+  // and every one of them is exposed to its two caps.
+  const cappedLine = cappedMemberLine(type, derived);
+  if (cappedLine !== undefined) {
+    log(cappedLine);
+  }
   let methods = derived.methods;
   if (methods.length === 0) {
     return undefined;
@@ -4064,17 +4105,42 @@ function goFindTypeReference(
   return undefined;
 }
 
-// The Go injection block for a resolver-derived type: its member signatures,
-// go-fenced, SIGNATURES-ONLY (the receiver-sibling join carries fields and
-// methods with gopls-filled details; no data-shape walk — `goShapeHooks` keeps
-// the field parser on the Rust default, which cannot read a Go hover's `Name
-// Type` field order, so the walk leg is still dark). When the
-// member cap truncates, the header says so. Sibling of pyShapeBlock; the Rust
+// The Go injection block: a DATA-SHAPE body plus the member signatures, both
+// go-fenced. Sibling of tsShapeBlock now rather than of pyShapeBlock; the Rust
 // shapeBlock stays frozen.
+//
+// THE RENDER DECISION (session-v49 phase 1 goal: "decide which one ships").
+//
+// Go's member list already carries every field name AND its type — `pgConn
+// *pgconn.PgConn` has shipped as a member line since v23. So a rendered field
+// body beside that list prints the same bytes twice, and bytes are the scarce
+// resource on this path: Go's risk from the field leg is EVICTION, not
+// addition, because the new blocks compete for the same shared budget as the
+// 52-member Conn list that works today.
+//
+// So the field body ships, and the member list sheds exactly the fields the
+// field body actually rendered. Methods are never touched.
+//
+// It is guarded so it can never be worse than today, and the guards are the
+// point rather than defensive padding:
+//
+//  - a type with NO data-shape block keeps its member list whole, byte for byte
+//    (a walk that resolved nothing must not cost a developer the list they
+//    already have);
+//  - a type whose def the walk TRUNCATED keeps its member list whole too. The
+//    walk cuts fields at TOK_MAX; the member list cuts at memberCap. Both are
+//    honest caps, and shedding on one side while the other side is already
+//    cutting is how a field disappears from both. Fields may be cut from one
+//    place or the other, never from both.
+//
+// Which member lines ARE fields is not guessed from their text — a Go method
+// signature and a `handler func(int) error` field both carry parens. The walk
+// hands back the parsed field list, so a member line is a field line exactly
+// when its first token is one of those names.
 function goShapeBlock(
   type: string,
   shape: CrossFileShape,
-  _sharedWalk: SharedWalkState,
+  sharedWalk: SharedWalkState,
   log: (line: string) => void,
   profile: PrefillProfile,
 ): RenderedBlock | undefined {
@@ -4082,24 +4148,61 @@ function goShapeBlock(
   if (!derived) {
     return undefined;
   }
-  let methods = derived.methods;
-  if (methods.length === 0) {
-    return undefined;
+  const parts: string[] = [];
+  // NO FIELDS, NO SHAPE BLOCK, and this is a decision rather than an
+  // optimisation. `walkDataShape` will happily emit a root with an empty body,
+  // and for Go that means every non-struct type — an interface, a named func
+  // type, `type QueryExecMode int` — would start carrying a second block that
+  // repeats its own declaration and names no collaborator. That is pure cost on
+  // the one path where cost is the whole risk: Go's exposure from this leg is
+  // EVICTION, and a block with no graph in it buys nothing to be evicted for.
+  //
+  // It also keeps the promise the render decision rests on: a type with no
+  // data-shape block keeps its member list byte-identical to today. Every Go
+  // type that is not a struct is therefore untouched by this phase, which is
+  // what `blind-v39-p1-hover-recovery`'s E2 row asserts for a Rust enum hover
+  // arriving on the Go path.
+  const walk =
+    derived.fields.length > 0
+      ? walkDataShape(type, toResolveStruct(shape, goShapeHooks), profile.dataShape, sharedWalk)
+      : { block: "", defs: [], dropped: [], droppedBy: [] };
+  const ownDef = walk.defs.find((d) => d.name === type);
+  // The walk marks a cut def with `... N more fields`; that marker is the only
+  // signal that this type's own field list is incomplete, and it decides whether
+  // the member list may shed anything.
+  const ownDefComplete = ownDef !== undefined && !/\.\.\.\s+\d+\s+more fields/.test(ownDef.def);
+  if (walk.block) {
+    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}go\n${walk.block}\n${FENCE}`);
   }
+  // Hoisted out of the block-produced branch on purpose, exactly as tsShapeBlock
+  // does it: an empty block IS the total-loss case, and it is the one that must
+  // not be silent.
+  if (walk.dropped.length > 0) {
+    log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${droppedNames(walk.droppedBy, profile.dataShape)}`);
+  }
+
+  const fieldNames = new Set(derived.fields.map((f) => f.name));
+  const shed = ownDefComplete && walk.block.length > 0;
+  const firstToken = (line: string) => /^\s*([A-Za-z_]\w*)/.exec(line)?.[1];
+  const all = shed ? derived.methods.filter((m) => !fieldNames.has(firstToken(m) ?? "")) : derived.methods;
+  let methods = all;
   let header = `Members of \`${type}\` (real signatures, use these exact names, do not invent):`;
   if (methods.length > profile.memberCap) {
     const dropped = methods.slice(profile.memberCap);
     methods = methods.slice(0, profile.memberCap);
-    header = `Members of \`${type}\` (a subset — the first ${profile.memberCap} of ${derived.methods.length}; real signatures, use these exact names, do not invent):`;
-    log(`[fngen] pre-fill truncated \`${type}\` members: kept ${profile.memberCap} of ${derived.methods.length} (dropped ${dropped.join(", ")})`);
+    header = `Members of \`${type}\` (a subset — the first ${profile.memberCap} of ${all.length}; real signatures, use these exact names, do not invent):`;
+    log(`[fngen] pre-fill truncated \`${type}\` members: kept ${profile.memberCap} of ${all.length} (dropped ${dropped.join(", ")})`);
   }
-  return { text: `${header}\n${FENCE}go\n${methods.join("\n")}\n${FENCE}`, types: [type] };
+  if (methods.length > 0) {
+    parts.push(`${header}\n${FENCE}go\n${methods.join("\n")}\n${FENCE}`);
+  }
+  return parts.length > 0 ? { text: parts.join("\n\n"), types: [type] } : undefined;
 }
 
 // `goShapeHooks` swaps ONE thing on the cross-file resolver, the def RENDERER
 // (a gopls hover is the declaration plus doc prose plus `// size=...` chrome).
 // The hover-field walk still runs the Rust default parser, which cannot read
-// Go's `Name Type` field order and derives nothing — a dark leg, not a wrong
+// Go's Name Type field order and derives nothing — a dark leg, not a wrong
 // one — while the method surface rides membersOfType, which no hook touches.
 // This pre-fill entry renders SIGNATURES only and never reads a def, so the
 // renderer reaches it through the FIM whole-block leg alone.
@@ -4129,10 +4232,28 @@ const GO_PREFILL_TYPE_CAP = PREFILL_TYPE_CAP === 4 ? 8 : PREFILL_TYPE_CAP;
 
 const GO_PREFILL_LANG: PrefillLang = {
   shippedRootCap: GO_PREFILL_TYPE_CAP,
-  // goShapeBlock renders the root's member list and nothing else, and the Go
-  // field parser is documented dark, so the gather has no edges to follow:
-  // depth, breadth and the total-type cap are all inert on this path.
-  dialReach: "signatures",
+  // WALK, as of session-v49 phase 1, and this line moving is the whole reason
+  // the phase 0 tripwire exists. `goShapeBlock` now runs `walkDataShape` over
+  // `goShapeHooks`, whose field parser reads a gopls struct hover, so every
+  // number the dial carries reaches this language the way it reaches Rust and
+  // TypeScript: depth and breadth bound the walk, the total-type cap bounds it,
+  // and the aggregate budget cuts the rendered defs.
+  //
+  // Changed in the SAME commit as the leg that lights it, because the channel
+  // line this drives printed "breadth, total types and depth buy nothing in
+  // this language" on every Go gesture, and a field walk makes that sentence
+  // false on the product's own channel with nothing else anywhere turning red.
+  dialReach: "walk",
+  // THE MISSING WIRE, and it had been missing since Go got hooks at all.
+  // Without this the pre-fill path resolved every Go type through the RUST
+  // defaults: the Rust field parser (which cannot read Name Type, so no
+  // fields), the Rust def renderer (which synthesises `struct X { }` — another
+  // language's syntax), the Rust std stop-set, and the Rust-only alias chase and
+  // trait recovery, neither of which can mean anything for Go. `goShapeHooks`
+  // reached the FIM whole-block leg and nothing else, which is why a scout
+  // driving `resolveCrossFileShape` with the hooks by hand saw a different Go
+  // from the one the product shipped.
+  shapeHooks: goShapeHooks,
   localTypeDefs: (fullText) => goLocalTypeDefinitions(fullText),
   candidates: goPrioritizedTypes,
   receiver: RECEIVER_RULES.go,
