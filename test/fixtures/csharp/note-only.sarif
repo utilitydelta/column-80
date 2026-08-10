@@ -1,0 +1,42 @@
+{
+ "$schema": "http://json.schemastore.org/sarif-2.1.0",
+ "version": "2.1.0",
+ "runs": [
+  {
+   "results": [
+    {
+     "ruleId": "CA1822",
+     "ruleIndex": 104,
+     "level": "note",
+     "message": {
+      "text": "Member 'N' does not access instance data and can be marked as static"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/csfix/clean/Ok.cs"
+        },
+        "region": {
+         "startLine": 1,
+         "startColumn": 47,
+         "endLine": 1,
+         "endColumn": 48
+        }
+       }
+      }
+     ],
+     "properties": {
+      "warningLevel": 1
+     }
+    }
+   ],
+   "tool": {
+    "driver": {
+     "name": "Microsoft (R) Visual C# Compiler"
+    }
+   },
+   "columnKind": "utf16CodeUnits"
+  }
+ ]
+}

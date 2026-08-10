@@ -1,0 +1,192 @@
+[
+  {
+    "glyph": 7,
+    "children": [
+      {
+        "glyph": 36,
+        "children": [],
+        "name": "X : int",
+        "detail": "X : int",
+        "kind": 8,
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 15
+          },
+          "end": {
+            "line": 4,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 15
+          },
+          "end": {
+            "line": 4,
+            "character": 16
+          }
+        }
+      },
+      {
+        "glyph": 36,
+        "children": [],
+        "name": "Y : int",
+        "detail": "Y : int",
+        "kind": 8,
+        "range": {
+          "start": {
+            "line": 5,
+            "character": 15
+          },
+          "end": {
+            "line": 5,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 5,
+            "character": 15
+          },
+          "end": {
+            "line": 5,
+            "character": 16
+          }
+        }
+      },
+      {
+        "glyph": 49,
+        "children": [],
+        "name": "Sum() : int",
+        "detail": "Sum() : int",
+        "kind": 6,
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 4
+          },
+          "end": {
+            "line": 6,
+            "character": 30
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 15
+          },
+          "end": {
+            "line": 6,
+            "character": 18
+          }
+        }
+      },
+      {
+        "glyph": 49,
+        "children": [],
+        "name": "ToString() : string",
+        "detail": "ToString() : string",
+        "kind": 6,
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 4
+          },
+          "end": {
+            "line": 7,
+            "character": 52
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 7,
+            "character": 27
+          },
+          "end": {
+            "line": 7,
+            "character": 35
+          }
+        }
+      },
+      {
+        "glyph": 49,
+        "children": [],
+        "name": "Equals(object?) : bool",
+        "detail": "Equals(object?) : bool",
+        "kind": 6,
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 52
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 25
+          },
+          "end": {
+            "line": 8,
+            "character": 31
+          }
+        }
+      },
+      {
+        "glyph": 49,
+        "children": [],
+        "name": "GetHashCode() : int",
+        "detail": "GetHashCode() : int",
+        "kind": 6,
+        "range": {
+          "start": {
+            "line": 9,
+            "character": 4
+          },
+          "end": {
+            "line": 9,
+            "character": 43
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 9,
+            "character": 24
+          },
+          "end": {
+            "line": 9,
+            "character": 35
+          }
+        }
+      }
+    ],
+    "name": "Point",
+    "detail": "Point",
+    "kind": 5,
+    "range": {
+      "start": {
+        "line": 2,
+        "character": 0
+      },
+      "end": {
+        "line": 10,
+        "character": 1
+      }
+    },
+    "selectionRange": {
+      "start": {
+        "line": 2,
+        "character": 6
+      },
+      "end": {
+        "line": 2,
+        "character": 11
+      }
+    }
+  }
+]

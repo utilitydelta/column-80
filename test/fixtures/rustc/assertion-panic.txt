@@ -1,0 +1,112 @@
+   Compiling repairbench v0.1.0 (/tmp/claude-1000/-home-utilitydelta-work/f94fc884-a35f-4be8-a9de-339c7c549f98/scratchpad/fixgen/rb-assert)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running unittests src/lib.rs (target/debug/deps/repairbench-13329f3e28904748)
+
+running 51 tests
+test task10::tests::longest_wins ... FAILED
+test task10::tests::empty_none ... FAILED
+test task10::tests::tie_takes_first ... FAILED
+test task11::tests::window_one_is_identity ... ok
+test task11::tests::warm_up_prefix ... ok
+test task11::tests::window_two ... ok
+test task11::tests::window_zero_empty ... ok
+test task12::tests::empty_zero ... ok
+test task12::tests::nested ... ok
+test task12::tests::unbalanced ... ok
+test task13::tests::blanks_skipped_whitespace_trimmed ... ok
+test task13::tests::first_bad_line_reported ... ok
+test task13::tests::negatives ... ok
+test task13::tests::sums ... ok
+test task14::tests::basic ... ok
+test task14::tests::empty_no_panic ... ok
+test task14::tests::k_equals_len_noop ... ok
+test task14::tests::k_wraps ... ok
+test task15::tests::counts_down_to_one ... FAILED
+test task15::tests::size_hint_exact ... FAILED
+test task15::tests::zero_is_empty ... FAILED
+test task1::tests::parses_each_unit ... FAILED
+test task1::tests::rejects_bad_input ... ok
+test task1::tests::zero_ok ... ok
+test task2::tests::duplicates_kept ... ok
+test task2::tests::interleaved ... ok
+test task2::tests::one_empty ... ok
+test task3::tests::absent_key_inserted_at_front ... ok
+test task3::tests::front_key_stays ... ok
+test task3::tests::moves_existing_to_front ... ok
+test task4::tests::basic_and_trimmed ... ok
+test task4::tests::empty_value_ok ... ok
+test task4::tests::first_equals_wins ... ok
+test task4::tests::rejects_missing_or_empty_key ... ok
+test task5::tests::basic_runs ... ok
+test task5::tests::long_run ... ok
+test task5::tests::single_and_empty ... ok
+test task6::tests::basic ... ok
+test task6::tests::empty_and_single ... ok
+test task6::tests::tie_takes_first ... ok
+test task7::tests::basic_with_tail ... ok
+test task7::tests::k_exceeds_len ... ok
+test task7::tests::k_zero_or_empty ... ok
+test task8::tests::empty_line ... ok
+test task8::tests::escaped_quote ... ok
+test task8::tests::plain_fields ... ok
+test task8::tests::quoted_comma ... ok
+test task9::tests::invalid ... ok
+test task9::tests::missing ... ok
+test task9::tests::ok_with_whitespace ... ok
+test task9::tests::zero ... ok
+
+failures:
+
+---- task10::tests::longest_wins stdout ----
+
+thread 'task10::tests::longest_wins' (3740746) panicked at src/task10.rs:6:63:
+not implemented
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- task10::tests::empty_none stdout ----
+
+thread 'task10::tests::empty_none' (3740745) panicked at src/task10.rs:6:63:
+not implemented
+
+---- task10::tests::tie_takes_first stdout ----
+
+thread 'task10::tests::tie_takes_first' (3740747) panicked at src/task10.rs:6:63:
+not implemented
+
+---- task15::tests::counts_down_to_one stdout ----
+
+thread 'task15::tests::counts_down_to_one' (3740763) panicked at src/task15.rs:8:41:
+not implemented
+
+---- task15::tests::size_hint_exact stdout ----
+
+thread 'task15::tests::size_hint_exact' (3740764) panicked at src/task15.rs:26:9:
+assertion `left == right` failed
+  left: (0, None)
+ right: (4, Some(4))
+
+---- task15::tests::zero_is_empty stdout ----
+
+thread 'task15::tests::zero_is_empty' (3740765) panicked at src/task15.rs:8:41:
+not implemented
+
+---- task1::tests::parses_each_unit stdout ----
+
+thread 'task1::tests::parses_each_unit' (3740766) panicked at src/task1.rs:27:9:
+assertion `left == right` failed
+  left: Some(305)
+ right: Some(300)
+
+
+failures:
+    task10::tests::empty_none
+    task10::tests::longest_wins
+    task10::tests::tie_takes_first
+    task15::tests::counts_down_to_one
+    task15::tests::size_hint_exact
+    task15::tests::zero_is_empty
+    task1::tests::parses_each_unit
+
+test result: FAILED. 44 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

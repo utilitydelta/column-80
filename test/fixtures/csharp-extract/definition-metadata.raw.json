@@ -1,0 +1,15 @@
+[
+  {
+    "uri": "file:///tmp/MetadataAsSource/8a561670b61f48848fe95eed568fe5bf/DecompilationMetadataAsSourceFileProvider/0edbd5503c994218af43fa565f73764f/JsonConvert.cs",
+    "range": {
+      "start": {
+        "line": 21,
+        "character": 20
+      },
+      "end": {
+        "line": 21,
+        "character": 31
+      }
+    }
+  }
+]

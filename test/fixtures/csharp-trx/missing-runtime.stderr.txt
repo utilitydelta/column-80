@@ -1,0 +1,14 @@
+Testhost process for source(s) '/home/utilitydelta/work/contoso/data-processing/dotnet/Contoso.ProcessingLogic.Tests/bin/Debug/net9.0/Contoso.ProcessingLogic.Tests.dll' exited with error: You must install or update .NET to run this application.
+App: /home/utilitydelta/work/contoso/data-processing/dotnet/Contoso.ProcessingLogic.Tests/bin/Debug/net9.0/testhost.dll
+Architecture: x64
+Framework: 'Microsoft.NETCore.App', version '9.0.0' (x64)
+.NET location: /usr/lib/dotnet/
+The following frameworks were found:
+  8.0.29 at [/usr/lib/dotnet/shared/Microsoft.NETCore.App]
+  10.0.10 at [/usr/lib/dotnet/shared/Microsoft.NETCore.App]
+Learn more:
+https://aka.ms/dotnet/app-launch-failed
+To install missing framework, download:
+https://aka.ms/dotnet-core-applaunch?framework=Microsoft.NETCore.App&framework_version=9.0.0&arch=x64&rid=ubuntu.24.04-x64&os=ubuntu.24.04
+. Please check the diagnostic logs for more information.
+Test Run Aborted.

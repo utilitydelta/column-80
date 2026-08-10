@@ -1,0 +1,14 @@
+# v7 scout oracle fixture: a self-contained, dependency-free crate whose types
+# are defined in a DIFFERENT file (domain.rs) from where they are consumed
+# (consumer.rs). The headless resolver-fidelity oracle points rust-analyzer here
+# and asserts the cross-file resolveStruct edge-resolver derives the shape in
+# expected-derivation.json. No external crates on purpose - the cross-crate leg
+# lives in rust-scratch/atlas, which must not be a dependency of an oracle.
+[package]
+name = "autocontext-scout-fixture"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "lib.rs"

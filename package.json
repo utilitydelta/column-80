@@ -1,0 +1,542 @@
+{
+  "name": "column-80",
+  "displayName": "Column 80",
+  "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
+  "version": "1.3.0",
+  "publisher": "utilitydelta",
+  "license": "Apache-2.0",
+  "icon": "media/icon.png",
+  "homepage": "https://column80.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/utilitydelta/column-80"
+  },
+  "bugs": {
+    "url": "https://github.com/utilitydelta/column-80/issues"
+  },
+  "keywords": [
+    "ollama",
+    "local",
+    "offline",
+    "autocomplete",
+    "code generation"
+  ],
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "column80.toggle",
+        "title": "Toggle FIM Autocomplete",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.generateFunction",
+        "title": "Generate Function Body",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.repairFunction",
+        "title": "Repair Function Body",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.generateTests",
+        "title": "Generate Tests (TDD)",
+        "category": "Column 80",
+        "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+      },
+      {
+        "command": "column80.runTddTests",
+        "title": "Run TDD Tests",
+        "category": "Column 80",
+        "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+      },
+      {
+        "command": "column80.selectHardwareTier",
+        "title": "Select Hardware Tier",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.contextAddFile",
+        "title": "Add File to Model Context",
+        "category": "Column 80",
+        "icon": "$(file-add)"
+      },
+      {
+        "command": "column80.contextAddSelection",
+        "title": "Add Selection to Model Context",
+        "category": "Column 80",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "column80.contextAddSymbol",
+        "title": "Add Enclosing Symbol to Model Context",
+        "category": "Column 80",
+        "icon": "$(symbol-method)"
+      },
+      {
+        "command": "column80.contextAddBlock",
+        "title": "Add Enclosing Block to Model Context",
+        "category": "Column 80",
+        "icon": "$(bracket)"
+      },
+      {
+        "command": "column80.contextRemove",
+        "title": "Remove Context Block",
+        "category": "Column 80",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "column80.contextClear",
+        "title": "Clear Model Context",
+        "category": "Column 80",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "column80.contextMoveUp",
+        "title": "Move Context Block Up",
+        "category": "Column 80",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "column80.contextMoveDown",
+        "title": "Move Context Block Down",
+        "category": "Column 80",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "column80.proposalAccept",
+        "title": "Accept Generated Body",
+        "category": "Column 80",
+        "icon": "$(check)"
+      },
+      {
+        "command": "column80.proposalReject",
+        "title": "Reject Generated Body",
+        "category": "Column 80",
+        "icon": "$(close)"
+      },
+      {
+        "command": "column80.dismissScopedGhost",
+        "title": "Dismiss Scoped Ghost",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.dumpCompletionItems",
+        "title": "Column 80: Dump Completion Items At Cursor (diagnostic)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "column80.proposalAccept",
+        "key": "enter",
+        "when": "resourceScheme == column80-fngen && editorTextFocus"
+      },
+      {
+        "command": "column80.proposalReject",
+        "key": "escape",
+        "when": "resourceScheme == column80-fngen && !findWidgetVisible && !editorHasSelection && !editorHoverVisible && !referenceSearchVisible"
+      },
+      {
+        "command": "column80.dismissScopedGhost",
+        "key": "escape",
+        "when": "editorTextFocus && !suggestWidgetVisible && column80.scopedGhost && !findWidgetVisible && !editorHasSelection && !editorHoverVisible && !referenceSearchVisible && !vim.active && !inSnippetMode && !editorHasMultipleSelections && !inlineChatVisible && !editorReadonly && !inDebugRepl && !parameterHintsVisible"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "column80.contextBlocks",
+          "name": "Model Context",
+          "contextualTitle": "Column 80: Model Context"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "column80.contextBlocks",
+        "contents": "The model sees only what you add here. Nothing is included automatically.\n[Add Active File](command:column80.contextAddFile)\n[Add Selection](command:column80.contextAddSelection)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "column80.proposalAccept",
+          "when": "resourceScheme == column80-fngen",
+          "group": "navigation@1"
+        },
+        {
+          "command": "column80.proposalReject",
+          "when": "resourceScheme == column80-fngen",
+          "group": "navigation@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "column80.contextAddFile",
+          "when": "view == column80.contextBlocks",
+          "group": "navigation@1"
+        },
+        {
+          "command": "column80.contextAddSelection",
+          "when": "view == column80.contextBlocks",
+          "group": "navigation@2"
+        },
+        {
+          "command": "column80.contextClear",
+          "when": "view == column80.contextBlocks",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "column80.contextMoveUp",
+          "when": "view == column80.contextBlocks",
+          "group": "inline@1"
+        },
+        {
+          "command": "column80.contextMoveDown",
+          "when": "view == column80.contextBlocks",
+          "group": "inline@2"
+        },
+        {
+          "command": "column80.contextRemove",
+          "when": "view == column80.contextBlocks",
+          "group": "inline@3"
+        },
+        {
+          "command": "column80.contextMoveUp",
+          "when": "view == column80.contextBlocks",
+          "group": "1_reorder@1"
+        },
+        {
+          "command": "column80.contextMoveDown",
+          "when": "view == column80.contextBlocks",
+          "group": "1_reorder@2"
+        },
+        {
+          "command": "column80.contextRemove",
+          "when": "view == column80.contextBlocks",
+          "group": "9_remove@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "column80.generateTests",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        },
+        {
+          "command": "column80.runTddTests",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        },
+        {
+          "command": "column80.contextRemove",
+          "when": "false"
+        },
+        {
+          "command": "column80.contextMoveUp",
+          "when": "false"
+        },
+        {
+          "command": "column80.contextMoveDown",
+          "when": "false"
+        },
+        {
+          "command": "column80.proposalAccept",
+          "when": "resourceScheme == column80-fngen"
+        },
+        {
+          "command": "column80.proposalReject",
+          "when": "resourceScheme == column80-fngen"
+        },
+        {
+          "command": "column80.dismissScopedGhost",
+          "when": "false"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "column80.contextAddSelection",
+          "when": "editorHasSelection",
+          "group": "1_column80context@1"
+        },
+        {
+          "command": "column80.contextAddSymbol",
+          "group": "1_column80context@2"
+        },
+        {
+          "command": "column80.contextAddBlock",
+          "group": "1_column80context@3"
+        },
+        {
+          "command": "column80.contextAddFile",
+          "group": "1_column80context@4"
+        },
+        {
+          "submenu": "column80.editorContext",
+          "group": "1_modification@100",
+          "when": "resourceScheme == file || resourceScheme == untitled || resourceScheme == vscode-notebook-cell"
+        }
+      ],
+      "column80.editorContext": [
+        {
+          "command": "column80.generateFunction",
+          "group": "2_generate@1",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        },
+        {
+          "command": "column80.repairFunction",
+          "group": "2_generate@2",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        },
+        {
+          "command": "column80.generateTests",
+          "group": "2_generate@3",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        },
+        {
+          "command": "column80.runTddTests",
+          "group": "2_generate@4",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "column80.contextAddFile",
+          "group": "1_column80context@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "column80.contextAddFile",
+          "group": "1_column80context@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Column 80",
+      "properties": {
+        "column80.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable local FIM autocomplete. On by default; it needs the FIM model (offered on first run) and a running ollama. With neither present it stays silent - no error, just no ghost text."
+        },
+        "column80.fimUsageExamples": {
+          "type": "boolean",
+          "default": true,
+          "description": "At a member site whose name your buffer already spells, show the model real call sites of that member from your own workspace, under the member signatures. Found through your language server's find-references, so aliases and re-exports are seen through, and never through a text search. Measured on 40 real Rust member sites: continuations that do not type-check drop from 8 in 40 to 3. It sits behind the same 50ms budget as the rest of the injection, so a slow answer costs nothing and simply does not appear; in C# it will rarely appear at all, because Roslyn's find-references has a fixed half-second floor."
+        },
+        "column80.fimLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra VS Code language ids to serve FIM in, on top of the ones Column 80 understands (rust, csharp, python, go, typescript, typescriptreact, javascript, javascriptreact). FIM runs on code only: every other language, prose and data formats included, is dark before any model call. This list widens that and never narrows it - use it if you write C, C++, Java, Kotlin or any other language the product has no oracle or extractor for. Language ids, not file extensions ('cpp', not '.cpp'). One caveat, said on the output channel when it applies: the rule that keeps ghost text out of your comments needs the language's comment syntax, and a language the comment table has never met (zig, f#, ocaml and similar) is served with that protection off."
+        },
+        "column80.apiBase": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Base URL of the local Ollama server."
+        },
+        "column80.fimModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:1.5b-base",
+          "description": "Ollama model tag for FIM completion. Must be a FIM-capable base model, not -instruct."
+        },
+        "column80.fnGenModel": {
+          "type": "string",
+          "default": "qwen3-coder:30b",
+          "description": "Model for per-function generation. An instruct/chat model. For the local (ollama) backend this is an ollama tag; for a cloud provider set it to that provider's model id (e.g. an OpenAI, Claude, Grok, or Gemini id from their docs)."
+        },
+        "column80.fnGenProvider": {
+          "type": "string",
+          "enum": [
+            "ollama",
+            "claude-code",
+            "openai",
+            "anthropic",
+            "xai",
+            "gemini",
+            "openai-compatible"
+          ],
+          "default": "ollama",
+          "description": "Backend for per-function generation. 'ollama' is the default local, offline, first path. The others send your prompt (signature, doc comment, selected context, and injected crate surface) off the machine — 'claude-code' through your installed Claude Code CLI on your subscription, the rest to a cloud frontier model over an OpenAI-compatible API with an API key. FIM tab-completion is always local regardless of this setting.",
+          "enumDescriptions": [
+            "Local ollama. Offline after the one-time model pull. The default.",
+            "Claude Code. Runs your installed `claude` CLI headless and bills your Claude subscription, no API key. Your prompt leaves the machine. Every call also carries the CLI's own agent harness on top of your prompt. Its built-in tools are disabled, which measured 23,217 tokens of context down to 3,471 on claude 2.1.224 with identical output. Set fnGenModel to a Claude model id; left at the ollama default the CLI picks its own, which measured as Opus. FIM stays local.",
+            "OpenAI. Needs cloudApiKey and an OpenAI model id in fnGenModel.",
+            "Anthropic (Claude), over its native Messages API. Needs cloudApiKey and a Claude model id in fnGenModel. This is the one cloud provider that can cache your context blocks: one breakpoint is placed after them, with a one-hour lifetime, so a second generation against the same blocks reads them instead of re-sending them.",
+            "xAI (Grok). Needs cloudApiKey and a Grok model id in fnGenModel.",
+            "Google (Gemini), via its OpenAI-compatible endpoint. Needs cloudApiKey and a Gemini model id in fnGenModel.",
+            "Any other OpenAI-compatible server (OpenRouter, Groq, DeepSeek, a local vLLM). Needs cloudApiBase and usually cloudApiKey."
+          ]
+        },
+        "column80.cloudApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for the cloud fnGenProvider. Sent as a Bearer token, except on 'anthropic', whose native API takes it as x-api-key. Ignored by the local 'ollama' backend and by 'claude-code', which authenticates through the CLI's own subscription login. Leave empty and function generation stays disabled with a message, never a failed request."
+        },
+        "column80.cloudApiBase": {
+          "type": "string",
+          "default": "",
+          "description": "Endpoint override for the cloud backend. Required for the 'openai-compatible' provider (the full base URL up to /chat/completions, e.g. https://openrouter.ai/api/v1). Optional for the named providers, whose base URL is built in; set it only to point at a proxy or a moved host. On 'anthropic' it is the root /messages hangs off. Ignored by 'claude-code', which has no endpoint."
+        },
+        "column80.fnGenFallbackModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:14b-instruct-q4_K_M",
+          "description": "Function-generation model for the 16gb-low-ram tier (dense, ~9GB VRAM, no carve needed)."
+        },
+        "column80.hardwareTier": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "24gb",
+            "16gb-large-ram",
+            "16gb-low-ram",
+            "below-12gb"
+          ],
+          "default": "auto",
+          "description": "Hardware tier for model selection and the VRAM carve. 'auto' probes VRAM and RAM on activation; a tier id overrides the probe.",
+          "enumDescriptions": [
+            "Probe nvidia-smi and system RAM, pick the tier automatically.",
+            "24GB+ VRAM: both models fully GPU-resident (provisional, unvalidated).",
+            "16GB VRAM, 32GB+ RAM: 30b layer-capped at num_gpu=30 beside a fully resident FIM model (the reference config).",
+            "12-16GB VRAM or low RAM: dense 14b function generation, no carve needed.",
+            "Below 12GB or no GPU: FIM completion only, function generation disabled."
+          ]
+        },
+        "column80.maxTokens": {
+          "type": "number",
+          "default": 256,
+          "description": "Maximum tokens per completion (num_predict)."
+        },
+        "column80.temperature": {
+          "type": "number",
+          "default": 0.01,
+          "description": "Sampling temperature. Low values keep completions stable."
+        },
+        "column80.debounceMs": {
+          "type": "number",
+          "default": 150,
+          "description": "Delay after the last keystroke before requesting a completion."
+        },
+        "column80.prefixChars": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 10,
+          "description": "Characters of context kept before the cursor. Below 10 the member-site gate can mis-read the typed partial, so the schema floors it there."
+        },
+        "column80.suffixChars": {
+          "type": "number",
+          "default": 1000,
+          "description": "Characters of context kept after the cursor."
+        },
+        "column80.cacheCapacity": {
+          "type": "number",
+          "default": 100,
+          "minimum": 0,
+          "description": "Completions kept in the FIM cache. Set to 0 to disable caching entirely, so every keystroke goes to the model: slower, but it makes each keystroke's behaviour observable on its own rather than through whatever an earlier one cached."
+        },
+        "column80.minGhostChars": {
+          "type": "number",
+          "default": 8,
+          "minimum": 0,
+          "description": "Shortest ghost worth showing, in characters. JetBrains' full-line completion uses 8: a three-character suggestion costs a full review for almost nothing. Measured over 750 real sites here, the floor refuses 7 of 710 served ghosts (1.0%) and none of them matched what the developer went on to write. A ghost that ends on a block opener, which is what a signature completion looks like, is never refused on length. Set to 0 to show every ghost."
+        },
+        "column80.minGhostAlnum": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "Alphanumeric characters a ghost must carry to be shown. JetBrains' number, and the leg that refuses pure punctuation like `);`. Set to 0 to judge length alone."
+        },
+        "column80.repairEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "When an accepted generation fails cargo check, let the function-generation model propose up to two gated repair rounds through the normal preview. Off: diagnostics are surfaced only."
+        },
+        "column80.repairUsageWindows": {
+          "type": "boolean",
+          "default": false,
+          "description": "Inject real call sites of the members a failing function calls into its repair rounds. Off by default because it lost its measurement (session-v30/measure-p5.md): it scored no better than the control overall, nothing at all on the cases it was built for, and it cost the winning surface six passes and 2.6s per round."
+        },
+        "column80.compilerDirectedInjection": {
+          "type": "boolean",
+          "default": true,
+          "description": "v2: resolve the real crate API surface from your running rust-analyzer and inject it into repair rounds when a generation hallucinates a method or type, and qualify missing imports in place. Visible in the preview and always overridable. Off returns v1 repair (diagnostics only)."
+        },
+        "column80.fimAlternatives": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Completions generated on a MANUAL inline-suggest trigger (Alt+\\). Cycle them with Alt+] / Alt+[. Automatic ghost text always generates one - the latency bar is not for sale. Extras sample at a floor temperature and dedupe, so you may see fewer than asked. The gesture waits for the SLOWEST run before showing anything, and on an ollama with num_parallel=1 (common for large models) the runs serialize - expect roughly this many times one generation."
+        },
+        "column80.fimMemberGate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Suppress member-site ghost text whose identifier is not among the receiver's RESOLVED members (TypeScript only, and only when the member list is non-empty - untyped receivers and index-signature types are never gated). Turn off if it eats suggestions you wanted; the channel logs every drop."
+        },
+        "column80.logPrompts": {
+          "type": "boolean",
+          "default": false,
+          "description": "Debug: dump the full assembled prompt to the output channel on every function generation, repair round, AND FIM completion, between prompt-begin/prompt-end markers. Shows exactly what context the model was given, including the injected API surface, byte-for-byte. FIM fires per keystroke so this is very verbose; leave off for normal use."
+        },
+        "column80.injectedSurface": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "minimal",
+            "generous"
+          ],
+          "default": "auto",
+          "description": "How much type detail to inject into the function-generation prompt. Before generating, the extension resolves the types your signature and comments name and puts their real shapes in the prompt, which is what stops the model inventing method names. Each injected type costs roughly 765 prompt bytes. 'auto' is tuned for a small local model; raise it if you point the extension at a frontier model or a large local one with room to spare. This governs prompt size only and never the number of language-server lookups, so turning it up does not slow the editor. The split between languages stays in the extension: Rust names about 20 candidate types per function where C# names under 2, and the right budget differs accordingly.",
+          "enumDescriptions": [
+            "The measured default, per language. Tuned for a small local model.",
+            "Half the default. For a tight context window, or when you would rather the model leaned on the file it can already see.",
+            "As much as the resolve budget allows, currently double the default. For a frontier model or a large local one, where the context window is not the binding constraint."
+          ]
+        }
+      }
+    },
+    "submenus": [
+      {
+        "id": "column80.editorContext",
+        "label": "Column 80"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:live",
+    "test:unit": "SKIP_LIVE=1 node --test 'test/**/*.test.cjs' 'test/**/*.test.mjs'",
+    "test:vscode": "npm run build && vscode-test --config test-vscode/.vscode-test.mjs",
+    "test:vscode:ci": "npm run build && xvfb-run -a vscode-test --config test-vscode/.vscode-test.mjs",
+    "test:live": "node --test --test-concurrency=1 test/blind-integration-live.test.cjs test/impl-integration-live.test.cjs test/blind2-integration-live.test.cjs test/impl2-integration-live.test.cjs test/blind4-integration-live.test.cjs test/impl4-integration-live.test.cjs test/blind5-integration-live.test.cjs test/impl5-integration-live.test.cjs test/blind6-ra-live.test.cjs test/blind7-loop-live.test.cjs test/impl8-qualify-live.test.cjs test/impl-v3-structgen-live.test.cjs test/impl-v8-testrung-live.test.cjs test/blind-v10-oracle-live.test.cjs test/impl-v10-oracle-live.test.cjs test/blind-v10-extractor-live.test.cjs test/impl-v10-csextractor-live.test.cjs test/blind-v10-gestures-live.test.cjs test/blind-goalmd-csworkspacesymbol-live.test.cjs test/blind-goalmd-csusing-live.test.cjs test/blind-goalmd-csrecursiveshape-live.test.cjs test/impl-v13-bodyonly-live.test.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "pyright": "^1.1.411"
+  }
+}

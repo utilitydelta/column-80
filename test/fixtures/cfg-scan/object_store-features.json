@@ -1,0 +1,131 @@
+{
+ "aws": [
+  "aws-base",
+  "reqwest",
+  "reqwest/rustls",
+  "aws-lc-rs"
+ ],
+ "aws-base": [
+  "cloud-base",
+  "crc-fast",
+  "md-5"
+ ],
+ "aws-lc-rs": [
+  "dep:aws-lc-rs",
+  "rustls-pki-types"
+ ],
+ "azure": [
+  "azure-base",
+  "reqwest",
+  "reqwest/rustls",
+  "aws-lc-rs"
+ ],
+ "azure-base": [
+  "cloud-base",
+  "httparse"
+ ],
+ "base64": [
+  "dep:base64"
+ ],
+ "cloud-base": [
+  "serde",
+  "serde_json",
+  "quick-xml",
+  "hyper",
+  "chrono/serde",
+  "base64",
+  "rand",
+  "http-body-util",
+  "form_urlencoded",
+  "serde_urlencoded",
+  "tokio"
+ ],
+ "crc-fast": [
+  "dep:crc-fast"
+ ],
+ "default": [
+  "fs"
+ ],
+ "form_urlencoded": [
+  "dep:form_urlencoded"
+ ],
+ "fs": [
+  "walkdir",
+  "tokio",
+  "nix",
+  "windows-sys"
+ ],
+ "gcp": [
+  "gcp-base",
+  "reqwest",
+  "reqwest/rustls",
+  "aws-lc-rs"
+ ],
+ "gcp-base": [
+  "cloud-base"
+ ],
+ "http": [
+  "http-base",
+  "reqwest",
+  "reqwest/rustls",
+  "aws-lc-rs"
+ ],
+ "http-base": [
+  "cloud-base"
+ ],
+ "http-body-util": [
+  "dep:http-body-util"
+ ],
+ "httparse": [
+  "dep:httparse"
+ ],
+ "hyper": [
+  "dep:hyper"
+ ],
+ "integration": [
+  "rand",
+  "tokio"
+ ],
+ "md-5": [
+  "dep:md-5"
+ ],
+ "nix": [
+  "dep:nix"
+ ],
+ "quick-xml": [
+  "dep:quick-xml"
+ ],
+ "rand": [
+  "dep:rand"
+ ],
+ "reqwest": [
+  "dep:reqwest",
+  "reqwest/stream"
+ ],
+ "ring": [
+  "dep:ring",
+  "rustls-pki-types"
+ ],
+ "rustls-pki-types": [
+  "dep:rustls-pki-types"
+ ],
+ "serde": [
+  "dep:serde"
+ ],
+ "serde_json": [
+  "dep:serde_json"
+ ],
+ "serde_urlencoded": [
+  "dep:serde_urlencoded"
+ ],
+ "tokio": [
+  "dep:tokio",
+  "dep:tracing"
+ ],
+ "walkdir": [
+  "dep:walkdir"
+ ],
+ "windows-sys": [
+  "dep:windows-sys"
+ ]
+}

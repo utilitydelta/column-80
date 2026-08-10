@@ -1,0 +1,214 @@
+[
+  {
+    "label": "SerializeObject",
+    "kind": 2,
+    "documentation": {
+      "kind": "plaintext",
+      "value": "string JsonConvert.SerializeObject(object? value) (+ 7 overloads)\r\nSerializes the specified object to a JSON string."
+    },
+    "sortText": "0014",
+    "insertTextFormat": 1,
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 27
+        },
+        "end": {
+          "line": 11,
+          "character": 27
+        }
+      },
+      "newText": "SerializeObject"
+    },
+    "commitCharacters": [],
+    "data": {
+      "ResultId": 0,
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      }
+    }
+  },
+  {
+    "label": "DefaultSettings",
+    "kind": 10,
+    "documentation": {
+      "kind": "plaintext",
+      "value": "Func<JsonSerializerSettings>? JsonConvert.DefaultSettings { get; set; }\r\nGets or sets a function that creates default JsonSerializerSettings. Default settings are automatically used by serialization methods on JsonConvert, and Newtonsoft.Json.Linq.JToken.ToObject<T>() and Newtonsoft.Json.Linq.JToken.FromObject(object) on Newtonsoft.Json.Linq.JToken. To serialize without using any default settings create a JsonSerializer with JsonSerializer.Create()."
+    },
+    "sortText": "0000",
+    "insertTextFormat": 1,
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 27
+        },
+        "end": {
+          "line": 11,
+          "character": 27
+        }
+      },
+      "newText": "DefaultSettings"
+    },
+    "commitCharacters": [],
+    "data": {
+      "ResultId": 0,
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      }
+    }
+  },
+  {
+    "label": "DeserializeAnonymousType<>",
+    "kind": 2,
+    "documentation": {
+      "kind": "plaintext",
+      "value": "T? JsonConvert.DeserializeAnonymousType<T>(string value, T anonymousTypeObject) (+ 1 generic overload)\r\nDeserializes the JSON to the given anonymous type."
+    },
+    "sortText": "0001DeserializeAnonymousType",
+    "filterText": "DeserializeAnonymousType",
+    "insertTextFormat": 1,
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 27
+        },
+        "end": {
+          "line": 11,
+          "character": 27
+        }
+      },
+      "newText": "DeserializeAnonymousType"
+    },
+    "commitCharacters": [],
+    "data": {
+      "ResultId": 0,
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      }
+    }
+  },
+  {
+    "label": "DeserializeObject",
+    "kind": 2,
+    "documentation": {
+      "kind": "plaintext",
+      "value": "object? JsonConvert.DeserializeObject(string value) (+ 4 overloads)\r\nDeserializes the JSON to a .NET object."
+    },
+    "sortText": "0002",
+    "insertTextFormat": 1,
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 27
+        },
+        "end": {
+          "line": 11,
+          "character": 27
+        }
+      },
+      "newText": "DeserializeObject"
+    },
+    "commitCharacters": [],
+    "data": {
+      "ResultId": 0,
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      }
+    }
+  },
+  {
+    "label": "DeserializeObject<>",
+    "kind": 2,
+    "documentation": {
+      "kind": "plaintext",
+      "value": "T? JsonConvert.DeserializeObject<T>(string value) (+ 2 generic overloads)\r\nDeserializes the JSON to the specified .NET type."
+    },
+    "sortText": "0003DeserializeObject",
+    "filterText": "DeserializeObject",
+    "insertTextFormat": 1,
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 27
+        },
+        "end": {
+          "line": 11,
+          "character": 27
+        }
+      },
+      "newText": "DeserializeObject"
+    },
+    "commitCharacters": [],
+    "data": {
+      "ResultId": 0,
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      }
+    }
+  },
+  {
+    "label": "DeserializeXmlNode",
+    "kind": 2,
+    "documentation": {
+      "kind": "plaintext",
+      "value": "System.Xml.XmlDocument? JsonConvert.DeserializeXmlNode(string value) (+ 3 overloads)\r\nDeserializes the System.Xml.XmlNode from a JSON string."
+    },
+    "sortText": "0004",
+    "insertTextFormat": 1,
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 27
+        },
+        "end": {
+          "line": 11,
+          "character": 27
+        }
+      },
+      "newText": "DeserializeXmlNode"
+    },
+    "commitCharacters": [],
+    "data": {
+      "ResultId": 0,
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      }
+    }
+  },
+  {
+    "label": "DeserializeXNode",
+    "kind": 2,
+    "documentation": {
+      "kind": "plaintext",
+      "value": "System.Xml.Linq.XDocument? JsonConvert.DeserializeXNode(string value) (+ 3 overloads)\r\nDeserializes the System.Xml.Linq.XNode from a JSON string."
+    },
+    "sortText": "0005",
+    "insertTextFormat": 1,
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 11,
+          "character": 27
+        },
+        "end": {
+          "line": 11,
+          "character": 27
+        }
+      },
+      "newText": "DeserializeXNode"
+    },
+    "commitCharacters": [],
+    "data": {
+      "ResultId": 0,
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      }
+    }
+  }
+]

@@ -1,0 +1,16 @@
+Data shape of `DecodeError` (fields and types, nested):
+```rust
+pub enum DecodeError {
+    InvalidByte(usize, u8),
+    InvalidLength(usize),
+    InvalidLastSymbol(usize, u8),
+    InvalidPadding,
+}
+```
+
+API surface for `DecodeError` (real signatures, use these exact names, do not invent):
+```
+fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+```
+
+Call ONLY methods and constructors of `DecodeError` that appear in the API surface above. Do not invent methods beyond that surface. Everything else in the file is unaffected by this: calls on other values in scope, on the receiver's own fields, on sibling functions, and on standard-library types stay allowed. If a builder chain ends at a method returning the target type, that value IS the target; do not append any further call.

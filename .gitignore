@@ -1,0 +1,12 @@
+prior-art/spike-harness/__pycache__/
+prior-art/spike-harness/repairbench/target/
+test/fixtures/extraction/target/
+node_modules/
+dist/
+test-vscode/.build/
+.vscode-test/
+session*/
+.pytest_cache/
+*.vsix
+session-v45/census-tool/bin/
+session-v45/census-tool/obj/

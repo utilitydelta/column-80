@@ -1,0 +1,9 @@
+/usr/lib/dotnet/sdk/10.0.110/Sdks/Microsoft.NET.Sdk/targets/Microsoft.PackageDependencyResolution.targets(266,5): error NETSDK1004: Assets file '/tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/csfix/unrestored/obj/project.assets.json' not found. Run a NuGet package restore to generate this file. [/tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/csfix/unrestored/Unr.csproj]
+
+Build FAILED.
+
+/usr/lib/dotnet/sdk/10.0.110/Sdks/Microsoft.NET.Sdk/targets/Microsoft.PackageDependencyResolution.targets(266,5): error NETSDK1004: Assets file '/tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/csfix/unrestored/obj/project.assets.json' not found. Run a NuGet package restore to generate this file. [/tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/csfix/unrestored/Unr.csproj]
+    0 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:00.23

@@ -1,0 +1,529 @@
+[
+  {
+    "title": "using Newtonsoft.Json.Linq;",
+    "kind": "quickfix",
+    "diagnostics": [],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "version": null,
+            "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              },
+              "newText": "using Newtonsoft.Json.Linq;\n"
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "UniqueIdentifier": "using Newtonsoft.Json.Linq;",
+      "CustomTags": [
+        "7170d46e-1d51-459b-84a8-eed93868e65e",
+        "AddImport"
+      ],
+      "Range": {
+        "start": {
+          "line": 16,
+          "character": 20
+        },
+        "end": {
+          "line": 16,
+          "character": 27
+        }
+      },
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      },
+      "CodeActionPath": [
+        "using Newtonsoft.Json.Linq;"
+      ],
+      "NestedCodeActions": []
+    }
+  },
+  {
+    "title": "Extract method",
+    "kind": "refactor.extract",
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "version": null,
+            "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 16,
+                  "character": 16
+                },
+                "end": {
+                  "line": 16,
+                  "character": 16
+                }
+              },
+              "newText": "GetO();\n    }\n\n    private static JObject GetO()\n    {\n        return "
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "UniqueIdentifier": "Extract method",
+      "CustomTags": [
+        "Extract Method Code Action Provider"
+      ],
+      "Range": {
+        "start": {
+          "line": 16,
+          "character": 20
+        },
+        "end": {
+          "line": 16,
+          "character": 27
+        }
+      },
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      },
+      "CodeActionPath": [
+        "Extract method"
+      ],
+      "NestedCodeActions": []
+    }
+  },
+  {
+    "title": "Extract local function",
+    "kind": "refactor.extract",
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "version": null,
+            "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 16,
+                  "character": 16
+                },
+                "end": {
+                  "line": 16,
+                  "character": 30
+                }
+              },
+              "newText": "GetO();\n\n        static JObject GetO()\n        {\n            return new JObject();\n        }"
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "UniqueIdentifier": "Extract local function",
+      "CustomTags": [
+        "Extract Method Code Action Provider"
+      ],
+      "Range": {
+        "start": {
+          "line": 16,
+          "character": 20
+        },
+        "end": {
+          "line": 16,
+          "character": 27
+        }
+      },
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      },
+      "CodeActionPath": [
+        "Extract local function"
+      ],
+      "NestedCodeActions": []
+    }
+  },
+  {
+    "title": "Newtonsoft.Json.Linq.JObject",
+    "kind": "quickfix",
+    "diagnostics": [],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "version": null,
+            "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 16,
+                  "character": 20
+                },
+                "end": {
+                  "line": 16,
+                  "character": 20
+                }
+              },
+              "newText": "Newtonsoft.Json.Linq."
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "UniqueIdentifier": "Newtonsoft.Json.Linq.JObject",
+      "CustomTags": [
+        "FullyQualify"
+      ],
+      "Range": {
+        "start": {
+          "line": 16,
+          "character": 20
+        },
+        "end": {
+          "line": 16,
+          "character": 27
+        }
+      },
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      },
+      "CodeActionPath": [
+        "Newtonsoft.Json.Linq.JObject"
+      ],
+      "NestedCodeActions": []
+    }
+  },
+  {
+    "title": "Generate type 'JObject'",
+    "kind": "quickfix",
+    "command": {
+      "title": "Generate type 'JObject'",
+      "command": "roslyn.client.nestedCodeAction",
+      "arguments": [
+        {
+          "UniqueIdentifier": "Generate type 'JObject'",
+          "CustomTags": [
+            "GenerateType"
+          ],
+          "Range": {
+            "start": {
+              "line": 16,
+              "character": 20
+            },
+            "end": {
+              "line": 16,
+              "character": 27
+            }
+          },
+          "TextDocument": {
+            "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+          },
+          "CodeActionPath": [
+            "Generate type 'JObject'"
+          ],
+          "NestedCodeActions": [
+            {
+              "title": "Generate class 'JObject'",
+              "kind": "quickfix",
+              "data": {
+                "UniqueIdentifier": "Generate class 'JObject'",
+                "CustomTags": [],
+                "Range": {
+                  "start": {
+                    "line": 16,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 27
+                  }
+                },
+                "TextDocument": {
+                  "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+                },
+                "CodeActionPath": [
+                  "Generate type 'JObject'",
+                  "Generate class 'JObject'"
+                ]
+              }
+            },
+            {
+              "title": "Generate nested class 'JObject'",
+              "kind": "quickfix",
+              "data": {
+                "UniqueIdentifier": "Generate nested class 'JObject'",
+                "CustomTags": [],
+                "Range": {
+                  "start": {
+                    "line": 16,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 27
+                  }
+                },
+                "TextDocument": {
+                  "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+                },
+                "CodeActionPath": [
+                  "Generate type 'JObject'",
+                  "Generate nested class 'JObject'"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "UniqueIdentifier": "Generate type 'JObject'",
+      "CustomTags": [
+        "GenerateType"
+      ],
+      "Range": {
+        "start": {
+          "line": 16,
+          "character": 20
+        },
+        "end": {
+          "line": 16,
+          "character": 27
+        }
+      },
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      },
+      "CodeActionPath": [
+        "Generate type 'JObject'"
+      ],
+      "NestedCodeActions": [
+        {
+          "title": "Generate class 'JObject'",
+          "kind": "quickfix",
+          "data": {
+            "UniqueIdentifier": "Generate class 'JObject'",
+            "CustomTags": [],
+            "Range": {
+              "start": {
+                "line": 16,
+                "character": 20
+              },
+              "end": {
+                "line": 16,
+                "character": 27
+              }
+            },
+            "TextDocument": {
+              "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+            },
+            "CodeActionPath": [
+              "Generate type 'JObject'",
+              "Generate class 'JObject'"
+            ]
+          }
+        },
+        {
+          "title": "Generate nested class 'JObject'",
+          "kind": "quickfix",
+          "data": {
+            "UniqueIdentifier": "Generate nested class 'JObject'",
+            "CustomTags": [],
+            "Range": {
+              "start": {
+                "line": 16,
+                "character": 20
+              },
+              "end": {
+                "line": 16,
+                "character": 27
+              }
+            },
+            "TextDocument": {
+              "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+            },
+            "CodeActionPath": [
+              "Generate type 'JObject'",
+              "Generate nested class 'JObject'"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "title": "Fix typo 'JObject'",
+    "kind": "quickfix",
+    "command": {
+      "title": "Fix typo 'JObject'",
+      "command": "roslyn.client.nestedCodeAction",
+      "arguments": [
+        {
+          "UniqueIdentifier": "Fix typo 'JObject'",
+          "CustomTags": [
+            "SpellCheck"
+          ],
+          "Range": {
+            "start": {
+              "line": 16,
+              "character": 20
+            },
+            "end": {
+              "line": 16,
+              "character": 27
+            }
+          },
+          "TextDocument": {
+            "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+          },
+          "CodeActionPath": [
+            "Fix typo 'JObject'"
+          ],
+          "NestedCodeActions": [
+            {
+              "title": "Change 'JObject' to 'object'.",
+              "kind": "quickfix",
+              "data": {
+                "UniqueIdentifier": "Change 'JObject' to 'object'.",
+                "CustomTags": [],
+                "Range": {
+                  "start": {
+                    "line": 16,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 27
+                  }
+                },
+                "TextDocument": {
+                  "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+                },
+                "CodeActionPath": [
+                  "Fix typo 'JObject'",
+                  "Change 'JObject' to 'object'."
+                ]
+              }
+            },
+            {
+              "title": "Change 'JObject' to 'Object'.",
+              "kind": "quickfix",
+              "data": {
+                "UniqueIdentifier": "Change 'JObject' to 'Object'.",
+                "CustomTags": [],
+                "Range": {
+                  "start": {
+                    "line": 16,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 27
+                  }
+                },
+                "TextDocument": {
+                  "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+                },
+                "CodeActionPath": [
+                  "Fix typo 'JObject'",
+                  "Change 'JObject' to 'Object'."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "UniqueIdentifier": "Fix typo 'JObject'",
+      "CustomTags": [
+        "SpellCheck"
+      ],
+      "Range": {
+        "start": {
+          "line": 16,
+          "character": 20
+        },
+        "end": {
+          "line": 16,
+          "character": 27
+        }
+      },
+      "TextDocument": {
+        "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+      },
+      "CodeActionPath": [
+        "Fix typo 'JObject'"
+      ],
+      "NestedCodeActions": [
+        {
+          "title": "Change 'JObject' to 'object'.",
+          "kind": "quickfix",
+          "data": {
+            "UniqueIdentifier": "Change 'JObject' to 'object'.",
+            "CustomTags": [],
+            "Range": {
+              "start": {
+                "line": 16,
+                "character": 20
+              },
+              "end": {
+                "line": 16,
+                "character": 27
+              }
+            },
+            "TextDocument": {
+              "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+            },
+            "CodeActionPath": [
+              "Fix typo 'JObject'",
+              "Change 'JObject' to 'object'."
+            ]
+          }
+        },
+        {
+          "title": "Change 'JObject' to 'Object'.",
+          "kind": "quickfix",
+          "data": {
+            "UniqueIdentifier": "Change 'JObject' to 'Object'.",
+            "CustomTags": [],
+            "Range": {
+              "start": {
+                "line": 16,
+                "character": 20
+              },
+              "end": {
+                "line": 16,
+                "character": 27
+              }
+            },
+            "TextDocument": {
+              "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+            },
+            "CodeActionPath": [
+              "Fix typo 'JObject'",
+              "Change 'JObject' to 'Object'."
+            ]
+          }
+        }
+      ]
+    }
+  }
+]

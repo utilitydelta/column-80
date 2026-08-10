@@ -1,0 +1,1 @@
+CSC : error CS8630: Invalid 'nullable' value: 'Enable' for C# 7.3. Please use language version '8.0' or greater. [/home/utilitydelta/work/contoso/data-processing/dotnet/Contoso.DataModel/Contoso.DataModel.csproj]

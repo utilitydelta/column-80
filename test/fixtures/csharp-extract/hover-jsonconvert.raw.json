@@ -1,0 +1,16 @@
+{
+  "contents": {
+    "kind": "markdown",
+    "value": "```csharp\nclass Newtonsoft.Json.JsonConvert\n```\n  \nProvides methods for converting between \\.NET types and JSON types\\.  \n"
+  },
+  "range": {
+    "start": {
+      "line": 11,
+      "character": 15
+    },
+    "end": {
+      "line": 11,
+      "character": 26
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "Items": {
+    "Compile": [
+      {
+        "Identity": "Included.cs",
+        "FullPath": "/tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/csfix/coverage/Included.cs",
+        "RootDir": "/",
+        "Filename": "Included",
+        "Extension": ".cs",
+        "RelativeDir": "",
+        "Directory": "tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/csfix/coverage/",
+        "RecursiveDir": "",
+        "ModifiedTime": "2026-07-17 21:16:14.1896195",
+        "CreatedTime": "2026-07-17 21:16:14.1896195",
+        "AccessedTime": "2026-07-17 21:16:14.1892257",
+        "DefiningProjectFullPath": "/usr/lib/dotnet/sdk/10.0.110/Sdks/Microsoft.NET.Sdk/targets/Microsoft.NET.Sdk.DefaultItems.props",
+        "DefiningProjectDirectory": "/usr/lib/dotnet/sdk/10.0.110/Sdks/Microsoft.NET.Sdk/targets/",
+        "DefiningProjectName": "Microsoft.NET.Sdk.DefaultItems",
+        "DefiningProjectExtension": ".props"
+      }
+    ]
+  }
+}

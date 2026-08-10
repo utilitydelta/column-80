@@ -1,0 +1,990 @@
+{
+ "packages": [
+  {
+   "name": "fastbloom",
+   "id": "registry+https://github.com/rust-lang/crates.io-index#fastbloom@0.17.0",
+   "manifest_path": "/home/utilitydelta/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fastbloom-0.17.0/Cargo.toml",
+   "features": {
+    "default": [
+     "std",
+     "rand"
+    ],
+    "loom": [
+     "dep:loom"
+    ],
+    "rand": [
+     "std",
+     "dep:rand"
+    ],
+    "serde": [
+     "dep:serde",
+     "siphasher/serde_std",
+     "portable-atomic/serde"
+    ],
+    "std": [
+     "portable-atomic/std"
+    ]
+   },
+   "dependencies": [
+    {
+     "name": "foldhash",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.2.0",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": false,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "libm",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.2",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "loom",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.7.2",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "portable-atomic",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.13.1",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": false,
+     "features": [
+      "fallback"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "rand",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.9.0",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "serde",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.0.203",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [
+      "derive"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "siphasher",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.0.0",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": false,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "fastrand",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^2.3.0",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "serde_cbor",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.11.2",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    }
+   ],
+   "description": "The fastest Bloom filter in Rust. No accuracy compromises. Full concurrency support and compatible with any hasher."
+  },
+  {
+   "name": "fixcap",
+   "id": "path+file:///tmp/claude-1000/-home-utilitydelta-work-column-80/9ddc5f91-31a6-44ad-9b2e-ef48e5ba36f7/scratchpad/fixcap#0.1.0",
+   "manifest_path": "/tmp/claude-1000/-home-utilitydelta-work-column-80/9ddc5f91-31a6-44ad-9b2e-ef48e5ba36f7/scratchpad/fixcap/Cargo.toml",
+   "features": {},
+   "dependencies": [
+    {
+     "name": "fastbloom",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.17.0",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "object_store",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.14",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    }
+   ],
+   "description": null
+  },
+  {
+   "name": "object_store",
+   "id": "registry+https://github.com/rust-lang/crates.io-index#object_store@0.14.0",
+   "manifest_path": "/home/utilitydelta/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/object_store-0.14.0/Cargo.toml",
+   "features": {
+    "aws": [
+     "aws-base",
+     "reqwest",
+     "reqwest/rustls",
+     "aws-lc-rs"
+    ],
+    "aws-base": [
+     "cloud-base",
+     "crc-fast",
+     "md-5"
+    ],
+    "aws-lc-rs": [
+     "dep:aws-lc-rs",
+     "rustls-pki-types"
+    ],
+    "azure": [
+     "azure-base",
+     "reqwest",
+     "reqwest/rustls",
+     "aws-lc-rs"
+    ],
+    "azure-base": [
+     "cloud-base",
+     "httparse"
+    ],
+    "base64": [
+     "dep:base64"
+    ],
+    "cloud-base": [
+     "serde",
+     "serde_json",
+     "quick-xml",
+     "hyper",
+     "chrono/serde",
+     "base64",
+     "rand",
+     "http-body-util",
+     "form_urlencoded",
+     "serde_urlencoded",
+     "tokio"
+    ],
+    "crc-fast": [
+     "dep:crc-fast"
+    ],
+    "default": [
+     "fs"
+    ],
+    "form_urlencoded": [
+     "dep:form_urlencoded"
+    ],
+    "fs": [
+     "walkdir",
+     "tokio",
+     "nix",
+     "windows-sys"
+    ],
+    "gcp": [
+     "gcp-base",
+     "reqwest",
+     "reqwest/rustls",
+     "aws-lc-rs"
+    ],
+    "gcp-base": [
+     "cloud-base"
+    ],
+    "http": [
+     "http-base",
+     "reqwest",
+     "reqwest/rustls",
+     "aws-lc-rs"
+    ],
+    "http-base": [
+     "cloud-base"
+    ],
+    "http-body-util": [
+     "dep:http-body-util"
+    ],
+    "httparse": [
+     "dep:httparse"
+    ],
+    "hyper": [
+     "dep:hyper"
+    ],
+    "integration": [
+     "rand",
+     "tokio"
+    ],
+    "md-5": [
+     "dep:md-5"
+    ],
+    "nix": [
+     "dep:nix"
+    ],
+    "quick-xml": [
+     "dep:quick-xml"
+    ],
+    "rand": [
+     "dep:rand"
+    ],
+    "reqwest": [
+     "dep:reqwest",
+     "reqwest/stream"
+    ],
+    "ring": [
+     "dep:ring",
+     "rustls-pki-types"
+    ],
+    "rustls-pki-types": [
+     "dep:rustls-pki-types"
+    ],
+    "serde": [
+     "dep:serde"
+    ],
+    "serde_json": [
+     "dep:serde_json"
+    ],
+    "serde_urlencoded": [
+     "dep:serde_urlencoded"
+    ],
+    "tokio": [
+     "dep:tokio",
+     "dep:tracing"
+    ],
+    "walkdir": [
+     "dep:walkdir"
+    ],
+    "windows-sys": [
+     "dep:windows-sys"
+    ]
+   },
+   "dependencies": [
+    {
+     "name": "async-trait",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.1.53",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "aws-lc-rs",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.15",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "base64",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.22",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "std"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "bytes",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.0",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "chrono",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.4.34",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": false,
+     "features": [
+      "clock"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "crc-fast",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.6",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "form_urlencoded",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.2",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "futures-core",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.3",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "futures-util",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.3",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [
+      "sink"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "http",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.2.0",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "http-body-util",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.1.2",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "httparse",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.8.0",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "std"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "humantime",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^2.1",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "hyper",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.2",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "itertools",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.15.0",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "md-5",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.11.0",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "parking_lot",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.12",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "percent-encoding",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^2.1",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "quick-xml",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.40.1",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [
+      "serialize",
+      "overlapped-lists"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "rand",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.10",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "std",
+      "std_rng",
+      "thread_rng"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "reqwest",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.13",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "http2"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "ring",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.17",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "std"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "rustls-pki-types",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.9",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "std"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "serde",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.0",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "derive"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "serde_json",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.0",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "std"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "serde_urlencoded",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.7",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "thiserror",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^2.0.2",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "tokio",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.29.0",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [
+      "sync",
+      "macros",
+      "rt",
+      "time",
+      "io-util"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "tracing",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.1",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "url",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^2.2",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "walkdir",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^2",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "futures-executor",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.3",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "getrandom",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.2",
+     "kind": "dev",
+     "rename": "getrandom_v02",
+     "optional": false,
+     "uses_default_features": true,
+     "features": [
+      "js"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "getrandom",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.3",
+     "kind": "dev",
+     "rename": "getrandom_v03",
+     "optional": false,
+     "uses_default_features": true,
+     "features": [
+      "wasm_js"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "getrandom",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.4",
+     "kind": "dev",
+     "rename": "getrandom_v04",
+     "optional": false,
+     "uses_default_features": true,
+     "features": [
+      "wasm_js"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "hyper",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.2",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [
+      "server"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "hyper-util",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.1",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "rand",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.10",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "regex",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.11.1",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "reqwest",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.13",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": false,
+     "features": [
+      "gzip"
+     ],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "tempfile",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^3.1.0",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "webpki-root-certs",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": null,
+     "registry": null
+    },
+    {
+     "name": "futures-channel",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.3",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [
+      "sink"
+     ],
+     "target": "cfg(all(target_arch = \"wasm32\", target_os = \"unknown\"))",
+     "registry": null
+    },
+    {
+     "name": "wasm-bindgen-futures",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.4.18",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": "cfg(all(target_arch = \"wasm32\", target_os = \"unknown\"))",
+     "registry": null
+    },
+    {
+     "name": "web-time",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^1.1.0",
+     "kind": null,
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": "cfg(all(target_arch = \"wasm32\", target_os = \"unknown\"))",
+     "registry": null
+    },
+    {
+     "name": "wasm-bindgen-test",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.3.50",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [],
+     "target": "cfg(all(target_arch = \"wasm32\", target_os = \"unknown\"))",
+     "registry": null
+    },
+    {
+     "name": "nix",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.31.1",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [],
+     "target": "cfg(target_family = \"unix\")",
+     "registry": null
+    },
+    {
+     "name": "nix",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.31.1",
+     "kind": "dev",
+     "rename": null,
+     "optional": false,
+     "uses_default_features": true,
+     "features": [
+      "fs"
+     ],
+     "target": "cfg(target_family = \"unix\")",
+     "registry": null
+    },
+    {
+     "name": "windows-sys",
+     "source": "registry+https://github.com/rust-lang/crates.io-index",
+     "req": "^0.61.2",
+     "kind": null,
+     "rename": null,
+     "optional": true,
+     "uses_default_features": false,
+     "features": [
+      "Win32_Foundation"
+     ],
+     "target": "cfg(target_family = \"windows\")",
+     "registry": null
+    }
+   ],
+   "description": "A generic object store interface for uniformly interacting with AWS S3, Google Cloud Storage, Azure Blob Storage and local files."
+  }
+ ],
+ "workspace_members": [
+  "path+file:///tmp/claude-1000/-home-utilitydelta-work-column-80/9ddc5f91-31a6-44ad-9b2e-ef48e5ba36f7/scratchpad/fixcap#0.1.0"
+ ],
+ "resolve": {
+  "nodes": [
+   {
+    "id": "path+file:///tmp/claude-1000/-home-utilitydelta-work-column-80/9ddc5f91-31a6-44ad-9b2e-ef48e5ba36f7/scratchpad/fixcap#0.1.0",
+    "dependencies": [
+     "registry+https://github.com/rust-lang/crates.io-index#fastbloom@0.17.0",
+     "registry+https://github.com/rust-lang/crates.io-index#object_store@0.14.0"
+    ],
+    "deps": [
+     {
+      "name": "fastbloom",
+      "pkg": "registry+https://github.com/rust-lang/crates.io-index#fastbloom@0.17.0",
+      "dep_kinds": [
+       {
+        "kind": null,
+        "target": null
+       }
+      ]
+     },
+     {
+      "name": "object_store",
+      "pkg": "registry+https://github.com/rust-lang/crates.io-index#object_store@0.14.0",
+      "dep_kinds": [
+       {
+        "kind": null,
+        "target": null
+       }
+      ]
+     }
+    ],
+    "features": []
+   }
+  ]
+ },
+ "version": 1
+}

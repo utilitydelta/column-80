@@ -1,0 +1,14 @@
+[package]
+name = "extraction-fixture"
+version = "0.1.0"
+edition = "2021"
+
+# fastbloom 0.17 is the scout's reproduction crate: a builder-pattern API
+# (BloomFilter::with_num_bits(n).expected_items(m), then insert/contains),
+# built entirely through an impl_bloom! macro so goto-definition lands on
+# macro template code and only rust-analyzer hover renders the resolved
+# signature (finding 10). Pinned so the resolved surface the oracle asserts
+# against is stable. Source is vendored in the cargo registry cache; resolves
+# offline.
+[dependencies]
+fastbloom = "=0.17.0"

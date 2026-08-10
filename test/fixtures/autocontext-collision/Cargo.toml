@@ -1,0 +1,16 @@
+# v7 phase-1 collision regression fixture. Two DIFFERENT types share the bare
+# name `Widget` in one crate: `inner::Widget` (defined FIRST textually) and the
+# crate-level `Widget` (defined SECOND). `Container.panel` is typed as the
+# crate-level `Widget`. A resolver that re-anchors recursion by first-textual-
+# occurrence of the name walks into inner::Widget and emits ITS shape as the
+# field's type - a silent wrong-type inject (the zero-tolerance invention bar).
+# The correct resolver anchors at the field's OWN type token, resolving the
+# crate-level Widget. Also probes the string/comment decoy (finding 3).
+[package]
+name = "autocontext-collision-fixture"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "lib.rs"

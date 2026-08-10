@@ -1,0 +1,12 @@
+[package]
+name = "fngen-bench"
+version = "0.1.0"
+edition = "2021"
+
+# The slice-2 behavioral oracle: the loop generates bloom_demo() against this
+# crate and the committed test asserts the filter reports an inserted item
+# present. fastbloom is the scout's builder-pattern reproduction crate; a
+# generation that invents Bloom::new / .add / .build fails cargo check, which
+# drives the surface injection. Pinned + vendored so the loop runs offline.
+[dependencies]
+fastbloom = "=0.17.0"

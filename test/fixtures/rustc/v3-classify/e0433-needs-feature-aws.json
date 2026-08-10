@@ -1,0 +1,86 @@
+{
+ "rendered": "error[E0433]: cannot find `aws` in `object_store`\n   --> src/main.rs:2:26\n    |\n  2 |     store: object_store::aws::AmazonS3,\n    |                          ^^^ could not find `aws` in `object_store`\n    |\nnote: found an item that was configured out\n   --> /home/utilitydelta/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/object_store-0.14.0/src/lib.rs:699:9\n    |\n698 | #[cfg(feature = \"aws-base\")]\n    |       -------------------- the item is gated behind the `aws-base` feature\n699 | pub mod aws;\n    |         ^^^\n\n",
+ "$message_type": "diagnostic",
+ "children": [
+  {
+   "children": [],
+   "code": null,
+   "level": "note",
+   "message": "found an item that was configured out",
+   "rendered": null,
+   "spans": [
+    {
+     "byte_end": 28510,
+     "byte_start": 28490,
+     "column_end": 27,
+     "column_start": 7,
+     "expansion": null,
+     "file_name": "/home/utilitydelta/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/object_store-0.14.0/src/lib.rs",
+     "is_primary": false,
+     "label": "the item is gated behind the `aws-base` feature",
+     "line_end": 698,
+     "line_start": 698,
+     "suggested_replacement": null,
+     "suggestion_applicability": null,
+     "text": [
+      {
+       "highlight_end": 27,
+       "highlight_start": 7,
+       "text": "#[cfg(feature = \"aws-base\")]"
+      }
+     ]
+    },
+    {
+     "byte_end": 28524,
+     "byte_start": 28521,
+     "column_end": 12,
+     "column_start": 9,
+     "expansion": null,
+     "file_name": "/home/utilitydelta/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/object_store-0.14.0/src/lib.rs",
+     "is_primary": true,
+     "label": null,
+     "line_end": 699,
+     "line_start": 699,
+     "suggested_replacement": null,
+     "suggestion_applicability": null,
+     "text": [
+      {
+       "highlight_end": 12,
+       "highlight_start": 9,
+       "text": "pub mod aws;"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "level": "error",
+ "message": "cannot find `aws` in `object_store`",
+ "spans": [
+  {
+   "byte_end": 41,
+   "byte_start": 38,
+   "column_end": 29,
+   "column_start": 26,
+   "expansion": null,
+   "file_name": "src/main.rs",
+   "is_primary": true,
+   "label": "could not find `aws` in `object_store`",
+   "line_end": 2,
+   "line_start": 2,
+   "suggested_replacement": null,
+   "suggestion_applicability": null,
+   "text": [
+    {
+     "highlight_end": 29,
+     "highlight_start": 26,
+     "text": "    store: object_store::aws::AmazonS3,"
+    }
+   ]
+  }
+ ],
+ "code": {
+  "code": "E0433",
+  "explanation": "An undeclared crate, module, or type was used.\n\nErroneous code example:\n\n```compile_fail,E0433\nlet map = HashMap::new();\n// error: failed to resolve: use of undeclared type `HashMap`\n```\n\nPlease verify you didn't misspell the type/module's name or that you didn't\nforget to import it:\n\n```\nuse std::collections::HashMap; // HashMap has been imported.\nlet map: HashMap<u32, u32> = HashMap::new(); // So it can be used!\n```\n\nIf you've expected to use a crate name:\n\n```compile_fail\nuse ferris_wheel::BigO;\n// error: failed to resolve: use of undeclared module or unlinked crate\n```\n\nMake sure the crate has been added as a dependency in `Cargo.toml`.\n\nTo use a module from your current crate, add the `crate::` prefix to the path.\n"
+ }
+}

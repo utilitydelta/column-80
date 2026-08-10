@@ -1,0 +1,30 @@
+# What NOT to ship. `dist/extension.js` is the whole product bundle; sources,
+# oracles and working notes stay in the repo.
+.github/**
+.vscode/**
+.vscode-test/**
+.claude/**
+.pytest_cache/**
+src/**
+test/**
+test-vscode/**
+docs/**
+prior-art/**
+session*/**
+esbuild.mjs
+tsconfig.json
+package-lock.json
+AGENTS.md
+ARCHITECTURE.md
+**/.index.md
+**/*.map
+**/*.ts
+**/*.vsix
+
+# Kept on purpose: node_modules/pyright. The Python legs spawn
+# `pyright/index.js` (checker) and `.bin/pyright-langserver` (extractor) by
+# walking node_modules from the module's own location, so the vsix must carry
+# the package rather than the bundler inlining it. Its docs and typings are
+# dead weight; its dist is not.
+node_modules/pyright/README.md
+node_modules/pyright/*.md

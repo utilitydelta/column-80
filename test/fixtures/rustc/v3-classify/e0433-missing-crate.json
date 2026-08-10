@@ -1,0 +1,43 @@
+{
+ "rendered": "error[E0433]: cannot find module or crate `totally_absent_crate` in this scope\n  --> src/main.rs:14:13\n   |\n14 |     let _ = totally_absent_crate::Thing::new();\n   |             ^^^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `totally_absent_crate`\n   |\n   = help: if you wanted to use a crate named `totally_absent_crate`, use `cargo add totally_absent_crate` to add it to your `Cargo.toml`\n\n",
+ "$message_type": "diagnostic",
+ "children": [
+  {
+   "children": [],
+   "code": null,
+   "level": "help",
+   "message": "if you wanted to use a crate named `totally_absent_crate`, use `cargo add totally_absent_crate` to add it to your `Cargo.toml`",
+   "rendered": null,
+   "spans": []
+  }
+ ],
+ "level": "error",
+ "message": "cannot find module or crate `totally_absent_crate` in this scope",
+ "spans": [
+  {
+   "byte_end": 243,
+   "byte_start": 223,
+   "column_end": 33,
+   "column_start": 13,
+   "expansion": null,
+   "file_name": "src/main.rs",
+   "is_primary": true,
+   "label": "use of unresolved module or unlinked crate `totally_absent_crate`",
+   "line_end": 14,
+   "line_start": 14,
+   "suggested_replacement": null,
+   "suggestion_applicability": null,
+   "text": [
+    {
+     "highlight_end": 33,
+     "highlight_start": 13,
+     "text": "    let _ = totally_absent_crate::Thing::new();"
+    }
+   ]
+  }
+ ],
+ "code": {
+  "code": "E0433",
+  "explanation": "An undeclared crate, module, or type was used.\n\nErroneous code example:\n\n```compile_fail,E0433\nlet map = HashMap::new();\n// error: failed to resolve: use of undeclared type `HashMap`\n```\n\nPlease verify you didn't misspell the type/module's name or that you didn't\nforget to import it:\n\n```\nuse std::collections::HashMap; // HashMap has been imported.\nlet map: HashMap<u32, u32> = HashMap::new(); // So it can be used!\n```\n\nIf you've expected to use a crate name:\n\n```compile_fail\nuse ferris_wheel::BigO;\n// error: failed to resolve: use of undeclared module or unlinked crate\n```\n\nMake sure the crate has been added as a dependency in `Cargo.toml`.\n\nTo use a module from your current crate, add the `crate::` prefix to the path.\n"
+ }
+}

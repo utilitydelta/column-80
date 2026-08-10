@@ -1,0 +1,528 @@
+{
+  "count": 20,
+  "isIncomplete": true,
+  "items": [
+    {
+      "label": "DefaultSettings",
+      "kind": 10,
+      "sortText": "0000",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "DefaultSettings"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "DeserializeAnonymousType<>",
+      "kind": 2,
+      "sortText": "0001DeserializeAnonymousType",
+      "filterText": "DeserializeAnonymousType",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "DeserializeAnonymousType"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "DeserializeObject",
+      "kind": 2,
+      "sortText": "0002",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "DeserializeObject"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "DeserializeObject<>",
+      "kind": 2,
+      "sortText": "0003DeserializeObject",
+      "filterText": "DeserializeObject",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "DeserializeObject"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "DeserializeXmlNode",
+      "kind": 2,
+      "sortText": "0004",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "DeserializeXmlNode"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "DeserializeXNode",
+      "kind": 2,
+      "sortText": "0005",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "DeserializeXNode"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "Equals",
+      "kind": 2,
+      "sortText": "0006",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "Equals"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "False",
+      "kind": 5,
+      "sortText": "0007",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "False"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "NaN",
+      "kind": 5,
+      "sortText": "0008",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "NaN"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "NegativeInfinity",
+      "kind": 5,
+      "sortText": "0009",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "NegativeInfinity"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "Null",
+      "kind": 5,
+      "sortText": "0010",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "Null"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "PopulateObject",
+      "kind": 2,
+      "sortText": "0011",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "PopulateObject"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "PositiveInfinity",
+      "kind": 5,
+      "sortText": "0012",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "PositiveInfinity"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "ReferenceEquals",
+      "kind": 2,
+      "sortText": "0013",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "ReferenceEquals"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "SerializeObject",
+      "kind": 2,
+      "sortText": "0014",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "SerializeObject"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "SerializeXmlNode",
+      "kind": 2,
+      "sortText": "0015",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "SerializeXmlNode"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "SerializeXNode",
+      "kind": 2,
+      "sortText": "0016",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "SerializeXNode"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "ToString",
+      "kind": 2,
+      "sortText": "0017",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "ToString"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "True",
+      "kind": 5,
+      "sortText": "0018",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "True"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    },
+    {
+      "label": "Undefined",
+      "kind": 5,
+      "sortText": "0019",
+      "insertTextFormat": 1,
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 27
+          },
+          "end": {
+            "line": 11,
+            "character": 27
+          }
+        },
+        "newText": "Undefined"
+      },
+      "commitCharacters": [],
+      "data": {
+        "ResultId": 0,
+        "TextDocument": {
+          "uri": "file:///tmp/claude-1000/-home-utilitydelta-work-utilitydelta-column-80/0cb61178-685f-4fc2-b96c-c4821567405a/scratchpad/cscap/spike-app/Program.cs"
+        }
+      }
+    }
+  ]
+}

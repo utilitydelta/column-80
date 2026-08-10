@@ -1,0 +1,34 @@
+{
+ "rendered": "error[E0433]: cannot find `NotAThing` in `object_store`\n  --> src/main.rs:12:32\n   |\n12 | fn w() { let _ = object_store::NotAThing::new(); }\n   |                                ^^^^^^^^^ could not find `NotAThing` in `object_store`\n\n",
+ "$message_type": "diagnostic",
+ "children": [],
+ "level": "error",
+ "message": "cannot find `NotAThing` in `object_store`",
+ "spans": [
+  {
+   "byte_end": 491,
+   "byte_start": 482,
+   "column_end": 41,
+   "column_start": 32,
+   "expansion": null,
+   "file_name": "src/main.rs",
+   "is_primary": true,
+   "label": "could not find `NotAThing` in `object_store`",
+   "line_end": 12,
+   "line_start": 12,
+   "suggested_replacement": null,
+   "suggestion_applicability": null,
+   "text": [
+    {
+     "highlight_end": 41,
+     "highlight_start": 32,
+     "text": "fn w() { let _ = object_store::NotAThing::new(); }"
+    }
+   ]
+  }
+ ],
+ "code": {
+  "code": "E0433",
+  "explanation": "An undeclared crate, module, or type was used.\n\nErroneous code example:\n\n```compile_fail,E0433\nlet map = HashMap::new();\n// error: failed to resolve: use of undeclared type `HashMap`\n```\n\nPlease verify you didn't misspell the type/module's name or that you didn't\nforget to import it:\n\n```\nuse std::collections::HashMap; // HashMap has been imported.\nlet map: HashMap<u32, u32> = HashMap::new(); // So it can be used!\n```\n\nIf you've expected to use a crate name:\n\n```compile_fail\nuse ferris_wheel::BigO;\n// error: failed to resolve: use of undeclared module or unlinked crate\n```\n\nMake sure the crate has been added as a dependency in `Cargo.toml`.\n\nTo use a module from your current crate, add the `crate::` prefix to the path.\n"
+ }
+}

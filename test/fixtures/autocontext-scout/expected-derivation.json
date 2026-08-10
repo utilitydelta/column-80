@@ -1,0 +1,18 @@
+{
+  "_comment": "v7 scout oracle fixture. Expected output of the unified cross-file resolveStruct edge-resolver when anchored at the given consumer.rs site, walking to depth 2. Fields AND methods, each type's real (non-guessable) names. The build's oracle asserts the derived shape is a superset of `must_derive` and contains none of `must_not_invent`. domain.rs/consumer.rs are the resolvable two-file crate; none of these defs live in consumer.rs.",
+  "bound": { "D_MAX": 2, "note": "Order->Customer->Address is depth 2; Region (depth 3) is beyond the bound and NOT required." },
+  "anchors": [
+    {
+      "site": "consumer.rs distinct_locales, param type Order",
+      "root": "Order",
+      "must_derive": {
+        "Order": { "fields": ["reference: String", "placed_by: Customer", "entries: Vec<LineItem>"], "methods": ["net_minor_units(&self) -> u64"] },
+        "Customer": { "fields": ["display_name: String", "ship_to: Address"], "methods": ["is_patron(&self) -> bool"] },
+        "Address": { "fields": ["locale: String", "postcode: u32", "region: Region"], "methods": [] },
+        "LineItem": { "fields": ["sku: String", "qty: u32", "unit_minor_units: u64"], "methods": ["extended_minor_units(&self) -> u64"] }
+      },
+      "must_not_invent": ["customer", "city", "total", "is_vip", "name", "price", "items", "lines", "amount"]
+    }
+  ],
+  "cross_crate_note": "The rust-scratch playground (crates/playground/src/autocontext.rs over crate atlas) covers the cross-CRATE leg (Tile.subtended_children, Stripe.enroll_tile). It is kept there, not duplicated here, because a self-contained oracle fixture must not depend on an external crate. The cross-crate member-list caveat (membersOfType needs the source file open; hoverSurface does not) is the risk that leg's oracle must pin."
+}

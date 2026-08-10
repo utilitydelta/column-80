@@ -1,0 +1,47 @@
+# Every push and PR runs the gates a green increment needs: typecheck, the
+# headless oracles, and the bundle.
+#
+# `npm test` is NOT the gate. It chains test:unit and test:live, and the live
+# tier drives a real model through Ollama on a GPU, which no hosted runner has.
+# test:unit is the whole headless suite.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history. Several rows are DIFFERENTIAL: they `git show` a named
+      # pre-change commit and assert the current bytes match it, which is how the
+      # v31 phase rows prove a refactor moved nothing. checkout's default depth
+      # of 1 has none of those objects, so they either throw `invalid object
+      # name` or silently skip themselves on a `cat-file -e` guard. Skipping is
+      # the worse outcome: the row reads green and proves nothing.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # 24, not 20. test:unit passes its files as glob patterns, and `node --test`
+      # only expands those from 22 on: measured here, 22.23.1 expands them and
+      # 20.20.2 takes the quoted glob as a literal path and dies with "Could not
+      # find". 24 is what the suite is developed against; >=22 is the floor, and
+      # it is written into package.json engines so this cannot drift silently.
+      - uses: actions/setup-node@v4
+        with:
+          # PINNED, not the floating major (2026-08-10). `24` resolves to the newest
+          # 24.x, and 24.18 counts a failing `todo` row toward the exit code where
+          # 24.12 does not. The suite carries todo rows that are red ON PURPOSE,
+          # each with a written ruling, so a floating runtime turned a green suite
+          # red without a line of source changing. Raise this deliberately, with the
+          # todo rows re-decided, never by drifting.
+
+          node-version: 24.12.0
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run build
