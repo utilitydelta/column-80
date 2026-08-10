@@ -30,6 +30,8 @@ Two independent rig defects turned up in one session, and each had been silently
 - **41.** the tuning constants were chosen for a local 30B and now gate a frontier model
 - **42.** repair supply outside Rust, restated after the rig defect that produced the first version
 - **30.** item 1 needs a third arm before anyone knows what it did
+- **45.** the latency probe cannot make a cold row, so three of its five falsification numbers are about the probe
+- **46.** two frozen v21 rows model a cold answer no server gives, and a bound that killed their case passed them
 
 **3. The big builds**
 Each needs its own goal and scout. Ordered by measured value, not by age.
@@ -392,6 +394,61 @@ Formerly blocked on item 29; that filter went live in session-v35 (struck 2026-0
 third arm's absolutes would be the filtered configuration's - unlike every number this item quotes,
 which predate v35 and stay caveated. Not blocked on anything for the
 comparison.
+
+### 45. The latency probe cannot produce a cold row, so three of its five falsification numbers are about the probe
+
+Raised 2026-08-11 by session-v50. The rule it produced: **an instrument that cannot produce the case it
+measures has not measured it.**
+
+v50 published "41 re-polled cursors across five languages, zero recovered a renderable member" and used
+it to argue the `membersWithSettle` re-poll loop is dead weight. The loop exists for exactly one case,
+a def file the editor has JUST opened whose server has not finished reading it. The probe pre-opened
+every file and slept 250ms per open before the clock started, so **no `membersOfType` in any run was
+ever the first request after a `didOpen`.** The case could not occur. The number is true and is a fact
+about the probe.
+
+A `--cold` mode was added mid-session and still does not get there. Three things warm a row before it
+is timed, all named:
+
+1. `assertAlive` probes a vetted gate cursor before every row, and the vetted cursors come from the
+   run's own roots, so those files have documentSymbol computed off the clock.
+2. `rootsFrom(..., perFile = 3)` takes three roots per file, so rows 2 and 3 over a file are warmed by
+   row 1.
+3. `makeOpener`'s `opened` set lives for the whole run, so a file an earlier row discovered is warm when
+   a later row names it as root.
+
+What is affected, precisely. The Go and C# counts are sound, because those two DO enter the loop on a
+warm corpus and answer identically every time (32 and 9 cursors, zero recoveries). Rust's zero has an
+independent code-level explanation that stands without the probe (`mayRepollHelp` refuses unsigned
+non-callables, which is every Rust data struct). **Python's zero and TypeScript's rest on the instrument
+alone.**
+
+Blocks a real decision: whether the settle loop is deleted outright. Until a cold row exists, the
+standing answer is keep the bound. A cold row's TOTAL is not comparable with a warm one and nobody
+should try; what the mode is for is the re-poll and recovery counters.
+
+Probe: `session-v50/probe/latency-baseline.cjs` in the private working repo.
+
+### 46. Two frozen v21 rows model a cold answer no server gives, and a bound that killed their case passed them
+
+Raised 2026-08-11 by session-v50, and it is the sharp end of item 45.
+
+`test/blind-v21-p3b.test.cjs` §1b scripts the cold `membersOfType` answer as a set of ONE member, and
+`test/impl-v21-p3b.test.cjs` F2 as two warming to one. In both, the warm answer necessarily changes the
+member COUNT.
+
+`session-v21/surface-p3b.md` §1(b) recorded what a real server does: **11 members with 1 signed** in
+52ms against a 50ms fan-out budget, warming to 7 rendered. The COUNT is complete from the first answer,
+because documentSymbol is cheap; the SIGNATURES are what is missing, and a server still cold 40ms later
+is cut by the same wall clock and answers 11/1 again.
+
+That difference is not academic and it has already cost a build. v50's first bound stopped the loop when
+a re-poll returned the same member count and signed count. Both rows stayed GREEN while that bound
+deleted the exact case they exist to protect; an adversarial review caught it against the pre-bound code
+(3 calls and 10 rendered methods before, 2 calls and 0 after).
+
+Re-cut both at the measured shape, by an agent that did not write the change. Small, and it makes a
+whole family of future bounds falsifiable.
 
 ## 3. The big builds
 
