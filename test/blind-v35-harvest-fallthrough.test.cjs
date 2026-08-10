@@ -88,6 +88,7 @@ try {
     ENTRY,
     `export { resolveSurfaceInjection } from "../src/vscode/oracleSurface";
 export { classifyHallucination, harvestDiagnosticTypes } from "../src/core/compilerDirected";
+export { contextBoundsFor, DEFAULT_CONTEXT_STOP, surfaceCapFor } from "../src/core/budgetProfile";
 `,
   );
   esbuild.buildSync({ entryPoints: [ENTRY], bundle: true, outfile: OUTFILE, format: "cjs", platform: "node", alias: { vscode: STUB } });
@@ -110,6 +111,14 @@ const btest = (name, fn) =>
     if (bundleErr) return ctx.skip("bundle failed to build; see the bundle guard");
     return fn(ctx);
   });
+
+// The repair round's surface cap AT THE DEFAULT CONTEXT STOP, read from the
+// seam rather than written as a literal: session-v48 phase 1 made it a
+// derivation of the stop's aggregate budget, and the repair path reads the live
+// stop. C3-b needs a fixture that exactly fills it.
+const SURFACE_CAP = B.surfaceCapFor
+  ? B.surfaceCapFor(B.contextBoundsFor(B.DEFAULT_CONTEXT_STOP).surfaceBudgetTok)
+  : 4;
 
 // ===========================================================================
 // The fixture: the captured shape. A generated file that reaches for an item the
@@ -451,12 +460,16 @@ btest("C3-a: a harvested block comes AFTER a classified block even when the fall
   );
 });
 
-btest("C3-b: under the surface cap the four compiler-named receivers keep every slot and the harvested name is the one dropped", async () => {
+btest("C3-b: under the surface cap the compiler-named receivers keep every slot and the harvested name is the one dropped", async () => {
+  // WIDENED session-v48 loop-back (defect 5): the surface cap is a derivation of
+  // the context stop's aggregate budget now, and the repair path reads the LIVE
+  // stop, so at the default it is SURFACE_CAP rather than the 4 this row's four
+  // receivers were cut against. Four no longer fill it, the harvested name got a
+  // free slot, and the row measured nothing. The filler count is read from the
+  // seam so the fixture stays exactly cap-full wherever the default moves.
+  const filler = Array.from({ length: SURFACE_CAP }, (_, i) => `Slot${String(i).padStart(2, "0")}`);
   const CAPSRC = `use rcgen::CertificateParams;
-use crate::pki::Alpha;
-use crate::pki::Beta;
-use crate::pki::Gamma;
-use crate::pki::Delta;
+${filler.map((n) => `use crate::pki::${n};`).join("\n")}
 
 pub fn issue(seed: &[u8]) -> Vec<u8> {
     let pair = rcgen::EcdsaKeyPair::from_seed(seed);
@@ -464,7 +477,7 @@ pub fn issue(seed: &[u8]) -> Vec<u8> {
 }
 `;
   const capNames = {};
-  for (const n of ["Alpha", "Beta", "Gamma", "Delta", "EcdsaKeyPair"]) {
+  for (const n of [...filler, "EcdsaKeyPair"]) {
     capNames[n] = {
       defUri: `file:///work/proj/src/t_${n.toLowerCase()}.rs`,
       hover: `pub struct ${n} { pub slot: u32 }`,
@@ -472,23 +485,24 @@ pub fn issue(seed: &[u8]) -> Vec<u8> {
     };
   }
   const cspan = (line, tok) => spanOn(CAPSRC, "src/certs.rs", line, tok);
-  const four = ["Alpha", "Beta", "Gamma", "Delta"].map((n, i) =>
+  const four = filler.map((n, i) =>
     diag("E0599", `no method named \`nope\` found for struct \`${n}\` in the current scope`, cspan(i + 1, n)),
   );
   // The fall-through leads the list again, so an inline harvest would take slot 1.
-  const r = await run([diag("E0433", "cannot find `EcdsaKeyPair` in `rcgen`", cspan(7, "EcdsaKeyPair")), ...four], {
+  const fallThroughLine = filler.length + 3;
+  const r = await run([diag("E0433", "cannot find `EcdsaKeyPair` in `rcgen`", cspan(fallThroughLine, "EcdsaKeyPair")), ...four], {
     src: CAPSRC,
     names: capNames,
     resolution: RESOLUTION,
-    memberLeg: { completeMembers: (c) => (c && c.line >= 1 && c.line <= 4 ? [{ name: "ok", kind: "method", signature: "fn ok(&self) -> bool" }] : []) },
+    memberLeg: { completeMembers: (c) => (c && c.line >= 1 && c.line <= filler.length ? [{ name: "ok", kind: "method", signature: "fn ok(&self) -> bool" }] : []) },
   });
   const order = blockHeadersInOrder(r.text);
-  for (const n of ["Alpha", "Beta", "Gamma", "Delta"]) {
+  for (const n of filler) {
     assert.ok(order.includes(n), `the compiler-named receiver ${n} lost its slot to a harvested name. ORDER=${JSON.stringify(order)}${dump(r)}`);
   }
   assert.ok(
     !order.includes("EcdsaKeyPair"),
-    `with four compiler-named receivers the cap is full; the harvested name must be the one that ` +
+    `with ${SURFACE_CAP} compiler-named receivers the cap is full; the harvested name must be the one that ` +
       `gives way. ORDER=${JSON.stringify(order)}${dump(r)}`,
   );
 });

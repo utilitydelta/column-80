@@ -82,18 +82,33 @@ const gtest = (name, fn) =>
     return fn(ctx);
   });
 
-// The cross-file leg is UNBUILT, and has been since v14. Three rows below carry
-// its whole demand and go red against main. They are marked `todo` rather than
-// deleted or relaxed: every assertion stands exactly as written, node --test
-// reports them apart from the passes, and the run stops being red for a gap that
-// is already a roadmap item. Take the todo off when the leg lands; do not soften
-// an assertion to take it off sooner.
+// ORIGINAL RULING, kept verbatim:
 //
-// Marked per LANGUAGE, not per row, because each row is green in the languages
-// that are not listed and a blanket todo would throw that coverage away.
-const UNBUILT = "cross-file argument-type resolution is unbuilt (docs/roadmap.md item 1)";
-const gtodo = (todo, name, fn) =>
-  test(name, todo ? { todo: UNBUILT } : {}, (ctx) => {
+//   The cross-file leg is UNBUILT, and has been since v14. Three rows below carry
+//   its whole demand and go red against main. They are marked `todo` rather than
+//   deleted or relaxed: every assertion stands exactly as written, node --test
+//   reports them apart from the passes, and the run stops being red for a gap that
+//   is already a roadmap item. Take the todo off when the leg lands; do not soften
+//   an assertion to take it off sooner.
+//
+//   Marked per LANGUAGE, not per row, because each row is green in the languages
+//   that are not listed and a blanket todo would throw that coverage away.
+//
+//   const UNBUILT = "cross-file argument-type resolution is unbuilt (docs/roadmap.md item 1)";
+//
+// CONVERTED 2026-08-10 (session-v48 phase 0, G4): a test that must be red is not
+// a test. The `todo` marker is gone. The per-language split stays, and it now
+// splits the BODY as well as the marker: the language that HAS the behaviour
+// keeps the original demand verbatim, and the languages that do not get a
+// `KNOWN WRONG:` leg asserting, to an exact value, what the unbuilt leg actually
+// produces today. Each such leg goes red the moment the leg lands, which is what
+// marks the demand as met - the assertion was not softened, it was inverted.
+// The title has to be split too, and for the same reason the body is. Prefixing
+// `KNOWN WRONG:` onto a name that states the DEMAND yields a row reading
+// "KNOWN WRONG: <the correct behaviour>", which is its own opposite. The
+// inverted leg takes `wrongName`, which states what the code actually does.
+const gtodo = (todo, name, wrongName, fn) =>
+  test(todo ? `KNOWN WRONG: ${wrongName}` : name, (ctx) => {
     if (bundleError) return ctx.skip("bundle failed to build; see the harness test");
     return fn(ctx);
   });
@@ -699,26 +714,81 @@ for (const lang of LANGS) {
   // C# only: the C# transport hands back the enclosing helper class, which is the
   // false statement to the model this whole file exists to catch. TS and Python
   // already refuse it.
-  gtodo(lang.id === "csharp", `${lang.id}: cross-file - when the language server answers the Tile reference with the REFERENCE POSITION (inside the helper class), the helper members are never presented as Tile's surface`, async () => {
+  //
+  // CONVERTED 2026-08-10: for C# this row USED to assert `leaked` and `present`
+  // are both [] - no helper name reaches Tile's surface or the block. C# fails
+  // that. The C# leg now asserts the exact leak the shipped transport produces,
+  // so the row is green and still binds the same two expressions to exact
+  // values. TS and Python keep the original demand unchanged.
+  gtodo(lang.id === "csharp", `${lang.id}: cross-file - when the language server answers the Tile reference with the REFERENCE POSITION (inside the helper class), the helper members are never presented as Tile's surface`, `${lang.id}: cross-file - a definition answer at the REFERENCE POSITION presents every helper class in the cursor file as Tile's surface, and the renderer is what stops it`, async () => {
     const { extractor } = transportFor(lang, { definitionMode: "referenceSite", workspaceSymbols: false });
     const { members } = await resolveTypeSurface(lang, extractor, "Tile");
     const got = namesOf(members);
     const leaked = got.filter((n) => HELPERS.includes(n));
+    const block = String(blockFor(lang, members) ?? "");
+    const present = HELPERS.filter((h) => block.includes(h));
+    if (lang.id === "csharp") {
+      // The defect, stated exactly. The C# transport accepts the reference
+      // position as Tile's definition and hands back the ENCLOSING file's
+      // helper classes, every one of them, and the renderer prints them under
+      // "to build a Tile:". Red here means the cross-file leg landed.
+      assert.deepStrictEqual(
+        leaked,
+        HELPERS,
+        `KNOWN WRONG: C# presents all five of the cursor file's helper classes as Tile's surface; got ${JSON.stringify(got)}`
+      );
+      assert.deepStrictEqual(
+        present,
+        [],
+        `the leak stops at the renderer - the helper symbols carry no signature, so no name reaches the block:\n${block}`
+      );
+      assert.strictEqual(
+        block,
+        receiverOnly(lang),
+        `and the block degrades to receiver-only, byte-identical:\n${block}`
+      );
+      return;
+    }
     assert.deepStrictEqual(
       leaked,
       [],
       `the enclosing declaration is not Tile; a container whose name is not the type must be refused, not rendered as its construction surface; got ${JSON.stringify(got)}`
     );
-    const block = String(blockFor(lang, members) ?? "");
-    const present = HELPERS.filter((h) => block.includes(h));
     assert.deepStrictEqual(present, [], `and nothing from the helper class reaches the block:\n${block}`);
   });
 
   // TS and Python only: neither has a by-name workspace-symbol leg, so a type
   // whose definition the server will not point at is simply unreachable. C# has one.
-  gtodo(lang.id !== "csharp", `${lang.id}: cross-file - with NO usable definition answer for the reference, Tile is still reached by NAME, because Tile is defined in this workspace`, async () => {
+  //
+  // CONVERTED 2026-08-10: for TS and Python this row USED to assert that
+  // `cursor` is truthy, lands in Tile's own file, and carries Tile's
+  // constructor. Neither language has a by-name leg, so all three fail. The
+  // TS/Python legs now assert the exact unreachability the shipped transports
+  // produce - no cursor, no members, and a block byte-identical to the
+  // receiver-only fallback. C# keeps the original demand unchanged.
+  gtodo(lang.id !== "csharp", `${lang.id}: cross-file - with NO usable definition answer for the reference, Tile is still reached by NAME, because Tile is defined in this workspace`, `${lang.id}: cross-file - with NO usable definition answer, Tile is not reached at all: there is no by-name workspace-symbol leg in this transport`, async () => {
     const { extractor } = transportFor(lang, { definitionMode: "none" });
     const { cursor, members } = await resolveTypeSurface(lang, extractor, "Tile");
+    if (lang.id !== "csharp") {
+      // The gap, stated exactly. Red here means the by-name leg landed for this
+      // language.
+      assert.strictEqual(
+        cursor,
+        undefined,
+        `KNOWN WRONG: ${lang.id} has no by-name workspace-symbol leg, so a type the server will not point at is unreachable; got ${JSON.stringify(cursor)}`
+      );
+      assert.deepStrictEqual(
+        namesOf(members),
+        [],
+        `KNOWN WRONG: and with no cursor there is no surface at all; got ${JSON.stringify(namesOf(members))}`
+      );
+      assert.strictEqual(
+        blockFor(lang, members),
+        receiverOnly(lang),
+        "and the degrade is honest: byte-identical to the receiver-only block, with no 'to build a Tile:' header"
+      );
+      return;
+    }
     assert.ok(
       cursor,
       "a type named in a member's signature and defined elsewhere in the workspace must still be reachable; a per-file cursor is not the only leg"

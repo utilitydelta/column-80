@@ -38,10 +38,17 @@ const KNOB = require(OUT_KNOB);
 const CS = require(OUT_CS);
 test.after(() => [ENTRY, OUT, OUT_KNOB, OUT_CS].forEach((f) => fs.rmSync(f, { force: true })));
 
+// RE-CUT by session-v48 phase 1 (docs/supersessions.md). `budgetProfileFor` takes
+// a required context stop now. These rows are about the DERIVATION - move the
+// aggregate, and memberCap / surfaceCap / refineTotalChars / walkTokMax move with
+// it - so they ask for the `shipped` stop, the pre-dial point whose budget IS the
+// module constant the rig patches. Every number below is unchanged.
+const IDENTITY_STOP = "shipped";
+
 test("moving the base budget moves every derived with it, for every class and language", () => {
   for (const cls of ["fim-small", "local-mid", "frontier"]) {
     for (const lang of ["rust", "typescript", "csharp", "python", "go"]) {
-      const p = KNOB.budgetProfileFor(cls, lang);
+      const p = KNOB.budgetProfileFor(cls, lang, IDENTITY_STOP);
       assert.equal(p.surfaceBudgetTok, 900, `${cls}/${lang} budget`);
       assert.equal(p.memberCap, 72, `${cls}/${lang} memberCap follows (24 per 300)`);
       assert.equal(p.surfaceCap, 12, `${cls}/${lang} surfaceCap follows (4 per 300)`);
@@ -52,10 +59,10 @@ test("moving the base budget moves every derived with it, for every class and la
 });
 
 test("moving C#'s own budget moves C#'s deriveds and nobody else's", () => {
-  const cs = CS.budgetProfileFor("local-mid", "csharp");
+  const cs = CS.budgetProfileFor("local-mid", "csharp", IDENTITY_STOP);
   assert.equal(cs.surfaceBudgetTok, 900);
   assert.equal(cs.memberCap, 72, "C#'s deriveds follow C#'s budget");
-  const rust = CS.budgetProfileFor("local-mid", "rust");
+  const rust = CS.budgetProfileFor("local-mid", "rust", IDENTITY_STOP);
   assert.equal(rust.surfaceBudgetTok, 300, "the other languages stay at the base");
   assert.equal(rust.memberCap, 24);
 });
@@ -79,7 +86,7 @@ test("the shipped FIM default tag resolves to fim-small; the fn-gen defaults to 
 });
 
 test("the defaults the rest of the tree serves are the profile's own values", () => {
-  const p = M.budgetProfileFor("local-mid", "rust");
+  const p = M.budgetProfileFor("local-mid", "rust", IDENTITY_STOP);
   assert.equal(M.DEFAULT_TIMEOUT_MS, p.timeoutMs, "claudeCodeInstruct's default timeout");
   assert.equal(M.DEFAULT_FNGEN_CONFIG.maxTokens, p.maxTokens, "config's default num_predict");
   assert.equal(M.DEFAULT_FNGEN_CONFIG.numCtx, p.numCtx, "config's default context window");

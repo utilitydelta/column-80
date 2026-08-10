@@ -2,11 +2,15 @@
 //
 // THE CONTRACT: Go's injected-type cap is 8, measured on the authored-gesture
 // funnel (the cap was the binding stage; ladder in session-v42/funnel-report
-// addendum). Rust STAYS at 4 - its own 4->12 arm measured flat (v37 item 3),
-// and its frozen prompt-identity oracles pin the bytes. The observable, per
-// language, through resolvePrefill with six same-file types on offer:
+// addendum).
+//
+// THE RUST HALF IS SUPERSEDED by session-v48 phase 1 (docs/supersessions.md).
+// It read "Rust STAYS at 4 - its own 4->12 arm measured flat (v37 item 3)". The
+// ruling of 2026-08-10 brings every language UP to Go's 8 instead of keeping a
+// per-language table, so the control row below now asserts the reversal. The
+// observable, per language, through resolvePrefill with six same-file types:
 //   go:   more than four types disclose (impossible under an inherited cap 4)
-//   rust: exactly four disclose, and the cap line names the two dropped
+//   rust: the same - the per-language split is gone, and nothing is cap-dropped
 //
 // Run: SKIP_LIVE=1 node --test test/blind-v42-p2-go-cap.test.cjs
 const test = require("node:test");
@@ -219,7 +223,18 @@ btest("go: six doc-named same-file types all hold slots - the cap is 8, not an i
   );
 });
 
-btest("rust CONTROL: six doc-named same-file types still cap at 4 - Rust's measured value is untouched", async () => {
+// SUPERSEDED by session-v48 phase 1 (docs/supersessions.md). The ruling of
+// 2026-08-10: "Every language gets the same numbers. Go's exception goes" -
+// bring the other four UP to Go's measured 8 rather than keep a per-language
+// table. So the control's subject, "no cross-language bleed", is exactly what
+// was deliberately ended, and the row is inverted to assert what the code does.
+//
+// The v42 measurement that put Go at 8 is not refuted and is why the dial's
+// bottom stop is 8 for everyone. Rust's own 4->12 ladder measured FLAT, but it
+// ran with the token budget pinned, and session-v45 showed that raising the cap
+// alone only relocates the loss; in the dial roots and budget move together, so
+// the condition Rust measured flat under does not hold.
+btest("SUPERSEDED (v48 phase 1): six doc-named Rust types now hold the SAME slots as Go - the per-language cap split is gone", async () => {
   const uri = "file:///work/v42p2/main.rs";
   const decls = NAMES.map((n) => `pub struct ${n} {\n    pub n: u32,\n}`).join("\n\n");
   const src = [
@@ -253,13 +268,13 @@ btest("rust CONTROL: six doc-named same-file types still cap at 4 - Rust's measu
     bodyIndent: "    ",
   };
   const r = await run("rust", src, uri, record, defTypes);
-  assert.equal(
-    r.disclosed.length,
-    4,
-    `Rust stays at its measured cap of 4 (got ${r.disclosed.length}: ${r.disclosed.join(", ")}).\nLOGS:\n${r.logs.join("\n")}`,
+  assert.ok(
+    r.disclosed.length > 4,
+    `Rust reads the same root cap as Go now; only ${r.disclosed.length} disclosed (${r.disclosed.join(", ")}), ` +
+      `which is the inherited 4 coming back.\nLOGS:\n${r.logs.join("\n")}`,
   );
   assert.ok(
-    r.logs.some((l) => /dropped 2 lower-priority type\(s\)/.test(l)),
-    `the two evictions stay named in the channel.\nLOGS:\n${r.logs.join("\n")}`,
+    !r.logs.some((l) => /dropped \d+ lower-priority/.test(l)),
+    `six types fit under the default stop's root cap; nothing may be cap-dropped.\nLOGS:\n${r.logs.join("\n")}`,
   );
 });

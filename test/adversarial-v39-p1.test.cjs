@@ -3,8 +3,13 @@
 //
 // Every row here is EVIDENCE for a finding in the review report, not a contract.
 // Nothing was written to be satisfied by the implementation. Rows tagged [DEFECT]
-// FAIL and are the findings; rows tagged [RECORD] PASS and pin behaviour the
-// report describes (a false refusal, a budget cost, an attack that found nothing).
+// are the findings; rows tagged [RECORD] pin behaviour the report describes (a false
+// refusal, a budget cost, an attack that found nothing).
+//
+// Converted 2026-08-10 (session-v48 phase 0): a test that must be red is not a test.
+// The one `todo` row, B1, is now a GREEN `SUPERSEDED:` row - its finding was fixed by
+// the v39 phase-1 loop-back, so it asserts the un-truncated string the shipped code
+// returns. Its ruling and its old expectation are kept above it.
 //
 // Run: SKIP_LIVE=1 node --test test/adversarial-v39-p1.test.cjs
 
@@ -128,23 +133,40 @@ const SRC_CERTIFICATE_PARAMS_CLOSED = [
   "",
 ].join("\n");
 
-test("[DEFECT] B1: the v37 struct-scope row is green on a brace, not on scope - close the fixture and it un-truncates", {
-  todo:
-    "FIXED by the phase-1 loop-back, and the row is left unedited because it is the record of the claim " +
-    "having been false. `test/blind-v37-p5-tuple-payload.test.cjs` R5 now carries a written supersession " +
-    "like its two neighbours: the cut-short read is kept and re-justified as an UNREADABLE SOURCE (which " +
-    "it is), and the same hover against a CLOSED declaration is asserted to un-truncate. This row's own " +
-    "assertion is the pre-fix expectation and cannot pass against the shipped behaviour.",
-}, () => {
+// WAS `todo`: "FIXED by the phase-1 loop-back, and the row is left unedited because
+// it is the record of the claim having been false. `test/blind-v37-p5-tuple-payload
+// .test.cjs` R5 now carries a written supersession like its two neighbours: the
+// cut-short read is kept and re-justified as an UNREADABLE SOURCE (which it is), and
+// the same hover against a CLOSED declaration is asserted to un-truncate. This row's
+// own assertion is the pre-fix expectation and cannot pass against the shipped
+// behaviour."
+//
+// The row USED TO assert `recoverElidedSurface(hover, closedSource) === hover`, i.e.
+// that a truncated struct comes back byte-identical. The fix landed, so the row is
+// re-pointed at the un-truncated string the shipped code returns. Today's behaviour
+// is the CORRECT one; the stale claim it disproves is blind-v37-p5's, not this file's.
+const RECOVERED_CERTIFICATE_PARAMS = [
+  "pub struct CertificateParams {",
+  "    pub not_before: OffsetDateTime,",
+  "    pub not_after: OffsetDateTime,",
+  "    pub serial_number: Option<SerialNumber>,",
+  "    pub subject_alt_names: Vec<SanType>,",
+  "    pub distinguished_name: DistinguishedName,",
+  "    pub is_ca: IsCa,",
+  "    pub key_usages: Vec<KeyUsagePurpose>,",
+  "}",
+].join("\n");
+
+test("SUPERSEDED: B1: the v37 struct-scope row was green on a brace, not on scope - close the fixture and it un-truncates", () => {
   const got = recoverElidedSurface(HOVER_CERTIFICATE_PARAMS, SRC_CERTIFICATE_PARAMS_CLOSED);
   assert.strictEqual(
     got,
-    HOVER_CERTIFICATE_PARAMS,
-    "blind-v37-p5 still says `a truncated struct is returned exactly as it arrived` and\n" +
-      "`un-truncating a field list is a different item and is not built here`. Both are false now.\n" +
-      "The committed row only survives because its source fixture has no `}`:\n" +
+    RECOVERED_CERTIFICATE_PARAMS,
+    "blind-v37-p5 said `a truncated struct is returned exactly as it arrived` and\n" +
+      "`un-truncating a field list is a different item and is not built here`. Both are false now:\n" +
       `  got: ${show(got)}`,
   );
+  assert.ok(!got.includes(E), "the elision marker is gone, which is the whole point of the fix");
 });
 
 // ===========================================================================

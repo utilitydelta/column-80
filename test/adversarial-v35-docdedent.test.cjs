@@ -47,15 +47,21 @@ function docBlockOf(prompt, signatureFirstLine) {
 // D1: C# — the doc's FIRST line is indented too, so skipping line 0 inverts the
 // raggedness instead of removing it.
 // ---------------------------------------------------------------------------
-// `todo`: this asserts on `csDocCommentAbove` ITSELF, and the review's own
+// THE RULING, kept verbatim from when this row was `todo`: this asserts on
+// `csDocCommentAbove` ITSELF, and the review's own
 // recommended fix (strip every line in `dedentDocComment`) does not satisfy it.
 // It documents the false premise rather than stating a contract the shipped
 // change can meet, and the user-visible behaviour it protects - the rendered doc
 // block - is green in the row below. Making the resolver return a flush first
 // line would move the C#/TS doc channel on every prompt and wants its own slice.
-test("D1 csharp: the resolver's own doc leg yields an indented FIRST line", {
-  todo: "csDocCommentAbove returns whole lines; the dedent tolerates that instead. Fixing the resolver is its own change",
-}, () => {
+//
+// INVERTED 2026-08-10, because a test that must be red is not a test. The row
+// USED TO assert a flush `"/// <summary>"` - the dedent's premise, the thing the
+// resolver would return if it were fixed - and was red every run. It now asserts
+// what the shipped resolver actually returns, so the false premise is pinned as
+// a fact instead of as a permanent failure. The flush form is still what the
+// dedent's premise wants; the row above records why nobody has paid for it.
+test("KNOWN WRONG: csDocCommentAbove's first doc line carries the file column", () => {
   const src = [
     "public class Calc",
     "{",
@@ -69,8 +75,8 @@ test("D1 csharp: the resolver's own doc leg yields an indented FIRST line", {
   // The premise the dedent rests on: line 1 flush. It is not.
   assert.equal(
     doc.split("\n")[0],
-    "/// <summary>",
-    "csDocCommentAbove returns whole lines, so line 1 carries the file column",
+    "    /// <summary>",
+    "csDocCommentAbove returns whole lines, so line 1 carries the file column (WAS asserted as the flush \"/// <summary>\")",
   );
 });
 

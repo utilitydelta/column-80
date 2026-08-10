@@ -267,12 +267,19 @@ Three properties of that funnel are worth keeping, because each one changes how 
   configuration that is 46 of 220 injected types - **20.9%** - so a fifth of the surface C# receives is
   a side effect of nested walking rather than of the candidate-and-cap machinery. At cap 8 plus budget
   900 it collapses to 1.5%, because nearly everything holds a slot directly.
-- **`injectedSurface: "generous"` raises the cap and not the budget**, which moves C# to the worst of
-  the four arms above (S45-8).
+- **A knob that raises the cap and not the budget** moves C# to the worst of the four arms above
+  (S45-8). That finding is why `column80.injectedSurface` was replaced: it raised exactly that one
+  number. `column80.injectedContext` moves the cap and the budget together (supersession S16).
 
 ## The Go cap, and the authored-doc population (v42)
 
-The prefill type cap is per-language since v42: `GO_PREFILL_TYPE_CAP = 8`, everything else 4. The
+The prefill type cap was per-language from v42 to v48: `GO_PREFILL_TYPE_CAP = 8`, everything else 4.
+Since session-v48 it is the context stop's `rootCap` and every language reads the same number, with
+Go's measured 8 as the install default for all five (supersession S16). The constant survives in one
+place only, and it is not a live exception: the internal `shipped` stop replays the pre-dial point
+for measurement, and the pre-dial point gave Go 8 (`PrefillLang.shippedRootCap`, applied in
+`prefillRootCap`). A `shipped` Go prompt built on 4 roots would be a before-side that never shipped -
+1204 bytes against HEAD's 2116. The
 number is not taste - it is the knee of a cap ladder measured over 907 script-authored
 backtick-doc functions on a six-repo corpus, where the cap was the funnel's binding stage (in-cap
 50.9% -> 78.8%, injected 34.8% -> 53.9%). Rust keeps 4 because its own 4->12 ladder measured flat.

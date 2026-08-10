@@ -13,11 +13,24 @@ import { FnGenConfig } from "./config";
 import { InstructGenerateFn, generateInstruct } from "./ollama";
 import {
   ContextBlock,
+  FnGenPromptInput,
   GenKind,
+  SECTION_SEPARATOR,
   assembleFnGenPrompt,
   assembleTestGenPrompt,
+  fnGenPromptShare,
   renderContextPrefix,
 } from "./prompt";
+import {
+  PROMPT_TEMPLATE_TOK,
+  PromptWindowError,
+  arbitratePrompt,
+  estimatePromptTok,
+  estimateTextTok,
+  promptRefusalChannelLine,
+  promptShrinkChannelLine,
+  splitInjectedUnits,
+} from "./promptBudget";
 import {
   extractRequestedFunction,
   extractTestFunctions,
@@ -69,6 +82,20 @@ export interface FnGenRequest {
    *  keeps the prompt bytes exactly. Deliberately absent from TestGenRequest:
    *  the test-authoring pass must never see a body-scoped comment. */
   scaffoldComments?: string[];
+  /**
+   * How `injectedSurface` shrinks, when the window arbitration needs it to
+   * (session-v48 phase 2). `blocks` is how many droppable type blocks it
+   * carries; `keep(n)` RE-RENDERS it with only the first n of them.
+   *
+   * A re-render rather than a slice, because dropping a type block also has to
+   * narrow the payload's own "use only these types" instruction - a sentence
+   * that named a block the shrink removed would point the model at a surface
+   * that is no longer in the prompt.
+   *
+   * Absent: the service splits the surface itself (fence-aware, see
+   * `splitInjectedUnits`). Every caller that CAN re-render should pass this.
+   */
+  injectedShrink?: { blocks: number; keep: (keep: number) => string | undefined };
 }
 
 /** Test-authoring request (sibling of FnGenRequest). Never carries a
@@ -158,7 +185,7 @@ export class FnGenService {
 
   async generate(request: FnGenRequest, signal?: AbortSignal): Promise<FnGenResult | undefined> {
     const blocks = request.contextBlocks ?? [];
-    const prompt = assembleFnGenPrompt({
+    const promptInput: FnGenPromptInput = {
       signature: request.signature,
       docComment: request.docComment,
       contextBlocks: blocks,
@@ -170,7 +197,15 @@ export class FnGenService {
       bodyOnly: request.bodyOnly,
       localSymbols: request.localSymbols,
       scaffoldComments: request.scaffoldComments,
-    });
+    };
+    // THE WINDOW GUARD (session-v48 phase 2, roadmap item 43). Here and not in
+    // the command, because this is the one place that turns a request into the
+    // prompt string AND holds the transport's own `numCtx`/`maxTokens`: an
+    // estimate taken anywhere else would be an estimate of a prompt somebody
+    // else assembled. Throws a PromptWindowError rather than returning
+    // undefined, because undefined already means "aborted" on this path and a
+    // refusal owes the human a sentence.
+    const prompt = assembleFnGenPrompt(this.fitToWindow(promptInput, request));
     return this.run(prompt, {
       docComment: request.docComment,
       signature: request.signature,
@@ -181,6 +216,76 @@ export class FnGenService {
       onPrompt: request.onPrompt,
       cachePrefix: renderContextPrefix(blocks),
     }, signal);
+  }
+
+  /**
+   * The prompt-versus-window arbitration for ONE generation. Returns the prompt
+   * input to assemble - unchanged when it fits, with a smaller injected surface
+   * when only ours had to give - and THROWS when it does not fit even with zero
+   * injection.
+   *
+   * THE RULE, ruled by the human: the developer's manually added context wins.
+   * Ours shrinks; theirs never does. Past `num_ctx` ollama truncates the prompt
+   * silently and eats the HEAD, which is our injected surface, so the current
+   * behaviour already drops ours and keeps theirs - just invisibly, and after
+   * the model has been handed the worse prompt.
+   *
+   * FRONTIER IS EXEMPT, and the signal is the transport's own: `numCtx` is
+   * absent exactly when no `num_ctx` is sent (see `generateInstruct`, and the
+   * cloud/Claude-Code service arms that drop it because it reaches nothing).
+   * No local window means nothing to arbitrate: no estimate, no shrink, no
+   * refusal, and the prompt is assembled exactly as it is today.
+   */
+  private fitToWindow(promptInput: FnGenPromptInput, request: FnGenRequest): FnGenPromptInput {
+    const numCtx = this.config.numCtx;
+    if (numCtx === undefined) {
+      return promptInput;
+    }
+    const surface = request.injectedSurface;
+    // The caller's own re-render when it has one; otherwise the fence-aware
+    // split. Nothing is pre-summed: a size is only ever costed on a prompt that
+    // is ALREADY too big, and the estimate now has to see the characters (a
+    // length alone cannot tell a CJK identifier from an ASCII one - review D6).
+    const units = request.injectedShrink === undefined ? splitInjectedUnits(surface) : [];
+    const blockCount = request.injectedShrink?.blocks ?? units.length;
+    const keepText = (keep: number): string | undefined =>
+      request.injectedShrink !== undefined
+        ? request.injectedShrink.keep(keep)
+        : keep <= 0
+          ? undefined
+          : keep >= units.length
+            ? surface
+            : units.slice(0, keep).join(SECTION_SEPARATOR);
+    const share = fnGenPromptShare(promptInput);
+    const decision = arbitratePrompt({
+      windowed: true,
+      numCtx,
+      maxTokens: this.config.maxTokens,
+      // Each part rounds UP on its own, so the total can only over-state the
+      // prompt. Over-estimating shrinks (at worst refuses) something that would
+      // have fitted and SAYS SO; under-estimating lets the head-truncation
+      // through in silence, which is the defect this exists to end.
+      developerTok: estimatePromptTok(share.developerChars, share.developerNonAscii),
+      // The chat template's own tokens are charged to `fixed`, because that is
+      // what they are: bytes the gesture cannot do without and the developer
+      // cannot remove. The prompt STRING does not contain them - the server's
+      // Modelfile wraps this turn - so no character count can see them.
+      fixedTok: estimatePromptTok(share.fixedChars, share.fixedNonAscii) + PROMPT_TEMPLATE_TOK,
+      injectedBlocks: blockCount,
+      injectedTokFor: (keep) =>
+        keep >= blockCount
+          ? estimatePromptTok(share.injectedChars, share.injectedNonAscii)
+          : estimateTextTok(keepText(keep) ?? ""),
+    });
+    if (decision.verdict === "refuse") {
+      this.log?.(promptRefusalChannelLine(decision));
+      throw new PromptWindowError(decision);
+    }
+    if (decision.verdict === "shrink") {
+      this.log?.(promptShrinkChannelLine(decision));
+      return { ...promptInput, injectedSurface: keepText(decision.keptBlocks) };
+    }
+    return promptInput;
   }
 
   /**
@@ -200,6 +305,11 @@ export class FnGenService {
       replyShape: request.replyShape,
       languageName: request.languageName,
     });
+    // Test-gen is one of the four ways into the model, and until now only one of
+    // the four was guarded. Its ceiling is `testMaxTokens`, not `maxTokens` - a
+    // test module is several times a function - so the window it has to fit is
+    // measured against that, not against the generation's.
+    this.refuseUnfittablePrompt(prompt, "", this.config.testMaxTokens ?? this.config.maxTokens);
     return this.run(prompt, {
       docComment: request.docComment,
       signature: request.signature,
@@ -209,6 +319,56 @@ export class FnGenService {
       shape: "test-module",
       languageId: request.languageId,
     }, signal);
+  }
+
+  /**
+   * THE WINDOW GUARD FOR A PROMPT THAT IS ALREADY A STRING (adversarial review
+   * D1/D7). `generate()` arbitrates; this is what the other three ways into the
+   * model get - the punt circle-back retry, repair, refine and test-gen all
+   * arrive here with finished bytes.
+   *
+   * NOT A REPAIR CHANGE. goal.md excludes repair work, and that exclusion is
+   * about changing how repair GENERATES. This changes nothing about the repair
+   * prompt: it is the prompt-versus-window guard this phase exists to build,
+   * applied at the seam every gesture shares, and repair reaches the model
+   * through that seam like everything else.
+   *
+   * IT CANNOT SHRINK, AND REFUSING IS THE HONEST OUTCOME. A finished string
+   * carries no part attribution: nothing here can tell the injected surface from
+   * the instruction, so there is no "ours gives first" ladder to climb. The
+   * alternative is to send it anyway and let ollama truncate the HEAD - which,
+   * because the head is where the developer's context blocks are rendered, is
+   * also the one outcome the human's asymmetry ruling forbids. The punt retry is
+   * the sharpest case: its prompt is the original prompt PLUS the anti-punt
+   * directive PLUS the stub (up to `maxTokens` of it), so it is strictly larger
+   * than a prompt that just passed arbitration, and it was going out unchecked.
+   *
+   * `cachePrefix` is the rendered context blocks when the caller knows them, so
+   * the refusal can still name the developer's share honestly. When it is absent
+   * (or the prompt does not actually lead with it) everything is charged to
+   * `fixed`, which never over-states what is theirs.
+   */
+  private refuseUnfittablePrompt(prompt: string, cachePrefix: string, maxTokens: number): void {
+    const numCtx = this.config.numCtx;
+    if (numCtx === undefined) {
+      return; // frontier: no local window, nothing to arbitrate
+    }
+    const developerChars = cachePrefix.length > 0 && prompt.startsWith(cachePrefix) ? cachePrefix.length : 0;
+    const decision = arbitratePrompt({
+      windowed: true,
+      numCtx,
+      maxTokens,
+      developerTok: estimateTextTok(prompt.slice(0, developerChars)),
+      fixedTok: estimateTextTok(prompt.slice(developerChars)) + PROMPT_TEMPLATE_TOK,
+      // No blocks to give up: this path has no attribution and so no shrink.
+      injectedBlocks: 0,
+      injectedTokFor: () => 0,
+    });
+    if (decision.verdict !== "refuse") {
+      return;
+    }
+    this.log?.(promptRefusalChannelLine(decision));
+    throw new PromptWindowError(decision);
   }
 
   /**
@@ -224,6 +384,10 @@ export class FnGenService {
     opts?: RawGenerateOptions,
     signal?: AbortSignal,
   ): Promise<FnGenResult | undefined> {
+    const cachePrefix = renderContextPrefix(opts?.contextBlocks);
+    // See refuseUnfittablePrompt: the punt retry, repair and refine all reach
+    // the model through here, and every one of them was unguarded.
+    this.refuseUnfittablePrompt(prompt, cachePrefix, this.config.maxTokens);
     return this.run(prompt, {
       docComment: opts?.docComment,
       signature: opts?.signature,
@@ -233,7 +397,7 @@ export class FnGenService {
       // No context blocks exist on this path; "-" keeps the gen line format
       // stable while staying honest about the count not applying.
       blocksLabel: "-",
-      cachePrefix: renderContextPrefix(opts?.contextBlocks),
+      cachePrefix,
     }, signal);
   }
 

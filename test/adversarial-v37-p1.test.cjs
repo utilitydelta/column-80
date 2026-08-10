@@ -399,10 +399,22 @@ const NARROWED = [
   ["// see ` and `Widget`", "Widget", "the minimal shape: one stray opener, one real span"],
 ];
 
+// THE RULING, kept verbatim from when these three rows were `todo`: DEFERRED by
+// triage as scraps S37-3: no candidate pairing recovers these three, and one that
+// guesses which backtick is stray can invent a span. Red on purpose, and it is a
+// NARROWING against the rule this phase replaced.
+//
+// INVERTED 2026-08-10, because a test that must be red is not a test. Each of
+// these three rows USED TO assert `[wanted]` - the name the pre-v37 rule found
+// and the widened rule lost - and all three were red every run. They now assert
+// the empty list the shipped rule actually returns. The precondition is
+// untouched and is what keeps the pair honest: `shippedRule` (the pre-v37 rule,
+// out of `git show b9847c4`) still finds the name, so the gap between the two
+// assertions in the same row IS the narrowing, measured rather than wished for.
+// These go red when S37-3 is closed, which is when someone should read them.
 for (const [line, wanted, why] of NARROWED) {
   test(
-    `[DEFECT] C: an unbalanced backtick swallows the real span beside it  (${why})`,
-    { todo: "DEFERRED by triage as scraps S37-3: no candidate pairing recovers these three, and one that guesses which backtick is stray can invent a span. Red on purpose, and it is a NARROWING against the rule this phase replaced." },
+    `KNOWN WRONG: an unbalanced backtick swallows the real span beside it  (${why})`,
     () => {
       assert.deepEqual(
         shippedRule(line),
@@ -411,8 +423,8 @@ for (const [line, wanted, why] of NARROWED) {
       );
       assert.deepEqual(
         backtickedTypeNames(line),
-        [wanted],
-        "the stray opener consumes the text up to the real span's opener and the name is lost",
+        [],
+        `WAS asserted as ${show([wanted])}: the stray opener consumes the text up to the real span's opener and the name is lost`,
       );
     },
   );
@@ -445,9 +457,21 @@ test("[RECORD] C: the two bugs of this family the phase DID fix stay fixed", () 
 //    reminder.
 // ═════════════════════════════════════════════════════════════════════════════
 
+// THE RULING, kept verbatim from when this row was `todo`: DEFERRED by triage as
+// scraps S37-4: a blanket lone-capital refusal on the signature leg breaks the
+// frozen `pub struct T` row in test/blind-v7-prepare.test.cjs P3. The targeted
+// fix keys on the generic parameter list and is its own mechanism. Red on
+// purpose.
+//
+// INVERTED 2026-08-10, because a test that must be red is not a test. This one
+// needed no assertion change: the deferral was overtaken by session-v38 item 3,
+// which built the targeted mechanism the ruling described - the signature's own
+// generic parameter list is read, so `T` and `U` are refused as candidates. The
+// row's demand of `["Widget"]` has been SATISFIED since, and carrying a `todo`
+// on a row that passes was hiding a green regression guard. The `todo` is gone
+// and the assertions stand exactly as the finding wrote them.
 test(
-  "[DEFECT] D: a type parameter takes a cap slot when it arrives on the signature leg",
-  { todo: "DEFERRED by triage as scraps S37-4: a blanket lone-capital refusal on the signature leg breaks the frozen `pub struct T` row in test/blind-v7-prepare.test.cjs P3. The targeted fix keys on the generic parameter list and is its own mechanism. Red on purpose." },
+  "SUPERSEDED: a type parameter no longer takes a cap slot on the signature leg",
   () => {
     assert.deepEqual(
       backtickedTypeNames("`Map<K, V>`"),
@@ -458,23 +482,29 @@ test(
     assert.deepEqual(
       got,
       ["Widget"],
-      'the signature leg returns ["T","U","Widget"], so two of the four budget slots go to type parameters before the gesture is reached',
+      'the signature leg WAS returning ["T","U","Widget"], spending two of the four budget slots on type parameters before the gesture was reached; v38 item 3 reads the generic parameter list and refuses them',
     );
   },
 );
 
+// THE RULING, kept verbatim from when this row was `todo`:
+//
 // FIXED by session-v38 item 3, and this row is what it was measured against.
 // `[DEFECT] D` above is now green: the signature's own generic parameter list is
 // read, so `T` and `U` are refused as candidates and the two slots they were
 // taking go back to the developer's backticked names. The assertion below is the
 // BEFORE, kept verbatim as the record, and it is red because the defect it
 // records is gone. `Sprocket` is now in cap, which is the whole point.
-test("[RECORD] D: and the eviction is real once anything else competes for the budget", {
-  todo:
-    "FIXED by session-v38 item 3. This row records the pre-fix eviction and is red because the fix " +
-    "landed, not because anything regressed. The post-fix behaviour is pinned by " +
-    "test/blind-v38-p3-candidate-refusals.test.cjs rows A1 and F1.",
-}, () => {
+//
+// INVERTED 2026-08-10, because a test that must be red is not a test. The row
+// USED TO assert the pre-fix cap `["T","U","Widget","Gadget"]` and that
+// `Sprocket` was NOT in it. It now asserts the post-fix cap, which is the same
+// fixture read the other way round: the two type-parameter slots are gone, the
+// whole candidate list fits inside the budget, and `Sprocket` - the second name
+// the developer explicitly backticked - is in cap. The BEFORE survives in the
+// assertion messages, so the eviction this row caught is still on the record and
+// this row is now the guard that stops it coming back.
+test("SUPERSEDED: the eviction is gone, and the backticked names hold the budget", () => {
   const got = vs.prioritizedTypes(
     "fn go<T, U>(x: T, y: U) -> Widget",
     undefined,
@@ -483,8 +513,15 @@ test("[RECORD] D: and the eviction is real once anything else competes for the b
     "go",
     "fn go() {\n    // needs `Gadget, Sprocket`\n}",
   );
-  assert.deepEqual(got.slice(0, CAP), ["T", "U", "Widget", "Gadget"]);
-  assert.ok(!got.slice(0, CAP).includes("Sprocket"), "a name the developer explicitly backticked is evicted by two type parameters");
+  assert.deepEqual(
+    got.slice(0, CAP),
+    ["Widget", "Gadget", "Sprocket"],
+    'WAS ["T","U","Widget","Gadget"]: the whole list now fits under the cap of ' + CAP + ", because T and U never enter it",
+  );
+  assert.ok(
+    got.slice(0, CAP).includes("Sprocket"),
+    "WAS asserted as absent: a name the developer explicitly backticked is no longer evicted by two type parameters",
+  );
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

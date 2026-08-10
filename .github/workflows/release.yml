@@ -27,14 +27,16 @@ jobs:
       # 24 for the same reason ci.yml pins it: `node --test` glob expansion.
       - uses: actions/setup-node@v4
         with:
-          # PINNED, not the floating major (2026-08-10). `24` resolves to the newest
-          # 24.x, and 24.18 counts a failing `todo` row toward the exit code where
-          # 24.12 does not. The suite carries todo rows that are red ON PURPOSE,
-          # each with a written ruling, so a floating runtime turned a green suite
-          # red without a line of source changing. Raise this deliberately, with the
-          # todo rows re-decided, never by drifting.
-
-          node-version: 24.12.0
+          # UNPINNED again 2026-08-10 (session-v48 phase 0, roadmap item 44 closed).
+          # The pin existed because `24.18` counts a failing `todo` row toward the
+          # exit code where `24.12` does not, and this suite carried 43 rows that
+          # were red on purpose. It carries none: 37 now assert what the code
+          # actually does, under a `KNOWN WRONG:` or `SUPERSEDED:` title, and 6
+          # skip with a stated reason because the captures they score were deleted
+          # with the repo split. `todo` is 0 on 24.12.0 and on 24.19.0. The
+          # wall-clock rows of roadmap item 23 are a separate, still-open way for
+          # a busy runner to turn this red; see the note in ci.yml.
+          node-version: 24
           cache: npm
 
       - name: Tag matches package.json version

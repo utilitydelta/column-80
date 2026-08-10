@@ -219,7 +219,14 @@ function makeExtractor(files, defTypes) {
 const sha = (s) => crypto.createHash("sha256").update(s ?? "", "utf8").digest("hex");
 
 for (const [languageId, pin] of Object.entries(PINS)) {
-  test(`the assembled ${languageId} fn-gen prompt is byte-identical to the pre-seam build`, async () => {
+  // RE-CUT by session-v48 phase 1 (docs/supersessions.md), and it is the row that
+  // PROVES the phase's P3. The pins below are the pre-dial prompt, byte for byte.
+  // The context dial's install default (`small`) deliberately renders a bigger
+  // one, so the row asks for the `shipped` stop - the pre-dial point the stop
+  // table keeps for exactly this. The shas are UNCHANGED: `shipped` reproducing
+  // them is the whole claim, and a single byte of drift in the derivation seam
+  // still turns this red.
+  test(`the assembled ${languageId} fn-gen prompt at the \`shipped\` stop is byte-identical to the pre-seam build`, async () => {
     const F = FIXTURES[languageId];
     const mainUri = `${WS}/main.${F.ext}`;
     const signature = F.signature(SIX);
@@ -246,7 +253,9 @@ for (const [languageId, pin] of Object.entries(PINS)) {
     globalThis.__V46P0B_FILES__ = files;
     let surface;
     try {
-      surface = await M.resolvePrefill(makeExtractor(files, defTypes), makeDoc(src, mainUri), record, () => {});
+      surface = await M.resolvePrefill(makeExtractor(files, defTypes), makeDoc(src, mainUri), record, () => {}, {
+        contextStop: "shipped",
+      });
     } finally {
       delete globalThis.__V46P0B_FILES__;
     }

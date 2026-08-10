@@ -153,14 +153,26 @@ module.exports = {
 `,
 );
 
+let ROOT_CAP_AT_DEFAULT;
 const ENTRY = path.join(__dirname, ".blind-v24-p1.entry.ts");
 const OUTFILE = path.join(__dirname, ".blind-v24-p1.bundle.cjs");
 let resolvePrefill;
+// The root cap in force under the INSTALL DEFAULT context stop, read from the
+// product's own seam. Written as a read rather than a literal because
+// session-v48 phase 1 made it a setting: a row that hard-coded the number would
+// pin the dial's default instead of the mechanism it is about.
+let contextBoundsFor;
 let bundleErr;
 try {
-  fs.writeFileSync(ENTRY, `export { resolvePrefill } from "../src/vscode/fnGen";\n`);
+  fs.writeFileSync(
+    ENTRY,
+    `export { resolvePrefill } from "../src/vscode/fnGen";\n` +
+      `export { contextBoundsFor, DEFAULT_CONTEXT_STOP } from "../src/core/budgetProfile";\n`,
+  );
   esbuild.buildSync({ entryPoints: [ENTRY], bundle: true, outfile: OUTFILE, format: "cjs", platform: "node", alias: { vscode: STUB } });
-  ({ resolvePrefill } = require(OUTFILE));
+  const built = require(OUTFILE);
+  ({ resolvePrefill, contextBoundsFor } = built);
+  ROOT_CAP_AT_DEFAULT = contextBoundsFor(built.DEFAULT_CONTEXT_STOP).rootCap;
 } catch (e) {
   bundleErr = e;
 }
@@ -1171,31 +1183,34 @@ btest("impl header [rust] RECORDED DEGRADE: `impl crate::store::Owner` does not 
 // ===========================================================================
 
 const CAP_URI = "file:///w/v24/cap.rs";
+// NINE candidate types, not five (session-v48 phase 1). The root cap is the
+// context dial's now: the install default (`small`) admits 8, so a five-type
+// fixture cannot make the cap bind and both rows below would pass while
+// measuring nothing. The SUBJECT is unchanged - one more candidate than the cap
+// admits, so eviction is observable.
+const CAP_TYPES = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9"];
+const CAP_PARAMS = CAP_TYPES.map((t, i) => `${"abcdefghi"[i]}: ${t}`).join(", ");
 const CAP_SRC = `struct Owner {
     slots: u32,
 }
 
-struct T1 { a: u32 }
-struct T2 { b: u32 }
-struct T3 { c: u32 }
-struct T4 { d: u32 }
-struct T5 { e: u32 }
+${CAP_TYPES.map((t, i) => `struct ${t} { ${"abcdefghi"[i]}: u32 }`).join("\n")}
 
 impl Owner {
     /// Fold everything.
-    fn fold(&self, a: T1, b: T2, c: T3, d: T4, e: T5) -> u32 {
+    fn fold(&self, ${CAP_PARAMS}) -> u32 {
         todo!()
     }
 }
 
 /// Fold everything.
-fn free_fold(a: T1, b: T2, c: T3, d: T4, e: T5) -> u32 {
+fn free_fold(${CAP_PARAMS}) -> u32 {
     todo!()
 }
 `;
 const CAP_DEFS = () => {
   const d = { Owner: { uri: CAP_URI, hover: "pub struct Owner { slots: u32 }", members: [F("slots", "slots: u32"), M("roll_active", "roll_active(&self) -> u64")] } };
-  for (const n of ["T1", "T2", "T3", "T4", "T5"]) d[n] = { uri: CAP_URI, hover: `pub struct ${n} { x: u32 }`, members: [M(`m_${n}`, `m_${n}(&self) -> u32`)] };
+  for (const n of CAP_TYPES) d[n] = { uri: CAP_URI, hover: `pub struct ${n} { x: u32 }`, members: [M(`m_${n}`, `m_${n}(&self) -> u32`)] };
   return d;
 };
 const CAP_TREE = () => [
@@ -1208,24 +1223,31 @@ const CAP_TREE = () => [
 const capScn = (target) => {
   const base = { languageId: "rust", mainUri: CAP_URI, files: { [CAP_URI]: CAP_SRC }, defTypes: CAP_DEFS(), tree: CAP_TREE(), docComment: "/// Fold everything." };
   return target === "method"
-    ? { ...base, spanStart: "fn fold", spanEnd: "todo!()\n    }", signature: "fn fold(&self, a: T1, b: T2, c: T3, d: T4, e: T5) -> u32", symbolName: "fold" }
-    : { ...base, spanStart: "fn free_fold", spanEnd: "todo!()\n}", signature: "fn free_fold(a: T1, b: T2, c: T3, d: T4, e: T5) -> u32", symbolName: "free_fold" };
+    ? { ...base, spanStart: "fn fold", spanEnd: "todo!()\n    }", signature: `fn fold(&self, ${CAP_PARAMS}) -> u32`, symbolName: "fold" }
+    : { ...base, spanStart: "fn free_fold", spanEnd: "todo!()\n}", signature: `fn free_fold(${CAP_PARAMS}) -> u32`, symbolName: "free_fold" };
 };
 
 btest("item 12 [rust]: the receiver takes the first slot of the EXISTING cap - the block count does not grow", async () => {
   const free = await runPrefill(capScn("free"));
   const meth = await runPrefill(capScn("method"));
-  assert.ok(free.names.length >= 2 && free.names.length < 5, `fixture precondition: the cap must BIND on the free run; got ${free.names.length}.${dump(free)}`);
+  assert.ok(free.names.length >= 2 && free.names.length < CAP_TYPES.length, `fixture precondition: the cap must BIND on the free run; got ${free.names.length}.${dump(free)}`);
   assert.strictEqual(meth.names[0], "Owner", `the receiver leads at the method target.${dump(meth)}`);
   assert.ok(meth.names.length <= free.names.length, `the receiver must not raise the cap: free=${free.names.length} method=${meth.names.length}.\n  FREE=${JSON.stringify(free.names)}\n  METHOD=${JSON.stringify(meth.names)}`);
   const displaced = free.names.filter((n) => !meth.names.includes(n));
   assert.ok(displaced.length >= 1, `cap eviction removes a whole block - one of the two displacement costs the measurement must carry.\n  FREE=${JSON.stringify(free.names)}\n  METHOD=${JSON.stringify(meth.names)}`);
 });
 
-btest("item 17 [rust]: no cap constant moves - the free-function run still admits exactly four candidate types and names the evicted one", async () => {
+// RE-CUT by session-v48 phase 1 (docs/supersessions.md). The row used to read
+// "no cap constant moves ... exactly four": the cap WAS a constant and 4 was its
+// value. It is now the context dial's `rootCap`, and the install default
+// (`small`) admits 8. What the row is FOR is unchanged - the cap binds, the
+// count is exactly the cap, and the evicted candidate is named on the channel -
+// so the number is read from the seam rather than written down as a literal.
+btest("item 17 [rust]: the free-function run admits exactly the stop's root cap and names the evicted one", async () => {
   const free = await runPrefill(capScn("free"));
-  assert.strictEqual(free.names.length, 4, `the existing type cap admits four; a changed count means a constant moved.${dump(free)}`);
-  assert.ok(free.logs.some((l) => isCapDrop(l) && /T5/.test(l)), `the lowest-ranked candidate is evicted and named.${dump(free)}`);
+  assert.strictEqual(free.names.length, ROOT_CAP_AT_DEFAULT, `the type cap admits the stop's root count; a changed count means the dial moved.${dump(free)}`);
+  const evicted = CAP_TYPES[CAP_TYPES.length - 1];
+  assert.ok(free.logs.some((l) => isCapDrop(l) && new RegExp(`\\b${evicted}\\b`).test(l)), `the lowest-ranked candidate is evicted and named.${dump(free)}`);
 });
 
 btest("item 12 [rust]: a receiver also named in the signature appears exactly once, in first position", async () => {

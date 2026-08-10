@@ -578,3 +578,144 @@ which asserts exactly 4.
 
 **Pinned by.** `test/blind-v42-p2-go-cap.test.cjs` (the ratified contract: Go 8, Rust control 4)
 and the nine re-cut rows listed above.
+
+## S16. The prefill's four bounds become one setting, and Go's cap exception dies
+
+**Ratified by the human, 2026-08-10, `session-v48/goal.md`. Contract:
+`session-v48/contract-phase1.md`. One entry for the batch: this is a single ruling and it moves
+rows across nine files.**
+
+**What changed.** The four numbers that bound the fn-gen injected surface - how many ROOT
+candidates are walked, how many local field-types are followed per node, how many distinct types
+one walk may emit, and the shared render budget - stop being module constants and become
+derivations of one setting, `column80.injectedContext`, with four stops (`small` / `medium` /
+`large` / `frontier`, default `small`) plus an internal `shipped` stop that is the pre-dial point.
+Two more move with them, because they had to: the resolve cap and the provenance cap, since a root
+beyond the resolve cap can never be injected. `column80.injectedSurface` (`auto` / `minimal` /
+`generous`) and the `injectedTypeCap` function that applied it are gone, as are the per-language
+`typeCap` / `resolveCap` / `provenanceCap` fields on `PrefillLang`.
+
+Go's `GO_PREFILL_TYPE_CAP` survives in exactly one place, and only after the adversarial review
+(2026-08-10): the internal `shipped` stop, which is the before-side a measurement replays. HEAD
+gave Go 8 roots and every other language 4, so a `shipped` stop handing Go 4 renders 1204 bytes
+where HEAD renders 2116 - a baseline that never shipped. It is applied where the pre-fill spends
+the cap (`prefillRootCap`, reading `PrefillLang.shippedRootCap`) and only when the stop is
+`shipped`; every stop a setting can select still gives all five languages one root cap.
+
+**Why the old behaviour was wrong.** `injectedSurface` moved exactly ONE of the four numbers and
+therefore could not change the prompt on its own. Measured before the build, against the shipped
+`walkDataShape` on a 40-wide synthetic type graph at depth 2: raising breadth alone from 4 to 48
+with the total-type cap at 6 and the render budget at 200 produced a BYTE-IDENTICAL 791-char block
+at every rung, and so did breadth and the total together with the budget pinned. Only all four
+moving together moved the block: 791 -> 1577 -> 3191 -> 6392 -> 10648 chars, 1 -> 2 -> 4 -> 7 -> 12
+types. The root cap is the same story one stage up - session-v45 measured C# cap 4 -> 8 taking
+types-that-got-a-slot from 47.8% to 92.6% and injection only from 16.4% to 20.2%, because more
+roots against an unchanged shared budget re-divide the same bytes. A slider that silently does
+nothing is the failure class this project spent two sessions digging out of.
+
+**Why Go's exception dies.** Go's 8 was measured (the authored-gesture funnel's cap ladder over 907
+rows in six repositories, knee at 8). The ruling brings every language UP to it rather than keeping
+a per-language table. Rust's own 4 -> 12 ladder measured flat, and that is not an argument against
+this: it ran with the token budget PINNED, and session-v45 showed that raising the cap alone
+relocates the loss rather than recovering it. In the dial roots and budget move together, so the
+condition Rust measured flat under does not hold. Session-v47's scout also found 11 of 30 Rust rows
+already at or over the 4-cap, with the enclosing type evicting a candidate on those.
+
+**What did NOT move.** `TESTGEN_PROFILE`, and with it test-gen's root, resolve and provenance caps -
+its numbers were chosen for construction and no measurement has ever been taken against that
+gesture at any stop, which is as true of how many roots it admits as of how far it walks them. The
+first cut read `rootCap` off the live stop before the `forConstruction` branch and silently took
+`column80.generateTests` from 4 roots to 8 at the install default, on a gesture whose channel
+deliberately prints no stop line; it now resolves the `shipped` numbers whatever the setting says.
+FIM: `completionProvider.ts` keeps its own `DATASHAPE_BOUNDS` and `CROSS_FILE_BOUND` and does not
+read the stop, because FIM caps spend latency against a keystroke deadline rather than prompt
+budget (contract P7). `GEN_NUM_CTX`, `GEN_TIMEOUT_MS`, `GEN_MAX_TOKENS`, `FRONTIER_MAX_TOKENS`. And
+the rig's textual patch sites, `var DATASHAPE_TOTAL_TOK = 300;`, `var PREFILL_TYPE_CAP = 4;` and
+`var GO_PREFILL_TYPE_CAP = ...;`, which feed the `shipped` stop and reach a live prompt through it -
+the rig's own loaders now pin that stop, because its settings stub answers the default for every
+key and every arm was silently rendering the `small` prompt.
+
+**What DOES move that the first cut pinned.** The repair and refine path. `oracleSurface.ts` was
+pinned to `shipped`, with a comment claiming the contract required it; the contract's do-not-change
+list carves OUT exactly what `surfaceCap` and `refineTotalChars` derive from the aggregate budget.
+A developer who picks `frontier` for their model's window has no second setting for the repair
+prompt and no channel line telling them it stayed at the local-30B point, so both call sites read
+the live stop. `surfaceCap` is 8 at the install default (4 at `shipped`), `memberCap` 48 (24).
+
+**Rows re-cut.** Two files were superseded whole - their subject no longer exists as a property, so
+there was nothing to invert each row to, and each keeps a short set of rows asserting the reversal:
+
+- `test/blind-v37-p2-prefill-bounds.test.cjs` (the per-language bounds seam, 17 rows -> 6).
+- `test/blind-v37-p3-surface-setting.test.cjs` (the `injectedSurface` setting, 24 rows -> 7).
+
+The rest were re-cut in place, keeping their subject:
+
+- `test/blind-v42-p2-go-cap.test.cjs`: the Rust CONTROL row inverted - Rust now holds the same
+  slots as Go.
+- `test/adversarial-v42-p2.test.cjs`: S1 (one root cap for five languages, and the
+  rootCap <= resolveCap coupling now pinned at every stop), S3 (re-cut onto `injectedContext`), R1
+  (the rig's cap patch, pinned to the `shipped` stop it feeds, and given the control it lacked).
+- `test/blind-v46-budgetprofile.test.cjs`, `test/impl-v46-p0b-budgetprofile.test.cjs`: the identity
+  table is asked for at the `shipped` stop. Every value unchanged.
+- `test/impl-v46-p0b-prompt-identity.test.cjs`: the frozen sha256 pins are asked for at the
+  `shipped` stop and are UNCHANGED, which is the phase's P3 witness.
+- `test/review-v45-p3-budget.test.cjs` R4: both arms at the `shipped` stop.
+- `test/blind-v24-p1-receiver.test.cjs`, `test/impl-v24-p1-receiver.test.cjs`,
+  `test/blind-v7-prepare.test.cjs`: budget-pressure fixtures widened, and their widths derived from
+  the seam rather than written down, because at the install default the old fixtures fit inside the
+  budget and passed while nothing was under pressure.
+- `test/blind-v6-item4.test.cjs` (A5, F1), `test/blind-v35-harvest-fallthrough.test.cjs` (C3-b),
+  `test/review-v34-harvest.test.cjs` (ATTACK 3): the same widening on the REPAIR side, once that
+  path was unpinned. Four fixtures cut against `surfaceCap` 4 and `memberCap` 24; all four now read
+  the cap from `surfaceCapFor` / `memberCapFor` at the default stop and sit one step over it.
+
+**Each re-cut row can still go red.** A language that reacquires its own cap fails the p2 and S1
+rows; a stop whose `rootCap` exceeds its `resolveCap` fails three files; a byte of drift in the
+derivation seam fails the `shipped` sha pins; a fixture that stops binding fails its own explicit
+precondition.
+
+**Pinned by.** `test/blind-v48-p1-context-dial.test.cjs` (the ratified contract, written blind
+against `contract-phase1.md`) and `test/impl-v48-p1-context-dial.test.cjs`.
+
+## S17. The prompt-versus-window estimate stops being `chars / 4`
+
+**NOT YET RATIFIED. Built 2026-08-10 in the session-v48 phase 2+3 adversarial-review loop-back
+(defect D6, triaged DO). Flagged here because it supersedes the written contract's own wording.**
+
+**What changed.** `session-v48/contract-phase2.md` P2 specifies "a `chars / 4` proxy, the same
+convention `WalkBounds.TOK_MAX` already uses". `src/core/promptBudget.ts` now charges ASCII at 3
+characters per token, every non-ASCII UTF-16 unit at a whole token, and adds a flat 48-token
+allowance for the chat template the prompt string does not contain. `PROMPT_CHARS_PER_TOK` is gone,
+replaced by `PROMPT_ASCII_CHARS_PER_TOK`, `PROMPT_NON_ASCII_TOK_PER_CHAR` and
+`PROMPT_TEMPLATE_TOK`.
+
+**Why the old behaviour was wrong.** The same contract clause requires the estimate to be
+CONSERVATIVE: it may over-estimate, it must never under-estimate and let a silent head-truncation
+through. `chars / 4` under-estimates in three ways at once, and the review measured all three. An
+ASCII, a CJK and an emoji prompt of the same 25355 UTF-16 units estimated identically at 6339
+tokens while their UTF-8 sizes were 25355 / 76065 / 50708 bytes; a Qwen-class BPE encodes CJK at
+roughly one token per character, so that CJK prompt was a ~4x under-estimate and `chars / 4` waved
+it through a 14336-token window. Dense source runs nearer 3 chars/token than 4 - punctuation,
+indentation runs, snake and camel identifiers - so ASCII source under-estimated by ~33% as well.
+And neither the chat template nor the model's role scaffolding was counted at all.
+
+**The walk's own `TOK_MAX` convention is untouched.** That number sizes a RENDER budget, where 4 is
+a sizing choice with a corpus behind it; this one decides whether a prompt is sent, where the two
+error directions are not symmetric. Sharing a divisor between them was a convenience, not a
+requirement, and `src/core/dataShape.ts` still uses `tok * 4` exactly as before.
+
+**All three new values are judgment calls, and the code says so.** Rows in `docs/constants.md` name
+each one, the reasoning, and what would settle it: ollama returns the real `prompt_eval_count` on
+every response, so a session that logged (estimate, prompt_eval_count) pairs over a corpus could
+calibrate these instead of reasoning about them. Nothing reads that field today.
+
+**Blast radius, measured rather than assumed.** A more pessimistic estimate refuses and shrinks
+earlier for everyone, so the question is whether it binds in practice. The measured typical fn-gen
+prompt (~1100 tok on the old proxy, p90 ~1295 - `docs/constants.md`) reconstructs at 1136 tok
+before and 1562 tok after, against a 14336-token window: 12774 tokens of headroom, a 1.38x ratio.
+It does not bind on an ordinary gesture. The phase-2 blind oracle
+(`test/blind-v48-p2-arbitration.test.cjs`) stayed green untouched, including its own independent
+`chars / 4` conservatism check, which the stricter estimate satisfies by construction.
+
+**Pinned by.** `test/review-v48-p2-loopback.test.cjs` (the D6 rows) and
+`test/impl-v48-p2-arbitration.test.cjs` A1/A2/A3/A6/A7/A8.

@@ -134,15 +134,22 @@ test("A1: a cachePrefix equal to the whole prompt sends an EMPTY second text blo
 // A2: a data: line that is not JSON
 // ---------------------------------------------------------------------------
 
-test("A2: a [DONE] sentinel from a gateway fails the whole round after the text has arrived", {
-  todo:
-    "DEFERRED by triage 2026-08-08 as scraps S44-5. Unreachable through supported configuration: the " +
-    "Anthropic API terminates with message_stop and never sends [DONE], so the only way here is an " +
-    "`anthropic` provider pointed by cloudApiBase at an OpenAI-compatible proxy that nonetheless " +
-    "answers /messages - a configuration the manual now tells users to express as `openai-compatible` " +
-    "instead. The two-line fix is also itself a guess: swallowing unparseable frames would hide a " +
-    "garbage payload from a real endpoint. Red on purpose.",
-}, async (t) => {
+// TRIAGE RULING, kept verbatim from the `todo` marker this row carried until
+// session-v48 phase 0:
+//
+//   "DEFERRED by triage 2026-08-08 as scraps S44-5. Unreachable through
+//   supported configuration: the Anthropic API terminates with message_stop and
+//   never sends [DONE], so the only way here is an `anthropic` provider pointed
+//   by cloudApiBase at an OpenAI-compatible proxy that nonetheless answers
+//   /messages - a configuration the manual now tells users to express as
+//   `openai-compatible` instead. The two-line fix is also itself a guess:
+//   swallowing unparseable frames would hide a garbage payload from a real
+//   endpoint. Red on purpose."
+//
+// CONVERTED 2026-08-10. The row USED TO assert that `out.text` is "a + b" - the
+// completion had arrived in full before the sentinel, so the round should
+// return it. It does not: the round rejects and the complete text is lost.
+test("KNOWN WRONG: a [DONE] sentinel from a gateway fails the whole round after the text has arrived", async (t) => {
   // cloudApiBase overrides the base URL for the `anthropic` preset too, so this
   // transport can face a proxy, and a proxy that appends OpenAI's end sentinel
   // takes down a round whose text was already complete.
@@ -157,13 +164,30 @@ test("A2: a [DONE] sentinel from a gateway fails the whole round after the text 
   });
   t.after(srv.close);
 
-  const { out } = await run(srv, { cachePrefix: PREFIX });
-  assert.strictEqual(out.text, "a + b", "the completion had already arrived in full before the sentinel");
+  let err;
+  const got = await run(srv, { cachePrefix: PREFIX }).catch((e) => {
+    err = e;
+    return undefined;
+  });
+  assert.strictEqual(got, undefined, "the round does not return: the sentinel takes it down");
+  assert.strictEqual(err?.name, "SyntaxError", `the reject is the JSON parser's own error\n  got: ${err?.name}: ${err?.message}`);
+  assert.match(
+    String(err?.message),
+    /\[DONE\]/,
+    `and it names the sentinel it could not parse\n  got: ${err?.message}`,
+  );
 });
 
-test("A2b: any unparseable data: line rejects with a raw SyntaxError, not a provider-shaped message", {
-  todo: "DEFERRED by triage 2026-08-08 as scraps S44-5, with A2. Same trigger, same ruling.",
-}, async (t) => {
+// TRIAGE RULING, kept verbatim from the `todo` marker this row carried until
+// session-v48 phase 0:
+//
+//   "DEFERRED by triage 2026-08-08 as scraps S44-5, with A2. Same trigger, same
+//   ruling."
+//
+// CONVERTED 2026-08-10. The row USED TO assert that the rejection message says
+// nothing about SyntaxError / JSON - that a stream this transport cannot read
+// names the transport rather than leaking its parser. It leaks the parser.
+test("KNOWN WRONG: any unparseable data: line rejects with a raw SyntaxError, not a provider-shaped message", async (t) => {
   const srv = await startServer((req, res) => {
     openSse(res);
     messageStart(res);
@@ -176,9 +200,15 @@ test("A2b: any unparseable data: line rejects with a raw SyntaxError, not a prov
   let err;
   await run(srv).catch((e) => (err = e));
   assert.ok(err, "precondition: it rejects");
+  assert.match(
+    `${err.name}: ${err.message}`,
+    /SyntaxError|Unexpected token|JSON/i,
+    "the rejection leaks the JSON parser instead of naming the transport",
+  );
+  assert.strictEqual(err.name, "SyntaxError", `and the error TYPE is the parser's too\n  got: ${err.name}`);
   assert.ok(
-    !/SyntaxError|Unexpected token|JSON/i.test(`${err.name}: ${err.message}`),
-    `a stream this transport cannot read should name the transport, not leak the parser\n  got: ${err.name}: ${err.message}`,
+    !/anthropic/i.test(`${err.name}: ${err.message}`),
+    `nothing in it names the provider\n  got: ${err.name}: ${err.message}`,
   );
 });
 
@@ -204,13 +234,19 @@ test("A3: a round that fails on a non-2xx writes NO evidence line", async (t) =>
   );
 });
 
-test("A3b: a round that dies mid-stream loses the cache accounting it had already been told", {
-  todo:
-    "DEFERRED by triage 2026-08-08: this is scraps S44-2 on the other backend. Amendment A10 ruled " +
-    "that a failed round appends no accounting, and appending it here alone would split the one " +
-    "format phase 4 parses. The round=failed LINE itself now exists (finding 1's other half is " +
-    "fixed); only the accounting on it is deferred. Red on purpose.",
-}, async (t) => {
+// TRIAGE RULING, kept verbatim from the `todo` marker this row carried until
+// session-v48 phase 0:
+//
+//   "DEFERRED by triage 2026-08-08: this is scraps S44-2 on the other backend.
+//   Amendment A10 ruled that a failed round appends no accounting, and appending
+//   it here alone would split the one format phase 4 parses. The round=failed
+//   LINE itself now exists (finding 1's other half is fixed); only the
+//   accounting on it is deferred. Red on purpose."
+//
+// CONVERTED 2026-08-10. The row USED TO assert that some evidence line carries
+// `cwrite=11061` - the cache write the provider reported, and the user paid for,
+// before the round died. No line does.
+test("KNOWN WRONG: a round that dies mid-stream loses the cache accounting it had already been told", async (t) => {
   // message_start carried a measured 11,061-token cache WRITE. The round then
   // fails, and that write - which the user has paid for - is reported nowhere.
   const srv = await startServer(async (req, res) => {
@@ -232,8 +268,13 @@ test("A3b: a round that dies mid-stream loses the cache accounting it had alread
   await fn({ ...BASE_PARAMS, prompt: PROMPT, cachePrefix: PREFIX, signal: new AbortController().signal }).catch(() => {});
 
   assert.ok(
-    lines.some((l) => l.includes("cwrite=11061")),
-    `a cache write the provider already reported must not vanish with the round\n  got: ${JSON.stringify(lines)}`,
+    !lines.some((l) => l.includes("cwrite=")),
+    `the cache write the provider already reported vanishes with the round\n  got: ${JSON.stringify(lines)}`,
+  );
+  assert.deepStrictEqual(
+    lines,
+    ["[anthropic] model=m round=failed reason=Anthropic stream error: fell over"],
+    "the failed round leaves exactly one line, and it carries the reason and no accounting",
   );
 });
 

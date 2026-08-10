@@ -327,27 +327,47 @@ export function renderContextPrefix(blocks: readonly ContextBlock[] | undefined)
 /** Sections are separated by a blank line, everywhere, on every assembler. */
 export const SECTION_SEPARATOR = "\n\n";
 
-/** Render the single user prompt string. */
-export function assembleFnGenPrompt(input: FnGenPromptInput): string {
-  const sections: string[] = [];
+/** Which of the three arbitration parts a section's bytes belong to
+ *  (session-v48 phase 2). `developer` is untouchable, `injected` is the only
+ *  part that shrinks, `fixed` is irreducible. */
+type PromptPart = "developer" | "injected" | "fixed";
+
+/** One assembled section with the part it is charged to. */
+interface PromptSection {
+  text: string;
+  part: PromptPart;
+}
+
+/**
+ * The sections of the fn-gen prompt, in order, each tagged with whose bytes it
+ * is. THE ONE SOURCE: `assembleFnGenPrompt` joins these and `fnGenPromptShare`
+ * counts them, so the estimate the window arbitration runs on cannot drift from
+ * the prompt that is actually sent. A section added here is charged to a part
+ * by construction rather than by a second list somebody has to remember.
+ */
+function fnGenSections(input: FnGenPromptInput): PromptSection[] {
+  const sections: PromptSection[] = [];
 
   for (const block of input.contextBlocks ?? []) {
-    sections.push(renderContextBlock(block));
+    sections.push({ text: renderContextBlock(block), part: "developer" });
   }
 
   // Body-only generation (Python, below a preserved docstring) takes precedence
   // over the kind routing: the header and docstring are already written and shown
   // as context, so the model writes ONLY the body/members below them.
   if (input.bodyOnly) {
-    sections.push(BODY_ONLY_INSTRUCTION);
+    sections.push({ text: BODY_ONLY_INSTRUCTION, part: "fixed" });
   } else if (input.kind !== undefined && input.kind !== "function") {
     // A type routes to the definition instruction; a function (or an omitted
     // kind) keeps the exact v1 instruction, noPunt append included. The punt
     // directive is a function concept — a type body cannot punt — so it never
     // touches the type instruction.
-    sections.push(typeInstruction(input.languageId, input.kind));
+    sections.push({ text: typeInstruction(input.languageId, input.kind), part: "fixed" });
   } else {
-    sections.push(input.noPunt ? `${INSTRUCTION} ${noPuntInstructionFor(input.languageId)}` : INSTRUCTION);
+    sections.push({
+      text: input.noPunt ? `${INSTRUCTION} ${noPuntInstructionFor(input.languageId)}` : INSTRUCTION,
+      part: "fixed",
+    });
   }
 
   // The developer's own sketch of the body, harvested from the comments at the
@@ -356,11 +376,13 @@ export function assembleFnGenPrompt(input: FnGenPromptInput): string {
   // then self-diagnosing to a human reading the prompt. Absent or empty keeps
   // the prompt bytes exactly as they were.
   if (input.scaffoldComments && input.scaffoldComments.length > 0) {
-    sections.push(
-      "The developer sketched the body as comments, in this order. They are the specification for what " +
+    sections.push({
+      text:
+        "The developer sketched the body as comments, in this order. They are the specification for what " +
         "the body must do; implement every one of them:\n" +
         input.scaffoldComments.map((line) => `- ${line}`).join("\n"),
-    );
+      part: "fixed",
+    });
   }
 
   // Name the file's local symbols the doc/signature references, so the model
@@ -371,17 +393,19 @@ export function assembleFnGenPrompt(input: FnGenPromptInput): string {
   // noun - "a use import" is Rust vocabulary.
   if (input.localSymbols && input.localSymbols.length > 0) {
     const importNoun = input.languageId === "rust" ? "a use import" : "an import";
-    sections.push(
-      `The following names are defined in this file and are already in scope: ${input.localSymbols.join(", ")}. ` +
+    sections.push({
+      text:
+        `The following names are defined in this file and are already in scope: ${input.localSymbols.join(", ")}. ` +
         `Refer to them directly; do NOT add ${importNoun} for them.`,
-    );
+      part: "fixed",
+    });
   }
 
   // v2 round-1 pre-fill: the auto-injected surface reads as its own labelled
   // section between the instruction and the target, so the human can see and
   // veto exactly what was added. Absent (or empty) keeps the v1 prompt bytes.
   if (input.injectedSurface) {
-    sections.push(input.injectedSurface);
+    sections.push({ text: input.injectedSurface, part: "injected" });
   }
 
   let target = `${FENCE}${input.languageId ?? ""}\n`;
@@ -392,7 +416,81 @@ export function assembleFnGenPrompt(input: FnGenPromptInput): string {
   }
   target += input.signature.endsWith("\n") ? input.signature : input.signature + "\n";
   target += FENCE;
-  sections.push(target);
+  sections.push({ text: target, part: "fixed" });
 
-  return sections.join(SECTION_SEPARATOR);
+  return sections;
+}
+
+/** Render the single user prompt string. */
+export function assembleFnGenPrompt(input: FnGenPromptInput): string {
+  return fnGenSections(input)
+    .map((s) => s.text)
+    .join(SECTION_SEPARATOR);
+}
+
+/**
+ * The same prompt, counted instead of joined: whose bytes are whose
+ * (session-v48 phase 2). Feeds the window arbitration in
+ * `src/core/promptBudget.ts`.
+ *
+ * EXACT ON CHARACTERS, and the only proxy downstream is chars-to-tokens:
+ * `developerChars + injectedChars + fixedChars === assembleFnGenPrompt(input).length`
+ * for every input, because both functions read the same section list. The
+ * separators are charged to `fixed` - they are structure, and they are not the
+ * developer's to remove.
+ *
+ * It builds the section strings a second time rather than joining them, which
+ * is a few string concatenations on a gesture that is about to make a network
+ * call. It re-runs no walk, no resolver round trip and no render of the
+ * injected surface: the surface arrives as a finished string on `input`.
+ *
+ * The `*NonAscii` counts ride along because `String.length` is UTF-16 units and
+ * a token estimator has to charge a CJK character very differently from an
+ * ASCII one (adversarial review D6). Counted here, where the section strings
+ * exist, and CHARGED in src/core/promptBudget.ts - the two are split only so
+ * this module never has to import the budget module it is imported by.
+ */
+export function fnGenPromptShare(input: FnGenPromptInput): {
+  developerChars: number;
+  injectedChars: number;
+  fixedChars: number;
+  developerNonAscii: number;
+  injectedNonAscii: number;
+  fixedNonAscii: number;
+} {
+  const sections = fnGenSections(input);
+  const separators = Math.max(0, sections.length - 1) * SECTION_SEPARATOR.length;
+  let developerChars = 0;
+  let injectedChars = 0;
+  let fixedChars = separators;
+  let developerNonAscii = 0;
+  let injectedNonAscii = 0;
+  let fixedNonAscii = 0;
+  for (const s of sections) {
+    if (s.part === "developer") {
+      developerChars += s.text.length;
+      developerNonAscii += nonAsciiCount(s.text);
+    } else if (s.part === "injected") {
+      injectedChars += s.text.length;
+      injectedNonAscii += nonAsciiCount(s.text);
+    } else {
+      fixedChars += s.text.length;
+      fixedNonAscii += nonAsciiCount(s.text);
+    }
+  }
+  return { developerChars, injectedChars, fixedChars, developerNonAscii, injectedNonAscii, fixedNonAscii };
+}
+
+/** UTF-16 units outside ASCII. Duplicated from `countNonAsciiChars` in
+ *  promptBudget.ts on purpose: promptBudget imports SECTION_SEPARATOR from
+ *  here, and importing back would make a module cycle whose top-level consts
+ *  are order-dependent in a bundle. Six lines is cheaper than that hazard. */
+function nonAsciiCount(text: string): number {
+  let n = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) > 127) {
+      n++;
+    }
+  }
+  return n;
 }

@@ -58,6 +58,44 @@ export interface WalkResult {
    *  (not even a truncated shell fit) - never silent. A dropped name is
    *  guaranteed NOT also emitted. */
   dropped: string[];
+  /** The SAME names as `dropped`, in the same order, each with the cap that did
+   *  it (session-v48 phase 3). A drop line that names types without naming what
+   *  dropped them tells the developer something is missing and nothing about
+   *  which way to turn the dial. */
+  droppedBy: DroppedType[];
+}
+
+/** Which bound dropped a type entirely.
+ *   - `total-types`: N_MAX, the walk's total distinct-type guard.
+ *   - `breadth`: B_MAX, one node's fan-out over its local field types.
+ *   - `budget`: the render-time char budget (this walk's TOK_MAX, or what was
+ *     left of the shared per-prompt aggregate). */
+export type DropCause = "total-types" | "breadth" | "budget";
+
+/** For a `budget` drop: WHICH char budget was actually in force, and what it was
+ *  worth in tokens (the chars/4 convention the walk's own caps use).
+ *
+ *  Adversarial review D3: the channel printed `render budget ${TOK_MAX} tok`
+ *  unconditionally while the render pass binds on
+ *  `min(TOK_MAX * 4, shared.remainingChars)`. That is not a corner - at the
+ *  shipped `small` stop the per-walk cap is 400 tok and the shared aggregate is
+ *  600 tok across every walk in the prompt, so from the SECOND walk onward the
+ *  aggregate is the binder and the per-walk number is not the number in force.
+ *  A confident figure that was never in force is the failure class this phase
+ *  exists to end, so the binder travels with the drop. */
+export interface DropBudgetBound {
+  /** `walk` = this walk's own TOK_MAX. `shared` = what was left of the
+   *  cross-walk aggregate, which is tighter and usually the real binder. */
+  kind: "walk" | "shared";
+  /** The budget in force, in tokens, rounded up from the char figure. */
+  tok: number;
+}
+
+export interface DroppedType {
+  name: string;
+  cause: DropCause;
+  /** Present only when `cause` is `budget`. */
+  budgetBound?: DropBudgetBound;
 }
 
 /** Cross-walk state so SUCCESSIVE walks in ONE prompt share a bound, not just each
@@ -78,6 +116,18 @@ export interface WalkResult {
 export interface SharedWalkState {
   visited: Set<string>;
   remainingChars: number;
+  /** OPTIONAL, session-v48 phase 3: where every walk sharing this state records
+   *  the types it dropped entirely, so ONE gesture can report ONE list.
+   *
+   *  Present means "collect"; absent means the walk records nothing, which is
+   *  what the FIM whole-block path does - it has no channel of its own to put a
+   *  per-gesture line on. A name a LATER walk manages to emit is removed again,
+   *  so the map only ever holds types that made no block anywhere in the prompt.
+   *
+   *  The VALUE is the whole `DroppedType`, not just its cause, so the cap that
+   *  actually bound travels with it (review D3), and the LAST walk to lose a
+   *  name overwrites the earlier attribution (review D4). */
+  droppedBy?: Map<string, DroppedType>;
 }
 
 // The blocks are joined by a blank line, matching the generate-side rendering.
@@ -392,7 +442,22 @@ export function walkDataShape(
   // anywhere (worse than the bug this session fixes, not better).
   const crossWalkVisited = shared?.visited;
   const thisWalkDiscovered = new Set<string>();
+  // A SET plus a parallel cause map rather than a map alone: `droppedSet`'s
+  // insertion order is what the drop list has always been ordered by, and the
+  // cause is a lookup beside it.
+  //
+  // LAST CAUSE WINS (adversarial review D4). It used to be first-cause-wins,
+  // which reported the cap that refused a type's FIRST reachable edge even when
+  // the type was later reached by another path, emitted, and then lost by
+  // something else entirely. The cause a developer is owed is the one that
+  // actually lost it - the last attempt that failed - because that is the only
+  // one whose dial, turned, would have kept it.
   const droppedSet = new Set<string>();
+  const droppedCause = new Map<string, DropCause>();
+  const dropWith = (name: string, cause: DropCause): void => {
+    droppedSet.add(name);
+    droppedCause.set(name, cause);
+  };
   const emitted: Array<{ name: string; def: string }> = [];
 
   const queue: Array<{ name: string; depth: number }> = [{ name: rootTypeName, depth: 0 }];
@@ -411,7 +476,7 @@ export function walkDataShape(
     // even when D/B would allow more. This is what caps the geometric blow-up,
     // and it is unchanged by v40 - only the char budgets moved to render time.
     if (emitted.length >= bounds.N_MAX) {
-      droppedSet.add(name);
+      dropWith(name, "total-types");
       continue;
     }
 
@@ -439,7 +504,7 @@ export function walkDataShape(
         continue; // already discovered via another path (diamond) - not re-walked
       }
       if (walked >= bounds.B_MAX) {
-        droppedSet.add(typeName); // per-node fan-out cap truncated this edge
+        dropWith(typeName, "breadth"); // per-node fan-out cap truncated this edge
         continue;
       }
       queue.push({ name: typeName, depth: depth + 1 });
@@ -489,7 +554,18 @@ export function walkDataShape(
   // report "everything fit" while its own `block.length` quietly exceeded the
   // budget it was just computed against, and under-charge `remainingChars` by
   // the same amount on every such walk.
-  const effectiveBudget = Math.min(bounds.TOK_MAX * 4, shared?.remainingChars ?? Number.POSITIVE_INFINITY);
+  const walkBudgetChars = bounds.TOK_MAX * 4;
+  const sharedBudgetChars = shared?.remainingChars ?? Number.POSITIVE_INFINITY;
+  const effectiveBudget = Math.min(walkBudgetChars, sharedBudgetChars);
+  // WHICH of the two actually bound, recorded rather than assumed (review D3).
+  // At the shipped `small` stop these are 1600 chars and 2400 chars shared, so
+  // the aggregate takes over from the second walk on and the per-walk number
+  // stops being the truth. Ties go to `walk`: the walk's own cap held on its
+  // own terms.
+  const budgetBound: DropBudgetBound = {
+    kind: sharedBudgetChars < walkBudgetChars ? "shared" : "walk",
+    tok: Number.isFinite(effectiveBudget) ? Math.max(0, Math.ceil(effectiveBudget / 4)) : bounds.TOK_MAX,
+  };
   const lineCost = (l: string) => l.length + 1;
 
   // v40 second-loop review fix: give the walk's own ROOT first claim on the
@@ -545,8 +621,44 @@ export function walkDataShape(
   // disjoint from emitted" invariant holds by construction. Render-time drops
   // (`rendered.droppedNames`) can never overlap `keptDefs` by construction of
   // `renderDefsWithinBudget` itself, so only the structural set needs filtering.
+  //
+  // ONE ENTRY PER TYPE, AND THE LAST CAUSE WINS (adversarial review D4). These
+  // two lists overlap: a type refused at one node's breadth cap, then reached
+  // via another node, emitted, and finally lost to the render budget was landing
+  // in `dropped` TWICE with two different causes, inflating every count derived
+  // from it (~3% of walks in a 20k fuzz) and reporting the cause that
+  // demonstrably did not lose it. A Map keyed by name keeps the first
+  // appearance's ORDER while the later write replaces the attribution.
   const keptNames = new Set(keptDefs.map((d) => d.name));
-  const dropped = [...droppedSet].filter((d) => !keptNames.has(d)).concat(rendered.droppedNames);
+  const byName = new Map<string, DroppedType>();
+  for (const name of droppedSet) {
+    if (!keptNames.has(name)) {
+      byName.set(name, { name, cause: droppedCause.get(name) ?? "total-types" });
+    }
+  }
+  for (const name of rendered.droppedNames) {
+    byName.set(name, { name, cause: "budget", budgetBound });
+  }
+  const droppedBy: DroppedType[] = [...byName.values()];
+  const dropped = droppedBy.map((d) => d.name);
 
-  return { block: keptDefs.map((d) => d.def).join(SEP), defs: keptDefs, dropped };
+  // The per-GESTURE ledger (session-v48 phase 3), when the caller asked for one.
+  // Written after `keptNames` exists so a type an EARLIER sibling walk dropped
+  // and this one emitted leaves the ledger: the developer is owed the types that
+  // reached no block ANYWHERE in the prompt, not a list of near misses.
+  //
+  // The write is LAST-WINS across walks too (review D4), for the same reason it
+  // is within one: whichever walk lost the name most recently is the one whose
+  // cap the developer would have to move.
+  const ledger = shared?.droppedBy;
+  if (ledger !== undefined) {
+    for (const name of keptNames) {
+      ledger.delete(name);
+    }
+    for (const d of droppedBy) {
+      ledger.set(d.name, d);
+    }
+  }
+
+  return { block: keptDefs.map((d) => d.def).join(SEP), defs: keptDefs, dropped, droppedBy };
 }

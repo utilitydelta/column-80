@@ -97,6 +97,109 @@ export const CS_BUDGET_FACTOR = 1;
 export const CS_DATASHAPE_TOTAL_TOK = DATASHAPE_TOTAL_TOK * CS_BUDGET_FACTOR;
 
 // ---------------------------------------------------------------------------
+// The context dial (session-v48 phase 1, contract-phase1.md).
+//
+// THE TRAP THIS TABLE EXISTS TO AVOID: three of the four numbers make the
+// fourth inert. Measured before the build, against the shipped `walkDataShape`
+// on a 40-wide synthetic type graph at depth 2 - raising breadth alone from 4
+// to 48 with the total-type cap at 6 and the render budget at 200 produced a
+// BYTE-IDENTICAL 791-char block at every rung, and so did raising breadth AND
+// the total together with the budget pinned. Only all four moving together
+// moved the block (791 -> 1577 -> 3191 -> 6392 -> 10648 chars). A stop that
+// moves fewer than four numbers is a setting that does nothing.
+// ---------------------------------------------------------------------------
+
+// How many ROOT candidate types one pre-fill may INJECT, at the pre-dial point.
+//
+// THE NAME IS LOAD-BEARING, exactly as DATASHAPE_TOTAL_TOK's is: the
+// measurement rig patches the bundled `var PREFILL_TYPE_CAP = 4;` to run cap
+// arms (lib-core's loadPrefillCap / loadPrefillCapBudget). It moved here from
+// fnGen.ts so the `shipped` row below can be spelled in terms of it rather
+// than duplicating its value; the emitted bundle text is unchanged.
+export const PREFILL_TYPE_CAP = 4;
+// How many candidates the admission loop may RESOLVE, at the pre-dial point.
+// Spends language-server round trips, not prompt bytes.
+export const PREFILL_RESOLVE_CAP = 8;
+// How many candidates may be PROVENANCE-CHECKED, at the pre-dial point. One
+// `definition()` round trip each, the cheapest of the three.
+export const PREFILL_PROVENANCE_CAP = 24;
+
+/** The stops of the `column80.injectedContext` dial, plus the internal
+ *  `shipped` pre-dial point. `shipped` is NOT offered in
+ *  `contributes.configuration` and no setting value resolves to it: it exists
+ *  so the rig and the suite can render the before-side of a phase-1b arm, and
+ *  so the rig's textual patch sites still reach a live prompt. */
+export type ContextStop = "shipped" | "small" | "medium" | "large" | "frontier";
+
+/** The four the setting offers, in the order package.json lists them. */
+export const INJECTED_CONTEXT_STOPS = ["small", "medium", "large", "frontier"] as const;
+
+/** The install default, and the value every unreadable/unrecognised setting
+ *  resolves to. `small` rather than `medium` because the developer most likely
+ *  to be hurt by the ~350-token codegen knee is the one who never touches the
+ *  setting. */
+export const DEFAULT_CONTEXT_STOP: ContextStop = "small";
+
+/** The structural half of one stop. Depth is here and is deliberately NOT a
+ *  dial: 2 at every stop, because deeper describes infrastructure the function
+ *  never touches. */
+export interface ContextBounds {
+  /** Graph distance from the root the data-shape walk may follow. */
+  depth: number;
+  /** Distinct LOCAL field-types followed per node. */
+  breadth: number;
+  /** Total distinct types one walk may emit. */
+  totalTypes: number;
+  /** How many ROOT candidates get walked at all. */
+  rootCap: number;
+  /** How many candidates may be RESOLVED to fill those roots. */
+  resolveCap: number;
+  /** How many candidates may be PROVENANCE-CHECKED. */
+  provenanceCap: number;
+  /** The aggregate data-shape render budget, in tokens. */
+  surfaceBudgetTok: number;
+}
+
+// Roots, breadth, total types and budget are the goal's four. Resolve cap and
+// provenance cap are a fifth and sixth that HAD to move with them: a root
+// beyond the resolve cap can never be injected, because a type that was never
+// resolved has no surface, so a 16-root stop against the shipped resolve cap
+// of 8 would be inert above 8. They spend language-server round trips rather
+// than prompt bytes, so they are per-stop judgment calls rather than
+// derivations of the root count.
+//
+// Total types leads breadth on purpose: it caps TOTAL distinct types, so eight
+// roots against a total of twelve would strangle breadth before it started.
+// Roughly three times the root count gives breadth somewhere to go.
+//
+// EVERY NUMBER BELOW EXCEPT THE `shipped` ROW IS A JUDGMENT CALL with its
+// reasoning in session-v48/goal.md, not a measured optimum. There are hundreds
+// of models a developer might point this at and no measured curve generalises
+// across that space, which is why this is a dial rather than a constant.
+const CONTEXT_STOP_TABLE: Readonly<Record<ContextStop, ContextBounds>> = {
+  shipped: {
+    depth: 2,
+    breadth: 4,
+    totalTypes: 6,
+    rootCap: PREFILL_TYPE_CAP,
+    resolveCap: PREFILL_RESOLVE_CAP,
+    provenanceCap: PREFILL_PROVENANCE_CAP,
+    surfaceBudgetTok: DATASHAPE_TOTAL_TOK,
+  },
+  small: { depth: 2, breadth: 6, totalTypes: 24, rootCap: 8, resolveCap: 16, provenanceCap: 24, surfaceBudgetTok: 600 },
+  medium: { depth: 2, breadth: 12, totalTypes: 48, rootCap: 8, resolveCap: 16, provenanceCap: 24, surfaceBudgetTok: 1200 },
+  large: { depth: 2, breadth: 24, totalTypes: 96, rootCap: 12, resolveCap: 24, provenanceCap: 36, surfaceBudgetTok: 2400 },
+  frontier: { depth: 2, breadth: 48, totalTypes: 192, rootCap: 16, resolveCap: 32, provenanceCap: 48, surfaceBudgetTok: 4000 },
+};
+
+/** One stop's structural bounds. Pure and total: an unrecognised stop (a
+ *  hand-edited settings.json that got past the resolver) answers with the
+ *  default rather than throwing. */
+export function contextBoundsFor(stop: ContextStop): ContextBounds {
+  return CONTEXT_STOP_TABLE[stop] ?? CONTEXT_STOP_TABLE[DEFAULT_CONTEXT_STOP];
+}
+
+// ---------------------------------------------------------------------------
 // Deriveds: declared fractions of surfaceBudgetTok, not free-floating
 // constants. Each fraction is written as (identity value / identity budget)
 // so the provenance of the shipped number stays visible, and moving a cell's
@@ -159,10 +262,23 @@ export const GEN_NUM_CTX = 16384;
  *  own socket timeouts. Generous against a measured 15.2s realistic round. */
 export const GEN_TIMEOUT_MS = 120_000;
 
-/** What one (class, language) cell serves. All eight fields always present;
+/** What one (class, language, stop) cell serves. Every field always present;
  *  numCtx only means anything to a local class and timeoutMs only to the
- *  claude-code transport, but a uniform shape keeps every consumer total. */
+ *  claude-code transport, but a uniform shape keeps every consumer total.
+ *
+ *  The structural half (`stop` through `provenanceCap`) arrives with the
+ *  context dial: the four numbers that must move together, plus the two
+ *  round-trip caps that had to move with them. */
 export interface BudgetProfile {
+  /** Which stop resolved this profile. Consumers that keep a shipped-value
+   *  module constant alive for the rig branch on it. */
+  stop: ContextStop;
+  depth: number;
+  breadth: number;
+  totalTypes: number;
+  rootCap: number;
+  resolveCap: number;
+  provenanceCap: number;
   surfaceBudgetTok: number;
   memberCap: number;
   surfaceCap: number;
@@ -183,16 +299,45 @@ type BudgetCell = Partial<BudgetProfile>;
 // CS_BUDGET_FACTOR above, which the walk and this table share.
 const CELL_OVERRIDES: Readonly<Record<string, BudgetCell>> = {};
 
-/** The tuning profile for one serving class and language. Pure and total:
- *  every class-language pair answers, unknown languages get the base cell.
- *  The `?? DATASHAPE_TOTAL_TOK` on the C# leg is not dead defensiveness: the
- *  measurement rig neuters `CS_DATASHAPE_TOTAL_TOK` in the bundle to replay
- *  the pre-factor baseline, and the fallback is what keeps that arm honest. */
-export function budgetProfileFor(cls: ModelClass, languageId: string): BudgetProfile {
+/**
+ * C#'s aggregate budget at one stop, as a FACTOR of that stop's budget.
+ *
+ * The factor is read as a RATIO of the two module constants rather than as
+ * `CS_BUDGET_FACTOR` directly, and that is not indirection for its own sake:
+ * the measurement rig rewrites `var CS_DATASHAPE_TOTAL_TOK = …;` in the bundle
+ * - to `void 0` to replay the pre-factor baseline, or to a rung value to move
+ * C# alone - and a stop-scaled budget that read the factor constant would make
+ * both of those patches dead above the `shipped` stop. Reading the ratio keeps
+ * the rig's one C# knob reaching every stop.
+ *
+ * NOT a `=== 300` sentinel, which is the form review-v45-p3 R5 refuted: a
+ * sentinel against a literal cannot tell UNPATCHED from PATCHED-TO-300.
+ */
+function csharpBudgetFor(stopTok: number): number {
+  const factor = (CS_DATASHAPE_TOTAL_TOK ?? DATASHAPE_TOTAL_TOK) / DATASHAPE_TOTAL_TOK;
+  return Math.round(stopTok * factor);
+}
+
+/** The tuning profile for one serving class, language and context stop. Pure
+ *  and total: every combination answers, unknown languages get the base cell.
+ *
+ *  THE STOP IS REQUIRED, not defaulted. A default would let a caller acquire
+ *  the dial by accident, and the whole failure this phase exists to avoid is a
+ *  number that reaches nothing (or reaches something nobody chose). */
+export function budgetProfileFor(cls: ModelClass, languageId: string, stop: ContextStop): BudgetProfile {
   const cell = CELL_OVERRIDES[`${cls}/${languageId}`] ?? {};
+  const bounds = contextBoundsFor(stop);
   const surfaceBudgetTok =
-    cell.surfaceBudgetTok ?? (languageId === "csharp" ? (CS_DATASHAPE_TOTAL_TOK ?? DATASHAPE_TOTAL_TOK) : DATASHAPE_TOTAL_TOK);
+    cell.surfaceBudgetTok ??
+    (languageId === "csharp" ? csharpBudgetFor(bounds.surfaceBudgetTok) : bounds.surfaceBudgetTok);
   return {
+    stop,
+    depth: bounds.depth,
+    breadth: bounds.breadth,
+    totalTypes: bounds.totalTypes,
+    rootCap: bounds.rootCap,
+    resolveCap: bounds.resolveCap,
+    provenanceCap: bounds.provenanceCap,
     surfaceBudgetTok,
     memberCap: cell.memberCap ?? memberCapFor(surfaceBudgetTok),
     surfaceCap: cell.surfaceCap ?? surfaceCapFor(surfaceBudgetTok),

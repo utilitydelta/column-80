@@ -396,9 +396,32 @@ module.exports = {
 );
 const ENTRY = path.join(__dirname, ".impl-v24-p1-v.entry.ts");
 const OUTFILE = path.join(__dirname, ".impl-v24-p1-v.bundle.cjs");
-fs.writeFileSync(ENTRY, `export { resolvePrefill } from "../src/vscode/fnGen";\n`);
+fs.writeFileSync(
+  ENTRY,
+  `export { resolvePrefill } from "../src/vscode/fnGen";\n` +
+    `export { contextBoundsFor, DEFAULT_CONTEXT_STOP, walkTokMaxFor } from "../src/core/budgetProfile";\n`,
+);
 esbuild.buildSync({ entryPoints: [ENTRY], bundle: true, outfile: OUTFILE, format: "cjs", platform: "node", alias: { vscode: STUB } });
-const { resolvePrefill } = require(OUTFILE);
+const { resolvePrefill, contextBoundsFor, DEFAULT_CONTEXT_STOP, walkTokMaxFor } = require(OUTFILE);
+// RE-CUT by session-v48 phase 1 (docs/supersessions.md). Every arm below is a
+// BUDGET-PRESSURE fixture: it puts more candidates and more def text in front of
+// the resolver than the budgets can hold, and measures who gives way. Both
+// budgets became derivations of the context dial's stop, and at the install
+// default (`small`) they are twice what these fixtures were sized against - so
+// every arm passed while nothing was under pressure at all.
+//
+// The fixtures now derive their widths from the seam rather than from the
+// numbers that used to be constants. What is measured is unchanged; what a
+// reader has to trust is smaller.
+const DIAL = contextBoundsFor(DEFAULT_CONTEXT_STOP);
+/** How many ROOT candidates the install default admits. */
+const ROOT_CAP = DIAL.rootCap;
+/** One walk's own char bound: the per-walk token bound, times four. */
+const WALK_CHARS = walkTokMaxFor(DIAL.surfaceBudgetTok) * 4;
+/** A def width that is a real fraction of one walk's bound - wide enough that a
+ *  handful of them exhausts the SHARED aggregate, which is what the starvation
+ *  arms are about. ~27 chars per field at this fixture's field names. */
+const WIDE_FIELDS = Math.max(6, Math.round(WALK_CHARS / 27 / 2));
 test.after(() => [STUB, ENTRY, OUTFILE].forEach((f) => fs.rmSync(f, { force: true })));
 
 function makeDoc(text, uriStr) {
@@ -580,7 +603,12 @@ test("a prefill where every kept candidate renders stays silent on accounting (t
 
 const WURI = "file:///w/i24/wide.rs";
 const WDEF = "file:///w/i24/wide_defs.rs";
-const SIBS = ["Alpha", "Beta", "Gamma", "Delta"];
+// Enough sibling names to exceed ANY stop's root cap, so the cap arm below can
+// always offer one more candidate than the dial admits.
+const SIBS = [
+  "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
+  "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho",
+];
 
 // The hover the resolver derives its fields from, and (verbatim) the def the
 // data-shape walk charges to both budgets. Field names are realistic width on
@@ -725,12 +753,22 @@ const memberBlock = (out, type) => {
 const shapeDrops = (logs) => logs.filter((l) => /data-shape walk/.test(l));
 const capDrops = (logs) => logs.filter((l) => /lower-priority type\(s\)/.test(l));
 
+// The smallest field count whose def text breaches one walk's char bound, so a
+// row that wants an over-budget def asks for one rather than hard-coding a
+// width the dial can move out from under.
+const fieldsPastWalkBound = () => {
+  for (let n = 4; n <= 400; n++) {
+    if (hoverOf("Owner", n).length > WALK_CHARS) return n + 4;
+  }
+  throw new Error(`no field count under 400 breaches the ${WALK_CHARS}-char walk bound`);
+};
+
 test("a receiver whose own def breaches the per-walk budget loses every field, and says so", async () => {
-  // 40 fields puts the def past TOK_MAX*4 CHARS, so the walk drops the ROOT and
-  // returns an empty block. The member list still renders, so the type counts as
-  // injected and the accounting arithmetic cannot see the loss.
-  const r = await runWide({ receiverFields: 40, sibFields: 2, sibCount: 1 });
-  assert.ok(r.fx.hovers.Owner.length > 800, `fixture precondition: the def must breach TOK_MAX*4; got ${r.fx.hovers.Owner.length}`);
+  // A def past TOK_MAX*4 CHARS, so the walk drops the ROOT and returns an empty
+  // block. The member list still renders, so the type counts as injected and the
+  // accounting arithmetic cannot see the loss.
+  const r = await runWide({ receiverFields: fieldsPastWalkBound(), sibFields: 2, sibCount: 1 });
+  assert.ok(r.fx.hovers.Owner.length > WALK_CHARS, `fixture precondition: the def must breach TOK_MAX*4 (${WALK_CHARS}); got ${r.fx.hovers.Owner.length}`);
   assert.ok(!withDataShape(r.out).includes("Owner"), `precondition: Owner's data shape is gone:\n${r.out}`);
   assert.ok(r.out.includes("roll("), `the member list still rides the block, so the loss is silent without a line:\n${r.out}`);
   const drops = shapeDrops(r.logs).filter((l) => /`Owner`/.test(l));
@@ -739,10 +777,10 @@ test("a receiver whose own def breaches the per-walk budget loses every field, a
 });
 
 test("a sibling starved of the shared budget by the receiver is reported, not lost silently", async () => {
-  // Three siblings at 14 fields each against an 18-field receiver: the receiver
-  // takes its slice of the shared total first, and a later sibling's def no
-  // longer fits.
-  const r = await runWide({ receiverFields: 18, sibFields: 14, sibCount: 3 });
+  // Siblings filling the root cap, each wide enough that the receiver takes its
+  // slice of the shared total first and a later sibling's def no longer fits.
+  // Widths scale with the walk bound, which the dial moves.
+  const r = await runWide({ receiverFields: WIDE_FIELDS, sibFields: WIDE_FIELDS - 4, sibCount: ROOT_CAP - 1 });
   const kept = withDataShape(r.out);
   assert.ok(kept.includes("Owner"), `the receiver is never evicted:\n${r.out}`);
   const starved = r.fx.sibs.filter((s) => !kept.includes(s));
@@ -773,13 +811,13 @@ test("a sibling starved of the shared budget by the receiver is reported, not lo
 // ===========================================================================
 
 test("prompt-size: the receiver's cost, and what it displaces at increasing sibling widths", async (t) => {
-  const SIB_WIDTHS = [6, 10, 14, 18];
-  const RECEIVER_FIELDS = 18;
+  const SIB_WIDTHS = [1, 2, 3, 4].map((k) => Math.round((WIDE_FIELDS * k) / 3));
+  const RECEIVER_FIELDS = WIDE_FIELDS;
 
   const rows = [];
   for (const sibFields of SIB_WIDTHS) {
-    const method = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: 3 });
-    const control = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: 3, target: "free" });
+    const method = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: ROOT_CAP - 1 });
+    const control = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: ROOT_CAP - 1, target: "free" });
     rows.push({ sibFields, method, control });
     const displaced = withDataShape(control.out).filter((n) => !withDataShape(method.out).includes(n));
     t.diagnostic(
@@ -811,15 +849,16 @@ test("prompt-size: the receiver's cost, and what it displaces at increasing sibl
   }
 });
 
-test("prompt-size: the CAP arm — the receiver evicts a fifth candidate, which then ships nothing at all", async (t) => {
-  // Five candidates (receiver + 4 siblings) against PREFILL_TYPE_CAP = 4. The
-  // arm above can never reach this: at three siblings the count equals the cap.
-  const SIB_WIDTHS = [6, 10, 14];
-  const RECEIVER_FIELDS = 18;
+test("prompt-size: the CAP arm — the receiver evicts the candidate past the cap, which then ships nothing at all", async (t) => {
+  // One candidate more than the root cap admits (receiver + ROOT_CAP siblings).
+  // The arm above can never reach this: there the count EQUALS the cap.
+  const SIB_WIDTHS = [1, 2, 3].map((k) => Math.round((WIDE_FIELDS * k) / 3));
+  const RECEIVER_FIELDS = WIDE_FIELDS;
+  const EVICTED = SIBS[ROOT_CAP - 1];
 
   for (const sibFields of SIB_WIDTHS) {
-    const method = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: 4 });
-    const control = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: 4, target: "free" });
+    const method = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: ROOT_CAP });
+    const control = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: ROOT_CAP, target: "free" });
     t.diagnostic(
       `cap arm, sibs@${sibFields}f: with receiver ${method.out.length}B shapes=[${withDataShape(method.out)}] blocks=[${withBlock(method.out)}] | ` +
         `without (module scope) ${control.out.length}B shapes=[${withDataShape(control.out)}] blocks=[${withBlock(control.out)}] | ` +
@@ -833,27 +872,27 @@ test("prompt-size: the CAP arm — the receiver evicts a fifth candidate, which 
       1,
       `the method arm must evict exactly one candidate by the cap: ${JSON.stringify(method.logs)}`,
     );
-    assert.match(capDrops(method.logs)[0], /dropped 1 lower-priority type\(s\): Delta/);
-    assert.deepStrictEqual(capDrops(control.logs), [], `the control has 4 candidates against a cap of 4 and evicts nothing`);
+    assert.match(capDrops(method.logs)[0], new RegExp(`dropped 1 lower-priority type\\(s\\): ${EVICTED}`));
+    assert.deepStrictEqual(capDrops(control.logs), [], `the control has exactly cap-many candidates and evicts nothing`);
 
     // Eviction is the harder loss. A starved candidate keeps its member list;
     // this one has no header of any kind in the surface.
-    assert.ok(!withBlock(method.out).includes("Delta"), `the evicted type must lose its member list:\n${method.out}`);
-    assert.ok(!/\bDelta\b/.test(method.out), `the evicted type must not appear in the surface at all:\n${method.out}`);
-    assert.ok(!withDataShape(method.out).includes("Delta"), `the evicted type must lose its data shape:\n${method.out}`);
-    assert.ok(withBlock(control.out).includes("Delta"), `fixture precondition: the control must carry Delta's block:\n${control.out}`);
+    assert.ok(!withBlock(method.out).includes(EVICTED), `the evicted type must lose its member list:\n${method.out}`);
+    assert.ok(!new RegExp(`\\b${EVICTED}\\b`).test(method.out), `the evicted type must not appear in the surface at all:\n${method.out}`);
+    assert.ok(!withDataShape(method.out).includes(EVICTED), `the evicted type must lose its data shape:\n${method.out}`);
+    assert.ok(withBlock(control.out).includes(EVICTED), `fixture precondition: the control must carry ${EVICTED}'s block:\n${control.out}`);
     assert.strictEqual(withDataShape(method.out)[0], "Owner", `the receiver still leads at sibs@${sibFields}f`);
   }
 });
 
 test("prompt-size: the CONSTRUCTION surface is measured, not assumed equal to the call surface", async (t) => {
-  const SIB_WIDTHS = [6, 14];
-  const RECEIVER_FIELDS = 18;
+  const SIB_WIDTHS = [1, 3].map((k) => Math.round((WIDE_FIELDS * k) / 3));
+  const RECEIVER_FIELDS = WIDE_FIELDS;
 
   for (const sibFields of SIB_WIDTHS) {
-    const call = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: 3, target: "call" });
-    const build = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: 3, target: "build" });
-    const control = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: 3, target: "free" });
+    const call = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: ROOT_CAP - 1, target: "call" });
+    const build = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: ROOT_CAP - 1, target: "build" });
+    const control = await runWide({ receiverFields: RECEIVER_FIELDS, sibFields, sibCount: ROOT_CAP - 1, target: "free" });
     t.diagnostic(
       `sibs@${sibFields}f: call ${call.out.length}B (+${call.out.length - control.out.length}B over control) | ` +
         `build ${build.out.length}B (+${build.out.length - control.out.length}B) | ` +
@@ -911,7 +950,8 @@ test("prompt-size: the width at which the receiver's own data shape disappears",
   // shape goes dark.
   let last;
   let firstDark;
-  for (let n = 20; n <= 40; n++) {
+  const sweepTo = fieldsPastWalkBound() + 8;
+  for (let n = Math.max(4, Math.round(sweepTo / 2)); n <= sweepTo; n++) {
     const r = await runWide({ receiverFields: n, sibFields: 2, sibCount: 1 });
     const kept = withDataShape(r.out).includes("Owner");
     if (kept) {
@@ -926,7 +966,7 @@ test("prompt-size: the width at which the receiver's own data shape disappears",
     `receiver data shape: last kept at ${last.n} fields (${last.chars} chars of def text), ` +
       `dark from ${firstDark.n} fields (${firstDark.chars} chars)`,
   );
-  assert.ok(firstDark.chars > 800, `the boundary must be the TOK_MAX*4 char bound, got ${firstDark.chars} chars`);
+  assert.ok(firstDark.chars > WALK_CHARS, `the boundary must be the TOK_MAX*4 char bound (${WALK_CHARS}), got ${firstDark.chars} chars`);
   assert.ok(
     shapeDrops(firstDark.logs).some((l) => /`Owner`/.test(l)),
     `the receiver losing its whole data shape must not be silent: ${JSON.stringify(firstDark.logs)}`,

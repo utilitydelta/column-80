@@ -17,7 +17,6 @@ version was confidently wrong for two months, and nothing flagged it until a ses
 Proven broken, no design question left. Each is small and each is about the product or its gate telling the truth.
 
 - **43.** added context silently removes injection, because nothing checks the prompt against the window
-- **44.** a floating Node major turned the suite red with no source change; pinned, decision deferred
 - **22.** shipped source cites folders a clone does not have; this bit CI four ways on 2026-08-10
 - **23.** a few rows measure wall clock and CI is not their hardware
 - **2.** a frozen live test is red and nobody runs it
@@ -76,6 +75,17 @@ Proven broken, no design question left. Each is small and each is about the prod
 Found 2026-08-10 while answering a question about the output ceiling. PROVEN by reading; the
 overflow itself is not yet measured on a real session.
 
+**Status 2026-08-10, session-v48 phases 2+3 and their review loop-back.** The guard now exists and
+the sentence below - "there is no prompt-versus-window guard anywhere in the product, on any path"
+- is no longer true. `src/core/promptBudget.ts` holds the decision, `FnGenService.generate`
+arbitrates (exempt / fits / shrink / refuse), and `generateRaw` / `generateTests` refuse a
+finished prompt that does not fit, which is what closed the last three paths: the punt circle-back
+retry, repair, refine and test-gen were all still unguarded after the first build. What is STILL
+open is the measurement this item asked for at the bottom: **how often a real session actually
+overflows**, on which nothing has run. The build below was also overtaken - it says "not a
+refusal", and the human's later ruling was that where it does not fit at all the product refuses
+and says why (`session-v48/contract-phase2.md`).
+
 `GEN_NUM_CTX = 16384` bounds the prompt AND the generation together, and `ollama.ts` already
 documents what happens past it: the prompt is silently truncated to fit. That comment was written
 about ollama's own 2048 default and the measurement behind it is real (three prompts of 12.9KB,
@@ -112,28 +122,6 @@ Wants, before or alongside the build: how often a real session actually overflow
 is never, the channel line is still right and the item is cheap; if it is common, the budget
 itself needs revisiting and `GEN_NUM_CTX` is measured at 12.4GB VRAM on the 16GB carve, so
 raising it is not free.
-
-### 44. A floating Node major turned the suite red without a source change
-
-PROVEN 2026-08-10 on the fresh repo's first CI run. `ci.yml` and `release.yml` asked for
-`node-version: 24`, which resolves to the newest 24.x. The runner had 24.18.0; the box the suite
-is developed against has 24.12.0. **24.18 counts a failing `todo` row toward the process exit
-code and 24.12 does not**, so a suite that is green locally exited 1 on CI with no line of source
-different between them.
-
-That matters here more than it would elsewhere, because this suite deliberately carries todo rows
-that are RED ON PURPOSE, each with a written ruling saying why the red is the record
-(`docs/supersessions.md`). Their whole value is that they stay red and stay visible. A runtime
-that promotes them to failures makes the suite unusable as a gate.
-
-Pinned to `24.12.0` in both workflows as the immediate fix, with the reason in the workflow. This
-repo has been here before: a commit titled "ci runs the node the suite is actually developed
-against" fixed it once and it regressed the moment the pin was written as a bare major.
-
-The real decision, deferred: either the todo rows stop being todo rows and become an explicitly
-listed known-red set the runner cannot reinterpret, or the pin is raised deliberately with every
-todo row re-decided against the newer semantics. Do not simply unpin. Related: item 23, which
-owns the wall-clock rows that fail on a shared runner for a different reason.
 
 ### 22. Shipped source points at folders a clone does not have
 
@@ -1343,8 +1331,11 @@ Both ship as built, both are defensible, and neither is a bug. They need a human
 - The Go rig's stub TextDocument defaults `languageId` to "rust" (`05-inject-run.cjs:347`). Inert today
   (nothing on the exercised path reads it), silently wrong the day the rig drives repair or TDD, which
   read `document.languageId` at ~15 sites. One-line fix: pass `LANG`. S40-2.
-- `package.json` `column80.injectedSurface` copy says "roughly 765 prompt bytes" per injected type;
-  measured 795 B/type-slot after v39's recovery (724 before). Reads low by ~4%. S39-9.
+- ~~`package.json` `column80.injectedSurface` copy says "roughly 765 prompt bytes" per injected type~~
+  STRUCK 2026-08-10. The setting is gone: session-v48 phase 1 replaced it with
+  `column80.injectedContext`, whose copy quotes no byte figure at all, so there is no number left to
+  read 4% low. The measurement behind the item survives and is worth quoting if a byte figure is ever
+  written again: 795 B per type-slot after v39's hover recovery, 724 before. S39-9.
 
 Re-verified 2026-07-25 unless marked. Each waits for its trigger, not for a slice.
 
@@ -1751,7 +1742,20 @@ turn and forks each generation off that checkpoint, keyed on a hash of the resol
 a live edit can never be served stale; `anthropic` moved to a native Messages transport for the one
 `cache_control` breakpoint the compat layer cannot express. PROVEN live through the product: a
 second generation of a DIFFERENT function billed 1,713 base-input-token equivalents against the
-24,370 its checkpoint cost to build once).
+24,370 its checkpoint cost to build once) and **44** (the floating Node major: struck 2026-08-10 by
+session-v48 phase 0, and by the option the item said to prefer. The suite no longer carries a
+single `todo` row. 37 of the 43 became green rows that assert what the code actually does, each
+keeping its triage ruling verbatim in a comment above it and each retitled `KNOWN WRONG:` for a
+defect that still ships or `SUPERSEDED:` for an expectation a later ruling replaced. The other six,
+all in `review-v38-p2-fence-runs.test.cjs`, could NOT be converted and now SKIP with a stated
+reason under a `CANNOT RUN:` title: they score capture files the 2026-08-10 repo split deleted from
+both repos, so their true value cannot be re-derived and was not guessed. Their bodies still hold
+the refuted claim, which is what the title says. With `todo` at 0 on both 24.12.0 and 24.19.0 there
+is nothing left for a runtime to reinterpret, so both workflows went back to a bare
+`node-version: 24`. Item 23, the wall-clock rows, is a SEPARATE and still-open way for a busy
+runner to turn CI red, and this session added one row to its population: `adversarial-v36-p1` D2
+was a todo row and is now a live timing-RATIO row. Measured 3.10x worst under 2x CPU
+oversubscription against a bar of 2.5, and 3.9x idle, where linear would be 2.0).
 Items 6 and 11
 shrank rather than closed: 6's usage-windows half shipped v29 and its `selected:` measurement
 did not, and 11's single-block gestures shipped v32 while its recursive variant did not.

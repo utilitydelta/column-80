@@ -12,6 +12,7 @@ import { CrateResolution } from "../core/compilerDirected";
 import { buildResolution } from "../core/crateResolution";
 import { fetchMetadataJson, resolveHostTriple } from "../core/catalog";
 import { FnGenService } from "../core/fnGenService";
+import { isPromptWindowError } from "../core/promptBudget";
 import {
   GenerationSource,
   RepairScope,
@@ -59,13 +60,13 @@ import { PY_STDLIB_MODULES, pyOwnedImportEdit } from "../core/pyExtraction";
 import { placeGeneratedReply } from "../core/placeReply";
 import { fileLocalDefinitions } from "../core/instructPostprocess";
 import { QualifyEdit, ReferenceLocation, SourceCursor, SurfaceExtractor, renderMemberSignatures, semanticMembers } from "../core/extraction";
-import { budgetProfileFor } from "../core/budgetProfile";
+import { ContextStop, budgetProfileFor } from "../core/budgetProfile";
 import { DerivedType, isRustSysrootDef, parseStructHoverFields, renderDerivedDef } from "../core/crossFileShape";
 import { TS_LANGUAGE_IDS, parseTsHoverFields, tsRenderDerivedDef } from "../core/tsExtraction";
 import { ContextBlock } from "../core/prompt";
 import { CatalogEntry, renderCatalog } from "../core/catalog";
 import { FunctionSpan } from "../core/span";
-import { fnGenModelClass, readOracleConfig } from "./config";
+import { fnGenModelClass, injectedContextStop, readOracleConfig } from "./config";
 import type { ProposalPresenter } from "./fnGen";
 import type { ResolvedFunction } from "./fnGen";
 
@@ -793,7 +794,19 @@ async function executeSession(
         // generation before it already paid for rather than build a second one.
         contextBlocks: repairBlocks,
       });
-    } catch {
+    } catch (err) {
+      // A WINDOW REFUSAL IS NOT A FAILURE (adversarial review D1). Nothing
+      // broke: the prompt did not fit and no model was called. A repair prompt
+      // carries the diagnostics, the code, the injected surface AND the
+      // developer's context blocks, so it is one of the fattest prompts the
+      // product builds - and until now it was one of the three that never
+      // checked. The developer gets the sentence, not just a channel line;
+      // otherwise the repair simply appears to do nothing.
+      if (isPromptWindowError(err)) {
+        void vscode.window.showWarningMessage(err.message);
+        outcome("failed");
+        return;
+      }
       // The service already logged the failure detail ([fngen] request
       // failed); the session ends, remaining diagnostics stay surfaced.
       outcome("failed");
@@ -1193,7 +1206,15 @@ const REFINE_LINES_AFTER = 2;
 // block and moved pooled method recall 22.0% to 47.7%. Not a measured
 // optimum; measure-p4.md carries what it actually cost.
 const refineCharBudget = (ctx: PostAcceptContext, log: (line: string) => void): number =>
-  budgetProfileFor(fnGenModelClass(log), ctx.document.languageId).refineTotalChars;
+  // THE LIVE STOP, not a pin (session-v48 phase 1 loop-back, defect 5). An
+  // earlier cut pinned this to `shipped` and said the contract required it; it
+  // does not. contract-phase1.md's "what must NOT change" list carves OUT
+  // exactly what `surfaceCap` and `refineTotalChars` already derive from the
+  // aggregate budget, and this is one of the two. A developer who sets
+  // `frontier` because their model has the room has no second setting for the
+  // repair prompt and no channel line saying it stayed at the local-30B point,
+  // so a pin here is a silent refusal of the thing they asked for.
+  budgetProfileFor(fnGenModelClass(log), ctx.document.languageId, injectedContextStop(log)).refineTotalChars;
 
 /**
  * The refine round: what the manual repair gesture does when the build is
@@ -1439,7 +1460,14 @@ async function runRefine(
       // Same checkpoint the generation and any repair round used.
       contextBlocks: refineBlocks,
     });
-  } catch {
+  } catch (err) {
+    // As on the repair round. Refine is the sharper case of the two: it is a
+    // DIRECT user gesture reachable with no preceding generation, so before this
+    // guard roadmap item 43's "no prompt-versus-window guard anywhere in the
+    // product, on any path" was still literally true for it.
+    if (isPromptWindowError(err)) {
+      void vscode.window.showWarningMessage(err.message);
+    }
     outcome("failed");
     return;
   }
@@ -2746,6 +2774,12 @@ export interface SurfaceInjectionOpts {
    *  resolve, and a manifest edit is not an API the model got wrong - so a
    *  combining caller must inject this one alone. */
   onTerminalSteer?: () => void;
+  /** The context stop to spend, INSTEAD of the one the setting names. Absent
+   *  means the setting decides, which is every product call. It exists for the
+   *  measurement rig, whose arms must render the pre-dial `shipped` point from
+   *  a bundle whose settings host answers the default for every key - the same
+   *  escape `resolvePrefill.opts.contextStop` carries, for the same reason. */
+  contextStop?: ContextStop;
 }
 
 export async function resolveSurfaceInjection(
@@ -2763,7 +2797,21 @@ export async function resolveSurfaceInjection(
   // shape. Dispatched ONCE on the injection document's languageId, as is the
   // budget cell the caps below are read from.
   const lang = repairLangFor(document.languageId);
-  const budget = budgetProfileFor(fnGenModelClass(log), document.languageId);
+  // The LIVE stop, for the reason `refineCharBudget` above states: what
+  // `surfaceCap` and `memberCap` derive from the aggregate budget is carved OUT
+  // of the contract's do-not-change list, and a repair prompt that ignores the
+  // dial hands a frontier user the local-30B surface with nothing on the
+  // channel to say so.
+  //
+  // `contextStop` overrides it for exactly one caller: the measurement rig,
+  // which has to render the pre-dial before-side from a bundle whose settings
+  // host answers defaults for everything. No setting value resolves to
+  // `shipped`, so it cannot be acquired by accident.
+  const budget = budgetProfileFor(
+    fnGenModelClass(log),
+    document.languageId,
+    opts?.contextStop ?? injectedContextStop(log),
+  );
   const surfaceCap = budget.surfaceCap;
   // Deduped, first-seen-ordered blocks. `seen` keys on kind:identity (span
   // identity when the identity is empty). `hasSurface` gates the trailing

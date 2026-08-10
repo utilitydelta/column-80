@@ -3,10 +3,14 @@
 // `isAllCapsConstant`), plus the `isShoutedName`/`isAllCapsConstant` extraction
 // in `src/core/repairTypes.ts`.
 //
-// Every row here ran. A row tagged [DEFECT] is RED and states a hole in the
-// change; a row tagged [FINE] is GREEN and is a claim the change makes that
-// this file went after and could not break, kept so a later edit cannot quietly
-// undo it.
+// Every row here ran. A row tagged [DEFECT] states a hole in the change; a row
+// tagged [FINE] is a claim the change makes that this file went after and could not
+// break, kept so a later edit cannot quietly undo it.
+//
+// Converted 2026-08-10 (session-v48 phase 0): a test that must be red is not a test.
+// The one `todo` row, R3, is now a GREEN `KNOWN WRONG:` row that asserts the exact
+// candidate list the shipped rule produces. Its ruling and its old expectation are
+// kept above it, so the reason the behaviour is wrong is still readable.
 //
 // Run: SKIP_LIVE=1 node --test test/review-v38-p3-candidate-refusals.test.cjs
 
@@ -116,25 +120,32 @@ test("[FINE] R2b: the control - the identical file with the trait renamed keeps 
 //    Rust TYPE naming convention in FFI and binding crates.
 // ═════════════════════════════════════════════════════════════════════════════
 
-test("[DEFECT] R3: a SCREAMING_SNAKE FFI struct is refused, and the junk path segments beside it are not", {
-  todo:
-    "DEFERRED by triage as scraps S38-7. The refusal is goal.md item 3 rule 3 as ratified, and repair has " +
-    "applied a WIDER version of it for two sessions. The row is right that the rule is a claim about names " +
-    "with a acme-only measurement behind it, and right that on an FFI file it makes the four slots " +
-    "strictly worse. No cheap syntactic test separates SECURITY_ATTRIBUTES from MAX_LOD - both are imported " +
-    "by name and both are spelled in the signature - so narrowing it is its own measurement, not a loop-back. " +
-    "Red on purpose, and the scrap carries the evidence.",
-}, () => {
+// WAS `todo`: "DEFERRED by triage as scraps S38-7. The refusal is goal.md item 3
+// rule 3 as ratified, and repair has applied a WIDER version of it for two sessions.
+// The row is right that the rule is a claim about names with a acme-only measurement
+// behind it, and right that on an FFI file it makes the four slots strictly worse. No
+// cheap syntactic test separates SECURITY_ATTRIBUTES from MAX_LOD - both are imported
+// by name and both are spelled in the signature - so narrowing it is its own
+// measurement, not a loop-back. Red on purpose, and the scrap carries the evidence."
+//
+// The row USED TO assert `got.includes("SECURITY_ATTRIBUTES")`. It does not; the row
+// below pins the list the shipped rule really produces, which is the defect itself.
+test("KNOWN WRONG: R3: a SCREAMING_SNAKE FFI struct is refused, and the junk path segments beside it are not", () => {
   // `windows-sys`, `winapi` and bindgen output name structs this way.
-  // At HEAD the list is ["SECURITY_ATTRIBUTES","Gizmo","Win32","Security"]: the
-  // change deletes the one real type in it and leaves both path segments, so on
-  // this file the refusal makes the four cap slots strictly worse.
+  // The change deletes the one real type in the list and leaves both path segments,
+  // so on this file the refusal makes the four cap slots strictly worse.
   const got = rust("fn go(a: *mut SECURITY_ATTRIBUTES) -> Gizmo", {
     fullText: "use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;\n",
   });
-  assert.ok(
+  assert.deepEqual(
+    got,
+    ["Gizmo", "Win32", "Security"],
+    "the only real struct in the signature is dropped and the two import-path segments beside it are kept",
+  );
+  assert.equal(
     got.includes("SECURITY_ATTRIBUTES"),
-    `a real struct named in the signature and imported by name must reach the list. Got ${JSON.stringify(got)}`,
+    false,
+    "a real struct named in the signature and imported by name does not reach the list",
   );
 });
 

@@ -7,7 +7,15 @@ import {
 } from "../core/config";
 import { CLOUD_PROVIDERS, OPENAI_COMPATIBLE } from "../core/cloudInstruct";
 import { CLAUDE_CODE } from "../core/claudeCodeInstruct";
-import { ModelClass, budgetProfileFor, modelClassFor, providerKnown } from "../core/budgetProfile";
+import {
+  ContextStop,
+  DEFAULT_CONTEXT_STOP,
+  INJECTED_CONTEXT_STOPS,
+  ModelClass,
+  budgetProfileFor,
+  modelClassFor,
+  providerKnown,
+} from "../core/budgetProfile";
 
 export interface ExtensionConfig extends FimConfig {
   enabled: boolean;
@@ -173,7 +181,10 @@ export function readFnGenConfig(): FnGenConfig {
   // rather than the default table, so a class whose cell moves them moves this
   // read with it. The language is unknown at config time, so the base cell
   // serves; at identity every cell equals the defaults anyway.
-  const budget = budgetProfileFor(fnGenModelClass(), "");
+  // The stop moves no transport ceiling, but it is passed live rather than
+  // hard-coded: `budgetProfileFor` takes it as a required argument precisely so
+  // no call site silently acquires a stop nobody chose.
+  const budget = budgetProfileFor(fnGenModelClass(), "", injectedContextStop());
   return {
     apiBase: str(c, "apiBase", d.apiBase),
     model: str(c, "fnGenModel", d.model),
@@ -219,6 +230,84 @@ export function fnGenModelClass(log?: (line: string) => void): ModelClass {
     // default class keeps every derived value at identity.
     return "local-mid";
   }
+}
+
+/** The setting `column80.injectedContext` replaced, and its values. Kept as a
+ *  name rather than a bare string so the one channel line below cannot drift
+ *  from what a user still has in their settings.json. */
+const REPLACED_SURFACE_SETTING = "injectedSurface";
+
+/**
+ * The context stop in force: how much type surface the fn-gen prompt may
+ * carry, as ONE setting driving four numbers together.
+ *
+ * TOTAL AND NEVER THROWING, the same defensiveness `fnGenModelClass` carries
+ * and for the same reason: the pre-fill leg runs on hosts that supply a partial
+ * `vscode` surface, and a settings read is not a reason for the whole injected
+ * surface to disappear. An absent configuration provider, an absent setting, an
+ * empty string and an unrecognised value all resolve to `small`.
+ *
+ * Read ONCE PER GESTURE by its callers, never once per candidate: a developer
+ * who changes the setting should not have to restart the editor, and a
+ * `getConfiguration()` inside the admission loop would pay for that freshness
+ * on every iteration.
+ */
+export function injectedContextStop(log?: (line: string) => void): ContextStop {
+  // RESOLVED FIRST, HELD, AND RETURNED WHATEVER THE NOTICE BELOW DOES. The
+  // deprecation notice used to sit inside this try, after the stop was
+  // computed, so a host that throws on `inspect` (or on an unknown key) threw
+  // away a `frontier` the user had explicitly chosen and answered `small`. A
+  // failure in a MESSAGE about a setting that no longer matters must never
+  // discard the setting that does.
+  let stop: ContextStop = DEFAULT_CONTEXT_STOP;
+  let cfg: ReturnType<typeof vscode.workspace.getConfiguration> | undefined;
+  try {
+    cfg = vscode.workspace.getConfiguration?.("column80");
+    // The settings UI stores "" when a field is cleared, and `get`'s fallback
+    // only applies to an ABSENT key - an emptied enum must fall back too.
+    //
+    // TYPE-CHECKED BEFORE COERCED. `String(["frontier"])` is "frontier", so a
+    // settings.json carrying an array (or anything else non-string) would have
+    // been accepted as a valid stop through a value the setting cannot hold.
+    // A non-string is not an unrecognised stop, it is not a stop at all: the
+    // default answers.
+    const read: unknown = cfg?.get<string>("injectedContext", DEFAULT_CONTEXT_STOP);
+    const raw = typeof read === "string" ? read.trim() : "";
+    if ((INJECTED_CONTEXT_STOPS as readonly string[]).includes(raw)) {
+      stop = raw as ContextStop;
+    }
+  } catch {
+    // A headless harness stubs vscode without getConfiguration. The install
+    // default is the answer, never an exception and never a dark path.
+    return DEFAULT_CONTEXT_STOP;
+  }
+  // `injectedSurface` is gone from contributes.configuration; a user who
+  // still carries it in settings.json gets told what took its place rather
+  // than finding out through a value that quietly stopped mattering. One
+  // line, on the same once-per-gesture read as the stop itself.
+  // Read BOTH ways, because either one alone misses a real user. `get` with
+  // no fallback answers undefined for a key nothing declares a default for,
+  // which is exactly what a removed setting is - so a non-empty answer means
+  // the user wrote it. `inspect` is the scope-by-scope form `readTierConfig`
+  // already uses, and it is the one that still answers when a host serves
+  // `get` from the manifest defaults only.
+  //
+  // ITS OWN TRY. Everything in here is about a setting the product no longer
+  // reads; nothing in here may change the answer above.
+  try {
+    const stale = typeof cfg?.inspect === "function" ? cfg.inspect<string>(REPLACED_SURFACE_SETTING) : undefined;
+    const set = (v: unknown): boolean => typeof v === "string" && v.trim() !== "";
+    const read = cfg?.get<string>(REPLACED_SURFACE_SETTING);
+    if (set(read) || set(stale?.globalValue) || set(stale?.workspaceValue) || set(stale?.workspaceFolderValue)) {
+      log?.(
+        `[fngen] \`column80.${REPLACED_SURFACE_SETTING}\` is set and is no longer read; ` +
+          `\`column80.injectedContext\` replaces it and is at "${stop}"`,
+      );
+    }
+  } catch {
+    // Nothing to say: the notice is a courtesy and the stop is already decided.
+  }
+  return stop;
 }
 
 // The optional cloud fn-gen backend. Present only when fnGenProvider names a

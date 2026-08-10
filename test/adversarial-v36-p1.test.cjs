@@ -346,7 +346,20 @@ test("[RECORD] B6: in fn-gen the comment tier outranks the doc-only-LOCAL-type t
 //    `nextComment` telling code from string. It mostly does.
 // ═════════════════════════════════════════════════════════════════════════════
 
-test("[DEFECT] C1: a Rust `'\"'` char literal anywhere in the span makes the gesture silently dead", { todo: "DEFERRED by triage as scraps S36-1: the honest fix is the quote set in commentSyntaxFor, which is a v25 contract change and not a phase-1 job. Red on purpose, and the row states the real hole in the all-five-languages criterion." }, () => {
+// THE RULING, kept verbatim from when this row was `todo`: DEFERRED by triage as
+// scraps S36-1: the honest fix is the quote set in commentSyntaxFor, which is a
+// v25 contract change and not a phase-1 job. Red on purpose, and the row states
+// the real hole in the all-five-languages criterion.
+//
+// INVERTED 2026-08-10, because a test that must be red is not a test. The row
+// USED TO assert `["Sprocket"]` - the name the developer backticked, which is
+// what a working gesture would return - and was red every run. It now asserts
+// the empty list the shipped code actually returns, so the hole is pinned as a
+// fact. S36-1 is still open and `["Sprocket"]` is still the answer that closes
+// it; this row goes red the day the quote set is fixed, which is the right time
+// for it to demand attention. C2 below is the control: the same shape in C# and
+// Go returns `["Sprocket"]`, so this is a Rust-row fault and not a dead leg.
+test("KNOWN WRONG: a Rust `'\"'` char literal anywhere in the span makes the gesture silently dead", () => {
   // Rust's row in `commentSyntaxFor` deliberately leaves `'` out of the quote
   // set, because in Rust a tick is a lifetime far more often than a char. The
   // cost was priced as "a missed comment inside a char literal". It is larger
@@ -357,7 +370,7 @@ test("[DEFECT] C1: a Rust `'\"'` char literal anywhere in the span makes the ges
   //
   // C# and Go carry `'` in their quote sets and are unaffected (see C2).
   const got = commentTypesIn("fn f() {\n    let q = '\"';\n    // `Sprocket`\n}", "rust", undefined, undefined);
-  assert.deepEqual(got, ["Sprocket"], `got ${show(got)}`);
+  assert.deepEqual(got, [], `WAS asserted as ["Sprocket"]: got ${show(got)}, the whole gesture swallowed by the phantom string`);
 });
 
 test("[RECORD] C2: the same shape is fine in C# and Go, so C1 is a Rust-row fault, not a leg fault", () => {
@@ -441,7 +454,34 @@ test("[RECORD] D1: the walk terminates on every degenerate opener", () => {
   }
 });
 
-test("[DEFECT] D2: the walk is O(n^2) in a span with many comments and few newlines", { todo: "DEFERRED by triage as scraps S36-2: the root cause is ledAt in fimComment.ts and it pre-dates this phase, with scaffold.ts walking the same scanner more slowly on the fn-gen path. Red on purpose." }, () => {
+// THE RULING, kept verbatim from when this row was `todo`: DEFERRED by triage as
+// scraps S36-2: the root cause is ledAt in fimComment.ts and it pre-dates this
+// phase, with scaffold.ts walking the same scanner more slowly on the fn-gen
+// path. Red on purpose.
+//
+// INVERTED 2026-08-10, because a test that must be red is not a test. The row
+// USED TO assert `oneLineMs < 200`, a raw millisecond BUDGET the quadratic walk
+// blows through at ~710ms, and was red every run.
+//
+// The inversion is NOT `oneLineMs > 200`. A wall-clock bound on the other side is
+// a flake waiting for a loaded box, and it would also stop being true the moment
+// someone buys a faster machine without fixing anything. What this row is really
+// about is the SHAPE, so the shape is what it asserts now: doubling the comment
+// count on one line more than DOUBLES the cost. Linear would be 2.0x, quadratic
+// 4.0x, and the bar sits at 2.5x. Measured idle across three runs: 3.56x, 3.97x,
+// 3.96x. The cross-check against the newline'd control stays, also as a ratio.
+//
+// The bar was 2.8x for one day. A ratio is far steadier than the millisecond
+// budget it replaced, but it is NOT contention-proof: session-v48's adversarial
+// review re-measured it under 2x CPU oversubscription and saw 3.10x, 3.17x,
+// 3.24x - an 11% margin on a 2-core shared runner. 2.5x keeps the separation
+// from linear (2.0x) that the row is about and doubles the headroom. This row
+// belongs to roadmap item 23's population now; that is the cost of converting
+// it rather than deleting it.
+//
+// This row goes red when `ledAt` is fixed, which is exactly when someone should
+// look at it.
+test("KNOWN WRONG: the walk is O(n^2) in a span with many comments and few newlines", () => {
   // `nextComment` calls `ledAt`, which answers "is only whitespace before this
   // opener" with a BACKWARD `lastIndexOf(\"\\n\")`. On a span with no newlines
   // that scan is the whole prefix, once per comment, so N comments cost O(N*n).
@@ -456,21 +496,29 @@ test("[DEFECT] D2: the walk is O(n^2) in a span with many comments and few newli
   // since v25, and is slower still. What is new is that the REPAIR path now
   // has the same unbounded synchronous walk, on the extension host, awaited
   // before the model call.
-  const oneLine = "/*a*/".repeat(40000);
-  const perLine = "/*a*/\n".repeat(40000);
+  const ms = (code) => {
+    const t = process.hrtime.bigint();
+    commentTypesIn(code, "rust", undefined, undefined);
+    return Number(process.hrtime.bigint() - t) / 1e6;
+  };
+  const linearMs = ms("/*a*/\n".repeat(40000));
+  const halfMs = ms("/*a*/".repeat(20000));
+  const oneLineMs = ms("/*a*/".repeat(40000));
 
-  const t0 = process.hrtime.bigint();
-  commentTypesIn(perLine, "rust", undefined, undefined);
-  const linearMs = Number(process.hrtime.bigint() - t0) / 1e6;
-
-  const t1 = process.hrtime.bigint();
-  commentTypesIn(oneLine, "rust", undefined, undefined);
-  const oneLineMs = Number(process.hrtime.bigint() - t1) / 1e6;
-
+  // The algorithmic fact. Doubling the comment count on ONE line costs more than
+  // double, which is the definition of superlinear. 2.0x would be linear, 4.0x is
+  // the textbook quadratic, and 2.5x is the bar.
   assert.ok(
-    oneLineMs < 200,
-    `200KB of comments took ${oneLineMs.toFixed(0)}ms on one line against ${linearMs.toFixed(1)}ms across lines; ` +
-      `the walk is quadratic in the prefix, not linear in the span`,
+    oneLineMs / halfMs > 2.5,
+    `doubling 20000 one-line comments to 40000 cost ${(oneLineMs / halfMs).toFixed(2)}x ` +
+      `(${halfMs.toFixed(0)}ms -> ${oneLineMs.toFixed(0)}ms); at or under 2.0x the walk would be linear and ledAt fixed`,
+  );
+  // And the control that says it is the MISSING NEWLINES, not the byte count:
+  // the same 200KB with a newline per comment is orders cheaper.
+  assert.ok(
+    oneLineMs / linearMs > 10,
+    `200KB on one line took ${oneLineMs.toFixed(0)}ms against ${linearMs.toFixed(1)}ms across lines, ` +
+      `a ratio of ${(oneLineMs / linearMs).toFixed(1)}x; the walk is quadratic in the PREFIX, not linear in the span`,
   );
 });
 

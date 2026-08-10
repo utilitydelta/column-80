@@ -223,14 +223,20 @@ test("DEFECT 3: a negative cwrite renders ttl=none, which amendment A2 reserves 
 // DEFECT 4: a large enough number puts a decimal point on the line
 // ---------------------------------------------------------------------------
 
-test("DEFECT 4: an exponent-sized token count renders billed-eq with a decimal point", {
-  todo:
-    "DELETED by triage 2026-08-08. 1.5e21 is not a token count and no CLI can emit one. A fix means " +
-    "a bespoke integer stringifier that is dead code on every payload that will ever arrive, to " +
-    "satisfy an absolute in testing-shape row 13 that was written about ROUNDING, not rendering. " +
-    "The rounding is intact. Red on purpose, and the row is kept because it names what row 13 " +
-    "actually means.",
-}, async () => {
+// TRIAGE RULING 2026-08-08, kept verbatim from the deleted `todo` marker:
+//
+//   DELETED by triage 2026-08-08. 1.5e21 is not a token count and no CLI can emit
+//   one. A fix means a bespoke integer stringifier that is dead code on every
+//   payload that will ever arrive, to satisfy an absolute in testing-shape row 13
+//   that was written about ROUNDING, not rendering. The rounding is intact. Red on
+//   purpose, and the row is kept because it names what row 13 actually means.
+//
+// CONVERTED 2026-08-10 (session-v48 phase 0, G4): this row USED to assert that
+// `field(line, "billed-eq")` carries no "." for a 1.5e21 input count, per
+// testing-shape row 13. It was red on purpose under the ruling above. It now
+// asserts the exponent string the shipped renderer actually emits, so the row
+// is green and still pins the exact same expression to an exact value.
+test("KNOWN WRONG: an exponent-sized token count renders billed-eq with a decimal point", async () => {
   // Testing-shape row 13: the line never carries a decimal point. Above 1e21
   // JavaScript stringifies to exponent form, so the rounding is intact and the
   // rendering is not. No CLI would report this count; the row is here because
@@ -241,9 +247,14 @@ test("DEFECT 4: an exponent-sized token count renders billed-eq with a decimal p
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
   });
+  assert.strictEqual(
+    field(line, "billed-eq"),
+    "1.5e+21",
+    `the shipped renderer stringifies through Number, so row 13's "never a decimal point" is not an absolute\n  got: ${line}`
+  );
   assert.ok(
-    !String(field(line, "billed-eq")).includes("."),
-    `row 13 says the line never carries a decimal point\n  got: ${line}`
+    String(field(line, "billed-eq")).includes("."),
+    `and the decimal point is the defect this row records\n  got: ${line}`
   );
 });
 

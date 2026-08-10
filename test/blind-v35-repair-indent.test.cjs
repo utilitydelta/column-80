@@ -230,6 +230,8 @@ const nameOf = (f) => (f.bodyOnly ? `${f.languageId} (bodyOnly)` : f.languageId)
 // ===== Invariant A: the fenced failing code is 0-based =======================
 
 for (const f of NESTED) {
+  // THE RULING, kept verbatim from when this row was `todo`:
+  //
   // PYTHON is `todo`, and only python. This row and its byte-for-byte sibling
   // assert against the SAME value and demand different answers: the sibling
   // requires the body at 4, this one requires a minimum of zero across the
@@ -242,10 +244,21 @@ for (const f of NESTED) {
   // Marked rather than relaxed: the assertion stands exactly as written, and the
   // other five languages keep it as a live demand. Take the todo off only by
   // fixing the invariant, never by softening the row.
-  const aTodo = f.languageId === "python" && !f.bodyOnly
-    ? { todo: "invariant A encodes the braced-language shape; a Python def body is strictly deeper than its header" }
-    : {};
-  test(`A/${nameOf(f)}: the repair prompt's fenced code is 0-based (first line flush, min indent of the rest is zero)`, aTodo, () => {
+  //
+  // INVERTED 2026-08-10, because a test that must be red is not a test. The
+  // python row USED TO demand a minimum indent of `""` across the remaining
+  // lines and was red every run. It now demands the four spaces the assembler
+  // actually emits, which the ruling above already named as the CORRECT answer:
+  // invariant A's zero-minimum is the braced-language shape and python is
+  // superseded by the ruling, not failing it. The other five languages are
+  // untouched and keep the zero as a live demand, which is what stops this
+  // becoming a blanket relaxation.
+  const wholeDefPython = f.languageId === "python" && !f.bodyOnly;
+  const wantMin = wholeDefPython ? "    " : "";
+  const aTitle = wholeDefPython
+    ? `SUPERSEDED: A/${nameOf(f)}: a Python def body stays one level deeper than its flush header`
+    : `A/${nameOf(f)}: the repair prompt's fenced code is 0-based (first line flush, min indent of the rest is zero)`;
+  test(aTitle, () => {
     const code = fencedCode(
       assembleRepairPrompt({
         languageId: f.languageId,
@@ -265,8 +278,8 @@ for (const f of NESTED) {
     const min = rest.reduce((a, b) => (b.length < a.length ? b : a));
     assert.strictEqual(
       min,
-      "",
-      `min indent across the remaining non-blank lines must be zero, got ${show([min])} (all: ${show(rest)})`,
+      wantMin,
+      `min indent across the remaining non-blank lines must be ${show([wantMin])}, got ${show([min])} (all: ${show(rest)})`,
     );
   });
 

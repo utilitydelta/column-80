@@ -6,6 +6,15 @@
 // are green and exist so a later edit cannot quietly take them away.
 //
 // Run: SKIP_LIVE=1 node --test test/review-v38-p2-fence-runs.test.cjs
+//
+// 2026-08-10: the nine `todo:` rows are gone. A test that must be red is not a
+// test. Each ruling is kept verbatim as a comment above its row and each row
+// records what it USED to assert. Three rows (the run-4-in-a-run-3 block, the
+// test-splice fence leak, the 16.7%/16.2% arithmetic) now assert the value the
+// shipped code actually produces. The other six score a capture corpus that the
+// private split deleted from this repo; they cannot be re-derived here and were
+// not guessed, so they SKIP on the missing capture, the same way ROW 2 already
+// did. Nothing above this note was edited.
 
 // THE MEASUREMENT RIG LIVES IN A DIFFERENT REPOSITORY (2026-08-10). It and the
 // session archives were split into a private repo because they carry corpora
@@ -96,24 +105,37 @@ function everyStringIn(v, sink) {
 // reply in the corpus opens with a longer run than it closes with, and it is in
 // repair-v38-fence.json — the very file the change was measured from.
 // ---------------------------------------------------------------------------
-test("[DEFECT] the change's 'zero mismatched' claim: a 4/3 reply exists in the item-2 capture file", {
-  todo:
-    "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in " +
-    "src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the " +
-    "three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left " +
-    "unedited because it is the record of the claim having been wrong.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in
+// src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the
+// three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left
+// unedited because it is the record of the claim having been wrong."
+// USED TO ASSERT (and still does): mismatched === [], the claim this row refuted. The claim was wrong.
+// NOT INVERTED, and it cannot be here: repair-v38-fence.json was deleted from this repo with the
+// 2026-08-10 private split and exists in no checkout on this box, so the true value of `mismatched`
+// cannot be re-derived and will not be guessed. The row now SKIPS on the missing capture instead of
+// standing as a permanent `todo:`. Restore the capture and re-derive before trusting the assertion.
+test("CANNOT RUN (capture deleted 2026-08-10; the assertion below is the REFUTED claim): the change's 'zero mismatched' claim, a 4/3 reply exists in the item-2 capture file", (ctx) => {
+  if (needsCapture(ctx, "repair-v38-fence.json")) {
+    return;
+  }
   const rows = JSON.parse(fs.readFileSync(path.join(DATA, "repair-v38-fence.json"), "utf8"));
   const mismatched = [];
+  let scored = 0;
   for (const r of rows) {
     for (const [i, rd] of (r.rounds ?? []).entries()) {
       if (typeof rd.raw !== "string") continue;
+      scored++;
       for (const p of fencePairs(rd.raw)) {
         const [a, b] = p.slice(1).split("/");
         if (a !== b) mismatched.push(`${r.id} round ${i}: ${p}`);
       }
     }
   }
+  // An empty `mismatched` is the claim, so an empty CAPTURE would satisfy this row
+  // without scoring anything. The denominator is asserted first: restore a
+  // truncated capture and the row says so instead of going green (session-v48).
+  assert.equal(scored, 34, `precondition: the capture carries its 34 raw replies, got ${scored}`);
   assert.deepEqual(mismatched, [], "no captured reply may open with a run it does not close with");
 });
 
@@ -144,13 +166,20 @@ test("[DEFECT] the 4/3 capture: HEAD extracts a complete function, the change ha
 // is 1 in 17, not zero. "Never observed" is only true against a denominator
 // that drowns the run-4 population in run-3 replies.
 // ---------------------------------------------------------------------------
-test("[DEFECT] mismatch rate CONDITIONAL on a run-4 opener is 1/17 in the capture file, not 0", {
-  todo:
-    "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in " +
-    "src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the " +
-    "three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left " +
-    "unedited because it is the record of the claim having been wrong.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in
+// src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the
+// three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left
+// unedited because it is the record of the claim having been wrong."
+// USED TO ASSERT (and still does): run4Openers === 17 and run4Mismatched === 0. The second is the
+// claim this row refuted; the true rate was 1/17.
+// NOT INVERTED, and it cannot be here: repair-v38-fence.json was deleted from this repo with the
+// 2026-08-10 private split, so neither figure can be re-derived and neither will be guessed. The row
+// now SKIPS on the missing capture instead of standing as a permanent `todo:`.
+test("CANNOT RUN (capture deleted 2026-08-10; the assertion below is the REFUTED claim): mismatch rate CONDITIONAL on a run-4 opener is 1/17 in the capture file, not 0", (ctx) => {
+  if (needsCapture(ctx, "repair-v38-fence.json")) {
+    return;
+  }
   const rows = JSON.parse(fs.readFileSync(path.join(DATA, "repair-v38-fence.json"), "utf8"));
   let run4Openers = 0;
   let run4Mismatched = 0;
@@ -181,25 +210,37 @@ test("[DEFECT] mismatch rate CONDITIONAL on a run-4 opener is 1/17 in the captur
 // to demonstrate the change works. This row re-derives it from the file, so it
 // goes green if and only if the shape stops appearing.
 // ---------------------------------------------------------------------------
-test("[DEFECT] the post-fix re-run file already carries its own open-4 / close-3 rejection", {
-  todo:
-    "FIXED by the phase-2 loop-back, and this row records what it caught. The first cut of the change was " +
-    "strict CommonMark; the shipped rule is a strict SUPERSET of HEAD (a closer is a bare run of the same " +
-    "character of length 3 OR the opener's length), so the shape this row names is no longer refused. The " +
-    "assertion still describes the first cut and is left unedited on purpose. Definitive replay on the " +
-    "shipped rule: 151 of 151 captured replies survive the guard, against 110 of 151 at HEAD.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "FIXED by the phase-2 loop-back, and this row records what it caught. The first cut of the change was
+// strict CommonMark; the shipped rule is a strict SUPERSET of HEAD (a closer is a bare run of the same
+// character of length 3 OR the opener's length), so the shape this row names is no longer refused. The
+// assertion still describes the first cut and is left unedited on purpose. Definitive replay on the
+// shipped rule: 151 of 151 captured replies survive the guard, against 110 of 151 at HEAD."
+// USED TO ASSERT (and still does): mismatched === [] over repair-v38-fence-fixed.json. It was not empty.
+// NOT INVERTED, and it cannot be here: repair-v38-fence-fixed.json was deleted from this repo with the
+// 2026-08-10 private split, so the true list cannot be re-derived and will not be guessed. The row now
+// SKIPS on the missing capture instead of standing as a permanent `todo:`.
+test("CANNOT RUN (capture deleted 2026-08-10; the assertion below is the REFUTED claim): the post-fix re-run file already carries its own open-4 / close-3 rejection", (ctx) => {
+  if (needsCapture(ctx, "repair-v38-fence-fixed.json")) {
+    return;
+  }
   const rows = JSON.parse(fs.readFileSync(path.join(DATA, "repair-v38-fence-fixed.json"), "utf8"));
   const mismatched = [];
+  let scored = 0;
   for (const r of rows) {
     for (const [i, rd] of (r.rounds ?? []).entries()) {
       if (typeof rd.raw !== "string") continue;
+      scored++;
       for (const p of fencePairs(rd.raw)) {
         const [a, b] = p.slice(1).split("/");
         if (a !== b) mismatched.push(`${r.id} round ${i}: ${p} rejectWhy=${r.rejectWhy}`);
       }
     }
   }
+  // Same trap as ROW 1: an empty capture satisfies "nothing mismatched" without
+  // scoring a reply. The snapshot this row was taken against carried 45 raw
+  // replies across 18 rows, and that is the denominator (session-v48).
+  assert.equal(scored, 45, `precondition: the re-run capture carries its 45 raw replies, got ${scored}`);
   assert.deepEqual(mismatched, []);
 });
 
@@ -208,13 +249,31 @@ test("[DEFECT] the post-fix re-run file already carries its own open-4 / close-3
 // oracle's header do not reproduce. Stated method: every distinct string value,
 // recursively, in all 86 json files under session-complxity-research/data/.
 // ---------------------------------------------------------------------------
-test("[DEFECT] the corpus numbers: 1184 blocks / 1173 3-3 / 11 4-4 / 0 mismatched do not reproduce", {
-  todo:
-    "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in " +
-    "src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the " +
-    "three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left " +
-    "unedited because it is the record of the claim having been wrong.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in
+// src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the
+// three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left
+// unedited because it is the record of the claim having been wrong."
+// USED TO ASSERT (and still does): 86 corpus files and a tally of {blocks: 1184, `3/3: 1173, `4/4: 11}.
+// NOT INVERTED, and it cannot be here: this is a census OVER the corpus, and the corpus is no longer
+// intact. The 2026-08-10 private split removed the fence captures (data/ is down to 59 json files, and
+// today's tally is {blocks: 25, `3/3: 25}). Pinning 25/59 would be pinning the size of a gitignored
+// scratch directory that the rig rewrites on every run: green today, red next week, which is the same
+// permanent-red shape this conversion exists to remove. So the row keeps the claimed tally and SKIPS
+// while the censused corpus is missing. Restore the captures and re-derive.
+test("CANNOT RUN (corpus not intact 2026-08-10; the assertion below is the REFUTED claim): the corpus numbers 1184 blocks / 1173 3-3 / 11 4-4 / 0 mismatched do not reproduce", (ctx) => {
+  if (needsCapture(ctx, "repair-v38-fence.json")) {
+    return;
+  }
+  // This row's subject is the WHOLE corpus, not the one capture the guard above
+  // names, so restoring that one file alone would put the row red on a
+  // denominator it never measured. Guard on what it actually reads
+  // (session-v48). The 2026-08-10 split took data/ from 86 json files to 59.
+  const present = fs.readdirSync(DATA).filter((f) => f.endsWith(".json")).length;
+  if (present !== 86) {
+    ctx.skip(`corpus not intact: the census needs its 86 json files under data/, found ${present}`);
+    return;
+  }
   const files = fs.readdirSync(DATA).filter((f) => f.endsWith(".json"));
   assert.equal(files.length, 86, "the '86 corpus files' denominator does check out");
   const seen = new Set();
@@ -247,13 +306,20 @@ test("[DEFECT] the corpus numbers: 1184 blocks / 1173 3-3 / 11 4-4 / 0 mismatche
 // header as "repair-v38-fence.json, 34 raw replies: 24 are 3/3 and 10 are 4/4,
 // none mismatched", is wrong on every figure.
 // ---------------------------------------------------------------------------
-test("[DEFECT] the blind oracle's per-file count (34 replies, 24 3-3, 10 4-4, none mismatched)", {
-  todo:
-    "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in " +
-    "src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the " +
-    "three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left " +
-    "unedited because it is the record of the claim having been wrong.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in
+// src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the
+// three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left
+// unedited because it is the record of the claim having been wrong."
+// USED TO ASSERT (and still does): {replies: 34, `3/3: 24, `4/4: 10} for repair-v38-fence.json. The
+// oracle's header was wrong on every figure.
+// NOT INVERTED, and it cannot be here: repair-v38-fence.json was deleted from this repo with the
+// 2026-08-10 private split, so the true per-file tally cannot be re-derived and will not be guessed.
+// The row now SKIPS on the missing capture instead of standing as a permanent `todo:`.
+test("CANNOT RUN (capture deleted 2026-08-10; the assertion below is the REFUTED claim): the blind oracle's per-file count (34 replies, 24 3-3, 10 4-4, none mismatched)", (ctx) => {
+  if (needsCapture(ctx, "repair-v38-fence.json")) {
+    return;
+  }
   const rows = JSON.parse(fs.readFileSync(path.join(DATA, "repair-v38-fence.json"), "utf8"));
   const raws = [];
   for (const r of rows) for (const rd of r.rounds ?? []) if (typeof rd.raw === "string") raws.push(rd.raw);
@@ -270,21 +336,24 @@ test("[DEFECT] the blind oracle's per-file count (34 replies, 24 3-3, 10 4-4, no
 // extractRequestedFunction keeps the tail unjudged, so the broken text reaches
 // the splice. HEAD returned the whole function. Refusal became silent damage.
 // ---------------------------------------------------------------------------
-test("[DEFECT] a bare run-4 line inside a run-3 block silently truncates the function into the splice", {
-  todo:
-    "FIXED by the phase-2 loop-back, and it is the reason the shipped rule is not CommonMark. A longer " +
-    "run no longer closes a shorter opener, so a run-4 line inside a run-3 block is content exactly as at " +
-    "HEAD and this silent truncation cannot occur. The assertion is left describing the first cut.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "FIXED by the phase-2 loop-back, and it is the reason the shipped rule is not CommonMark. A longer
+// run no longer closes a shorter opener, so a run-4 line inside a run-3 block is content exactly as at
+// HEAD and this silent truncation cannot occur. The assertion is left describing the first cut."
+// USED TO ASSERT: fenceGuardRefuses(postprocessInstructOutput(reply)) === false, i.e. the truncation
+// slips past the guard unseen. It does not. The block keeps the whole function, so the interior run-4
+// lines of the Rust raw string are still in the text and the guard REFUSES it. A visible refusal, not a
+// silent bad write. Today's `true` is the correct behaviour.
+test("SUPERSEDED: [was DEFECT] a bare run-4 line inside a run-3 block is content, and the guard refuses the reply outright", () => {
   const reply = '```rust\nfn f() -> &\'static str {\n    r#"\n````\nexample\n````\n"#\n}\n```';
   const whole = "fn f() -> &'static str {\n    r#\"\n````\nexample\n````\n\"#\n}";
   assert.equal(extractFirstCodeBlock(reply), whole, "the block must not stop at the interior run-4 line");
   const text = postprocessInstructOutput(reply);
-  assert.equal(fenceGuardRefuses(text), false, "and the guard does not catch the truncation either way");
+  assert.equal(fenceGuardRefuses(text), true, "the raw string's run-4 lines survive, so the guard fires");
   assert.equal(
     extractRequestedFunction(text, "fn f() -> &'static str {").text,
     whole,
-    "so a truncated, unterminated function is what gets spliced",
+    "and the function reaching extractRequestedFunction is whole, not truncated",
   );
 });
 
@@ -318,47 +387,62 @@ test("[DEFECT] caller 3, extractTestFunctions: same loss on the four non-Rust la
 // fnGenService lives only in the non-test branch). The change makes the leak
 // strictly larger: HEAD stopped at the inner closer, the change keeps it.
 // ---------------------------------------------------------------------------
-test("[DEFECT] the nesting payoff pushes MORE markdown into the test path, which has no fence guard", {
-  todo:
-    "DEFERRED by triage as scraps S38-6. Under the shipped rule the leak returns to HEAD's one fence " +
-    "line, so it is no longer a regression. The real defect it points at, that the TEST-file splice path " +
-    "has no fence guard at all, is pre-existing and out of scope for phase 2.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "DEFERRED by triage as scraps S38-6. Under the shipped rule the leak returns to HEAD's one fence
+// line, so it is no longer a regression. The real defect it points at, that the TEST-file splice path
+// has no fence guard at all, is pre-existing and out of scope for phase 2."
+// USED TO ASSERT: zero fence lines reach the test-file splice. The shipped code leaks ONE (the inner
+// "```rust" opener rides along in got.text), which is a real defect the product still has: the test-file
+// splice path has no fence guard, so that line goes into the written test file. Deferred, not fixed.
+// The row is pinned at 1 so a regression back to 2 (or a fix down to 0) both show up here.
+test("KNOWN WRONG: one markdown fence line still reaches the test-file splice, which has no fence guard (S38-6)", () => {
   const reply =
     "````markdown\n```rust\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn a() { assert!(true); }\n}\n```\n````";
   const got = extractTestModule(reply);
   assert.ok(got, "sanity: the module is found");
   assert.equal(
     got.text.split("\n").filter((l) => runOf(l.trim())).length,
-    0,
-    "no fence line may reach a test-file splice; HEAD leaked 1, the change leaks 2",
+    1,
+    "one fence line reaches a test-file splice; it should be 0, and nothing guards it",
   );
+  assert.equal(got.text.split("\n")[0], "```rust", "and this is the line that leaks");
 });
 
 // ---------------------------------------------------------------------------
 // ROW 9 [DEFECT, LOW]. Arithmetic. 32/198 is 16.2%, not 16.7%. The figure is in
 // the shipped doc comment and repeated in the blind oracle's header.
 // ---------------------------------------------------------------------------
-test("[DEFECT] '32 of 198 ... 16.7%' is 16.2%", {
-  todo:
-    "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in " +
-    "src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the " +
-    "three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left " +
-    "unedited because it is the record of the claim having been wrong.",
-}, () => {
-  assert.equal(((32 / 198) * 100).toFixed(1), "16.7");
+// RULING (verbatim, was the `todo:` text):
+// "FIXED by the phase-2 loop-back. The false census this row refutes has been rewritten in
+// src/core/instructPostprocess.ts with its method and unit stated next to the number, and with the
+// three observed open-4/close-3 replies named as the reason the leniency is kept. The row is left
+// unedited because it is the record of the claim having been wrong."
+// USED TO ASSERT: ((32 / 198) * 100).toFixed(1) === "16.7", the figure the shipped doc comment and the
+// blind oracle's header both carried. The arithmetic is 16.2. The doc comment now says 16.2, so this
+// row asserts the true value and the second assertion re-checks that the source agrees.
+test("SUPERSEDED: '32 of 198' is 16.2%, not 16.7%, and the doc comment now says so", () => {
+  assert.equal(((32 / 198) * 100).toFixed(1), "16.2");
+  const doc = fs.readFileSync(path.join(__dirname, "..", "src", "core", "instructPostprocess.ts"), "utf8");
+  assert.ok(doc.includes("16.2%"), "the shipped doc comment carries the corrected figure");
+  assert.equal(doc.includes("16.7%"), false, "and no longer carries the wrong one");
 });
 
 // ---------------------------------------------------------------------------
 // [FINE] rows. Green, and they are the reason the change is still worth
 // shipping in some form.
 // ---------------------------------------------------------------------------
-test("[FINE] the fix is a large net win on the measured rows: 16 rounds recovered, 1 lost", {
-  todo:
-    "SUPERSEDED by the shipped rule. This row scores the first cut (16 recovered, 1 lost). The " +
-    "definitive replay of the shipped rule over both capture files is 151 of 151 surviving the guard " +
-    "against 110 of 151 at HEAD: 41 recovered, 0 lost, 0 truncated.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "SUPERSEDED by the shipped rule. This row scores the first cut (16 recovered, 1 lost). The
+// definitive replay of the shipped rule over both capture files is 151 of 151 surviving the guard
+// against 110 of 151 at HEAD: 41 recovered, 0 lost, 0 truncated."
+// USED TO ASSERT (and still does): recovered === 16 and lost === 1, the first cut's score.
+// NOT INVERTED, and it cannot be here: repair-v38-fence.json was deleted from this repo with the
+// 2026-08-10 private split, so the shipped rule's per-file score cannot be re-derived and will not be
+// guessed. The row now SKIPS on the missing capture instead of standing as a permanent `todo:`.
+test("CANNOT RUN (capture deleted 2026-08-10; the assertion below is the REFUTED claim): the fix is a large net win on the measured rows, 16 rounds recovered, 1 lost", (ctx) => {
+  if (needsCapture(ctx, "repair-v38-fence.json")) {
+    return;
+  }
   const rows = JSON.parse(fs.readFileSync(path.join(DATA, "repair-v38-fence.json"), "utf8"));
   let recovered = 0;
   let lost = 0;

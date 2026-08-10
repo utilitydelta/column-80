@@ -493,19 +493,21 @@
           "default": false,
           "description": "Debug: dump the full assembled prompt to the output channel on every function generation, repair round, AND FIM completion, between prompt-begin/prompt-end markers. Shows exactly what context the model was given, including the injected API surface, byte-for-byte. FIM fires per keystroke so this is very verbose; leave off for normal use."
         },
-        "column80.injectedSurface": {
+        "column80.injectedContext": {
           "type": "string",
           "enum": [
-            "auto",
-            "minimal",
-            "generous"
+            "small",
+            "medium",
+            "large",
+            "frontier"
           ],
-          "default": "auto",
-          "description": "How much type detail to inject into the function-generation prompt. Before generating, the extension resolves the types your signature and comments name and puts their real shapes in the prompt, which is what stops the model inventing method names. Each injected type costs roughly 765 prompt bytes. 'auto' is tuned for a small local model; raise it if you point the extension at a frontier model or a large local one with room to spare. This governs prompt size only and never the number of language-server lookups, so turning it up does not slow the editor. The split between languages stays in the extension: Rust names about 20 candidate types per function where C# names under 2, and the right budget differs accordingly.",
+          "default": "small",
+          "description": "How much of your own code the extension puts in front of the model when it generates a function. Before generating, it resolves the types your signature and comments name and injects their real shapes, which is what stops the model inventing method names. Pick the row that matches the model you are generating with: a bigger model has room for more of your code, a small local one does not. Moving this up widens four things at once - how many types are injected, how far each one is followed, how many types in total, and the byte budget they share - so a higher setting means a larger prompt, a slower first token, and more language-server lookups. It also widens the REPAIR prompt, which is the one that shows the model the API surface it got wrong. If you point the extension at a cloud model, this is the setting to raise. Rust and TypeScript feel all four; Go, Python and C# inject type signatures without following them, so there only the number of types and the byte budget move, and 'medium' gives them nothing 'small' does not - the extension says which numbers bound your language on its output channel every time it generates. What raising it is worth was measured once, on one corpus: 80 test-covered Rust functions against qwen3-coder:30b, 'small' against the pre-dial point, twice each. Correctness was flat inside the run-to-run noise, and generation was about 25% slower at the 95th percentile. That is one 30B on one codebase and it is the only reading anyone has; your model and your code are the ones that decide.",
           "enumDescriptions": [
-            "The measured default, per language. Tuned for a small local model.",
-            "Half the default. For a tight context window, or when you would rather the model leaned on the file it can already see.",
-            "As much as the resolve budget allows, currently double the default. For a frontier model or a large local one, where the context window is not the binding constraint."
+            "For a 30B-class local model. The install default, and the safe one: a small model can get WORSE when the prompt runs long.",
+            "For a 30B with room to spend - a bigger card, or a quantization that leaves headroom.",
+            "For a large local model, or a cheap cloud one.",
+            "For Opus and Fable class models. No local window to defend, so this injects as much of your code as the extension can resolve."
           ]
         }
       }

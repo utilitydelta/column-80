@@ -382,9 +382,15 @@ btest("R3: C#'s own constant REACHES the walk - moving it to 900 admits more, an
 // R4. The rig knob, behaviourally.
 // ===========================================================================
 
-btest("R4: the rig's knob still wins - lib-core's exact patch of `var DATASHAPE_TOTAL_TOK` moves C# too", async () => {
-  const base = await runPrefill(mod.resolvePrefill, "csharp", undefined);
-  const armed = await runPrefill(modKnob900.resolvePrefill, "csharp", undefined);
+// RE-CUT by session-v48 phase 1 (docs/supersessions.md). `DATASHAPE_TOTAL_TOK` is
+// the budget of the `shipped` STOP now, not of every run: the install default is
+// `small`, whose budget is the stop table's 600 and which the rig's knob cannot
+// and must not move. The row's subject is unchanged - the rig's exact textual
+// patch must still reach a live prompt, C# included - so both arms are pinned to
+// the stop the knob feeds. That is precisely why the contract keeps `shipped`.
+btest("R4: the rig's knob still wins - lib-core's exact patch of `var DATASHAPE_TOTAL_TOK` moves C# too, at the `shipped` stop it feeds", async () => {
+  const base = await runPrefill(mod.resolvePrefill, "csharp", { contextStop: "shipped" });
+  const armed = await runPrefill(modKnob900.resolvePrefill, "csharp", { contextStop: "shipped" });
   assert.ok(
     armed.text.length > base.text.length,
     "a budget-900 arm must reach C#, or the rung silently duplicates the shipping run (adversarial-v42-p2 R1). " +
@@ -403,18 +409,30 @@ btest("R4: the rig's knob still wins - lib-core's exact patch of `var DATASHAPE_
 // baseline.
 // ===========================================================================
 
-btest("R5: once C#'s value differs, a budget-300 rung silently measures C#'s own value, not 300", {
-  todo:
-    "RULED by triage: the DEFECT is fixed, by a different remedy than this row simulates. R5 is right " +
-    "that a `=== 300` sentinel cannot tell UNPATCHED from PATCHED-TO-300, and that once C#'s value " +
-    "differed the baseline rung became unreachable. The sentinel is gone: the shipped form is now " +
-    "`CS_DATASHAPE_TOTAL_TOK = DATASHAPE_TOTAL_TOK * CS_BUDGET_FACTOR` (factor 1), which removes the " +
-    "conflation entirely and makes every rung dense in the knob - knob 100 x factor 3 = the 300 " +
-    "baseline. This row constructs the sentinel form to demonstrate the trap, so it cannot pass " +
-    "against a tree that no longer contains it. Kept RED rather than deleted because it is the " +
-    "record of why the shipped form is a factor. The replacement proof is in " +
-    "impl-v45-p3-budget.test.cjs, 'under a FUTURE phase-4.1 factor, every ladder rung ... is reachable'.",
-}, async () => {
+// TRIAGE RULING, kept verbatim from the deleted `todo` marker:
+//
+//   RULED by triage: the DEFECT is fixed, by a different remedy than this row
+//   simulates. R5 is right that a `=== 300` sentinel cannot tell UNPATCHED from
+//   PATCHED-TO-300, and that once C#'s value differed the baseline rung became
+//   unreachable. The sentinel is gone: the shipped form is now
+//   `CS_DATASHAPE_TOTAL_TOK = DATASHAPE_TOTAL_TOK * CS_BUDGET_FACTOR` (factor 1),
+//   which removes the conflation entirely and makes every rung dense in the knob -
+//   knob 100 x factor 3 = the 300 baseline. This row constructs the sentinel form
+//   to demonstrate the trap, so it cannot pass against a tree that no longer
+//   contains it. Kept RED rather than deleted because it is the record of why the
+//   shipped form is a factor. The replacement proof is in
+//   impl-v45-p3-budget.test.cjs, 'under a FUTURE phase-4.1 factor, every ladder
+//   rung ... is reachable'.
+//
+// CONVERTED 2026-08-10 (session-v48 phase 0, G4): this row USED to assert
+// `rung300.text === trueBaseline.text` - that a budget-300 rung renders what a
+// real 300-token budget renders. Under the SENTINEL form it does not, which was
+// the trap, and the row was red on purpose. The shipped tree no longer contains
+// the sentinel, so the row now asserts the trap directly against the sentinel
+// bundle it builds itself: the 300 rung and the 900 rung are the SAME render,
+// and neither is the true baseline. Same expression, exact values, and the
+// demonstration survives as the record of why the shipped form is a factor.
+btest("SUPERSEDED: under a sentinel form, a budget-300 rung silently measures C#'s own value, not 300", async () => {
   const AFTER_41 = path.join(__dirname, ".review-v45-p3.after41.bundle.cjs");
   const AFTER_41_BASE = path.join(__dirname, ".review-v45-p3.after41base.bundle.cjs");
   ARTIFACTS.push(AFTER_41, AFTER_41_BASE);
@@ -430,14 +448,29 @@ btest("R5: once C#'s value differs, a budget-300 rung silently measures C#'s own
   const trueBaseline = await runPrefill(mod.resolvePrefill, "csharp", undefined);
   assert.equal(
     rung300.text,
+    wide.text,
+    "the trap: under the sentinel form the budget-300 rung renders C#'s own 900, byte for byte the same " +
+      "as the 900 rung, because `DATASHAPE_TOTAL_TOK === 300` is satisfied by the rig's own patch. " +
+      "lib-core's loadPrefillBudget and loadPrefillCapBudget have no csharp leg and their guard cannot " +
+      "fire - the pattern still matches." +
+      dump("rung 300 (sentinel)", rung300) +
+      dump("rung 900 (sentinel)", wide),
+  );
+  assert.notEqual(
+    rung300.text,
     trueBaseline.text,
-    "a budget-300 rung for C# must render what a real 300-token budget renders. It renders C#'s own 900 " +
-      `instead (${rung300.text.length} chars vs the true baseline's ${trueBaseline.text.length}), because ` +
-      "`DATASHAPE_TOTAL_TOK === 300` is satisfied by the patch itself. lib-core's loadPrefillBudget and " +
-      "loadPrefillCapBudget have no csharp leg and their guard cannot fire - the pattern still matches. " +
-      `The 900 rung renders ${wide.text.length} chars, so the 300 and 900 rungs are the SAME rung.` +
-      dump("rung 300 (after 4.1)", rung300) +
+    "and it is NOT what a real 300-token budget renders, so the baseline rung is unreachable under the sentinel" +
+      dump("rung 300 (sentinel)", rung300) +
       dump("true 300 baseline", trueBaseline),
+  );
+  assert.equal(
+    rung300.text.length,
+    wide.text.length,
+    "the 300 and 900 rungs are the SAME rung, in characters as well as bytes",
+  );
+  assert.ok(
+    rung300.text.length > trueBaseline.text.length,
+    `the sentinel rung is strictly wider than the true baseline; got ${rung300.text.length} vs ${trueBaseline.text.length}`,
   );
 });
 

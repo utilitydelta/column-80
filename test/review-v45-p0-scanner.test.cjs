@@ -206,15 +206,26 @@ test("F6: a '#if' line inside a verbatim string is treated as a directive", () =
 // PolicyWrap.SetPolicyContext pairs. A refresh against unchanged files must be
 // 2,073 unchanged, 0 dropped.
 // --------------------------------------------------------------------------
-test("F7: a generic and non-generic type of the same name defeat refreshCandidates", {
-  todo:
-    "RULED by triage: the DEFECT is fixed, this remedy is not the one taken. refreshCandidates now " +
-    "carries an `ordinal` rung (position among same-named methods in the file), and a refresh over " +
-    "the untouched corpus is 2100 unchanged / 0 dropped, measured. This row instead asserts that " +
-    "typePath must distinguish P from P<T>, which contract-phase0 forbids outright ('generics " +
-    "stripped: class Box<T> -> Box') and which 97 blind rows bind. Kept RED rather than deleted " +
-    "because it is the record of the alternative remedy and of what would have to change to take it.",
-}, () => {
+// TRIAGE RULING, kept verbatim from the deleted `todo` marker:
+//
+//   RULED by triage: the DEFECT is fixed, this remedy is not the one taken.
+//   refreshCandidates now carries an `ordinal` rung (position among same-named
+//   methods in the file), and a refresh over the untouched corpus is 2100
+//   unchanged / 0 dropped, measured. This row instead asserts that typePath must
+//   distinguish P from P<T>, which contract-phase0 forbids outright ('generics
+//   stripped: class Box<T> -> Box') and which 97 blind rows bind. Kept RED rather
+//   than deleted because it is the record of the alternative remedy and of what
+//   would have to change to take it.
+//
+// CONVERTED 2026-08-10 (session-v48 phase 0, G4): this row USED to assert
+// `found[0].typePath !== found[1].typePath` - that the scanner must separate P
+// from P<T>. It was red on purpose under the ruling above. It now asserts what
+// the scanner actually produces: both rows carry the typePath "P", and their
+// signatures tie too, which is exactly the state the `ordinal` rung was added
+// to survive. The row still pins the same two expressions to exact values, so
+// a future change that started distinguishing P from P<T> - the remedy the
+// ruling rejected - goes red here and has to be argued again.
+test("SUPERSEDED: a generic and non-generic type of the same name share a typePath, and the ordinal rung carries the separation", () => {
   const src = `public class P {
     public void Dispose()
     {
@@ -229,9 +240,19 @@ public class P<T> {
 }`;
   const found = scanMethods(src).filter((m) => m.name === "Dispose");
   assert.equal(found.length, 2);
-  assert.notEqual(
+  assert.equal(
     found[0].typePath,
+    "P",
+    "contract-phase0: generics are stripped, so P<T>'s typePath is the bare name",
+  );
+  assert.equal(
     found[1].typePath,
-    "refreshCandidates has no rung left once signature and typePath both tie",
+    "P",
+    "contract-phase0: generics are stripped, so P<T>'s typePath is the bare name",
+  );
+  assert.equal(
+    found[0].signature,
+    found[1].signature,
+    "and the signature rung ties as well, which is why refreshCandidates needs the ordinal rung",
   );
 });

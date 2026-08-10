@@ -47,6 +47,7 @@ try {
     `export { resolveSurfaceInjection } from "../src/vscode/oracleSurface";
 export { isRustSysrootDef } from "../src/core/crossFileShape";
 export { harvestDiagnosticTypes } from "../src/core/compilerDirected";
+export { contextBoundsFor, DEFAULT_CONTEXT_STOP, surfaceCapFor } from "../src/core/budgetProfile";
 `,
   );
   esbuild.buildSync({ entryPoints: [ENTRY], bundle: true, outfile: OUTFILE, format: "cjs", platform: "node", alias: { vscode: STUB } });
@@ -113,12 +114,21 @@ const NAMES = {
   },
 };
 
-// Row 3's five-type fixture, in its own file so row 1 stays minimal.
+// ATTACK 3's over-the-cap fixture, in its own file so row 1 stays minimal.
+//
+// WIDENED session-v48 loop-back (defect 5): the repair round's surface cap is a
+// derivation of the context stop's aggregate budget now, and the repair path
+// reads the LIVE stop, so at the default it is `CAP_FILLERS.length` rather than
+// the 4 this fixture's four filler types were cut against. Four no longer fill
+// it, `Epsilon` was never dropped, and the row asserted about a cap that never
+// bit. The filler count comes from the seam so the fixture stays exactly
+// cap-full wherever the default stop moves.
+const CAP_SURFACE_CAP = B.surfaceCapFor
+  ? B.surfaceCapFor(B.contextBoundsFor(B.DEFAULT_CONTEXT_STOP).surfaceBudgetTok)
+  : 4;
+const CAP_FILLERS = Array.from({ length: CAP_SURFACE_CAP }, (_, i) => `Slot${String(i).padStart(2, "0")}`);
 const CAP_URI = "file:///work/proj/src/cap.rs";
-const CAP_SRC = `use crate::t::Alpha;
-use crate::t::Beta;
-use crate::t::Gamma;
-use crate::t::Delta;
+const CAP_SRC = `${CAP_FILLERS.map((n) => `use crate::t::${n};`).join("\n")}
 use crate::t::Epsilon;
 
 pub fn f() {
@@ -126,7 +136,7 @@ pub fn f() {
 }
 `;
 const CAP_NAMES = {};
-for (const n of ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"]) {
+for (const n of [...CAP_FILLERS, "Epsilon"]) {
   CAP_NAMES[n] = {
     defUri: `file:///work/proj/src/t/${n.toLowerCase()}.rs`,
     hover: `pub struct ${n} { pub ${n.toLowerCase()}_slot: u32 }`,
@@ -425,11 +435,11 @@ rtest("ATTACK 3: a name dropped over the cap must not be reported as already cov
     const s = spanAt(CAP_SRC, "let a = 0u64;", "a", label);
     return { ...s, fileName: "src/cap.rs" };
   };
-  const four = ["Alpha", "Beta", "Gamma", "Delta"].map((n) =>
+  const fillers = CAP_FILLERS.map((n) =>
     diag("E0308", "mismatched types", capSpan("a", `expected \`${n}\`, found \`u64\``)),
   );
-  const fifth = diag("E0063", "missing field `epsilon_slot` in initializer of `Epsilon`", capSpan("a"));
-  const r = await run([...four, fifth], { uri: CAP_URI, src: CAP_SRC, names: CAP_NAMES });
+  const overflow = diag("E0063", "missing field `epsilon_slot` in initializer of `Epsilon`", capSpan("a"));
+  const r = await run([...fillers, overflow], { uri: CAP_URI, src: CAP_SRC, names: CAP_NAMES });
   const line = r.logs.find((l) => l.includes("E0063") && l.includes("none"));
   assert.ok(line, `precondition: the fifth diagnostic bought nothing and said so${dump(r)}`);
   assert.ok(

@@ -14,8 +14,14 @@
 // Harness mechanics copied from test/blind-v38-p1-enum-render.test.cjs.
 //
 // Triaged 2026-08-03. R2/R2b were DONE in the phase-1 loop-back and are green; they
-// are now the regression test for it. R1/R1b/R3/R4 are `todo`, each naming the
-// scrap that holds it, so the claim stays in the suite without failing CI.
+// are now the regression test for it.
+//
+// Converted 2026-08-10 (session-v48 phase 0): a test that must be red is not a test.
+// R1/R1b/R3/R4 were `todo` and are now GREEN rows asserting what the shipped code
+// really does. Each keeps its original ruling verbatim plus a line saying what it
+// used to assert. R1/R1b are SUPERSEDED - the v39 hover recovery fixed them and they
+// pass as written. R3/R4 are KNOWN WRONG - the defect is still shipped, and the row
+// now pins it.
 //
 // Run: SKIP_LIVE=1 node --test test/adversarial-v38-p1.test.cjs
 
@@ -100,11 +106,12 @@ test("bundle guard: resolvePrefill builds headless against the vscode stub", () 
   if (bundleErr) assert.fail(`bundle failed to build: ${bundleErr.message}`);
   assert.equal(typeof resolvePrefill, "function");
 });
-// `opts` carries the node:test options object, which is how every prior session
-// in this repo spells a row triage deferred: `{ todo: "DEFERRED by triage as
-// scraps S38-N: ... Red on purpose." }`. A todo row does not fail the run, so the
-// finding stays in the suite as a standing claim instead of being deleted to get
-// CI green. See test/adversarial-v37-p1.test.cjs.
+// `opts` carries the node:test options object. Earlier sessions used it to spell a
+// deferred row `{ todo: "..." }` so a standing finding would not fail CI. That is no
+// longer done here: a test that must be red is not a test. A deferred finding is now
+// a GREEN row asserting what the code really does, titled `KNOWN WRONG:` when the
+// defect still ships or `SUPERSEDED:` when a later ruling made today's behaviour the
+// correct one, with the original ruling kept above it.
 const rtest = (name, optsOrFn, maybeFn) => {
   const fn = maybeFn ?? optsOrFn;
   const opts = maybeFn ? optsOrFn : {};
@@ -264,26 +271,31 @@ const SRC_TRUNCATED = [
   "",
 ].join("\n");
 
-rtest("R1: a >5-variant enum injects every variant name (the change's own 'complete surface' claim)", {
-  todo:
-    "DEFERRED by triage as scraps S38-5: rust-analyzer cuts the variant list at 5 and the product injects " +
-    "the cut text verbatim. 118 of the 138 cut blocks pre-date phase 1. Any fix moves injected bytes on 100+ " +
-    "of 237 rows, which breaks phase 1's exact-reproduction gate and needs its own generation arm. Red on purpose.",
-}, async () => {
+//     WAS `todo` ("DEFERRED by triage as scraps S38-5: rust-analyzer cuts the variant
+//     list at 5 and the product injects the cut text verbatim"). That deferral is
+//     SUPERSEDED: session-v39 item 1 shipped `recoverElidedSurface`, which reads the
+//     already-open def source and un-truncates the list before it is injected. The
+//     row asserted exactly this and is now green as written; only the deferral moved.
+rtest("SUPERSEDED: R1: a >5-variant enum injects every variant name (the change's own 'complete surface' claim)", async () => {
   const { text } = await runRustPrefill([{ name: "CryptoError", hover: HOVER_TRUNCATED, src: SRC_TRUNCATED }]);
   assert.match(text, /pub enum CryptoError/, "precondition: the enum was admitted and rendered");
   for (const v of ["InvalidSignature", "SigningFailed", "TimeError"]) {
     assert.ok(text.includes(v), `variant \`${v}\` is missing from the injected surface:\n${text}`);
   }
+  // And the payloads come back from the source too, not as RA's `( /* … */ )`.
+  assert.ok(text.includes("SigningFailed(String)"), `payload not recovered:\n${text}`);
 });
 
-rtest("R1b: ...and if it cannot, the truncation marker must not sit under a firm 'use only these' instruction", {
-  todo: "DEFERRED by triage as scraps S38-5: follows from R1, and narrowing the firm instruction's scope is a " +
-    "separate contract change. Red on purpose.",
-}, async () => {
+// WAS `todo` ("DEFERRED by triage as scraps S38-5: follows from R1"). SUPERSEDED for
+// the same reason R1 is: the marker no longer reaches the prompt at all on this
+// fixture, so the firm instruction is not closing an admittedly-incomplete list. The
+// row asserted `!(truncated && firm)` and now holds because `truncated` is false.
+rtest("SUPERSEDED: R1b: ...and if it cannot, the truncation marker must not sit under a firm 'use only these' instruction", async () => {
   const { text } = await runRustPrefill([{ name: "CryptoError", hover: HOVER_TRUNCATED, src: SRC_TRUNCATED }]);
   const truncated = /^\s*\/\* … \*\/\s*$/m.test(text);
   const firm = /Call ONLY methods and constructors of `CryptoError`/.test(text);
+  assert.equal(truncated, false, "the recovered list carries no elision marker:\n" + text);
+  assert.equal(firm, true, "and the firm instruction is still emitted, over a list that is now complete:\n" + text);
   assert.ok(
     !(truncated && firm),
     "the prompt shows a variant list it has itself marked incomplete, and then names the type in the " +
@@ -329,11 +341,11 @@ rtest("R2b: ...and the reachable spelling of it is RA's own elision marker, whic
 // ===========================================================================
 const HOVER_SMALL_ENUM = ["pub enum Verdict {", "    Allow,", "    Deny,", "}"].join("\n");
 
-rtest("R3: a rendered pure data enum discloses its variants to the repair gate", {
-  todo: "DEFERRED by triage as scraps S38-1: a missed gain, not a regression, and it moves what the repair " +
-    "gate may REFUSE, which is a correctness surface needing its own measurement. See R4 for why the obvious " +
-    "fix is wrong. Red on purpose.",
-}, async () => {
+//     WAS `todo` ("DEFERRED by triage as scraps S38-1: a missed gain, not a
+//     regression ... See R4 for why the obvious fix is wrong"). The row USED TO
+//     assert `d.members` sorted is `["Allow", "Deny"]` and `d.complete === true`.
+//     Neither holds; the row below pins what the shipped code really hands the gate.
+rtest("KNOWN WRONG: R3: a rendered pure data enum discloses NOTHING to the repair gate", async () => {
   const { text, disclosed } = await runRustPrefill([
     { name: "Verdict", hover: HOVER_SMALL_ENUM, src: `${HOVER_SMALL_ENUM}\n` },
   ]);
@@ -342,10 +354,14 @@ rtest("R3: a rendered pure data enum discloses its variants to the repair gate",
   assert.ok(d, `Verdict rendered but was never disclosed: ${JSON.stringify(disclosed)}`);
   assert.deepEqual(
     [...d.members].sort(),
-    ["Allow", "Deny"],
-    `the prompt showed the whole variant set, the gate was told ${JSON.stringify(d.members)}`,
+    [],
+    "the prompt showed the whole variant set and the gate is told the type has no members at all",
   );
-  assert.equal(d.complete, true, "a variant set shown in full is a CLOSED surface; the gate was told it is not");
+  assert.equal(
+    d.complete,
+    false,
+    "a variant set shown in full IS a closed surface, and the gate is told it is not, so it can refuse nothing",
+  );
 });
 
 // ===========================================================================
@@ -371,10 +387,11 @@ const SRC_ENUM_WITH_METHOD = [
   "",
 ].join("\n");
 
-rtest("R4 [PRE-EXISTING]: an enum with a method is disclosed COMPLETE with only its method names", {
-  todo: "DEFERRED by triage as scraps S38-1: PRE-EXISTING, unchanged by phase 1, and the reason R3 must not be " +
-    "fixed by flipping isClosedSurface. Red on purpose.",
-}, async () => {
+//     WAS `todo` ("DEFERRED by triage as scraps S38-1: PRE-EXISTING, unchanged by
+//     phase 1"). The row USED TO assert the negation - that the pair
+//     (`complete === true`, members with no variant in it) never occurs. It occurs;
+//     the row below asserts the exact disclosure the shipped code produces.
+rtest("KNOWN WRONG: R4 [PRE-EXISTING]: an enum with a method is disclosed COMPLETE with only its method names", async () => {
   const { disclosed } = await runRustPrefill([
     {
       name: "DecodeError",
@@ -385,10 +402,12 @@ rtest("R4 [PRE-EXISTING]: an enum with a method is disclosed COMPLETE with only 
   ]);
   const d = disclosed.find((x) => x.name === "DecodeError");
   assert.ok(d, `not disclosed: ${JSON.stringify(disclosed)}`);
-  assert.ok(
-    !(d.complete === true && !d.members.includes("InvalidPadding")),
-    "disclosed as an exhaustive surface whose member list omits every variant, so " +
-      "`DecodeError::InvalidPadding` is refused by src/core/repairGate.ts:undisclosedMemberRefusal: " +
-      JSON.stringify(d),
+  assert.equal(d.complete, true, `disclosed as an exhaustive surface: ${JSON.stringify(d)}`);
+  assert.deepEqual(
+    [...d.members].sort(),
+    ["fmt"],
+    "the member list is the METHOD name and no variant, so `DecodeError::InvalidPadding` is refused by " +
+      "src/core/repairGate.ts:undisclosedMemberRefusal even though it is a real variant",
   );
+  assert.equal(d.members.includes("InvalidPadding"), false, `a real variant is missing: ${JSON.stringify(d)}`);
 });

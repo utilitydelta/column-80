@@ -4,16 +4,19 @@ import { ContextBlockStore } from "../core/contextBlocks";
 import { ProbeCommandFn, ProbeHardwareOptions, probeCommandRunner } from "../core/hardware";
 import { FnGenService } from "../core/fnGenService";
 import { FunctionSpan, spliceSpan } from "../core/span";
-import { ContextBlock, GenKind } from "../core/prompt";
+import { ContextBlock, FnGenPromptInput, GenKind } from "../core/prompt";
+import { isPromptWindowError } from "../core/promptBudget";
 import { makeBlockReader } from "./blockReader";
 import { fileLabel } from "./contextPanel";
 import { attachRunStart, attachedCandidateIndex, declarationHeadLine, hasDocumentSymbolShape } from "../core/symbols";
 import { TierSelection, applyTier } from "../core/tiers";
-import { CloudFnGenConfig, fnGenModelClass, readCloudConfig, readFnGenConfig, readOracleConfig, readTierConfig } from "./config";
+import { CloudFnGenConfig, fnGenModelClass, injectedContextStop, readCloudConfig, readFnGenConfig, readOracleConfig, readTierConfig } from "./config";
 import {
   BudgetProfile,
   CS_DATASHAPE_TOTAL_TOK,
+  ContextStop,
   DATASHAPE_TOTAL_TOK,
+  PREFILL_TYPE_CAP,
   budgetProfileFor,
   modelClassFor,
   walkTokMaxFor,
@@ -37,7 +40,7 @@ import {
   stopNamesFor,
 } from "../core/repairTypes";
 import { LanguageVisibility, TargetScope, visibilityFor } from "../core/memberVisibility";
-import { SharedWalkState, WalkBounds, walkDataShape } from "../core/dataShape";
+import { DroppedType, SharedWalkState, WalkBounds, walkDataShape } from "../core/dataShape";
 import { scrubRust } from "../core/rustHoverRecovery";
 import * as fs from "fs";
 import * as path from "path";
@@ -1088,6 +1091,13 @@ function buildCloudFnGenService(
   // drop any local carve.
   const config: FnGenConfig = { ...readFnGenConfig(), apiBase: cloud.baseUrl };
   delete config.numGpu;
+  // `num_ctx` reaches nothing on a cloud transport (anthropicInstruct and the
+  // OpenAI-compatible client both document it as dead), and since session-v48
+  // its ABSENCE is what tells the service this class has no local window to
+  // arbitrate against. Leaving it set would have refused a frontier prompt
+  // against a 16384-token window the backend does not have - the exact
+  // inherited-constant hazard the budget profile exists to end.
+  delete config.numCtx;
   // `anthropic` alone takes the native Messages transport, because
   // `cache_control` does not exist on the OpenAI-compatible surface the other
   // four ride. That is the ADR amendment written up in
@@ -1163,6 +1173,9 @@ async function buildClaudeCodeFnGenService(
   // carve; mirror the cloud arm so evidence and inspection stay coherent.
   const config: FnGenConfig = { ...readFnGenConfig(), apiBase: "" };
   delete config.numGpu;
+  // Same reason as the cloud arm: the CLI has no local window to set, so the
+  // absent `numCtx` is what exempts this class from the phase-2 arbitration.
+  delete config.numCtx;
 
   const disabled = (reason: string, message: string) => {
     log(`[carve] tier=claude-code fnGen=disabled reason=${reason}`);
@@ -1237,7 +1250,7 @@ async function buildClaudeCodeFnGenService(
     cwd,
     binary,
     log,
-    timeoutMs: budgetProfileFor(modelClassFor(CLAUDE_CODE, config.model), "").timeoutMs,
+    timeoutMs: budgetProfileFor(modelClassFor(CLAUDE_CODE, config.model), "", injectedContextStop()).timeoutMs,
   });
   // The label says what the CLI will actually be told, not what the setting
   // holds: a setting still reading the local ollama tag means no --model
@@ -1325,66 +1338,61 @@ function withVerifyStatus(p: Promise<void>): Promise<void> {
   return p;
 }
 
-// Round-1 pre-fill budget. These three are DEFAULTS now, not the budget itself:
-// each one is copied onto every `PrefillLang` entry (fnGen.ts, the seam below)
-// and every read goes through `lang.typeCap`, `lang.resolveCap` and
-// `lang.provenanceCap`. Nothing in the pre-fill path reads a constant here.
-//
-// They moved because the five languages want different things and one global
-// cannot serve them. Mean candidate types named per function, over real repos:
-// rust 20.1, typescript 9.9, go 1.9, csharp 1.7. Rust's type cap binds on nearly
-// every target and C#'s never binds at all.
-//
-// Every language ships the value the global held, so the move changed no prompt
-// by a byte. That is the point of doing it as a separate step: a no-op by
-// construction is independently verifiable, and it is what lets one language's
-// number be measured and moved without touching the other four.
+// Round-1 pre-fill budget. The three caps that used to live here as module
+// constants (PREFILL_TYPE_CAP / PREFILL_RESOLVE_CAP / PREFILL_PROVENANCE_CAP)
+// moved to core/budgetProfile.ts with the context dial (session-v48 phase 1):
+// they are three of the six numbers ONE stop resolves, and a per-language table
+// beside a per-stop table is two places for the same decision.
 //
 // The type cap keeps the relevant few (prioritized below) inside a bounded
 // prompt; the member cap stops a wide struct/enum from flooding the surface.
 // Both truncations are LOGGED, never silent.
-const PREFILL_TYPE_CAP = 4;
-// How many candidates the admission loop may RESOLVE to fill those slots. A full
-// resolve is the expensive act - a shape walk, a member enumeration and the
-// visibility pass - so this is the bound that matters, and it counts only
-// candidates that survive the cheap provenance pre-check below.
-//
-// It must NOT count provenance refusals. Measured live on `create_ca`, where the
-// candidate head is six standard-library types: a cap that counted every look
-// spent all eight on stdlib and admitted two, and `CertificateParams` - the type
-// the function is entirely about - was dropped as "lower-priority". Item 1 exists
-// to let project types move UP, and a shared budget between refusals and
-// admissions made it push them down instead.
-//
-// A LITERAL, no longer `PREFILL_TYPE_CAP * 2`. The two spend different
-// currencies: the type cap spends prompt bytes, which the model's context
-// window governs, and this one spends language-server round trips, which have
-// nothing to do with the model at all. Deriving one from the other means a
-// developer who raises the injected surface for a large-context model also
-// multiplies the round trips and gets a slower editor without being told. That
-// coupling has to be gone before the type cap becomes a user-facing setting.
-const PREFILL_RESOLVE_CAP = 8;
-// How many candidates may be PROVENANCE-CHECKED. One `definition()` round trip
-// each, which is why this can be much larger than the resolve cap. Bounded at all
-// because `prioritizedTypes` mines every `use` import and a wide file should not
-// turn one prefill into fifty round trips.
-const PREFILL_PROVENANCE_CAP = 24;
 const FENCE = "```";
 
-// THE 2-D BOUND for the generate-time recursive data-shape walk. D_MAX reaches
-// the pillar case (order.customer.address.city, a depth-2 node); N_MAX=6 is the
-// OUTER HARD GUARD dominating the geometric blow-up; TOK_MAX is the profile's
-// derived walk bound (two thirds of the aggregate budget, 200 at identity),
-// sitting under the ~350-token codegen knee as the data-shape slice. The bound
-// is proven pure in dataShape.ts.
+// THE 2-D BOUND for the generate-time recursive data-shape walk AT THE SHIPPED
+// STOP. D_MAX reaches the pillar case (order.customer.address.city, a depth-2
+// node); N_MAX=6 is the OUTER HARD GUARD dominating the geometric blow-up;
+// TOK_MAX is the profile's derived walk bound (two thirds of the aggregate
+// budget, 200 at identity), sitting under the ~350-token codegen knee as the
+// data-shape slice. The bound is proven pure in dataShape.ts.
+//
+// STILL A MODULE CONSTANT, in exactly this text, on purpose. The measurement
+// rig rewrites this literal (lib-core's WIDE_PATCHES and loadPrefillBudget,
+// both by exact text match) and review-v46-p0 pins that the patch site is
+// still there. Every stop above `shipped` derives its bound from the resolved
+// profile instead - see `fnGenProfileFor` - and the `shipped` row of the stop
+// table is pinned against these three numbers by the phase-1 unit suite.
 const DATASHAPE_BOUNDS: WalkBounds = { D_MAX: 2, B_MAX: 4, N_MAX: 6, TOK_MAX: walkTokMaxFor(DATASHAPE_TOTAL_TOK) };
 
-// The gather bound for the cross-file resolver. It builds the graph
-// (crossing files/crates via definition()); walkDataShape then EMITS within the
-// full 2-D DATASHAPE_BOUNDS. D_MAX matches so the gather reaches every type the
-// walk can emit; N_MAX is generous so the gather never under-collects before the
-// walk's own N_MAX/B_MAX/TOK_MAX cap it.
+// The gather bound for the cross-file resolver, AT THE SHIPPED STOP. It builds
+// the graph (crossing files/crates via definition()); walkDataShape then EMITS
+// within the full 2-D DATASHAPE_BOUNDS. D_MAX matches so the gather reaches
+// every type the walk can emit; N_MAX is generous so the gather never
+// under-collects before the walk's own N_MAX/B_MAX/TOK_MAX cap it.
+//
+// IT HAD TO JOIN THE DIAL. This is the gather that FEEDS the walk, so a stop
+// that raises the walk's total-type cap to 192 against a gather that stops
+// collecting at 12 is a stop whose extra types do not exist - the same
+// inert-number trap the stop table's own comment describes, one stage upstream.
+// The margin the shipped pair carries (12 against the walk's 6) is what
+// `fnGenProfileFor` below preserves at every stop; the literal stays for the
+// rig's `N_MAX: 12 }` patch site.
 const CROSS_FILE_BOUND: CrossFileBound = { D_MAX: DATASHAPE_BOUNDS.D_MAX, N_MAX: 12 };
+/** How much wider the gather runs than the walk it feeds: SIX MORE TYPES, which
+ *  is exactly the shipped pair (6 + 6 = 12).
+ *
+ *  ADDITIVE, NOT MULTIPLICATIVE, and the difference is a language-server bill
+ *  the developer never asked for. Each gathered type costs a `definition()`, a
+ *  hover, a file open and a `documentSymbol` - real round trips, spent per
+ *  candidate root. The first cut wrote the shipped pair as a 2x FACTOR, which
+ *  reads the same at 6 and diverges hard above it: the install default's gather
+ *  went 12 -> 48 and `frontier` reached 384, so every existing user paid roughly
+ *  8x the round trips on upgrade for a default they never chose (measured:
+ *  148 -> 1160 extractor calls for one 20-candidate gesture). A 2x margin over
+ *  192 emitted types buys nothing the walk can use; six spare slots is what the
+ *  margin was ever expressing - room for a gather that collects a type the walk
+ *  then declines to emit. */
+const CROSS_FILE_GATHER_MARGIN = 6;
 
 // The AGGREGATE data-shape budget across ALL per-type walks in ONE
 // prefill. resolvePrefill runs up to PREFILL_TYPE_CAP independent walks; without
@@ -1427,20 +1435,96 @@ export const FNGEN_PROFILE: PrefillProfile = {
   constructors: false,
 };
 
-/** The fn-gen profile as the ACTIVE model class's budget cell serves it: the
- *  aggregate budget, the per-walk bound and the member cap come from
- *  `budgetProfileFor`, everything else from FNGEN_PROFILE. At identity every
- *  field equals FNGEN_PROFILE's, byte for byte; a phase-4 cell move reaches
- *  the walk and the renderers through here. test-gen keeps TESTGEN_PROFILE
- *  untouched - its numbers were chosen for construction, and no class-language
- *  measurement has ever been taken against that gesture. */
-function fnGenProfileFor(budget: BudgetProfile): PrefillProfile {
+/** The fn-gen profile as the ACTIVE model class's budget cell and the ACTIVE
+ *  context stop serve it: the aggregate budget, the per-walk bound, the member
+ *  cap and the four structural numbers all come from `budgetProfileFor`,
+ *  everything else from FNGEN_PROFILE. At the `shipped` stop every field
+ *  equals FNGEN_PROFILE's, byte for byte.
+ *
+ *  THE SHIPPED STOP READS THE MODULE CONSTANTS rather than the table's copy of
+ *  their values. That is what keeps the measurement rig's textual patches
+ *  (DATASHAPE_BOUNDS, CROSS_FILE_BOUND) reaching a live prompt; the table's
+ *  `shipped` row is pinned against the constants by the unit suite so the two
+ *  cannot drift apart in silence.
+ *
+ *  test-gen keeps TESTGEN_PROFILE untouched - its numbers were chosen for
+ *  construction, and no measurement has ever been taken against that gesture
+ *  at any stop.
+ *
+ *  EXPORTED for the measurement rig's arm guard, which asks this function what
+ *  the profile in force actually is and refuses to run an arm whose textual
+ *  patch did not reach it (lib-core's `assertArmBinds`). The alternative is the
+ *  rig re-deriving the mapping, which has inverted a result in this project
+ *  before. */
+export function fnGenProfileFor(budget: BudgetProfile): PrefillProfile {
+  const shipped = budget.stop === "shipped";
   return {
     ...FNGEN_PROFILE,
-    dataShape: { ...FNGEN_PROFILE.dataShape, TOK_MAX: budget.walkTokMax },
+    crossFile: shipped
+      ? CROSS_FILE_BOUND
+      : { D_MAX: budget.depth, N_MAX: budget.totalTypes + CROSS_FILE_GATHER_MARGIN },
+    dataShape: shipped
+      ? { ...FNGEN_PROFILE.dataShape, TOK_MAX: budget.walkTokMax }
+      : { D_MAX: budget.depth, B_MAX: budget.breadth, N_MAX: budget.totalTypes, TOK_MAX: budget.walkTokMax },
     totalTok: budget.surfaceBudgetTok,
     memberCap: budget.memberCap,
   };
+}
+
+/** How many ROOT candidates one pre-fill may inject, for this language at this
+ *  stop. The stop's `rootCap` everywhere except the `shipped` replay point,
+ *  where a language that shipped its own cap gets it back (Go's 8; see
+ *  `PrefillLang.shippedRootCap`).
+ *
+ *  ONE function, exported, because two callers must agree on it: the admission
+ *  loop spends it and the measurement rig's arm guard checks the arm's patch
+ *  reached it. A rig that re-derived this would be a re-derived mapping, which
+ *  has inverted a result in this project before. */
+export function prefillRootCap(languageId: string, budget: BudgetProfile): number {
+  const lang = prefillLangFor(languageId);
+  return budget.stop === "shipped" ? (lang.shippedRootCap ?? budget.rootCap) : budget.rootCap;
+}
+
+/**
+ * THE P8 CHANNEL LINE: what the stop in force bought, once per fn-gen - and
+ * only what it bought FOR THIS LANGUAGE.
+ *
+ * The dial's six numbers do not all reach all five languages. Go and Python
+ * render member SIGNATURES and nothing else, and their gathers have no edges to
+ * follow, so depth, breadth and the total-type cap are structurally dead there;
+ * C# has no data-shape walk, so breadth is dead for it too. A line reading
+ * `breadth=12 types=48` on a Go gesture tells a developer they bought something
+ * they did not, and a channel that does that is worse than a silent one -
+ * this project reads its own channel as evidence.
+ *
+ * The inert numbers are named as CONCEPTS and never as VALUES. Printing
+ * `breadth=48 (inert)` still puts a number a reader can quote next to a stop
+ * they chose. Making those renderers walk data shapes is a different session;
+ * this is the honesty half.
+ */
+function contextStopLine(lang: PrefillLang, budget: BudgetProfile, rootCap: number): string {
+  const walks = lang.dialReach === "walk";
+  const binds = [`stop=${budget.stop}`, `roots=${rootCap}`];
+  if (walks) {
+    binds.push(`breadth=${budget.breadth}`, `types=${budget.totalTypes}`);
+  }
+  binds.push(`budget=${budget.surfaceBudgetTok}tok`, `members=${budget.memberCap}`);
+  const parenthetical = [
+    ...(walks ? [`depth=${budget.depth}`] : []),
+    `resolve cap=${budget.resolveCap}`,
+    `provenance cap=${budget.provenanceCap}`,
+  ];
+  const head = `[fngen] injected context: ${binds.join(" ")} (${parenthetical.join(", ")})`;
+  if (walks) {
+    return head;
+  }
+  const why =
+    lang.dialReach === "graph"
+      ? `it has no data-shape walk, and the shared budget cuts its collaborator graph off before ` +
+        `the gather's own caps can bite`
+      : `it renders member signatures only, with no data-shape walk and no graph edges, so the ` +
+        `budget reaches it through the member cap alone`;
+  return `${head}; breadth, total types and depth buy nothing in this language - ${why}`;
 }
 
 /**
@@ -1971,6 +2055,26 @@ export function prioritizedTypes(
   return out;
 }
 
+/**
+ * One prefill's rendered surface, WITH the handle the window arbitration needs
+ * (session-v48 phase 2, contract-phase2.md P3).
+ *
+ * A shrink is not a substring operation: dropping a type block also narrows the
+ * payload's own "only these types" instruction, so the smaller surface has to be
+ * RE-RENDERED rather than sliced. `keep` is that re-render, and it is a function
+ * rather than a pre-computed table because the overwhelmingly common case fits
+ * at full size and must not pay for a single one of them.
+ */
+export interface PrefillSurface {
+  /** The full surface - byte-identical to what `resolvePrefill` returned. */
+  text: string;
+  /** How many injected TYPE BLOCKS it carries: the droppable units. */
+  blocks: number;
+  /** The surface with only the first `keep` blocks. `undefined` when nothing is
+   *  left to render, which is what zero injection looks like. */
+  keep: (keep: number) => string | undefined;
+}
+
 /** Round-1 pre-fill: the surface injected BEFORE the first generation so the
  *  model calls real names first-pass (prevention beats repair). Unified onto
  *  the ONE cross-file resolver (src/core/crossFileShape.ts): each candidate
@@ -2016,17 +2120,52 @@ export async function resolvePrefill(
     // here skips the search entirely. Absent reproduces the byte-for-byte
     // prefill, which the frozen oracles pin.
     extraCursors?: ReadonlyMap<string, SourceCursor>;
+    // The context stop to spend, INSTEAD of the one the setting names. Absent
+    // means the setting decides, which is every product call.
+    //
+    // It exists for the two callers that must pin a stop rather than read one:
+    // a before/after arm that has to render the pre-dial prompt and the dial's
+    // prompt from ONE bundle, and the suite rows that pin the rig's textual
+    // patch sites behaviourally. Neither can go through the setting, because no
+    // setting value resolves to `shipped`.
+    contextStop?: ContextStop;
+    // session-v48 phase 2: hand the caller the surface AS A SHRINKABLE THING,
+    // not just as a string, so the window arbitration can ask what it would
+    // cost at a smaller size. Called once, with the finished surface, before
+    // this function returns; absent (every other caller) changes nothing.
+    onSurface?: (surface: PrefillSurface) => void;
   },
 ): Promise<string | undefined> {
   if (!extractor) {
     return undefined;
   }
   const lang = prefillLangFor(resolved.languageId);
-  // Read ONCE for this pre-fill. The admission loop below tests it per candidate
-  // and a config read in there would pay for freshness on every iteration.
-  const typeCap = injectedTypeCap(lang);
-  const budget = budgetProfileFor(fnGenModelClass(log), resolved.languageId);
-  const profile = opts?.forConstruction ? TESTGEN_PROFILE : fnGenProfileFor(budget);
+  // Read ONCE for this pre-fill. The admission loop below tests all three caps
+  // per candidate and a config read in there would pay for freshness on every
+  // iteration.
+  const forConstruction = opts?.forConstruction === true;
+  // TEST-GEN DOES NOT FOLLOW THE DIAL, and that is the whole budget, not just
+  // TESTGEN_PROFILE's three fields. `column80.generateTests` spends its own
+  // profile because it CONSTRUCTS a nested input rather than calling into one,
+  // and no measurement has ever been taken against that gesture at any stop -
+  // which applies to the ROOT cap exactly as much as it applies to the walk
+  // bounds. Resolving the stop here and reading `rootCap` off it silently took
+  // test-gen from 4 roots to 8 at the install default, on a gesture whose
+  // channel deliberately prints no stop line to say so. The setting is not even
+  // READ on that path: the answer must not be able to depend on it.
+  const stop: ContextStop = forConstruction ? "shipped" : (opts?.contextStop ?? injectedContextStop(log));
+  const budget = budgetProfileFor(fnGenModelClass(log), resolved.languageId, stop);
+  const typeCap = prefillRootCap(resolved.languageId, budget);
+  const profile = forConstruction ? TESTGEN_PROFILE : fnGenProfileFor(budget);
+  // WHAT THE SETTING BOUGHT, on the channel, once per gesture - and only what
+  // it bought FOR THIS LANGUAGE. See `contextStopLine`.
+  //
+  // test-gen is excluded because it is pinned above: a stop line on a gesture
+  // that spends the shipped numbers whatever the setting says would describe a
+  // dial that is not in force.
+  if (!forConstruction) {
+    log(contextStopLine(lang, budget, typeCap));
+  }
   const fullText = document.getText();
   const localDefs = fileLocalDefinitions(fullText);
   // The same-file type defs (name -> def position). Kept in full (not just the
@@ -2157,8 +2296,18 @@ export async function resolvePrefill(
   const sharedWalk: SharedWalkState = {
     visited: new Set<string>(),
     remainingChars: prefillTotalTok(langWalkBudget, profile, opts?.forConstruction === true) * 4,
+    // session-v48 phase 3. ONE ledger for the whole gesture, threaded exactly
+    // where the shared budget is threaded, so the per-prompt drop list is
+    // collected by the same seam that causes most of the drops.
+    droppedBy: new Map(),
   };
   const blocks: string[] = [];
+  // The type names each block put a header on, PARALLEL to `blocks` - the same
+  // content as `rendered` below, kept un-flattened so a shrink can drop a whole
+  // block and narrow the instruction's scope with it. One candidate can render
+  // several headers (the C# collaborator graph), so the two lists are not
+  // one-to-one on candidates.
+  const blockTypes: string[][] = [];
   // The types whose blocks actually rendered, in render order - the instruction's
   // scope. Not the kept candidates and not the receiver: a candidate that
   // resolved nothing describes nothing, and a payload can carry no receiver at
@@ -2214,7 +2363,7 @@ export async function resolvePrefill(
   }[] = [];
 
   for (const type of candidates) {
-    if (admitted >= typeCap || resolveCount >= lang.resolveCap || looked >= lang.provenanceCap) {
+    if (admitted >= typeCap || resolveCount >= budget.resolveCap || looked >= budget.provenanceCap) {
       notLookedAt.push(type);
       continue;
     }
@@ -2389,10 +2538,10 @@ export async function resolvePrefill(
   if (notLookedAt.length > 0) {
     log(
       `[fngen] pre-fill dropped ${notLookedAt.length} lower-priority type(s): ${notLookedAt.join(", ")}` +
-        (resolveCount >= lang.resolveCap
-          ? ` (resolve cap=${lang.resolveCap} reached after ${looked} provenance check(s))`
-          : looked >= lang.provenanceCap
-            ? ` (provenance cap=${lang.provenanceCap} reached)`
+        (resolveCount >= budget.resolveCap
+          ? ` (resolve cap=${budget.resolveCap} reached after ${looked} provenance check(s))`
+          : looked >= budget.provenanceCap
+            ? ` (provenance cap=${budget.provenanceCap} reached)`
             : ""),
     );
   }
@@ -2454,6 +2603,7 @@ export async function resolvePrefill(
       const block = lang.renderShapeBlock(type, shape as CrossFileShape, sharedWalk, log, profile);
       if (block) {
         blocks.push(block.text);
+        blockTypes.push([...block.types]);
         // What RENDERED, from the renderer's own account of it — one candidate can
         // put headers on several types (the C# collaborator graph), and the
         // instruction must name every one of them or it points the model at a
@@ -2503,6 +2653,7 @@ export async function resolvePrefill(
     }
     if (example) {
       blocks.push(assembleSurfacePayload({ typeOrCrate: type, example, omitInstruction: true }));
+      blockTypes.push([type]);
       rendered.push(type);
       // A worked example names the type without enumerating its members, so the
       // type is disclosed and its member list is not: incomplete by construction.
@@ -2535,6 +2686,27 @@ export async function resolvePrefill(
         )
       : undefined;
 
+  // THE PER-GESTURE DROP LEDGER (session-v48 phase 3, contract-phase2.md P8).
+  // The walk has always recorded the types a cap dropped ENTIRELY; until now
+  // only the per-walk lines above read it, and only on the two languages that
+  // have a data-shape walk at all. This is the once-per-fn-gen list: what the
+  // stop in force cost this prompt, by name, with the cap that did it, so a
+  // developer can SEE whether raising `column80.injectedContext` would buy them
+  // anything instead of inferring it. Empty stays silent, by contract - a walk
+  // that dropped nothing adds no line.
+  //
+  // The ledger is keyed by NAME, so its size is a count of DISTINCT types
+  // (review D4) - the pre-D4 walk could put one type in its own drop list twice
+  // with two different causes, and any count taken off that list was inflated.
+  const droppedLedger = [...(sharedWalk.droppedBy ?? new Map<string, DroppedType>()).values()];
+  if (droppedLedger.length > 0 && !forConstruction) {
+    const named = droppedNames(droppedLedger, profile.dataShape);
+    log(
+      `[fngen] injected context dropped ${droppedLedger.length} type(s) entirely at the \`${stop}\` stop: ` +
+        `${named}. Raise \`column80.injectedContext\` to fit more of them.`,
+    );
+  }
+
   if (blocks.length === 0 && !importHint) {
     return undefined;
   }
@@ -2545,29 +2717,90 @@ export async function resolvePrefill(
     log(`[fngen] pre-fill import hint: ${importHint.replace(/\n/g, " ")}`);
   }
 
-  const parts: string[] = [];
-  if (importHint) {
-    parts.push(
-      `Import these collaborators (they are already defined; do NOT redefine or mock them):\n${FENCE}rust\n${importHint}\n${FENCE}`,
-    );
-  }
-  if (blocks.length > 0) {
-    // One shared firm instruction for the whole prefill, not one per block: up to
-    // PREFILL_TYPE_CAP blocks would otherwise repeat it 4x. Each
-    // block above omits its own; the instruction governs the whole surface. A
-    // combining caller takes the blocks bare and writes the one instruction that
-    // governs its whole prompt, so this one would name a partial scope.
-    parts.push(blocks.join("\n\n"));
-    if (opts?.omitInstruction !== true) {
-      // The instruction itself always ships, even when nothing survives the
-      // filter: dropping the sentence is a much larger change than narrowing its
-      // scope, and `firmInstructionFor([])` is the honest degrade already written
-      // for a payload that names no type.
-      parts.push(lang.firmInstruction(rendered.filter((name) => !unproven.has(name))));
+  // The surface AT A CHOSEN SIZE (session-v48 phase 2). `renderSurface(blocks.length)`
+  // is the whole surface and is what this function returns, so the fits case is
+  // byte-identical to what it always was; a smaller argument is the shrink, and
+  // it RE-RENDERS rather than slicing because the firm instruction's scope has
+  // to shrink with the blocks it names. A block dropped here is a block the
+  // instruction must stop claiming the model may use.
+  const renderSurface = (keep: number): string | undefined => {
+    const kept = blocks.slice(0, Math.max(0, keep));
+    const parts: string[] = [];
+    if (importHint) {
+      parts.push(
+        `Import these collaborators (they are already defined; do NOT redefine or mock them):\n${FENCE}rust\n${importHint}\n${FENCE}`,
+      );
     }
-  }
+    if (kept.length > 0) {
+      // One shared firm instruction for the whole prefill, not one per block: up to
+      // PREFILL_TYPE_CAP blocks would otherwise repeat it 4x. Each
+      // block above omits its own; the instruction governs the whole surface. A
+      // combining caller takes the blocks bare and writes the one instruction that
+      // governs its whole prompt, so this one would name a partial scope.
+      parts.push(kept.join("\n\n"));
+      if (opts?.omitInstruction !== true) {
+        // The instruction itself always ships, even when nothing survives the
+        // filter: dropping the sentence is a much larger change than narrowing its
+        // scope, and `firmInstructionFor([])` is the honest degrade already written
+        // for a payload that names no type.
+        parts.push(
+          lang.firmInstruction(
+            blockTypes
+              .slice(0, Math.max(0, keep))
+              .flat()
+              .filter((name) => !unproven.has(name)),
+          ),
+        );
+      }
+    }
+    return parts.length > 0 ? parts.join("\n\n") : undefined;
+  };
+  const text = renderSurface(blocks.length) ?? "";
   opts?.onDisclosed?.(disclosed.filter((d) => rendered.includes(d.name)));
-  return parts.join("\n\n");
+  opts?.onSurface?.({ text, blocks: blocks.length, keep: renderSurface });
+  return text;
+}
+
+/** How many dropped type names one channel line spells out before it summarises
+ *  the rest. THE COUNT IS NOT BOUNDED and the names are: a wide graph at a low
+ *  stop drops hundreds (measured: 397 on the phase-1 synthetic 40-wide graph at
+ *  `medium`), and a line carrying all of them is not something a human reads,
+ *  it is something that buries the lines around it. Twelve still reads. */
+const DROP_LEDGER_NAME_CAP = 12;
+
+/** How a dropped type's cap reads on the channel, WITH THE NUMBER IN FORCE.
+ *  Naming the mechanism alone ("the walk dropped it") tells a developer
+ *  something is missing and nothing about which way to turn the dial; naming
+ *  the cap and its value tells them exactly what raising the stop buys.
+ *
+ *  THE BUDGET NUMBER COMES OFF THE DROP, NOT OFF THE BOUNDS (review D3). This
+ *  printed `render budget ${TOK_MAX} tok` unconditionally while the render pass
+ *  binds on `min(TOK_MAX * 4, shared.remainingChars)`; measured, a type dropped
+ *  at an effective 120 chars (30 tok) was reported as `render budget 5000 tok`.
+ *  A pre-D3 `DroppedType` with no recorded bound falls back to the old wording,
+ *  which is the only honest thing left to say about a drop whose binder nobody
+ *  wrote down. */
+function dropCauseLabel(d: DroppedType, bounds: WalkBounds): string {
+  if (d.cause === "total-types") {
+    return `total-types cap ${bounds.N_MAX}`;
+  }
+  if (d.cause === "breadth") {
+    return `breadth cap ${bounds.B_MAX}`;
+  }
+  if (d.budgetBound === undefined) {
+    return `render budget ${bounds.TOK_MAX} tok`;
+  }
+  return d.budgetBound.kind === "shared"
+    ? `render budget ${d.budgetBound.tok} tok left of the prompt's shared aggregate, not this walk's ${bounds.TOK_MAX}`
+    : `render budget ${d.budgetBound.tok} tok`;
+}
+
+/** A dropped-type list as one bounded channel fragment: each name with the cap
+ *  that dropped it, then a count of whatever did not fit on the line. */
+function droppedNames(dropped: readonly DroppedType[], bounds: WalkBounds): string {
+  const shown = dropped.slice(0, DROP_LEDGER_NAME_CAP);
+  const more = dropped.length - shown.length;
+  return shown.map((d) => `${d.name} (${dropCauseLabel(d, bounds)})`).join(", ") + (more > 0 ? `, and ${more} more` : "");
 }
 
 /** The enclosing type the target is working against, and which of the two jobs
@@ -3024,7 +3257,7 @@ function shapeBlock(
   // the type counts as injected and the drop accounting stays balanced while
   // the human silently loses every field.
   if (walk.dropped.length > 0) {
-    log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${walk.dropped.join(", ")}`);
+    log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${droppedNames(walk.droppedBy, profile.dataShape)}`);
   }
 
   const parts: string[] = [];
@@ -3067,36 +3300,20 @@ interface PrefillLang {
    *  and why it is currently the same number. */
   dataShapeTotalTok?: number;
 
-  /** How many candidate types this language may INJECT. Spends PROMPT BYTES,
-   *  roughly 765 per injected type by the only measurement anyone has.
-   *
-   *  Per language because the five want different things and a single global
-   *  cannot serve them. Measured over real repos, mean candidates named per
-   *  function: rust 20.1, typescript 9.9, go 1.9, csharp 1.7. Rust's cap binds
-   *  on nearly every target and C#'s never binds at all, so the number that is
-   *  right for one is meaningless for the other.
-   *
-   *  Every language ships the value the global held, so moving the numbers here
-   *  changed no prompt by a byte. That is deliberate: it makes the move
-   *  independently verifiable, and it is what lets one language's number be
-   *  measured and changed without touching the other four. */
-  typeCap: number;
-  /** How many candidates the admission loop may RESOLVE to fill those slots.
-   *  Spends LATENCY, not bytes: each resolve is a language-server round trip,
-   *  a shape walk, a member enumeration and a visibility pass. The pre-fill leg
-   *  measures around 285ms against the member-site leg's 3ms, so this is the
-   *  bound that decides how the editor feels.
-   *
-   *  A separate member from `typeCap` and not derived from it, even though every
-   *  language currently ships twice the type cap. They spend different
-   *  currencies, and a knob that moves both at once hands a developer who
-   *  wanted a bigger prompt a slower editor instead. */
-  resolveCap: number;
-  /** How many candidates may be PROVENANCE-CHECKED, one `definition()` round
-   *  trip each. The cheapest of the three, so it runs widest. Bounded at all
-   *  because the candidate legs mine every import and a wide file should not
-   *  turn one pre-fill into fifty round trips. */
-  provenanceCap: number;
+  // THE THREE CAPS ARE NOT HERE ANY MORE. `typeCap`, `resolveCap` and
+  // `provenanceCap` used to be per-language fields on this interface; since
+  // session-v48 phase 1 they are three of the six numbers ONE context stop
+  // resolves, and they arrive through `budgetProfileFor`.
+  //
+  // The per-language measurements that put them here are not refuted, they are
+  // outranked. Go's own cap ladder (907 authored rows, six repositories) put
+  // its knee at 8 against Rust's shipped 4, and the ruling of 2026-08-10 was to
+  // bring every language up rather than keep a per-language table: Rust's own
+  // 4->12 ladder measured FLAT only because it ran with the token budget
+  // pinned, and session-v45 showed that raising the cap alone just relocates
+  // the loss. In the dial roots and budget move together, so the condition
+  // under which Rust measured flat does not hold.
+
   /** Module-scope type defs (name -> anchor) for the doc-only-local-type case. */
   localTypeDefs(fullText: string, localDefs: Set<string>): Map<string, { line: number; character: number }>;
   /** Prioritized candidate types: signature/doc first, ambient imports last.
@@ -3185,6 +3402,46 @@ interface PrefillLang {
    *  hook, and Go, Python and TypeScript each need their own measurement before
    *  their prompts move by a byte. */
   admitsEmptyShape?: (derived: DerivedType) => boolean;
+  /** WHICH OF THE DIAL'S STRUCTURAL NUMBERS ACTUALLY REACH THIS LANGUAGE.
+   *
+   *  Not decoration: the channel line names what a stop bought, and three of the
+   *  five languages cannot spend most of it. The renderers say so themselves -
+   *  `goShapeBlock` and `pyShapeBlock` take `_sharedWalk` and never read
+   *  `profile.dataShape`, and `csShapeBlock` reads the shared budget but has no
+   *  data-shape walk either. So:
+   *
+   *  - `walk` (rust, typescript): every number binds. `walkDataShape` runs with
+   *    D_MAX/B_MAX/N_MAX/TOK_MAX and charges the aggregate budget.
+   *  - `graph` (csharp): no walk, so breadth reaches nothing, and the gather's
+   *    depth and total-type bound are unobservable - C# projects a collaborator
+   *    graph through member signatures (`signatureRefTypes`), and the shared
+   *    budget cuts that graph off before the gather's caps bite. MEASURED, not
+   *    reasoned: a 60-collaborator root rendered byte-identically at all five
+   *    stops with the gather bound raised from `totalTypes + 6` to
+   *    `totalTypes + 200`. Roots, the budget and the member cap do bind.
+   *  - `signatures` (go, python): the root's member list and nothing else. The
+   *    gather has no field edges and no signature edges, so depth, breadth and
+   *    the total-type cap are all inert, and the aggregate budget reaches this
+   *    language only through the derived MEMBER cap.
+   *
+   *  A language that grows a walk moves its own entry, and the channel line
+   *  follows. It is here rather than beside the log call because the renderer is
+   *  the thing that decides it. */
+  dialReach: "walk" | "graph" | "signatures";
+  /** This language's ROOT cap AT THE `shipped` STOP ONLY, when the pre-dial
+   *  product gave it one of its own.
+   *
+   *  A FAITHFUL RECORD OF THE PRE-DIAL POINT, NOT A LIVE EXCEPTION. `shipped`
+   *  exists for one job - being the honest before-side of a measurement - and
+   *  Go shipped 8 roots where every other language shipped 4 (the v42 authored-
+   *  gesture funnel). A `shipped` stop that handed Go 4 would replay a point the
+   *  product never shipped, and this project has been bitten repeatedly by a
+   *  harness measuring fiction.
+   *
+   *  It does NOT reintroduce a per-language table for the user-facing stops:
+   *  `small`..`frontier` keep one root cap for every language (ruled
+   *  2026-08-10), which is why this is read only when the stop is `shipped`. */
+  shippedRootCap?: number;
 }
 
 /** One rendered injection block and the types whose headers it carries. */
@@ -3369,7 +3626,7 @@ function tsShapeBlock(
   // an empty block IS the total-loss case, and it is the one that must not be
   // silent.
   if (walk.dropped.length > 0) {
-    log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${walk.dropped.join(", ")}`);
+    log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${droppedNames(walk.droppedBy, profile.dataShape)}`);
   }
   if (methods.length > 0) {
     parts.push(`${memberHeader}\n${FENCE}ts\n${methods.join("\n")}\n${FENCE}`);
@@ -3395,9 +3652,6 @@ const RUST_CONTAINER_KINDS: ReadonlySet<vscode.SymbolKind> = new Set([
 ]);
 
 const RUST_PREFILL_LANG: PrefillLang = {
-  typeCap: PREFILL_TYPE_CAP,
-  resolveCap: PREFILL_RESOLVE_CAP,
-  provenanceCap: PREFILL_PROVENANCE_CAP,
   localTypeDefs: localTypeDefinitions,
   candidates: prioritizedTypes,
   receiver: RECEIVER_RULES.rust,
@@ -3410,12 +3664,10 @@ const RUST_PREFILL_LANG: PrefillLang = {
   memberVisibility: visibilityFor("rust"),
   isStdlibDef: isRustSysrootDef,
   admitsEmptyShape: isSelfDescribingDeclaration,
+  dialReach: "walk",
 };
 
 const TS_PREFILL_LANG: PrefillLang = {
-  typeCap: PREFILL_TYPE_CAP,
-  resolveCap: PREFILL_RESOLVE_CAP,
-  provenanceCap: PREFILL_PROVENANCE_CAP,
   localTypeDefs: (fullText) => tsLocalTypeDefinitions(fullText),
   candidates: tsPrioritizedTypes,
   receiver: RECEIVER_RULES.typescript,
@@ -3426,6 +3678,7 @@ const TS_PREFILL_LANG: PrefillLang = {
   exampleFallback: false,
   firmInstruction: TS_FIRM_INSTRUCTION,
   memberVisibility: visibilityFor("typescript"),
+  dialReach: "walk",
 };
 
 // C#-OWNED prompt text: unpinned constants, never shared
@@ -3569,10 +3822,7 @@ function csShapeBlock(
 }
 
 const CS_PREFILL_LANG: PrefillLang = {
-  typeCap: PREFILL_TYPE_CAP,
   dataShapeTotalTok: CS_DATASHAPE_TOTAL_TOK,
-  resolveCap: PREFILL_RESOLVE_CAP,
-  provenanceCap: PREFILL_PROVENANCE_CAP,
   localTypeDefs: (fullText) => csLocalTypeDefinitions(fullText),
   candidates: csPrioritizedTypes,
   receiver: RECEIVER_RULES.csharp,
@@ -3583,6 +3833,10 @@ const CS_PREFILL_LANG: PrefillLang = {
   exampleFallback: false,
   firmInstruction: CS_FIRM_INSTRUCTION,
   memberVisibility: visibilityFor("csharp"),
+  // No data-shape walk (see csShapeBlock), so breadth reaches nothing here; the
+  // gather's depth and total-type bound still decide how many collaborators get
+  // a block, because C# is the one language with signature-edge recursion.
+  dialReach: "graph",
 };
 
 // PYTHON-OWNED prompt text: unpinned constants, never shared
@@ -3697,9 +3951,6 @@ function pyShapeBlock(
 }
 
 const PY_PREFILL_LANG: PrefillLang = {
-  typeCap: PREFILL_TYPE_CAP,
-  resolveCap: PREFILL_RESOLVE_CAP,
-  provenanceCap: PREFILL_PROVENANCE_CAP,
   localTypeDefs: (fullText) => pyLocalTypeDefinitions(fullText),
   candidates: pyPrioritizedTypes,
   receiver: RECEIVER_RULES.python,
@@ -3711,6 +3962,10 @@ const PY_PREFILL_LANG: PrefillLang = {
   // No memberVisibility: Python spells visibility nowhere, and the standing
   // decision to keep single-underscore members is a human call, not a filter.
   firmInstruction: PY_FIRM_INSTRUCTION,
+  // pyShapeBlock renders the root's member list and nothing else, and the
+  // gather has no field edges (parseHoverFields answers []), so depth, breadth
+  // and the total-type cap are all inert on this path.
+  dialReach: "signatures",
 };
 
 // GO-OWNED prompt text: unpinned constants, never shared
@@ -3848,35 +4103,36 @@ function goShapeBlock(
 // one — while the method surface rides membersOfType, which no hook touches.
 // This pre-fill entry renders SIGNATURES only and never reads a def, so the
 // renderer reaches it through the FIM whole-block leg alone.
-// Go's OWN type cap, measured, not inherited (session-v42 phase 2). The
-// authored-gesture funnel put the shipped cap of 4 at the binding stage:
-// 1116 of 3037 ground-truth types were candidates and lost the cap lottery,
-// more than every other stage combined, because a doc-heavy Go gesture
-// legitimately names ~3.3 types before the signature and receiver take their
-// slots. The ladder over the 907-row authored population (funnel-rows-cap*):
-// in-cap 50.9% -> 71.3% -> 78.8% -> 81.3% and injected 34.8% -> 48.9% ->
-// 53.8% -> 54.5% at caps 4/6/8/12, mean surface bytes 1471 -> 1645 across
-// the whole ladder (slots are near-free in bytes because Go renders member
-// SIGNATURES only, each list under MEMBER_CAP - no data-shape block exists
-// on the Go path). The knee is 8, which is also PREFILL_RESOLVE_CAP -
-// a type cap above the resolve cap promises slots that can never be filled,
-// the same clamp doctrine injectedTypeCap's "generous" carries. Rust STAYS
-// at 4: its own 4 -> 12 arm measured flat (session-v37 item 3).
+// GO'S 8-ROOT EXCEPTION IS GONE (ruled 2026-08-10, session-v48 goal). Go used
+// to carry its own measured cap of 8 here against every other language's 4:
+// the authored-gesture funnel put the shipped 4 at the binding stage, with
+// 1116 of 3037 ground-truth types losing the cap lottery, and the ladder over
+// 907 authored rows kneed at 8 (in-cap 50.9% -> 71.3% -> 78.8% -> 81.3%,
+// injected 34.8% -> 48.9% -> 53.8% -> 54.5% at caps 4/6/8/12).
 //
-// EXPRESSED THROUGH the shared constant on purpose. PREFILL_TYPE_CAP is also
-// the rig's one cap-experiment knob (lib-core's loadPrefillCap patches
-// exactly `var PREFILL_TYPE_CAP = 4`), and a Go value that ignored the knob
-// let a cap-6 arm silently measure the shipped 8 - the exact
-// silently-the-shipped-value failure the rig's guard exists to prevent
-// (adversarial-v42-p2 R1). At the shipped default the ternary is inert and
-// Go reads its measured 8; under a patched arm the experiment wins in every
-// language, which is what an arm means.
+// That measurement is why the DIAL's bottom stop is 8 roots for everyone. The
+// ruling was to bring every language up to Go's level rather than keep a
+// per-language table, so the number survives and its exception does not.
+//
+// IT SURVIVES IN ONE PLACE, AND ONE ONLY: the `shipped` stop, below. That stop
+// is not a product setting - it is the before-side the measurement rig and the
+// suite replay - and the product HEAD shipped gave Go 8 roots. A `shipped` Go
+// prompt rendering 4 roots (1204 bytes where HEAD renders 2116) would be a
+// baseline that never existed.
+//
+// THE NAME IS LOAD-BEARING, as PREFILL_TYPE_CAP's is: the measurement rig
+// rewrites the bundled `var GO_PREFILL_TYPE_CAP = …;` to run a Go cap arm
+// (lib-core's loadPrefillCap(n, "go")). Derived from the shared knob rather
+// than written as a bare 8 so a shared-cap arm still moves Go with it, exactly
+// as the pre-dial constant did.
 const GO_PREFILL_TYPE_CAP = PREFILL_TYPE_CAP === 4 ? 8 : PREFILL_TYPE_CAP;
 
 const GO_PREFILL_LANG: PrefillLang = {
-  typeCap: GO_PREFILL_TYPE_CAP,
-  resolveCap: PREFILL_RESOLVE_CAP,
-  provenanceCap: PREFILL_PROVENANCE_CAP,
+  shippedRootCap: GO_PREFILL_TYPE_CAP,
+  // goShapeBlock renders the root's member list and nothing else, and the Go
+  // field parser is documented dark, so the gather has no edges to follow:
+  // depth, breadth and the total-type cap are all inert on this path.
+  dialReach: "signatures",
   localTypeDefs: (fullText) => goLocalTypeDefinitions(fullText),
   candidates: goPrioritizedTypes,
   receiver: RECEIVER_RULES.go,
@@ -3899,74 +4155,15 @@ const GO_PREFILL_LANG: PrefillLang = {
 // stops at extraction passes while Go injects nothing (session-v37 goal, "The
 // funnel stage nobody measured"). The five entries are the product's own, not a
 // re-derived mapping: a harness that rebuilt one inverted a v29 arm result.
-/** The injected-surface setting, read fresh. Three coarse values and nothing
- *  finer, because the developer is being asked how much room the model has, not
- *  to tune a budget they cannot see. */
-type InjectedSurface = "auto" | "minimal" | "generous";
-
-/** How many candidate types this language may inject RIGHT NOW: its own default
- *  scaled by the user's setting.
- *
- *  The setting governs THIS bound and no other. `resolveCap` and
- *  `provenanceCap` spend language-server round trips, not prompt bytes, and a
- *  single knob over all three hands a developer who wanted a bigger prompt for a
- *  frontier model a slower editor instead. That is a leaky abstraction with a
- *  longer fuse than the one it replaces, because the setting reads as being
- *  about the model.
- *
- *  The PER-LANGUAGE split stays in code and is not exposed. Nobody can be
- *  expected to know that Rust names 20.1 candidate types per function where C#
- *  names 1.7, and holding that measurement is the product's job.
- *
- *  Read at CALL time, once per pre-fill rather than once per candidate: a
- *  developer who changes the setting should not have to restart the editor, and
- *  a `getConfiguration()` inside the admission loop would pay for that freshness
- *  on every iteration.
- *
- *  `auto` is today's value exactly. The multipliers below are NOT measured. They
- *  are a coarse ladder chosen so `generous` lands on 12 for Rust, which is the
- *  value session-v37 item 3 puts on an arm, and so `minimal` halves. What `auto`
- *  should resolve to on a large-context model is that item's question, and this
- *  setting deliberately does not pre-empt it: session-v34 measured injected bytes
- *  DOWN 11.2% and the compile rate UP, so the sign of this lever is not
- *  established and a knob labelled "inject more" is not yet a claim that more is
- *  better. */
-export function injectedTypeCap(lang: PrefillLang): number {
-  // A missing configuration provider means the DEFAULT, never a throw. The
-  // pre-fill leg runs on hosts that supply a partial `vscode` surface, and this
-  // was caught by a frozen oracle whose stub carries no `getConfiguration` at
-  // all: a settings read is not a reason for the whole injected surface to
-  // disappear. An unrecognised value takes the same path.
-  let setting: InjectedSurface = "auto";
-  try {
-    const read = vscode.workspace.getConfiguration?.("column80")?.get<string>("injectedSurface", "auto");
-    if (read === "minimal" || read === "generous") {
-      setting = read;
-    }
-  } catch {
-    setting = "auto";
-  }
-  if (setting === "minimal") {
-    return Math.max(1, Math.round(lang.typeCap / 2));
-  }
-  if (setting === "generous") {
-    // CLAMPED to the resolve budget, and the clamp is the honest half of this
-    // setting. You cannot inject a type you never resolved, so a byte budget
-    // above `resolveCap` promises slots that can never be filled: the first cut
-    // returned 12 against a resolve cap of 8 and a developer picking `generous`
-    // would have been told the surface tripled while it at most doubled. Caught
-    // by a blind row, which is the row that exists for exactly this.
-    //
-    // The other repair, raising `resolveCap` to match, is refused on purpose.
-    // That is the one-knob-over-both design item 2b argues against: the resolve
-    // budget spends editor latency and the developer setting this is telling us
-    // about their MODEL. So the resolve budget is the real ceiling on how far
-    // this setting can reach, and moving it is a latency measurement the product
-    // owns rather than a question to put on a settings page.
-    return Math.min(lang.typeCap * 3, lang.resolveCap);
-  }
-  return lang.typeCap;
-}
+// `injectedTypeCap` AND `column80.injectedSurface` ARE GONE (session-v48 phase
+// 1). That setting scaled ONE of the four numbers - the root cap - and left
+// breadth, the total-type cap and the render budget where they were, which is
+// precisely the configuration the trap proof shows cannot change the prompt:
+// with the total at 6 and the budget at 200, more roots re-divide the same
+// bytes. `column80.injectedContext` replaces it and moves all four together.
+// The clamp that setting carried (never promise more roots than the resolve
+// cap can fill) survives as a property OF THE STOP TABLE: no row's `rootCap`
+// exceeds its own `resolveCap`.
 
 export const prefillLangFor = (languageId: string): PrefillLang =>
   TS_LANGUAGE_IDS.has(languageId)
@@ -4273,7 +4470,15 @@ export function registerFnGen(
       // - example only, never the wide member set - so a bare type reference
       // that resolves nothing leaves the prompt at v1 bytes (blind start, which
       // the loop recovers). Gated on the extractor and the injection setting.
-      const injectedSurface = await resolvePrefill(injectionExtractor(document.languageId), document, resolved, log);
+      // `let`, because the window arbitration below may shrink it: the developer
+      // added their context blocks on purpose and ours is the part that gives
+      // ground (session-v48 phase 2).
+      let surface: PrefillSurface | undefined;
+      let injectedSurface = await resolvePrefill(injectionExtractor(document.languageId), document, resolved, log, {
+        onSurface: (s) => {
+          surface = s;
+        },
+      });
 
       // Tell the model which of the file's own
       // definitions the signature/doc references, so it refers to them directly
@@ -4340,29 +4545,47 @@ export function registerFnGen(
             // reads right now, so an `if` block the human typed into a staged
             // function is in this prompt.
             const contextBlocks = await resolveContextBlocks(announceOnce());
+            // ONE object, spread into the request below, so the bytes the
+            // arbitration measures are the bytes the service assembles. Two
+            // hand-copied field lists would be free to drift, and an estimate
+            // taken over a prompt that is not the one sent is worse than no
+            // estimate at all.
+            const promptInput: FnGenPromptInput = {
+              signature: resolved.signature,
+              docComment: resolved.docComment,
+              contextBlocks,
+              languageId: resolved.languageId,
+              // The DOC's own column, which is not the code's. A bodyOnly
+              // target is Python Fork A, where `stripPyDocstring` has already
+              // returned a 0-based docstring - handing it `bodyIndent` would
+              // strip a second level out of the prose, and in Fork A the
+              // docstring IS the spec (adversarial review D2).
+              spanIndent: resolved.bodyOnly ? "" : resolved.headerIndent ?? "",
+              injectedSurface,
+              noPunt: readOracleConfig().injectionEnabled,
+              // Route the prompt shape. "function" is byte-identical to
+              // v1; struct/enum use the type-definition instruction; bodyOnly
+              // (Python, below a preserved docstring) writes just the body.
+              kind: resolved.kind,
+              bodyOnly: resolved.bodyOnly,
+              // Same-file names the prompt should not re-import.
+              localSymbols,
+              scaffoldComments: harvest.comments,
+            };
             return service.generate(
               {
-                signature: resolved.signature,
-                docComment: resolved.docComment,
-                contextBlocks,
-                languageId: resolved.languageId,
-                // The DOC's own column, which is not the code's. A bodyOnly
-                // target is Python Fork A, where `stripPyDocstring` has already
-                // returned a 0-based docstring - handing it `bodyIndent` would
-                // strip a second level out of the prose, and in Fork A the
-                // docstring IS the spec (adversarial review D2).
-                spanIndent: resolved.bodyOnly ? "" : resolved.headerIndent ?? "",
+                ...promptInput,
                 span: resolved.span,
-                injectedSurface,
-                noPunt: readOracleConfig().injectionEnabled,
-                // Route the prompt shape. "function" is byte-identical to
-                // v1; struct/enum use the type-definition instruction; bodyOnly
-                // (Python, below a preserved docstring) writes just the body.
-                kind: resolved.kind,
-                bodyOnly: resolved.bodyOnly,
-                // Same-file names the prompt should not re-import.
-                localSymbols,
-                scaffoldComments: harvest.comments,
+                // ROADMAP ITEM 43. Past `num_ctx` ollama truncates the prompt
+                // silently and eats the HEAD - which is our injected surface,
+                // not the developer's context blocks. The service arbitrates
+                // (it is the one place that assembles the prompt AND holds the
+                // window); this is the handle that lets it shrink OURS rather
+                // than cut into theirs. A re-render, not a slice: the payload's
+                // "use only these types" sentence has to shrink with it.
+                ...(surface !== undefined
+                  ? { injectedShrink: { blocks: surface.blocks, keep: surface.keep } }
+                  : {}),
                 onPrompt: (p) => {
                   originalPrompt = p;
                   originalBlocks = contextBlocks;
@@ -4373,6 +4596,16 @@ export function registerFnGen(
           },
         );
       } catch (err) {
+        // THE REFUSAL (session-v48 phase 2). Checked before every other error
+        // branch, because it is not a failure: it is the product declining to
+        // send a prompt the window would silently cut in half. No buffer write,
+        // no proposal, no ghost - this sentence is the whole outcome, and it
+        // carries the honest breakdown of whose bytes are whose. The channel
+        // line was written where the decision was taken.
+        if (isPromptWindowError(err)) {
+          void vscode.window.showWarningMessage(err.message);
+          return;
+        }
         if (isServerUnreachable(err)) {
           // Same recovery gesture the first-run flow offers, on the path the
           // user actually hits: the server being down is a start-the-server
@@ -4457,7 +4690,23 @@ export function registerFnGen(
             log("[fngen] regeneration was aborted; presenting the original");
           }
         } catch (err) {
-          log(`[fngen] punt regeneration failed: ${String(err)}; presenting the original`);
+          // THE RETRY IS THE ONE PROMPT THAT CAN STILL OVERFLOW (adversarial
+          // review D1): it is the original prompt plus the anti-punt directive
+          // plus the stub, so it is strictly LARGER than a prompt that just
+          // passed arbitration, and the stub alone can be up to `maxTokens`. The
+          // service refuses it now instead of letting ollama eat the head - and
+          // the head is the developer's context blocks. Say so, in the same
+          // voice as every other refusal, rather than leaving it in the channel:
+          // the human is about to be shown a stub and is owed the reason it was
+          // not reworked.
+          if (isPromptWindowError(err)) {
+            log(`[fngen] punt regeneration refused: the retry prompt does not fit the window; presenting the original`);
+            void vscode.window.showWarningMessage(
+              `${err.message} (This was the retry that would have replaced ${resolved.symbolName}'s stub, so the stub stands.)`,
+            );
+          } else {
+            log(`[fngen] punt regeneration failed: ${String(err)}; presenting the original`);
+          }
         }
       }
 
@@ -4836,6 +5085,14 @@ export function registerFnGen(
           },
         );
       } catch (err) {
+        // The window refusal is not a failure to report as one: nothing broke,
+        // the prompt did not fit and no model was called. Same voice, same
+        // breakdown as generation's (adversarial review D1) - the callee surface
+        // this prompt carries is exactly what can push it over.
+        if (isPromptWindowError(err)) {
+          void vscode.window.showWarningMessage(err.message);
+          return;
+        }
         if (isServerUnreachable(err)) {
           log(`[tdd] server unreachable: ${String(err)}`);
           const choice = await vscode.window.showErrorMessage(

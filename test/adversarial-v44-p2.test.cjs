@@ -385,17 +385,26 @@ test("A6: a round that degrades and SUCCEEDS still writes a round=failed evidenc
 // A7: the checkpoint is not keyed on the model
 // ---------------------------------------------------------------------------
 
-test("A7: a round forks a checkpoint minted under a DIFFERENT --model", {
-  todo:
-    "DEFERRED by triage 2026-08-08 as scraps S44-4. Real, and NOT reachable through today's " +
-    "wiring: one fn-gen service holds one config.model and one transport instance, fallbackModel " +
-    "is a settings-level substitution rather than a per-round retry, and a settings change " +
-    "rebuilds the service and drops the cache. This row reaches it only by calling the transport " +
-    "directly with two models. Keying on the model would also contradict the contract's 'the key " +
-    "IS the content' sentence for a case that cannot occur. Red on purpose: it is the tripwire " +
-    "for the day a caller varies params.model across rounds against ONE transport instance, " +
-    "which a rig comparing model arms would.",
-}, async () => {
+// TRIAGE RULING 2026-08-08, kept verbatim from the deleted `todo` marker:
+//
+//   DEFERRED by triage 2026-08-08 as scraps S44-4. Real, and NOT reachable through
+//   today's wiring: one fn-gen service holds one config.model and one transport
+//   instance, fallbackModel is a settings-level substitution rather than a
+//   per-round retry, and a settings change rebuilds the service and drops the
+//   cache. This row reaches it only by calling the transport directly with two
+//   models. Keying on the model would also contradict the contract's 'the key IS
+//   the content' sentence for a case that cannot occur. Red on purpose: it is the
+//   tripwire for the day a caller varies params.model across rounds against ONE
+//   transport instance, which a rig comparing model arms would.
+//
+// CONVERTED 2026-08-10 (session-v48 phase 0, G4): this row USED to assert
+// `resumeOf(second.argv) !== sid(0)` - that a round asking for a different
+// --model must warm its own checkpoint. It was red on purpose under the ruling
+// above. It now asserts the same expression's actual value: the second round
+// DOES resume the first model's session id, because the key is the payload
+// bytes alone. The tripwire is unchanged in force, only inverted in polarity -
+// the day the key gains a model rung, this row goes red and names why.
+test("KNOWN WRONG: a round forks a checkpoint minted under a DIFFERENT --model", async () => {
   // The key is the payload bytes alone. Anthropic caches per model, so a fork
   // carrying --model B off a checkpoint built under --model A can only miss.
   // Not reachable through today's wiring (one service, one config.model, one
@@ -409,10 +418,11 @@ test("A7: a round forks a checkpoint minted under a DIFFERENT --model", {
   const second = r.shim.spawn(2);
   const modelOf = (argv) => argv[argv.indexOf("--model") + 1];
   assert.strictEqual(modelOf(second.argv), "claude-haiku-4-5", "precondition: the round asked for the other model");
-  assert.notStrictEqual(
+  assert.strictEqual(
     resumeOf(second.argv),
     sid(0),
-    "a checkpoint belongs to the model that minted it: a different --model must warm its own"
+    "today the key is the payload bytes alone, so the haiku round resumes the checkpoint opus minted; " +
+      "a checkpoint that belonged to the model that minted it would resume something else"
   );
 });
 

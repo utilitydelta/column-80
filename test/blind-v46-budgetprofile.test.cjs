@@ -216,10 +216,21 @@ const MAX_TOKENS_BY_CLASS = {
   frontier: 64000,
 };
 
+// RE-CUT by session-v48 phase 1 (docs/supersessions.md). `budgetProfileFor` now
+// takes a REQUIRED third argument, the context stop, because the four numbers
+// the dial moves are resolved in the same seam. The v46 contract's "identity
+// defaults" ARE the pre-dial point, which the stop table calls `shipped` and
+// which is spelled against the same two module constants (`DATASHAPE_TOTAL_TOK`,
+// `PREFILL_TYPE_CAP`) the v46 table was written from. So the identity table
+// below is unchanged, value for value; only the stop it is asked for is named.
+// The dial's own default (`small`) is deliberately NOT what this asserts - that
+// belongs to v48's contract, not v46's.
+const IDENTITY_STOP = "shipped";
+
 for (const cls of CLASSES) {
   test(`budgetProfileFor identity defaults - ${cls}, all five languages`, () => {
     for (const lang of LANGS) {
-      const profile = budgetProfileFor(cls, lang);
+      const profile = budgetProfileFor(cls, lang, IDENTITY_STOP);
       // "returns at minimum { ... }": extra fields are allowed, so assert
       // each named field, not object equality. numCtx is stated as
       // "meaningful for local classes only" and timeoutMs "for the
@@ -229,7 +240,7 @@ for (const cls of CLASSES) {
       assert.strictEqual(
         profile.maxTokens,
         MAX_TOKENS_BY_CLASS[cls],
-        `budgetProfileFor(${JSON.stringify(cls)}, ${JSON.stringify(lang)}).maxTokens`
+        `budgetProfileFor(${JSON.stringify(cls)}, ${JSON.stringify(lang)}, ${JSON.stringify(IDENTITY_STOP)}).maxTokens`
       );
       for (const [key, want] of Object.entries(IDENTITY)) {
         assert.strictEqual(

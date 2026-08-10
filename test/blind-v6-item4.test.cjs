@@ -43,10 +43,29 @@ const outfile = path.join(__dirname, ".blind-v6-item4.bundle.cjs");
 fs.writeFileSync(
   entry,
   `export { resolveSurfaceInjection } from "../src/vscode/oracleSurface";
-export { classifyHallucination } from "../src/core/compilerDirected";\n`
+export { classifyHallucination } from "../src/core/compilerDirected";
+export { contextBoundsFor, DEFAULT_CONTEXT_STOP, memberCapFor, surfaceCapFor } from "../src/core/budgetProfile";\n`
 );
 esbuild.buildSync({ entryPoints: [entry], bundle: true, outfile, format: "cjs", platform: "node", alias: { vscode: STUB } });
-const { resolveSurfaceInjection, classifyHallucination } = require(outfile);
+const {
+  resolveSurfaceInjection,
+  classifyHallucination,
+  contextBoundsFor,
+  DEFAULT_CONTEXT_STOP,
+  memberCapFor,
+  surfaceCapFor,
+} = require(outfile);
+
+// THE TWO CAPS THE REPAIR PATH SPENDS, AT THE DEFAULT STOP - read from the seam,
+// never written as a literal. Both used to be constants (4 surfaces, 24 members);
+// session-v48 phase 1 made them derivations of the context stop's aggregate
+// budget, and the repair path reads the LIVE stop, so a fixture written against
+// the old numbers is a fixture that no longer reaches the cap it is testing. A
+// literal here would have to be re-cut every time the default stop moves; this
+// asks the product what its own default is.
+const DEFAULT_BUDGET_TOK = contextBoundsFor(DEFAULT_CONTEXT_STOP).surfaceBudgetTok;
+const SURFACE_CAP = surfaceCapFor(DEFAULT_BUDGET_TOK);
+const MEMBER_CAP = memberCapFor(DEFAULT_BUDGET_TOK);
 test.after(() => [STUB, entry, outfile].forEach((f) => fs.rmSync(f, { force: true })));
 
 // A document over a text string with the offset math the glue uses (from impl9).
@@ -193,7 +212,13 @@ test("A4: method renders as API surface and assoc as Usage example in one payloa
 test("A5: over SURFACE_CAP distinct types are capped and the drop is logged", async () => {
   const ext = keyedExtractor();
   const logs = [];
-  const types = ["Ca", "Cb", "Cc", "Cd", "Ce", "Cf"]; // 6 distinct receivers
+  // WIDENED session-v48 loop-back (defect 5): the surface cap follows the
+  // context stop's budget now, and at the default stop it is SURFACE_CAP, not
+  // the 4 this row was cut against - six receivers fit under it and the row
+  // passed while injecting everything, which is a fixture that fits inside the
+  // budget: a false green. Two over the live cap, derived, so it stays over the
+  // cap wherever the default lands.
+  const types = Array.from({ length: SURFACE_CAP + 2 }, (_, i) => `C${String(i).padStart(2, "0")}`);
   const eligible = types.map((t, i) => diag("E0599", methodMiss(`bad${i}`, t), { line: 2 + i, character: 4 }));
   const out = surfaceOf(await resolveSurfaceInjection(ext, makeDoc("fn f() {}", "file:///x"), eligible, (line) => logs.push(line)));
   assert.ok(out, "a payload is produced");
@@ -272,7 +297,11 @@ test("A9: two empty-type E0599 on distinct spans inject BOTH surfaces (span-iden
 // the primary method-miss path and item 4 combines up to SURFACE_CAP types, so an
 // uncapped list is worst-case ~120 signature lines past the codegen knee.
 test("F1: a method miss with >cap renderable members is capped and the drop is logged", async () => {
-  const N = 30; // more than any reasonable per-type cap (spec value 24)
+  // WIDENED session-v48 loop-back (defect 5): the per-type member cap is a
+  // derivation of the context stop's budget and the repair path reads the live
+  // stop, so at the default it is MEMBER_CAP rather than the 24 this row's 30
+  // members were cut against. Six over the live cap, derived from the seam.
+  const N = MEMBER_CAP + 6;
   const logs = [];
   const ext = {
     example: async () => "",

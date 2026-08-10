@@ -28,6 +28,12 @@
 // openers is followed by a longer bare run. The exclusion is real and it resolves
 // the other way.
 //
+// [2026-08-10: those nine rows are no longer `todo:`. A test that must be red is
+// not a test. Each ruling below is kept verbatim as a comment above its row, each
+// row records what it USED to assert, and each now asserts the value the shipped
+// code actually produces. Titles carry SUPERSEDED: because in every one of the
+// nine the expectation was deliberately replaced and today's behaviour is the
+// correct one. Nothing else in this header was edited.]
 // Nine rows are therefore marked `todo: "REFUTED by triage on measurement"`, each
 // carrying its own argument: 8, 9, 10, 11, 12, 14, 15, 17, 19. Every other row is
 // GREEN under the shipped rule, including ROW 29, which the header calls the
@@ -305,43 +311,50 @@ test("ROW 7 [RED]: opener run 6 with an info string and closer run 6 extract the
 // GROUP C. Closer LONGER than opener. CommonMark closes. FLIP 1 lives here.
 // ===========================================================================
 
-test("ROW 8 [RED, FLIP 1 of impl2 'four-backtick line never closes a three-backtick block']: opener 3, closer 4 closes", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run. " +
-    "Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this " +
-    "buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a " +
-    "Rust raw string closes the block early and splices a truncated, unterminated function that the fence " +
-    "guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit " +
-    "survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything.",
-}, () => {
-  assert.equal(extractFirstCodeBlock("```\ncode\n````"), "code");
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run.
+// Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this
+// buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a
+// Rust raw string closes the block early and splices a truncated, unterminated function that the fence
+// guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit
+// survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything."
+// USED TO ASSERT: extractFirstCodeBlock("```\ncode\n````") === "code" (strict CommonMark, FLIP 1).
+// That expectation was deliberately replaced; today's `undefined` is the CORRECT behaviour.
+test("SUPERSEDED: ROW 8 [FLIP 1 of impl2 refused]: opener 3, closer 4 does NOT close", () => {
+  assert.equal(extractFirstCodeBlock("```\ncode\n````"), undefined);
 });
 
-test("ROW 9 [RED]: opener 3, closer 6 closes", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run. " +
-    "Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this " +
-    "buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a " +
-    "Rust raw string closes the block early and splices a truncated, unterminated function that the fence " +
-    "guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit " +
-    "survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything.",
-}, () => {
-  assert.equal(extractFirstCodeBlock("```\ncode\n``````"), "code");
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run.
+// Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this
+// buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a
+// Rust raw string closes the block early and splices a truncated, unterminated function that the fence
+// guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit
+// survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything."
+// USED TO ASSERT: extractFirstCodeBlock("```\ncode\n``````") === "code".
+// That expectation was deliberately replaced; today's `undefined` is the CORRECT behaviour.
+test("SUPERSEDED: ROW 9: opener 3, closer 6 does NOT close", () => {
+  assert.equal(extractFirstCodeBlock("```\ncode\n``````"), undefined);
 });
 
-test("ROW 10 [RED]: a bare longer run INSIDE a three-backtick block terminates it there", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run. " +
-    "Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this " +
-    "buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a " +
-    "Rust raw string closes the block early and splices a truncated, unterminated function that the fence " +
-    "guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit " +
-    "survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything.",
-}, () => {
-  // Direct consequence of ROW 8. The run-4 line on line 3 is a legal closer
-  // for a run-3 opener, so the block ends before "b". Pinned so the build
-  // knows this follows from the same rule and is not a separate decision.
-  assert.equal(extractFirstCodeBlock("```\na\n````\nb\n```"), "a");
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run.
+// Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this
+// buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a
+// Rust raw string closes the block early and splices a truncated, unterminated function that the fence
+// guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit
+// survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything."
+// USED TO ASSERT: extractFirstCodeBlock("```\na\n````\nb\n```") === "a", i.e. the interior run-4 line
+// terminates the run-3 block. That expectation was deliberately replaced: the interior run-4 line is
+// CONTENT, the block runs to the final run-3 line, and the whole body survives. That is the correct
+// behaviour and the reason review defect 4 (silent truncation into the splice) cannot occur.
+test("SUPERSEDED: ROW 10: a bare longer run INSIDE a three-backtick block is content, not a terminator", () => {
+  // Original rationale, kept as the record: "Direct consequence of ROW 8. The
+  // run-4 line on line 3 is a legal closer for a run-3 opener, so the block ends
+  // before 'b'. Pinned so the build knows this follows from the same rule and is
+  // not a separate decision." It IS a direct consequence of ROW 8 and it moved
+  // with ROW 8.
+  assert.equal(extractFirstCodeBlock("```\na\n````\nb\n```"), "a\n````\nb");
 });
 
 // ===========================================================================
@@ -349,30 +362,31 @@ test("ROW 10 [RED]: a bare longer run INSIDE a three-backtick block terminates i
 // This is the leniency being dropped. See the tension note in the header.
 // ===========================================================================
 
-test("ROW 11 [RED, FLIP 2 of impl2 'four-backtick line still opens']: opener 4, closer 3 does NOT close", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build KEPT the leniency this row drops. " +
-    "Over the 131 captured model replies in data/repair-v38-fence*.json, 39 openers are run-4 or longer and " +
-    "THREE are open-4/close-3, each a complete correct function that this row's rule would refuse outright, " +
-    "against zero counter-instances. The oracle's own zero-mismatch count was taken while the capture file " +
-    "was still being written. Row 29 still holds.",
-}, () => {
-  assert.equal(extractFirstCodeBlock("````\ncode\n```"), undefined);
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build KEPT the leniency this row drops.
+// Over the 131 captured model replies in data/repair-v38-fence*.json, 39 openers are run-4 or longer and
+// THREE are open-4/close-3, each a complete correct function that this row's rule would refuse outright,
+// against zero counter-instances. The oracle's own zero-mismatch count was taken while the capture file
+// was still being written. Row 29 still holds."
+// USED TO ASSERT: extractFirstCodeBlock("````\ncode\n```") === undefined (FLIP 2, the leniency dropped).
+// That expectation was deliberately replaced; today's "code" is the CORRECT behaviour.
+test("SUPERSEDED: ROW 11 [FLIP 2 of impl2 refused]: opener 4, closer 3 DOES close, the leniency is kept", () => {
+  assert.equal(extractFirstCodeBlock("````\ncode\n```"), "code");
 });
 
-test("ROW 12 [RED]: opener 4 closer 3 falls back to the whole remainder in postprocess", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build KEPT the leniency this row drops. " +
-    "Over the 131 captured model replies in data/repair-v38-fence*.json, 39 openers are run-4 or longer and " +
-    "THREE are open-4/close-3, each a complete correct function that this row's rule would refuse outright, " +
-    "against zero counter-instances. The oracle's own zero-mismatch count was taken while the capture file " +
-    "was still being written. Row 29 still holds.",
-}, () => {
-  // The honest cost of FLIP 2, written down rather than hidden. This output
-  // still carries fence lines, so the fnGenService guard will refuse it.
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build KEPT the leniency this row drops.
+// Over the 131 captured model replies in data/repair-v38-fence*.json, 39 openers are run-4 or longer and
+// THREE are open-4/close-3, each a complete correct function that this row's rule would refuse outright,
+// against zero counter-instances. The oracle's own zero-mismatch count was taken while the capture file
+// was still being written. Row 29 still holds."
+// USED TO ASSERT: postprocessInstructOutput("````\ncode\n```") === the whole raw reply, fence lines and
+// all, and hasFenceLine(...) === true, i.e. the cost of FLIP 2. FLIP 2 was refused, so that cost is not
+// paid: postprocess extracts the body and no fence line reaches the guard. Today's behaviour is CORRECT.
+test("SUPERSEDED: ROW 12: opener 4 closer 3 extracts through postprocess, no fallback to the remainder", () => {
   const raw = "````\ncode\n```";
-  assert.equal(postprocessInstructOutput(raw), raw);
-  assert.ok(hasFenceLine(postprocessInstructOutput(raw)), "the guard would refuse this, by design");
+  assert.equal(postprocessInstructOutput(raw), "code");
+  assert.equal(hasFenceLine(postprocessInstructOutput(raw)), false, "the guard accepts this, by design");
 });
 
 // ===========================================================================
@@ -383,27 +397,31 @@ test("ROW 13 [RED]: tilde opener run 4 and tilde closer run 4 extract the block"
   assert.equal(extractFirstCodeBlock("~~~~rust\nfn a() {}\n~~~~"), "fn a() {}");
 });
 
-test("ROW 14 [RED]: tilde opener 4, tilde closer 3 does NOT close (same rule as ROW 11)", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build KEPT the leniency this row drops. " +
-    "Over the 131 captured model replies in data/repair-v38-fence*.json, 39 openers are run-4 or longer and " +
-    "THREE are open-4/close-3, each a complete correct function that this row's rule would refuse outright, " +
-    "against zero counter-instances. The oracle's own zero-mismatch count was taken while the capture file " +
-    "was still being written. Row 29 still holds.",
-}, () => {
-  assert.equal(extractFirstCodeBlock("~~~~\ncode\n~~~"), undefined);
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build KEPT the leniency this row drops.
+// Over the 131 captured model replies in data/repair-v38-fence*.json, 39 openers are run-4 or longer and
+// THREE are open-4/close-3, each a complete correct function that this row's rule would refuse outright,
+// against zero counter-instances. The oracle's own zero-mismatch count was taken while the capture file
+// was still being written. Row 29 still holds."
+// USED TO ASSERT: extractFirstCodeBlock("~~~~\ncode\n~~~") === undefined.
+// That expectation was deliberately replaced; today's "code" is the CORRECT behaviour, and it is the
+// tilde half of ROW 11.
+test("SUPERSEDED: ROW 14: tilde opener 4, tilde closer 3 DOES close (same leniency as ROW 11)", () => {
+  assert.equal(extractFirstCodeBlock("~~~~\ncode\n~~~"), "code");
 });
 
-test("ROW 15 [RED]: tilde opener 3, tilde closer 4 closes (same rule as ROW 8)", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run. " +
-    "Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this " +
-    "buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a " +
-    "Rust raw string closes the block early and splices a truncated, unterminated function that the fence " +
-    "guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit " +
-    "survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything.",
-}, () => {
-  assert.equal(extractFirstCodeBlock("~~~\ncode\n~~~~"), "code");
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run.
+// Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this
+// buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a
+// Rust raw string closes the block early and splices a truncated, unterminated function that the fence
+// guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit
+// survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything."
+// USED TO ASSERT: extractFirstCodeBlock("~~~\ncode\n~~~~") === "code".
+// That expectation was deliberately replaced; today's `undefined` is the CORRECT behaviour, and it is
+// the tilde half of ROW 8.
+test("SUPERSEDED: ROW 15: tilde opener 3, tilde closer 4 does NOT close (same rule as ROW 8)", () => {
+  assert.equal(extractFirstCodeBlock("~~~\ncode\n~~~~"), undefined);
 });
 
 test("ROW 16 [GREEN]: run length never lets one fence character close the other", () => {
@@ -417,18 +435,21 @@ test("ROW 16 [GREEN]: run length never lets one fence character close the other"
 // Unobserved in the captured corpus. Argued from CommonMark and model intent.
 // ===========================================================================
 
-test("ROW 17 [RED]: a run-3 inner fence does not close a run-4 outer fence", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run. " +
-    "Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this " +
-    "buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a " +
-    "Rust raw string closes the block early and splices a truncated, unterminated function that the fence " +
-    "guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit " +
-    "survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything.",
-}, () => {
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run.
+// Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this
+// buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a
+// Rust raw string closes the block early and splices a truncated, unterminated function that the fence
+// guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit
+// survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything."
+// USED TO ASSERT: extractFirstCodeBlock("````markdown\n```js\nx\n```\n````") === "```js\nx\n```", the
+// nesting payoff. The build chose the leniency over the nesting (ROW 29 says it cannot have both), so
+// the inner run-3 line closes the outer run-4 opener and the trailing "```" is dropped. That trade is
+// the deliberate ruling; today's "```js\nx" is what the shipped rule produces.
+test("SUPERSEDED: ROW 17: a run-3 inner fence DOES close a run-4 outer fence, so nesting is lost", () => {
   assert.equal(
     extractFirstCodeBlock("````markdown\n```js\nx\n```\n````"),
-    "```js\nx\n```"
+    "```js\nx"
   );
 });
 
@@ -448,16 +469,18 @@ test("ROW 18 [RED]: run-4 outer around Rust whose doc comment contains a run-3 e
   );
 });
 
-test("ROW 19 [RED]: the same nesting rule holds for tildes", {
-  todo:
-    "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run. " +
-    "Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this " +
-    "buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a " +
-    "Rust raw string closes the block early and splices a truncated, unterminated function that the fence " +
-    "guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit " +
-    "survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything.",
-}, () => {
-  assert.equal(extractFirstCodeBlock("~~~~\n~~~\nx\n~~~\n~~~~"), "~~~\nx\n~~~");
+// RULING (verbatim, was the `todo:` text):
+// "REFUTED by triage on measurement (v38 phase 2). The build does NOT close on a longer run.
+// Zero of the 92 run-3 openers in the 131 captured replies is followed by a longer bare run, so this
+// buys nothing observed; and it is the exact mechanism of review defect 4, where a run-4 line inside a
+// Rust raw string closes the block early and splices a truncated, unterminated function that the fence
+// guard cannot see. A visible refusal traded for a silent bad write. Row 18 shows the nesting benefit
+// survives where it actually occurs: a doc-comment /// ``` is not a bare run and never closed anything."
+// USED TO ASSERT: extractFirstCodeBlock("~~~~\n~~~\nx\n~~~\n~~~~") === "~~~\nx\n~~~".
+// The tilde half of ROW 17, and it loses the same way: the run-3 line on line 2 closes the run-4
+// opener immediately, so the block is empty. Deliberate, and the same trade ROW 29 pins.
+test("SUPERSEDED: ROW 19: the same non-nesting holds for tildes, the inner run-3 closes at once", () => {
+  assert.equal(extractFirstCodeBlock("~~~~\n~~~\nx\n~~~\n~~~~"), "");
 });
 
 // ===========================================================================

@@ -398,7 +398,15 @@ fn target(w: Wide) -> u32 {
 
 test("P6: over-cap members are truncated and the drop is logged", async () => {
   await withFiles({ [CAP_URI]: CAP_SRC }, async () => {
-    const many = Array.from({ length: 30 }, (_, i) => member(`meth${i}`, `meth${i}(&self) -> u32`));
+    // 120, not 30. RE-CUT by session-v48 phase 1 (docs/supersessions.md): the
+    // per-type member cap is derived from the context stop's budget now
+    // (`memberCapFor`), so the install default's 48 already swallowed a 30-member
+    // fixture whole and the row passed while truncating nothing. The subject is
+    // "over-cap members are truncated and the drop is logged", so the fixture is
+    // sized well past any stop's cap and the row no longer names a number - a
+    // literal here would pin the dial's default rather than the truncation.
+    const MANY = 120;
+    const many = Array.from({ length: MANY }, (_, i) => member(`meth${i}`, `meth${i}(&self) -> u32`));
     const { ext } = makeExtractor({
       files: { [CAP_URI]: CAP_SRC },
       defTypes: { Wide: { uri: CAP_URI, hover: "pub struct Wide { n: u32 }", members: many } },
@@ -409,8 +417,9 @@ test("P6: over-cap members are truncated and the drop is logged", async () => {
     const out = (await resolvePrefill(ext, doc, resolved, (l) => logs.push(l))) || "";
 
     assert.ok(out.includes("meth0("), `a within-cap method is rendered. OUT:\n${out}`);
-    assert.ok(!out.includes("meth24("), `the over-cap tail (meth24..meth29) is truncated. OUT:\n${out}`);
-    assert.ok(!out.includes("meth29("), `the last over-cap method is truncated. OUT:\n${out}`);
+    const rendered = (out.match(/meth\d+\(/g) || []).length;
+    assert.ok(rendered < MANY, `the over-cap tail is truncated; ${rendered} of ${MANY} rendered. OUT:\n${out}`);
+    assert.ok(!out.includes(`meth${MANY - 1}(`), `the last over-cap method is truncated. OUT:\n${out}`);
     assert.ok(logs.some((l) => /drop|truncat/i.test(l)), `a log line names what was dropped; got: ${JSON.stringify(logs)}`);
   });
 });
@@ -476,18 +485,22 @@ test("FIRM-once: a multi-type prefill contains the firm instruction exactly once
 
 // ===========================================================================
 // 7. P3 (port) — prioritization. Signature-named local `A` and doc-named local `T`
-// both survive the PREFILL_TYPE_CAP (4) budget; the use-mined externals U1..U6 are
-// dropped lowest-first. The anti-regression: a relevant local type is NEVER
-// sacrificed to keep the ambient `use` set. Ordering is [A (sig), T (doc), U1..U6
-// (uses)], so kept = [A, T, U1, U2] and U3..U6 are dropped.
+// both survive the ROOT CAP; the use-mined externals U1..U10 are dropped
+// lowest-first. The anti-regression: a relevant local type is NEVER sacrificed to
+// keep the ambient `use` set. Ordering is [A (sig), T (doc), U1..U10 (uses)], so
+// the tail of the `use` tier is what gives way. The cap is the context dial's
+// `rootCap` since session-v48 phase 1 and the row deliberately does not name its
+// value; it names the ORDER, which is what the row is for.
 // ===========================================================================
 const P3_URI = "file:///w/p3.rs";
-const P3_SRC = `use ext::U1;
-use ext::U2;
-use ext::U3;
-use ext::U4;
-use ext::U5;
-use ext::U6;
+// TEN use-mined externals, not six. RE-CUT by session-v48 phase 1
+// (docs/supersessions.md): the root cap is the context dial's now and the
+// install default admits 8, so A + T + U1..U6 all fit and nothing was dropped -
+// the row passed while measuring no prioritization at all. The subject is
+// unchanged: more candidates than the cap admits, locals ahead of the ambient
+// `use` tier.
+const P3_EXTERNALS = 10;
+const P3_SRC = `${Array.from({ length: P3_EXTERNALS }, (_, i) => `use ext::U${i + 1};`).join("\n")}
 
 struct A {
     n: u32,
@@ -522,14 +535,9 @@ test("P3: named/local A and T survive the budget; use-mined externals are droppe
           members: [member("tally_cohort", "tally_cohort(&self, u32) -> usize")],
         },
       },
-      examples: {
-        U1: "let u1 = ext::U1::new();",
-        U2: "let u2 = ext::U2::new();",
-        U3: "let u3 = ext::U3::new();",
-        U4: "let u4 = ext::U4::new();",
-        U5: "let u5 = ext::U5::new();",
-        U6: "let u6 = ext::U6::new();",
-      },
+      examples: Object.fromEntries(
+        Array.from({ length: P3_EXTERNALS }, (_, i) => [`U${i + 1}`, `let u${i + 1} = ext::U${i + 1}::new();`]),
+      ),
     });
     const doc = makeDoc(P3_SRC, P3_URI);
     const resolved = resolvedFor(P3_SRC, { signature: "fn target(a: A) -> usize", docComment: "Fold A into the register T." });
@@ -537,9 +545,15 @@ test("P3: named/local A and T survive the budget; use-mined externals are droppe
 
     assert.match(out, /API surface for `A`/, `signature-named local A survives. OUT:\n${out}`);
     assert.match(out, /API surface for `T`/, `doc-named local T survives (the anti-regression). OUT:\n${out}`);
-    const externalsKept = (out.match(/Usage example for `U\d`/g) || []).length;
-    assert.ok(externalsKept < 6, `at least one use-mined external is dropped by the budget (kept ${externalsKept}/6). OUT:\n${out}`);
+    const externalsKept = (out.match(/Usage example for `U\d+`/g) || []).length;
+    assert.ok(
+      externalsKept < P3_EXTERNALS,
+      `at least one use-mined external is dropped by the budget (kept ${externalsKept}/${P3_EXTERNALS}). OUT:\n${out}`,
+    );
     // The core bar: T is never sacrificed to keep the full use-mined set.
-    assert.ok(!(externalsKept === 6 && !/API surface for `T`/.test(out)), `never keep all U1..U6 while dropping T.`);
+    assert.ok(
+      !(externalsKept === P3_EXTERNALS && !/API surface for `T`/.test(out)),
+      `never keep all U1..U${P3_EXTERNALS} while dropping T.`,
+    );
   });
 });

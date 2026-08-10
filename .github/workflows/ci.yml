@@ -28,18 +28,28 @@ jobs:
       # 24, not 20. test:unit passes its files as glob patterns, and `node --test`
       # only expands those from 22 on: measured here, 22.23.1 expands them and
       # 20.20.2 takes the quoted glob as a literal path and dies with "Could not
-      # find". 24 is what the suite is developed against; >=22 is the floor, and
-      # it is written into package.json engines so this cannot drift silently.
+      # find". 24 is what the suite is developed against. `package.json` engines
+      # records the FLOOR as ">=22" and nothing more, so it constrains a consumer
+      # and does not pin this runner - the version below is the only pin there is.
       - uses: actions/setup-node@v4
         with:
-          # PINNED, not the floating major (2026-08-10). `24` resolves to the newest
-          # 24.x, and 24.18 counts a failing `todo` row toward the exit code where
-          # 24.12 does not. The suite carries todo rows that are red ON PURPOSE,
-          # each with a written ruling, so a floating runtime turned a green suite
-          # red without a line of source changing. Raise this deliberately, with the
-          # todo rows re-decided, never by drifting.
-
-          node-version: 24.12.0
+          # UNPINNED again 2026-08-10 (session-v48 phase 0, roadmap item 44 closed).
+          # The pin existed because `24.18` counts a failing `todo` row toward the
+          # exit code where `24.12` does not, and this suite carried 43 rows that
+          # were red on purpose. It carries none: 37 now assert what the code
+          # actually does, under a `KNOWN WRONG:` or `SUPERSEDED:` title, and 6
+          # skip with a stated reason because the captures they score were deleted
+          # with the repo split. `todo` is 0 on 24.12.0 and on 24.19.0, so no
+          # runtime has a todo row left to reinterpret.
+          #
+          # That closes the todo mechanism and NOT every way this suite can go red
+          # on a busy runner. Roadmap item 23 is still open: a few rows measure
+          # wall clock, and `blind-v21-p1-commands.test.cjs` "the expiry re-render
+          # hides the inline suggestion BEFORE it triggers" was measured failing
+          # about 1 run in 10 idle and 4 in 20 under CPU contention, on BOTH node
+          # versions. A red CI run here is worth re-running once before it is
+          # believed.
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run typecheck

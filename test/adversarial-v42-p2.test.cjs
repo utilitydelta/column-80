@@ -116,7 +116,8 @@ let bundleErr;
 try {
   fs.writeFileSync(
     ENTRY,
-    `export { resolvePrefill, prefillLangFor, injectedTypeCap } from "../src/vscode/fnGen";\n`,
+    `export { resolvePrefill, prefillLangFor } from "../src/vscode/fnGen";\n` +
+      `export { budgetProfileFor, contextBoundsFor, DEFAULT_CONTEXT_STOP } from "../src/core/budgetProfile";\n`,
   );
   esbuild.buildSync({ entryPoints: [ENTRY], bundle: true, outfile: OUTFILE, format: "cjs", platform: "node", alias: { vscode: STUB } });
   mod = require(OUTFILE);
@@ -233,7 +234,7 @@ function goFixture(names, { fat = false } = {}) {
   return { uri, src, defTypes, record };
 }
 
-async function runWith(resolvePrefill, fx, cfg) {
+async function runWith(resolvePrefill, fx, cfg, extraOpts) {
   const files = { [fx.uri]: fx.src };
   const logs = [];
   const disclosed = [];
@@ -243,6 +244,7 @@ async function runWith(resolvePrefill, fx, cfg) {
   try {
     text = (await resolvePrefill(makeExtractor(files, fx.defTypes), makeDoc(fx.src, fx.uri), fx.record, (l) => logs.push(String(l)), {
       onDisclosed: (d) => disclosed.push(...d.map((x) => x.name)),
+      ...(extraOpts || {}),
     })) || "";
   } finally {
     delete globalThis.__ADV42P2_FILES__;
@@ -252,32 +254,40 @@ async function runWith(resolvePrefill, fx, cfg) {
 }
 
 const TEN = ["Alpha", "Bravo", "Chart", "Delta", "Echos", "Foxes", "Golfs", "Hotel", "India", "Julie"];
+// A pool wider than any stop's root cap, so a dial row can never be bounded by
+// its own fixture instead of by the number it is measuring.
+const TWENTY = [...TEN, "Kilos", "Limas", "Mikes", "Novem", "Oscar", "Papas", "Quebe", "Romeo", "Sierr", "Tango"];
 
 // ===========================================================================
 // S. SEAM PINS the blind file does not carry.
 // ===========================================================================
 
-btest("S1: the seam's exact values - go 8, rust/ts/csharp/python 4, and go's typeCap never exceeds its resolveCap", () => {
-  const { prefillLangFor, injectedTypeCap } = mod;
+// SUPERSEDED by session-v48 phase 1 (docs/supersessions.md). The per-language
+// split this row pinned is gone by ruling of 2026-08-10: every language reads
+// the context stop's root cap, and Go's measured 8 is why the dial's bottom stop
+// is 8 FOR EVERYONE rather than why Go alone gets it. The coupling half of the
+// row survives untouched, and is the half that was load-bearing.
+btest("SUPERSEDED (v48 phase 1): one root cap for all five languages, and it never exceeds the resolve cap", () => {
+  const { prefillLangFor, budgetProfileFor, contextBoundsFor, DEFAULT_CONTEXT_STOP } = mod;
   const caps = {};
   for (const id of ["go", "rust", "typescript", "csharp", "python"]) {
-    const lang = prefillLangFor(id);
-    caps[id] = { typeCap: lang.typeCap, resolveCap: lang.resolveCap, auto: injectedTypeCap(lang) };
+    assert.ok(prefillLangFor(id), `${id} must still have a prefill entry`);
+    const p = budgetProfileFor("local-mid", id, DEFAULT_CONTEXT_STOP);
+    caps[id] = { rootCap: p.rootCap, resolveCap: p.resolveCap };
   }
-  assert.equal(caps.go.typeCap, 8, "the measured Go cap");
-  for (const id of ["rust", "typescript", "csharp", "python"]) {
-    assert.equal(caps[id].typeCap, 4, `${id} stays at the inherited 4 - no cross-language bleed`);
-    assert.equal(caps[id].auto, 4, `${id} auto reads the typeCap`);
-  }
-  assert.equal(caps.go.auto, 8, "go auto reads the measured cap");
+  const distinct = new Set(Object.values(caps).map((c) => JSON.stringify(c)));
+  assert.equal(distinct.size, 1, `five languages, one set of caps; got ${JSON.stringify(caps)}`);
+  assert.equal(caps.go.rootCap, contextBoundsFor(DEFAULT_CONTEXT_STOP).rootCap, "and it is the stop's own");
   // The coupling the ladder leaned on: a type cap above the resolve cap
-  // promises slots that can never fill (the report's own clamp doctrine). The
-  // blind file does not pin this; a future resolveCap change re-opens the
-  // knee argument silently. Pinned HERE.
-  assert.ok(
-    caps.go.typeCap <= caps.go.resolveCap,
-    `GO typeCap (${caps.go.typeCap}) > resolveCap (${caps.go.resolveCap}): slots promised that cannot fill; the ladder's knee argument is void`,
-  );
+  // promises slots that can never fill (the report's own clamp doctrine). It is
+  // a property of EVERY stop now, which is a stronger version of the same pin.
+  for (const stop of ["shipped", "small", "medium", "large", "frontier"]) {
+    const b = contextBoundsFor(stop);
+    assert.ok(
+      b.rootCap <= b.resolveCap,
+      `${stop}: rootCap (${b.rootCap}) > resolveCap (${b.resolveCap}): slots promised that cannot fill; the ladder's knee argument is void`,
+    );
+  }
 });
 
 btest("S2: the Go UPPER bound - ten perfect candidates disclose exactly 8, and the cap line names the two evicted", async () => {
@@ -296,20 +306,30 @@ btest("S2: the Go UPPER bound - ten perfect candidates disclose exactly 8, and t
   );
 });
 
-btest("S3: config interactions - minimal halves Go to 4; generous stays clamped at the resolve cap (8)", async () => {
-  const fxMin = goFixture(["Alpha", "Bravo", "Chart", "Delta", "Echos", "Foxes"]);
-  const rMin = await runWith(mod.resolvePrefill, fxMin, { injectedSurface: "minimal" });
+// SUPERSEDED by session-v48 phase 1 (docs/supersessions.md). `injectedSurface`
+// and its auto/minimal/generous ladder are gone: the setting moved ONE of the
+// four numbers bounding the injected surface, and the session's trap proof is
+// that one alone cannot change the prompt. The row is re-cut onto the setting
+// that replaced it, keeping its subject exactly - a config value in front of the
+// resolver must change how many types are disclosed.
+btest("SUPERSEDED (v48 phase 1): the CONTEXT setting moves the disclosed count, and an unrecognised value falls to the default", async () => {
+  const { contextBoundsFor, DEFAULT_CONTEXT_STOP } = mod;
+  const counts = {};
+  for (const stop of ["small", "large"]) {
+    const r = await runWith(mod.resolvePrefill, goFixture(TWENTY), { injectedContext: stop });
+    counts[stop] = r.disclosed.length;
+    assert.equal(
+      r.disclosed.length,
+      contextBoundsFor(stop).rootCap,
+      `under ${stop} exactly the stop's root cap discloses (got ${r.disclosed.length}: ${r.disclosed.join(", ")})`,
+    );
+  }
+  assert.ok(counts.large > counts.small, `the dial must MOVE the count: ${JSON.stringify(counts)}`);
+  const junk = await runWith(mod.resolvePrefill, goFixture(TWENTY), { injectedContext: "enormous" });
   assert.equal(
-    rMin.disclosed.length,
-    4,
-    `minimal = max(1, round(8/2)) = 4 (got ${rMin.disclosed.length}: ${rMin.disclosed.join(", ")})`,
-  );
-  const fxGen = goFixture(TEN);
-  const rGen = await runWith(mod.resolvePrefill, fxGen, { injectedSurface: "generous" });
-  assert.equal(
-    rGen.disclosed.length,
-    8,
-    `generous = min(8*3, resolveCap 8) = 8, the honest clamp (got ${rGen.disclosed.length})`,
+    junk.disclosed.length,
+    contextBoundsFor(DEFAULT_CONTEXT_STOP).rootCap,
+    `an unrecognised value is the install default, never a fifth behaviour (got ${junk.disclosed.length})`,
   );
 });
 
@@ -317,29 +337,91 @@ btest("S3: config interactions - minimal halves Go to 4; generous stays clamped 
 // R. THE RIG's cap-arm mechanism vs the new seam.
 // ===========================================================================
 
-btest("R1: the cap-arm patch (lib-core loadPrefillCap's exact regex) must still move GO's cap - a cap-6 arm may not silently measure 8", async () => {
-  // session-complxity-research/spikes/lib-core.cjs:115-120 patches the bundle
-  // with /var PREFILL_TYPE_CAP = 4;/ -> `var PREFILL_TYPE_CAP = ${cap};` and
-  // throws when the pattern is missing so an arm can never "silently run at
-  // the shipped value". After phase 2, Go reads GO_PREFILL_TYPE_CAP: the
-  // pattern still MATCHES (the four-language default is still 4), the guard
-  // stays quiet, and the patch no longer reaches Go. This row applies the
-  // identical patch to this file's own bundle and runs a Go cap-6 arm: eight
-  // perfect candidates must disclose 6. Today they disclose 8 - the exact
-  // silent-shipped-value failure the guard exists to prevent.
-  const src = fs.readFileSync(OUTFILE, "utf8");
-  const re = /var PREFILL_TYPE_CAP = 4;/;
-  assert.ok(re.test(src), "precondition: the rig's guard pattern still matches the bundle");
-  fs.writeFileSync(PATCHED, src.replace(re, "var PREFILL_TYPE_CAP = 6;"));
-  const patched = require(PATCHED);
+// RE-CUT TWICE. The original row's complaint was that Go read its own
+// `GO_PREFILL_TYPE_CAP` while lib-core's loadPrefillCap patched the shared
+// `PREFILL_TYPE_CAP`, so a Go cap-6 arm silently measured the shipped 8.
+//
+// The session-v48 phase-1 cut then re-pointed it at this file's own bundle with
+// `{ contextStop: "shipped" }` passed EXPLICITLY - and that is a caller shape the
+// rig does not have. The rig calls `resolvePrefill(extractor, doc, resolved,
+// log)` with no options, its stub answers the default for every setting, so it
+// resolved `small`, where no patched constant is read at all: five loaders, five
+// byte-identical prompts, and this row green over the top of it. A guard that
+// tests a caller shape nobody uses guards nothing.
+//
+// So the row now drives THE RIG'S OWN LOADER, with the rig's own call shape and
+// no stop argument. It is the whole mechanism end to end: lib-core patches the
+// bundle, pins the stop its patches feed, and the arm must come out different
+// from the unpatched one.
+btest("R1: a cap arm built by the RIG'S OWN LOADER, called the way the rig calls it, moves Go's cap", async () => {
+  const lib = require(path.join(__dirname, "..", "session-complxity-research", "spikes", "lib-core.cjs"));
   const fx = goFixture(["Alpha", "Bravo", "Chart", "Delta", "Echos", "Foxes", "Golfs", "Hotel"]);
-  const r = await runWith(patched.resolvePrefill, fx);
-  assert.equal(
-    r.disclosed.length,
-    6,
-    `a cap-6 arm on Go disclosed ${r.disclosed.length} types: GO_PREFILL_TYPE_CAP is out of the ` +
-      `patch's reach and the arm silently measured the shipped 8. The rig's own guard cannot fire ` +
-      `because the four-language default still matches its pattern.`,
+  const base = lib.loadPrefill();
+  const arm = lib.loadPrefillCap(6, "go");
+  // The rig's bundles carry the RIG's vscode stub, which serves open documents
+  // out of `__CSL_DOCS__` (lib-core's makeDoc registers them there). Register
+  // the fixture the same way, or the def file cannot be opened and every
+  // candidate dies for a reason that has nothing to do with the cap.
+  const priorDocs = globalThis.__CSL_DOCS__;
+  globalThis.__CSL_DOCS__ = { [fx.uri]: { uri: { toString: () => fx.uri }, getText: () => fx.src } };
+  try {
+    // NO contextStop, NO settings: exactly what run-arm.cjs passes.
+    const unpatched = await runWith(base.mod.resolvePrefill, fx);
+    const patched = await runWith(arm.mod.resolvePrefill, fx);
+    assert.equal(
+      unpatched.disclosed.length,
+      8,
+      `CONTROL - the rig's baseline loader must render the pre-dial Go point, which is 8 roots ` +
+        `(got ${unpatched.disclosed.length}: ${unpatched.disclosed.join(", ")})`,
+    );
+    assert.equal(
+      patched.disclosed.length,
+      6,
+      `a cap-6 Go arm disclosed ${patched.disclosed.length} types: the patch never reached the resolved ` +
+        `stop and the arm silently measured the shipped value - the failure the rig's guard exists to prevent.`,
+    );
+    assert.notEqual(
+      patched.text,
+      unpatched.text,
+      "and the ARM'S PROMPT must differ from the baseline's. Five loaders rendering byte-identical prompts " +
+        "is precisely how this defect hid.",
+    );
+  } finally {
+    globalThis.__CSL_DOCS__ = priorDocs;
+    base.cleanup();
+    arm.cleanup();
+  }
+});
+
+btest("R2: the rig's arm guard FIRES when a patched constant cannot reach the resolved stop", async () => {
+  // The guard's own row. `assertArmBinds` asks the product what profile is in
+  // force and compares it with what the arm asked for; the two ways an arm goes
+  // inert are a stop the patches do not feed, and a patch that no longer lands.
+  const lib = require(path.join(__dirname, "..", "session-complxity-research", "spikes", "lib-core.cjs"));
+  assert.equal(typeof lib.assertArmBinds, "function", "the guard must be exported so it can be tested");
+  const shipped = { stop: "shipped", rootCap: 4, resolveCap: 8, totalTok: 300, memberCap: 24, dataShape: { D_MAX: 2, B_MAX: 4, N_MAX: 6, TOK_MAX: 200 }, crossFile: { D_MAX: 2, N_MAX: 12 } };
+  const probe = (profile, stopOnChannel = "shipped") => ({ rigProfile: () => profile, rigStopInForce: () => stopOnChannel });
+  assert.throws(
+    () => lib.assertArmBinds(probe({ ...shipped, stop: "small", rootCap: 8 }), "probe", { rootCap: 24 }),
+    /stop "small"/,
+    "an arm rendered at a stop the patched constants do not feed must throw, not run",
+  );
+  assert.throws(
+    () => lib.assertArmBinds(probe(shipped), "probe", { rootCap: 24 }),
+    /rootCap=24 and the product resolves rootCap=4/,
+    "an arm whose cap patch did not land must throw, not silently measure the shipped value",
+  );
+  // The behavioural half, and the one that catches the defect that started
+  // this: the table says `shipped` while the product's own channel says the
+  // entry point ran at the settings default, because nothing passed the stop.
+  assert.throws(
+    () => lib.assertArmBinds(probe({ ...shipped, rootCap: 24 }, "small"), "probe", { rootCap: 24 }),
+    /reports stop "small" on its own channel/,
+    "a bundle whose resolvePrefill renders at the setting's default must throw however good the table looks",
+  );
+  assert.doesNotThrow(
+    () => lib.assertArmBinds(probe({ ...shipped, rootCap: 24, totalTok: 4000 }), "probe", { rootCap: 24, totalTok: 4000 }),
+    "and an arm that DID bind must run",
   );
 });
 
