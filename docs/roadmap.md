@@ -427,6 +427,19 @@ Blocks a real decision: whether the settle loop is deleted outright. Until a col
 standing answer is keep the bound. A cold row's TOTAL is not comparable with a warm one and nobody
 should try; what the mode is for is the re-poll and recovery counters.
 
+**session-v51 gave this item its number, and it raises the stakes.** Go's pre-fill gate was re-run on
+both sides of a gather-breadth bound: p95 148ms and 139ms against a 118ms gate, down from 192ms and
+208ms, so Go still misses at about 1.2x. The residue is no longer distributed. Across 20 rows the
+per-primitive decomposition is **settle sleep 869ms, hover 210ms, members 80ms, definition 44ms**, and
+six rows sit at 120 to 126ms of sleep over 1 to 22ms of real server work.
+
+Derived from the measured columns of the same four runs: **with the sleep at zero the after side reads
+p95 71ms and 53ms**, a pass with margin, and the before side reads 68ms and 84ms. **The settle
+allowance is what fails this gate, on both sides of that build**, so no amount of walk work reaches it.
+
+So the decision this item blocks is now the only thing standing between Go and its gate. The standing
+answer is unchanged (keep the bound until a cold row exists); what is new is the cost of keeping it.
+
 Probe: `session-v50/probe/latency-baseline.cjs` in the private working repo.
 
 ### 46. Two frozen v21 rows model a cold answer no server gives, and a bound that killed their case passed them

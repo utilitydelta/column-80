@@ -32,7 +32,9 @@ import {
   SourceCursor,
   SurfaceExtractor,
   VSCODE_TEXT_KIND,
+  MemberSurfaceOptions,
   membersWithHoverSignatures,
+  hoverBackfillOptions,
   capReferences,
   dropDeclaration,
   vscodeReferenceLocations,
@@ -259,7 +261,11 @@ export class TsCommandExtractor implements SurfaceExtractor {
     }
   }
 
-  async membersOfType(defCursor: SourceCursor, budgetMs?: number): Promise<CompletionMember[]> {
+  async membersOfType(
+    defCursor: SourceCursor,
+    budgetMs?: number,
+    opts?: MemberSurfaceOptions,
+  ): Promise<CompletionMember[]> {
     // Document-symbol descent of the enclosing declaration (the product
     // transport's contract; the headless transport owns the checker-scoped,
     // inheritance-aware path). The shared skeleton skips nested containers;
@@ -285,9 +291,7 @@ export class TsCommandExtractor implements SurfaceExtractor {
         // limitation. The constructor is deliberately NOT filtered: it is the
         // only member carrying the type's construction arity, which is the
         // whole reason a caller asks for a type's members.
-        budgetMs === undefined
-          ? { keep: (m) => !m.name.startsWith("#") }
-          : { keep: (m) => !m.name.startsWith("#"), budgetMs },
+        hoverBackfillOptions(budgetMs, opts, { keep: (m) => !m.name.startsWith("#") }),
       );
       return members;
     } catch {

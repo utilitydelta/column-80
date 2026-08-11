@@ -44,7 +44,9 @@ import {
   ReferenceQuery,
   SourceCursor,
   SurfaceExtractor,
+  MemberSurfaceOptions,
   membersWithHoverSignatures,
+  hoverBackfillOptions,
   toReferenceLocations,
 } from "./extraction";
 import {
@@ -508,7 +510,36 @@ export class PyLspExtractor implements SurfaceExtractor {
     return firstEditOf(chosen.edit);
   }
 
-  async membersOfType(defCursor: SourceCursor, budgetMs?: number): Promise<CompletionMember[]> {
+  /** The raw document-symbol tree for a file, for a HEADLESS CALLER that has to
+   *  build a `ResolvedFunction` by hand.
+   *
+   *  Not part of `SurfaceExtractor` and not used by the product: in the editor
+   *  the span is resolved OUT of this tree, so `ResolvedFunction.symbols`
+   *  already carries it and the pre-fill's receiver leg reads it there. A rig
+   *  that assembles records from a manifest has no such tree, and the field's
+   *  own contract is that absent means "no tree" and the readers degrade. So the
+   *  leg goes dark silently, and the rig reports an empty surface as if the
+   *  product had produced one.
+   *
+   *  Measured on the session-v51 Python corpus: 71 of 80 product-source rows sit
+   *  inside a class, against 2 whose signature names a corpus type. The receiver
+   *  is the leg that carries Python, and it was the leg no Python row could
+   *  exercise. Same three lines as the C# and TypeScript transports carry, added
+   *  for the same reason and after the same symptom.
+   *
+   *  KIND NUMBERING IS THE LSP'S, not vscode's; the two differ by one, and every
+   *  transport's accessor answers in the LSP's so one translation in the rig
+   *  serves all of them. */
+  async documentSymbolsForTest(uri: string): Promise<unknown> {
+    await this.ready(uri);
+    return this.request("textDocument/documentSymbol", { textDocument: { uri } });
+  }
+
+  async membersOfType(
+    defCursor: SourceCursor,
+    budgetMs?: number,
+    opts?: MemberSurfaceOptions,
+  ): Promise<CompletionMember[]> {
     await this.ready(defCursor.uri);
     // documentSymbol is AST-syntactic (available once the file is open). The
     // Python role table keeps class-body Variables (attributes) and treats a
@@ -543,7 +574,7 @@ export class PyLspExtractor implements SurfaceExtractor {
       pyLspSymbolRole,
       toPySymbolMember,
       async (at) => (await this.hoverSurface(at))?.signature,
-      budgetMs === undefined ? {} : { budgetMs },
+      hoverBackfillOptions(budgetMs, opts),
     );
   }
 

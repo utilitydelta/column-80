@@ -32,7 +32,9 @@ import {
   SourceCursor,
   SurfaceExtractor,
   VSCODE_TEXT_KIND,
+  MemberSurfaceOptions,
   membersWithHoverSignatures,
+  hoverBackfillOptions,
   capReferences,
   dropDeclaration,
   vscodeReferenceLocations,
@@ -279,7 +281,11 @@ export class PyCommandExtractor implements SurfaceExtractor {
     }
   }
 
-  async membersOfType(defCursor: SourceCursor, budgetMs?: number): Promise<CompletionMember[]> {
+  async membersOfType(
+    defCursor: SourceCursor,
+    budgetMs?: number,
+    opts?: MemberSurfaceOptions,
+  ): Promise<CompletionMember[]> {
     // documentSymbol descent of the enclosing class. The headless transport
     // (src/core/pyLspExtractor.ts) runs the SAME backfill against pyright — it
     // used to be described here as owning its own signature path and owned
@@ -301,7 +307,7 @@ export class PyCommandExtractor implements SurfaceExtractor {
         pyVscodeSymbolRole,
         toPySymbolMember,
         async (at) => (await this.hoverSurface(at))?.signature,
-        budgetMs === undefined ? {} : { budgetMs },
+        hoverBackfillOptions(budgetMs, opts),
       );
     } catch {
       return [];

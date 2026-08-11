@@ -1111,6 +1111,21 @@ export function csShapeGraphBlock(
     }
     let methods = t.methods;
     if (methods.length === 0) {
+      // NOTHING TO RENDER IS STILL AN ANSWER, and the type is marked given.
+      //
+      // Two ways a type arrives here with no members: it genuinely has none, or
+      // a data-shape block upstream already printed every line it had and the
+      // caller shed them. Leaving it unmarked in either case means a LATER root
+      // that reaches the same type sheds nothing from it (an earlier walk has
+      // already claimed its def, so no def is rendered for it twice) and prints
+      // its whole member list, out of a budget the first root was released from.
+      // Measured by the session-v51 phase 0 review: a 4-field collaborator
+      // shared by eight roots was paid for twice, and the tail root lost the
+      // member list it had.
+      //
+      // Marking it costs nothing it would have rendered: the block this loop
+      // would have emitted is empty either way.
+      opts.visited.add(t.name);
       continue;
     }
     const total = methods.length;

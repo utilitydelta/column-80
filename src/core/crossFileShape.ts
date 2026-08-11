@@ -124,6 +124,37 @@ export interface DerivedType {
 export interface CrossFileBound {
   D_MAX: number;
   N_MAX: number;
+  /** The per-node FIELD fan-out the caller's renderer applies, when the caller
+   *  can prove its renderer will never use a child past it. OPT-IN, and absent
+   *  means the gather queues every field candidate, unchanged.
+   *
+   *  WHY IT EXISTS, measured (session-v51 phase 2, `session-v51/hover-A.txt`).
+   *  The gather buys one `definition()`, one hover and one `documentSymbol` per
+   *  collaborator. `walkDataShape`, which renders the block, walks at most
+   *  `B_MAX` distinct local field types per node - so on the real Go corpus 31
+   *  of 117 gathered types (26%) sat outside the RENDER'S OWN BFS and no budget
+   *  at any stop could ever have spent them. On `pgx.Conn` that is 11 of 26
+   *  types, and those round trips are not cheap: a hover into a package gopls
+   *  has not type-checked measured 71ms and 76ms where a warm one measures
+   *  0.15ms, so a type nobody will read can cost a package load.
+   *
+   *  THE RULE IS COMMIT-COUNTED, not queue-counted, and the difference is what
+   *  makes it surface-preserving. `walkDataShape` walks the first `B_MAX`
+   *  distinct LOCAL field types at a node, and local means "the gather emitted
+   *  it" - so a candidate that fails to resolve costs the renderer no slot. A
+   *  cap counted at push time would spend slots on failures and lose types the
+   *  render wanted; counted on the children that actually EMIT, the gather stops
+   *  at exactly the set the render can reach. Where the two can differ at all
+   *  they differ in the safe direction: a child another node emitted between the
+   *  push and the dequeue is skipped here without spending a slot, where the
+   *  render would have spent one, so the gather is a superset and never a
+   *  subset.
+   *
+   *  Only a caller whose renderer applies the same cap may pass it. C# renders a
+   *  MEMBER BLOCK for every type in the shape, reachable by the render's field
+   *  BFS or not, so C# would lose prompt bytes; it passes nothing. FIM passes
+   *  nothing either - it is not this session's to move. */
+  B_MAX?: number;
 }
 
 /** The derived shape: every reachable type keyed by name, plus the reachable
@@ -891,20 +922,24 @@ async function membersWithSettle(
   typeName: string,
   hadHover: boolean,
   allowance: SettleAllowance,
+  signatureCap: number | undefined,
 ): Promise<CompletionMember[]> {
+  // Undefined stays undefined rather than becoming a written-in default: the
+  // transport decides what a missing cap means, and only one of them has one.
+  const opts = signatureCap === undefined ? undefined : { signatureCap };
   const isCallable = (m: CompletionMember) => m.kind === "method" || m.kind === "function";
   const mayRepollHelp = (ms: CompletionMember[]) =>
     ms.length === 0 ||
     ms.some((m) => m.signature === undefined && isCallable(m) && !isConstructionMember(m.name, typeName)) ||
     ms.some((m) => m.signature !== undefined && isConstructionMember(m.name, typeName));
-  let members = (await safe(extractor.membersOfType(cursor))) ?? [];
+  let members = (await safe(extractor.membersOfType(cursor, undefined, opts))) ?? [];
   for (let i = 0; i < 3 && hadHover && renderMethods(members, typeName).length === 0 && mayRepollHelp(members); i++) {
     if (allowance.memberMs < SETTLE_STEP_MS) {
       break; // the gesture has spent its settle budget; this type takes what it has
     }
     allowance.memberMs -= SETTLE_STEP_MS;
     await delay(SETTLE_STEP_MS);
-    members = (await safe(extractor.membersOfType(cursor))) ?? [];
+    members = (await safe(extractor.membersOfType(cursor, undefined, opts))) ?? [];
   }
   return members;
 }
@@ -950,6 +985,14 @@ export async function resolveCrossFileShape(
   // a fresh allowance per walk, which is what a single-walk caller and the
   // headless probe want.
   settle?: SettleAllowance,
+  // How many of a type's members may buy a hover to recover their signature.
+  // OPT-IN, and the scope boundary is the same one `visibility` above draws:
+  // this resolver serves the FIM whole-block injection as well as the pre-fill,
+  // and FIM spends its latency against a keystroke deadline where the pre-fill
+  // spends it against a gesture a developer is waiting on. Omitted means
+  // `HOVER_SIGNATURE_CAP`, so FIM does not move; `resolvePrefill` passes
+  // `PREFILL_HOVER_SIGNATURE_CAP`. See both constants for the measurement.
+  signatureCap?: number,
 ): Promise<CrossFileShape> {
   const parseFields = hooks?.parseFields ?? parseStructHoverFields;
   const anchorFieldType = hooks?.fieldTypeCursor ?? fieldTypeCursor;
@@ -1046,9 +1089,19 @@ export async function resolveCrossFileShape(
   // provenance predicate (a std-target alias ships its one-line hover and the
   // chase is refused), and an alias reached THROUGH an alias is never chased
   // again - single hop, so a transitive alias chain stops honestly at tier 1.
-  const queue: Array<{ refSite: SourceCursor; depth: number; name: string; viaAlias?: boolean }> = [
-    { refSite: rootSite, depth: 0, name: root },
-  ];
+  const queue: Array<{
+    refSite: SourceCursor;
+    depth: number;
+    name: string;
+    viaAlias?: boolean;
+    // The type whose FIELD queued this entry, for `bound.B_MAX`. Absent on the
+    // root, on a signature edge and on an alias chase: those three are not field
+    // fan-out and the renderer's breadth cap does not speak for them.
+    parent?: string;
+  }> = [{ refSite: rootSite, depth: 0, name: root }];
+  // parent name -> how many of its field children have EMITTED. See
+  // `CrossFileBound.B_MAX` for why the count is on commits and not on pushes.
+  const emittedChildren = new Map<string, number>();
 
   // ONE GESTURE, ONE SETTLE ALLOWANCE, spent in resolution order. The queue is
   // FIFO from the root, so the root and its nearest collaborators get first call
@@ -1058,17 +1111,31 @@ export async function resolveCrossFileShape(
   const settleAllowance = settle ?? freshSettleAllowance();
 
   while (queue.length > 0) {
-    const { refSite, depth, name, viaAlias } = queue.shift() as {
+    const { refSite, depth, name, viaAlias, parent } = queue.shift() as {
       refSite: SourceCursor;
       depth: number;
       name: string;
       viaAlias?: boolean;
+      parent?: string;
     };
     if (visited.has(name)) {
       continue; // already emitted via another path
     }
     if (types.size >= bound.N_MAX) {
       droppedSet.add(name); // total-type cap: named, never silent
+      continue;
+    }
+    // THE RENDERER'S OWN FAN-OUT CAP, APPLIED BEFORE THE ROUND TRIPS RATHER THAN
+    // AFTER THEM. This parent has already emitted every child the caller's
+    // renderer can walk, so resolving this one buys a definition, a hover and a
+    // documentSymbol for a type nothing downstream can spend. Recorded as a drop,
+    // never silent - it is a reachable type that did not make the shape.
+    if (
+      bound.B_MAX !== undefined &&
+      parent !== undefined &&
+      (emittedChildren.get(parent) ?? 0) >= bound.B_MAX
+    ) {
+      droppedSet.add(name);
       continue;
     }
 
@@ -1106,7 +1173,7 @@ export async function resolveCrossFileShape(
     // in hand — resolving them twice would be a second chance to disagree.
     let resolvedMembers: readonly CompletionMember[] = [];
     if (defText !== undefined) {
-      const members = await membersWithSettle(extractor, defCursor, name, hover !== undefined, settleAllowance);
+      const members = await membersWithSettle(extractor, defCursor, name, hover !== undefined, settleAllowance, signatureCap);
       // TWO PASSES, and they stay two. Visibility asks whether the target may
       // call the member at all and KEEPS when it cannot tell; role asks whether
       // the member belongs on THIS target's surface and drops a public instance
@@ -1276,6 +1343,9 @@ export async function resolveCrossFileShape(
     }
 
     visited.add(name);
+    if (parent !== undefined) {
+      emittedChildren.set(parent, (emittedChildren.get(parent) ?? 0) + 1);
+    }
     const emittedType: DerivedType = { name, signature, fields, methods, methodsResolved, defUri: defLoc.uri };
     // Carried on the type rather than logged here: this function has no channel,
     // and the renderer that drops these members is the one that must say so.
@@ -1375,7 +1445,12 @@ export async function resolveCrossFileShape(
         }
         const cur = bodyRange ? anchorFieldType(defLines, bodyRange, f.name, cand) : undefined;
         if (cur) {
-          queue.push({ refSite: { uri: defLoc.uri, line: cur.line, character: cur.character }, depth: depth + 1, name: cand });
+          queue.push({
+            refSite: { uri: defLoc.uri, line: cur.line, character: cur.character },
+            depth: depth + 1,
+            name: cand,
+            parent: name,
+          });
         } else {
           droppedSet.add(cand); // could not anchor the field's own type token — never silent
         }

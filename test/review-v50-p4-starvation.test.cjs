@@ -34,27 +34,65 @@
 // has always cost prompt bytes here. The v42 mechanism - shape discarded before
 // the prompt - was a Go fact, and it does not transfer.
 //
-// MEASURED 2026-08-11, 8 types, `small` stop (the install default), aggregate
-// budget 600 tok, member cap 48, root cap 8:
+// C#'s COLUMN MOVED IN session-v51, AND THE NUMBERS BELOW ARE THE MOVED ONES.
+// Read them as post-v51, not as v50's. session-v51 phase 0 (session-v51/
+// contract-phase0.md) changed how the shared per-prompt aggregate is apportioned
+// in C#, and only in C#: `resolvePrefill` now prices the WHOLE prompt's member
+// blocks before the first shape block renders, and a shape block may only spend
+// what is left over that price plus what its own type's member block will shed
+// once the shape block has printed those fields. A walk that cannot repay what
+// it spent is refused whole and refunded. Python's column and Go's are untouched
+// by that change, because neither language's member half spends this aggregate.
+// Every Python width v50 recorded re-measures to the same byte here, which is
+// the out-of-scope clause of the contract holding.
 //
-//   C#           | before | after | shapes | member blocks | neither
-//   1 field      |   1324 |  2004 |      8 |             8 |       0
-//   10 fields    |   2212 |  3180 |      8 |             8 |       0
-//   15 fields    |   2724 |  3191 |      7 |             6 |       1
-//   30 fields    |   2742 |  2950 |      4 |             3 |       4
+// RE-MEASURED 2026-08-11 after that change, 8 types, `small` stop (the install
+// default), aggregate budget 600 tok, member cap 48, root cap 8. Both sides
+// re-run, at every width the file quotes:
 //
-//   Python       | before | after | shapes | member blocks | neither
-//   1 field      |   1448 |  2104 |      8 |             8 |       0
-//   10 fields    |   2168 |  3112 |      8 |             8 |       0
-//   25 fields    |   3368 |  4436 |      6 |             8 |       0
-//   30 fields    |   3768 |  4758 |      5 |             8 |       0
+//   C#           | before | after | shapes | member blocks, before -> after | neither
+//   1 field      |   1324 |  2004 |      8 |                      8 -> 8    |       0
+//   10 fields    |   2212 |  3180 |      8 |                      8 -> 8    |       0
+//   15 fields    |   2724 |  2724 |      0 |                      8 -> 8    |       0
+//   20 fields    |   2482 |  2804 |      2 |                      6 -> 6    |       2
+//   25 fields    |   2437 |  2799 |      2 |                      5 -> 5    |       3
+//   30 fields    |   2742 |  2742 |      0 |                      5 -> 5    |       3
+//
+//   Python       | before | after | shapes | member blocks, before -> after | neither
+//   1 field      |   1448 |  2104 |      8 |                      8 -> 8    |       0
+//   10 fields    |   2168 |  3112 |      8 |                      8 -> 8    |       0
+//   15 fields    |   2568 |  3672 |      8 |                      8 -> 8    |       0
+//   20 fields    |   2968 |  4232 |      8 |                      8 -> 8    |       0
+//   25 fields    |   3368 |  4436 |      6 |                      8 -> 8    |       0
+//   30 fields    |   3768 |  4758 |      5 |                      8 -> 8    |       0
+//
+// THE `neither` COLUMN IS NOT A LOSS. It counts types the prompt left with no
+// block at all, and in C# from 20 fields up the BEFORE side leaves exactly the
+// same types with nothing. At 20 fields a member block costs 354 chars and eight
+// of them do not fit an aggregate of 2400, so `Golfs` and `Hotel` were already
+// empty-handed before any shape block existed, and the blocks only get bigger at
+// 25 and 30. No type is emptied by the field leg at any width here.
+//
+// WHY THE C# SHAPE COUNT IS NOT MONOTONE - 8 shapes at 10 fields, 0 at 15, 2 at
+// 20, 0 at 30 - and it is the floor's arithmetic, not a wobble. What a shape
+// block may spend is the aggregate MINUS the price of the member blocks still
+// owed, plus what its own member block sheds. At 15 fields all eight member
+// blocks still fit (8 x 293 = 2344 of 2400), so the surplus is 56 chars and no
+// walk can afford a complete def. At 20 and 25 fields the member half alone
+// overruns the aggregate, only six then five member blocks are priced at all,
+// and the unpriced tail leaves 276 then 310 chars of genuine surplus, which buys
+// two complete shape blocks. At 30 fields five blocks price at 2395 of 2400 and
+// the surplus is 5 chars, so nothing renders again.
 //
 // THE VERDICT, per language, is in the rows below. Python matches Go: starvation
 // is reachable at 25 fields x 8 types, every starved type is named twice, and
-// every starved type keeps its FULL member block. C# does not: from 15 fields x
-// 8 types it loses member blocks the pre-leg render delivered, and past 25 it
-// hands whole types NEITHER block. That is a defect against the product's own
-// stated guard, and P4-7 is RED with the evidence.
+// every starved type keeps its FULL member block. C# now matches them on the
+// thing that matters and pays for it in shape blocks: at no width does a type
+// lose a member block, a member line, or its last block, and at 15 and 30 fields
+// the post-leg prompt is byte-identical to the pre-leg prompt because every walk
+// was refused. What C# starves is the DATA SHAPE, at every width from 15 up, and
+// every starved type is named twice on the channel. P4-7 is the guard and it is
+// GREEN.
 //
 // Run: SKIP_LIVE=1 node --test test/review-v50-p4-starvation.test.cjs
 
@@ -439,20 +477,51 @@ btest("P4-2 [python]: the same, in Python - the before column moves too, and the
 // P4-3 / P4-4. IS STARVATION REACHABLE, AND AT WHAT SHAPE?
 // ===========================================================================
 
-btest("P4-3 [csharp]: starvation is REACHABLE - 8 types x 15 fields already leaves one type with nothing, and 8 x 30 leaves four", async () => {
+// P4-3 KEEPS ITS QUESTION - is starvation reachable in C#, and at what shape -
+// and RE-CUTS ITS ANSWER, because session-v51 phase 0 moved the answer. Under
+// v50 the answer was "reachable at 15 fields, and what it takes is a member
+// block". Under the member floor it is "reachable at 15 fields, and what it
+// takes is only ever the data-shape block".
+btest("P4-3 [csharp]: starvation is REACHABLE and the DATA SHAPE is the only thing it takes - at 8 x 15 no shape block renders at all and the prompt is the pre-leg prompt, byte for byte", async () => {
+  const b15 = await measure(csFixture, 15, "other");
   const w15 = await measure(csFixture, 15, "field");
-  assert.equal(w15.shaped.length, 7, `7 of 8 types get a shape block at 15 fields.${dump(w15)}`);
-  assert.deepEqual(w15.starved, ["Hotel"], `the starve falls on the TAIL, in priority order.${dump(w15)}`);
-  assert.deepEqual(w15.neither, ["Hotel"], `and at this width one type is already in the prompt with neither block.${dump(w15)}`);
+  assert.equal(w15.shaped.length, 0, `not one of the 8 types can afford a shape block at 15 fields.${dump(w15)}`);
+  assert.deepEqual(w15.starved, NAMES, `so all eight are shape-starved.${dump(w15)}`);
+  assert.deepEqual(w15.membered, NAMES, `and all eight keep the member block the pre-leg render gave them.${dump(w15)}`);
+  assert.deepEqual(w15.neither, [], `no type is left in the prompt with nothing.${dump(w15)}`);
+  // THE STRONGEST FORM OF "THE LEG COST THEM NOTHING": every walk was refused
+  // and refunded, so the post-leg prompt IS the pre-leg prompt. A refund that
+  // leaked a byte would show up here before it showed up as a lost member block.
+  assert.equal(w15.bytes, 2724, `after the leg, 8 types x 15 fields.${dump(w15)}`);
+  assert.equal(b15.bytes, 2724, `before the leg, the same 8 x 15.${dump(b15)}`);
+  assert.equal(w15.text, b15.text, `and the two prompts are byte-identical, not merely the same length.${dump(w15)}`);
 
-  const w30 = await measure(csFixture, 30, "field");
-  assert.deepEqual(w30.shaped, ["Alpha", "Bravo", "Chart", "Delta"], `4 of 8 get a shape block at 30 fields.${dump(w30)}`);
-  assert.deepEqual(w30.starved, ["Echos", "Foxes", "Golfs", "Hotel"], `the tail four are starved.${dump(w30)}`);
+  // 20 fields is where the aggregate has real surplus to spend, because the
+  // member half alone no longer fits and only six member blocks are priced.
+  const b20 = await measure(csFixture, 20, "other");
+  const w20 = await measure(csFixture, 20, "field");
+  assert.deepEqual(w20.shaped, ["Alpha", "Bravo"], `2 of 8 get a shape block at 20 fields.${dump(w20)}`);
+  assert.deepEqual(w20.starved, ["Chart", "Delta", "Echos", "Foxes", "Golfs", "Hotel"], `the tail six are shape-starved.${dump(w20)}`);
+  assert.deepEqual(w20.membered, b20.membered, `and the member blocks are exactly the ones the pre-leg render had.${dump(w20)}`);
+  // The two empty-handed types were empty-handed BEFORE the leg: eight member
+  // blocks of 354 chars do not fit 2400. This is the aggregate binding on the
+  // member half, which it did before this session, and not a starve.
+  assert.deepEqual(w20.neither, ["Golfs", "Hotel"], `two types carry no block at all at this width.${dump(w20)}`);
+  assert.deepEqual(b20.neither, w20.neither, `and the pre-leg render left exactly the same two with nothing.${dump(b20)}`);
 
   // The S39-1 shape - the ROOT gutted while later types render in full - still
-  // does not land. The budget is spent in priority order.
-  assert.equal(w30.fieldsIn("Alpha"), 30, `the highest-priority type's def survives WHOLE.${dump(w30)}`);
-  assert.equal(/\.\.\.\s+\d+\s+more fields/.test(w30.text), false, `and nothing rendered is a truncated stub.${dump(w30)}`);
+  // does not land. The budget is spent in priority order, and a walk that cannot
+  // print a complete def is refused rather than shipped as a stub.
+  assert.equal(w20.fieldsIn("Alpha"), 20, `the highest-priority type's def survives WHOLE.${dump(w20)}`);
+  assert.equal(/\.\.\.\s+\d+\s+more fields/.test(w20.text), false, `and nothing rendered is a truncated stub.${dump(w20)}`);
+
+  // 30 fields: back to no shape block anywhere, and back to the pre-leg prompt.
+  const b30 = await measure(csFixture, 30, "other");
+  const w30 = await measure(csFixture, 30, "field");
+  assert.deepEqual(w30.shaped, [], `no shape block is affordable at 30 fields.${dump(w30)}`);
+  assert.deepEqual(w30.membered, b30.membered, `the member blocks are the pre-leg render's, unchanged.${dump(w30)}`);
+  assert.equal(w30.bytes, 2742, `after the leg, 8 types x 30 fields.${dump(w30)}`);
+  assert.equal(w30.text, b30.text, `and this prompt is byte-identical to the pre-leg one too.${dump(w30)}`);
 });
 
 btest("P4-4 [python]: starvation is REACHABLE - 8 types x 25 fields starves two, 8 x 30 starves three", async () => {
@@ -521,13 +590,20 @@ btest("P4-5 [python]: MATCHES GO - every starved type is named twice, and every 
   }
 });
 
+// P4-6 KEEPS ITS QUESTION - is every loss disclosed - and RE-CUTS ITS ANSWER,
+// for two reasons, both of them session-v51 phase 0's doing. The channel gained
+// a word: a walk refused by the member floor logs `refused`, not `dropped`, and
+// a row matching only v50's vocabulary would pass a silent starve. And the set
+// under measurement changed: at 30 fields no type renders a shape block now, so
+// every one of the eight is a loss to disclose, where v50 measured five.
 btest("P4-6 [csharp]: every C# type that loses surface IS named on the channel - the starve is not silent", async () => {
+  const b30 = await measure(csFixture, 30, "other");
   const w30 = await measure(csFixture, 30, "field");
   const lost = NAMES.filter((n) => !w30.shaped.includes(n) || !w30.membered.includes(n));
-  assert.deepEqual(lost, ["Delta", "Echos", "Foxes", "Golfs", "Hotel"], `precondition: five types lose surface at this width.${dump(w30)}`);
+  assert.deepEqual(lost, NAMES, `precondition: at this width every type loses surface it could have had.${dump(w30)}`);
   for (const n of lost) {
     assert.ok(
-      w30.logs.some((l) => l.includes(`\`${n}\``) && /dropped|exhausted|injected nothing/.test(l)),
+      w30.logs.some((l) => l.includes(`\`${n}\``) && /dropped|exhausted|injected nothing|refused/.test(l)),
       `\`${n}\` lost surface and nothing on the channel says so. A silent starve is the defect the ruling forbids.${dump(w30)}`,
     );
   }
@@ -535,44 +611,72 @@ btest("P4-6 [csharp]: every C# type that loses surface IS named on the channel -
   assert.ok(agg, `an aggregate accounting line must name the starve.\nLOGS:\n${w30.logs.join("\n")}`);
   for (const n of w30.starved) assert.ok(agg.includes(n), `the aggregate line names every SHAPE-starved type.\nLINE: ${agg}`);
   assert.match(agg, /column80\.injectedContext/, `and names the setting that buys them back.\nLINE: ${agg}`);
-  // The disclosure asymmetry against Python and Go, recorded here rather than
-  // asserted as the defect: `Delta` keeps a shape block and loses its MEMBER
-  // block, and that loss appears only on the per-block line. The aggregate
-  // ledger counts types dropped ENTIRELY, so it does not carry it, and a
-  // developer reading the one summary line is told four types were dropped when
-  // five lost surface.
-  assert.equal(agg.includes("Delta"), false, `recorded, not asserted as the defect: the aggregate line does not carry a member-only loss.\nLINE: ${agg}`);
+  // THE CAUSE IS NAMED, not just the type. Five of the eight lost their shape to
+  // the member floor and three to the aggregate running out, and the ledger says
+  // which is which, so a developer can tell "raise the setting" from "the member
+  // lists already have it".
+  assert.match(agg, /member lists hold the rest of the budget/, `the floor's own drop cause reaches the aggregate line.\nLINE: ${agg}`);
+  assert.match(agg, /render budget 0 tok left of the prompt's shared aggregate/, `and so does the plain budget cause.\nLINE: ${agg}`);
+
+  // THE v50 ASYMMETRY IS GONE, and this is what closes it rather than papers
+  // over it. v50 recorded that `Delta` kept a shape block, lost its MEMBER block,
+  // and that the aggregate ledger could not carry that loss because it counts
+  // types dropped entirely. Under the member floor there is no member-only loss
+  // to carry, at this width or any other, so the ledger is complete again.
+  assert.deepEqual(
+    b30.membered.filter((n) => !w30.membered.includes(n)),
+    [],
+    `no type suffers a member-only loss, so nothing falls through the aggregate ledger.${dump(w30)}`,
+  );
+
+  // THE MIXED WIDTH, where both causes fire and two types are not losses at all.
+  const w20 = await measure(csFixture, 20, "field");
+  const agg20 = w20.logs.find((l) => /injected context dropped/.test(l));
+  assert.ok(agg20, `an aggregate accounting line at 20 fields too.\nLOGS:\n${w20.logs.join("\n")}`);
+  for (const n of w20.starved) assert.ok(agg20.includes(n), `the aggregate line names \`${n}\`.\nLINE: ${agg20}`);
+  for (const n of w20.shaped) {
+    assert.equal(agg20.includes(n), false, `\`${n}\` rendered both blocks and must not be reported as dropped.\nLINE: ${agg20}`);
+  }
 });
 
-// P4-7 IS RED ON PURPOSE. It is a defect claim with its evidence, not a
-// regression in this file.
+// P4-7 WAS RED ON PURPOSE FOR A SESSION AND IS NOW GREEN. Its name and its
+// failure message are v50's, kept verbatim rather than reworded, because it is
+// the ship condition session-v51 phase 0 was written against and a diff of it
+// should show nothing. Read the name as the question it asks, not as a claim
+// about today's build: it passes, so the answer is that a starved C# type DOES
+// keep its member block.
 //
-// WHAT IS WRONG. `csShapeBlock`'s own doc comment states the guard it inherited
-// from Go, in these words: "no shape block for a type means its member list is
-// byte-identical to today (a walk that resolved nothing must not cost a
-// developer the list they have)". The C# member blocks are rendered through
-// `csShapeGraphBlock` with `budget = { remaining: sharedWalk.remainingChars }`,
-// so they spend the SAME aggregate the shape blocks now spend first. Go's
-// member half never touches that budget and Python's does not either, which is
-// why both of them keep the guard and C# does not.
+// WHAT WAS WRONG, and it is worth keeping written down. C# member blocks render
+// through `csShapeGraphBlock` with `budget = { remaining: sharedWalk.remainingChars }`,
+// so they spend the SAME per-prompt aggregate the shape blocks spend, and the
+// shape blocks spent it first. Go's member half never touches that budget and
+// Python's does not either, which is why both of them held the guard and C# did
+// not.
 //
-// THE MEASUREMENT. 8 types, `small` stop, one method and N fields each:
+// WHAT FIXED IT. session-v51 phase 0: `resolvePrefill` prices the whole prompt's
+// member blocks before the render loop starts and parks the total as a floor. A
+// shape block may spend the surplus above that floor, plus what its own type's
+// member block will shed once the shape block has printed those fields, and a
+// walk that cannot repay what it spent is refused whole and refunded. The
+// apportionment had to live in the caller: the aggregate is spent ACROSS ROOTS,
+// so a reservation taken inside `csShapeBlock` arrives after earlier roots have
+// already taken the budget, which is the version session-v50 built and reverted.
+//
+// THE MEASUREMENT, re-run on both sides 2026-08-11 after that change. 8 types,
+// `small` stop, one method and N fields each:
 //
 //   fields/type | before: member blocks | after: shapes | after: member blocks
 //   10          |                     8 |             8 |                    8
-//   15          |                     8 |             7 |                    6
-//   20          |                     6 |             6 |                    5
-//   30          |                     5 |             4 |                    3
+//   15          |                     8 |             0 |                    8
+//   20          |                     6 |             2 |                    6
+//   25          |                     5 |             2 |                    5
+//   30          |                     5 |             0 |                    5
 //
-// At 15 fields the pre-leg render gave all eight types their member list and the
-// post-leg render gives six. `Hotel` is starved of its shape AND stripped of the
-// member block it had before, so it sits in the prompt with nothing at all. That
-// is the exact trade the ruling forbids: the member list a developer has today
-// is the thing that is lost.
-//
-// It is not the fixture being extreme. The knee moved: C#'s member blocks were
-// already budget-bound before this session, from 20 fields x 8 types, and the
-// shape blocks moved that wall down to 15.
+// The before and after member columns are equal at every width, which is the
+// guard. What moved is the shape column, and it moved DOWN: at 15 and 30 fields
+// no C# shape block renders at all where v50 rendered seven and four. That is
+// the price of the floor and it is one-directional by design. The shape block is
+// new surface; the member list is surface a developer already reads.
 btest("P4-7 [csharp] DEFECT: a C# type starved of its data shape does NOT keep its member block - the guard Go and Python both hold", async () => {
   const before = await measure(csFixture, 15, "other");
   const after = await measure(csFixture, 15, "field");

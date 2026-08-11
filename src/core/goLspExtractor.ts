@@ -349,6 +349,22 @@ export class GoLspExtractor implements SurfaceExtractor {
     }
   }
 
+  /** The raw document-symbol tree for a file, for a HEADLESS CALLER that has to
+   *  build a `ResolvedFunction` by hand. The Python transport's twin, added in
+   *  the same change and for the same reason: in the editor the span is resolved
+   *  OUT of this tree so `ResolvedFunction.symbols` already carries it, and a rig
+   *  assembling records from a manifest has no tree, so the pre-fill's receiver
+   *  leg degrades to "no tree" and reports an empty surface as a product answer.
+   *
+   *  Go's own rows were never measured with the receiver leg lit, so this is a
+   *  capability rather than a fix to a measured number: whether it moves a Go
+   *  arm is unmeasured and must not be assumed.
+   *
+   *  KIND NUMBERING IS THE LSP'S, not vscode's. */
+  async documentSymbolsForTest(uri: string): Promise<unknown> {
+    return this.request("textDocument/documentSymbol", { textDocument: { uri } });
+  }
+
   async membersOfType(defCursor: SourceCursor): Promise<CompletionMember[]> {
     const symbols = await this.request("textDocument/documentSymbol", {
       textDocument: { uri: defCursor.uri },

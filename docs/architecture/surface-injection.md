@@ -178,6 +178,31 @@ Item 8's fixes, all whole-block-only, all in `renderWholeBlockInjection` / `memb
 - **C#.** `renderWholeBlockInjection` charges the header and every `// ` prefix against the budget (no more overrun), keeps each struct def atomic (never split mid-body), and places each root's methods after the def whose NAME is that root - so a member named identically on two types attributes to its own type. The function being written is not listed as a type in play.
 - **Rust** whole-block stays methods-only here: the field cap is the user's rust-analyzer `hover.show.fields` (offered a one-click lift, above), and whole-block field rendering was left out of item 8's scope.
 
+**session-v51 split the count cap, and measured away its second justification.** The constant above is
+FIM's and stays 32: it is spent against a keystroke, and what the 50ms window does not deliver is gone.
+`PREFILL_HOVER_SIGNATURE_CAP` is 48 and is the pre-fill path's, a gesture a developer asked for and
+waits on. The caller says which path it is through `membersOfType`'s optional `MemberSurfaceOptions`
+and `resolveCrossFileShape`'s optional `signatureCap`; both are opt-in, so every caller that passes
+nothing behaves exactly as before and FIM does not move. 48 is sized to the real Python population: 32
+cuts 6 members off one class of eleven, 48 cuts nothing anywhere.
+
+The cap's OTHER justification, that a count cap protects the SERVER because the fan-out's race abandons
+the result and not the work, is measured FALSE on pyright. A 400-hover fan-out costs 13ms, so the 50ms
+deadline never cuts, nothing is ever abandoned, and the next request costs 0ms whether 4 or 400 asks
+preceded it. Warm, headless pyright; TypeScript is the slower server and is untested, which is where a
+deadline would cut first. Probe: `session-v51/probe/count-cap-cost.cjs` in the private working repo.
+
+**A headless caller needs the document-symbol tree, and four transports could not give it.** The
+product resolves a target's span OUT of that tree, so `ResolvedFunction.symbols` carries it and the
+pre-fill's receiver leg reads it there. A rig that builds records from a manifest has no tree, and the
+field's contract is that absent means "no tree" and the readers degrade. The leg then goes dark
+SILENTLY and an empty surface reads as a product answer. `documentSymbolsForTest` existed on the Rust,
+TypeScript and C# test transports and now exists on the Python and Go ones too. What it cost while
+missing: a Python compile arm reported 39 of 40 rows resolving a zero-byte surface, which read as a
+fact about Python; with the tree supplied, 35 of 40 resolve a real surface and the arm went 13/40 to
+35/40. Kind numbering is the LSP's on every accessor, and vscode's differs by one, so a raw tree reads
+`Class(5)` as `Method(5)` and the leg stays dark while looking like it ran.
+
 One trade item 8 did NOT settle: after the field cap is lifted, `renderWholeBlockInjection`'s 1200-char budget evicts method signature lines to make room for fields, and whether the evicted methods were worth more than the fields is unmeasured. Deciding it needs a method-recall oracle - completions at sites whose body CALLS a method - run against the live model; the field-recall corpus is blind to the trade by construction. Delegated, not built on faith.
 
 The 50ms `INJECTION_DEADLINE_MS` is NOT the problem and should not be raised. Warm, every language clears it (p50 6-20ms, p95 12-27ms, zero of twenty samples over 50 in any language). What bites is the window before warm, where the resolver returns zero or a partial set: TypeScript 2.0s, Python 2.1s, Rust 4.9s, **C# 6.7s** because Roslyn loads projects lazily.

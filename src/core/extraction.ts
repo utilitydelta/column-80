@@ -312,6 +312,17 @@ export interface TypeNameHint {
   fileText?: string;
 }
 
+/** What the CALLER of `membersOfType` knows that the transport cannot: which
+ *  path the answer is for. Additive and optional, so a caller that passes
+ *  nothing gets the behaviour it always got. */
+export interface MemberSurfaceOptions {
+  /** How many members may buy a hover to recover their signature. Absent means
+   *  `HOVER_SIGNATURE_CAP`, the keystroke-deadline number; the pre-fill path
+   *  passes `PREFILL_HOVER_SIGNATURE_CAP`. See both constants for why they are
+   *  two numbers and not one. */
+  signatureCap?: number;
+}
+
 /** The language-pluggable seam: six primitives every language implements.
  *  Rust rides rust-analyzer (raExtractor / raLspClient); TypeScript rides the
  *  TS language service (tsExtractor / tsLsExtractor), same interface. */
@@ -355,8 +366,17 @@ export interface SurfaceExtractor {
    *  servers leave documentSymbol `detail` empty spend it on the hover fan-out
    *  that recovers the argument lists, and return the members that answered
    *  inside it rather than overrunning and losing the whole set. Absent means
-   *  the caller is not racing anything. */
-  membersOfType(defCursor: SourceCursor, budgetMs?: number): Promise<CompletionMember[]>;
+   *  the caller is not racing anything.
+   *
+   *  `opts.signatureCap` is HOW MANY members may buy a hover, and it exists
+   *  because the caller is the only one who knows which path this is. The
+   *  transports have never been able to tell a keystroke-deadline FIM injection
+   *  from a gesture a developer is waiting on, so both spent the tighter
+   *  number. Absent keeps `HOVER_SIGNATURE_CAP`, so every caller that does not
+   *  pass it behaves byte for byte as before. The three transports whose servers
+   *  populate documentSymbol `detail` (Roslyn, rust-analyzer, gopls) ask no
+   *  hovers at all and ignore it. */
+  membersOfType(defCursor: SourceCursor, budgetMs?: number, opts?: MemberSurfaceOptions): Promise<CompletionMember[]>;
   /** OPTIONAL, workspace-symbol leg: resolve a bare type NAME to the cursor at
    *  its DEFINITION's name token, with NO in-span or same-file cursor required.
    *  For a collaborator named only in a doc-comment and defined in another file
@@ -1074,6 +1094,60 @@ export function enclosingTypeName(
  *  the omission is silent rather than wrong. */
 export const HOVER_SIGNATURE_CAP = 32;
 
+/** The same cap on the PRE-FILL path, which is a different path with a different
+ *  clock, ruled 2026-08-11 and split from the constant above rather than moving
+ *  it.
+ *
+ *  WHY THE TWO CANNOT SHARE A NUMBER. The constant above is spent against a
+ *  KEYSTROKE: the FIM whole-block injection races a 50ms window while a
+ *  developer is typing, and everything it does not deliver inside that window is
+ *  gone. The pre-fill path is spent against a GESTURE a developer explicitly
+ *  asked for and then waits on, and its own legs already cost hundreds of
+ *  milliseconds. The two clocks are orders apart (`injection-legs-differ-by-orders`),
+ *  and one number serving both was serving the tighter one.
+ *
+ *  WHY 48, MEASURED. Against the real Python population (11 classes across
+ *  `mcp-graph-engine` and `debate-event-store`), 32 cuts 6 members off exactly
+ *  one class, `GraphEngine` at 38, and 48 cuts nothing anywhere. It is sized to
+ *  the population it serves, and it is not the latency bound either: the asks
+ *  race one shared `HOVER_FANOUT_BUDGET_MS` deadline rather than running in
+ *  sequence, and the whole 32-member fan-out on that class measures 4ms warm.
+ *
+ *  WHY A COUNT CAP SURVIVES A TIME CAP AT ALL, which is the question the split
+ *  raises and which was answered with prose until 2026-08-11. The reasoning was:
+ *  the time bound protects the DEVELOPER and nothing protects the SERVER, since
+ *  `withinBudget` races each ask against a shared deadline and abandons the
+ *  RESULT, not the WORK, so every request it gave up on is still queued and
+ *  still competes with whatever the editor asks for next.
+ *
+ *  MEASURED, and it does not hold on the one server that can be driven here.
+ *  `session-v51/probe/count-cap-cost.cjs` runs two alternating arms against a
+ *  real pyright, timing the NEXT request (a hover in a different file) that
+ *  lands the instant a fan-out returns:
+ *
+ *    class            arm      fan-out   next request (median / p95 / max)
+ *    GraphEngine, 38  cap 4      1ms       0ms / 1ms / 1ms
+ *    GraphEngine, 38  cap 64     3ms       0ms / 1ms / 1ms
+ *    synthetic, 400   cap 4      4ms       0ms / 1ms / 1ms
+ *    synthetic, 400   cap 400   14ms       0ms / 1ms / 1ms
+ *
+ *  400 hovers cost 14ms, so the 50ms deadline never cuts and nothing is ever
+ *  abandoned: the hazard the count cap exists for is UNREACHABLE on this server
+ *  at any population, real or synthetic. On pyright the cap is bounding
+ *  something that costs nothing.
+ *
+ *  What that does NOT settle, said plainly rather than left implied: the numbers
+ *  are WARM (roadmap item 45 owns the cold row), they are headless pyright and
+ *  not Pylance, and TypeScript's fan-out lives in the vscode transport, which
+ *  needs a real extension host and was not measured. tsserver is the slower of
+ *  the two and is where a deadline would cut first. So the cap stays, sized to
+ *  the population, and its server-load justification is measured false on
+ *  Python and untested on TypeScript.
+ *
+ *  With a field walk live, every capped member is a lost EDGE and not only a
+ *  lost line, so the cost of leaving the cap low is higher than it was. */
+export const PREFILL_HOVER_SIGNATURE_CAP = 48;
+
 /** How long one `membersOfType` call may spend on its hover fan-out before it
  *  returns what has answered and leaves the rest bare.
  *
@@ -1124,6 +1198,29 @@ export interface HoverBackfillOptions {
   cap?: number;
   /** Override HOVER_FANOUT_BUDGET_MS. */
   budgetMs?: number;
+}
+
+/** The one place a transport turns its two optional `membersOfType` arguments
+ *  into fan-out options. Four transports would otherwise each spell the same
+ *  three-way merge, and a fifth added later would spell it differently: the
+ *  session-v50 report has two separate defects whose whole cause was one leg
+ *  being wired slightly unlike its siblings.
+ *
+ *  Absent stays absent, never a written-in default, so `membersWithHoverSignatures`
+ *  keeps deciding what a missing option means. */
+export function hoverBackfillOptions(
+  budgetMs: number | undefined,
+  opts: MemberSurfaceOptions | undefined,
+  base: HoverBackfillOptions = {},
+): HoverBackfillOptions {
+  const merged: HoverBackfillOptions = { ...base };
+  if (budgetMs !== undefined) {
+    merged.budgetMs = budgetMs;
+  }
+  if (opts?.signatureCap !== undefined) {
+    merged.cap = opts.signatureCap;
+  }
+  return merged;
 }
 
 export async function membersWithHoverSignatures(

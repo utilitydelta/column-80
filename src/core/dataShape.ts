@@ -70,7 +70,7 @@ export interface WalkResult {
  *   - `breadth`: B_MAX, one node's fan-out over its local field types.
  *   - `budget`: the render-time char budget (this walk's TOK_MAX, or what was
  *     left of the shared per-prompt aggregate). */
-export type DropCause = "total-types" | "breadth" | "budget";
+export type DropCause = "total-types" | "breadth" | "budget" | "member-floor";
 
 /** For a `budget` drop: WHICH char budget was actually in force, and what it was
  *  worth in tokens (the chars/4 convention the walk's own caps use).
@@ -140,6 +140,27 @@ export interface SharedWalkState {
    *  that as "already given a member block", so a type's shape shipped and its
    *  members vanished. Caught by `blind-v34-stdlib-provenance` item 1 point 6. */
   memberBlocks?: Set<string>;
+  /** OPTIONAL, session-v51 phase 0: what this prompt's member blocks are priced
+   *  at, so a data-shape block can never be paid for with one. Present for C#
+   *  alone, because C# alone renders member blocks out of this aggregate; Go's
+   *  member half and Python's never touch it and neither can lose a member list
+   *  to a shape block.
+   *
+   *  Set once by `resolvePrefill` before the render loop, because the aggregate
+   *  is spent ACROSS ROOTS - a reservation taken inside a renderer arrives after
+   *  earlier roots have already taken the budget, which is the version
+   *  session-v50 built and reverted. `own` is rewritten per candidate, and
+   *  `reserve` is decremented by that same number once the candidate's member
+   *  render has happened.
+   *
+   *  Absent means no floor, which is every other language and every other caller
+   *  of `walkDataShape`. */
+  memberFloor?: {
+    /** Chars owed to member blocks the prompt has not rendered yet. */
+    reserve: number;
+    /** Of that, what the candidate being rendered right now was priced at. */
+    own: number;
+  };
 }
 
 // The blocks are joined by a blank line, matching the generate-side rendering.

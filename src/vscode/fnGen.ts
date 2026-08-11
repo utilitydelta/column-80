@@ -28,7 +28,15 @@ import { makeAnthropicInstruct } from "../core/anthropicInstruct";
 import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/claudeCodeInstruct";
 import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
-import { DocumentSymbolLite, MEMBER_CAP, SourceCursor, SurfaceExtractor, exampleNamesItsType, findEnclosingContainer } from "../core/extraction";
+import {
+  DocumentSymbolLite,
+  MEMBER_CAP,
+  PREFILL_HOVER_SIGNATURE_CAP,
+  SourceCursor,
+  SurfaceExtractor,
+  exampleNamesItsType,
+  findEnclosingContainer,
+} from "../core/extraction";
 import { PRELUDE_TYPES, assembleSurfacePayload, firmInstructionFor, ofTypes, typesFromUses, typesNamedIn } from "../core/compilerDirected";
 import { commentTypesIn, firstCodeOccurrence } from "../core/commentTypes";
 import { DisclosedType, memberNameOf } from "../core/repairGate";
@@ -1594,6 +1602,25 @@ function contextStopLine(lang: PrefillLang, budget: BudgetProfile, rootCap: numb
  * already carries the language exception, so the value arriving in `lang` is
  * the resolved cell's and a moved cell (CELL_OVERRIDES) reaches the walk.
  */
+/** Does this candidate take the SHAPE path rather than the worked-example one?
+ *
+ *  Extracted so the member-floor pricing pass and the render loop cannot drift
+ *  apart: a candidate priced but not rendered holds its share of the reserve for
+ *  the whole prompt and starves everything behind it, and a candidate rendered
+ *  but not priced spends a floor nobody reserved. One predicate, two callers.
+ *
+ *  The rule itself is unchanged: a library type whose hover is `{ /* private
+ *  fields *\/ }` with no methods resolves to an EMPTY shape, and a stub for it
+ *  points the model at a surface that does not exist, so it falls through. The
+ *  `admitsEmptyShape` exception is a language's to grant and Rust's enum is the
+ *  one kind that has earned it. */
+function takesShapePath(lang: Pick<PrefillLang, "admitsEmptyShape">, derived: DerivedType | undefined): boolean {
+  return (
+    derived !== undefined &&
+    (derived.methods.length > 0 || derived.fields.length > 0 || lang.admitsEmptyShape?.(derived) === true)
+  );
+}
+
 export function prefillTotalTok(
   lang: Pick<PrefillLang, "dataShapeTotalTok">,
   profile: Pick<PrefillProfile, "totalTok">,
@@ -2489,7 +2516,11 @@ export async function resolvePrefill(
       shape = await resolveCrossFileShape(
         extractor,
         refCursor,
-        profile.crossFile,
+        // THE GATHER STOPS WHERE THE RENDER STOPS, for a language that has proved
+        // its renderer can use nothing past that point (`PrefillLang.gatherBreadth`).
+        // Through the exported mapping, not inline, so the latency rig times the
+        // bound this line spends rather than one it rebuilt for itself.
+        prefillGatherBound(lang, profile),
         openFile,
         lang.shapeHooks,
         isReceiver ? type : undefined,
@@ -2500,6 +2531,13 @@ export async function resolvePrefill(
         // the frontier stop), so a per-walk allowance would let one gesture
         // sleep for seconds while every individual walk looked well behaved.
         settleAllowance,
+        // THE PRE-FILL'S OWN HOVER FAN-OUT CAP, split from FIM's on 2026-08-11.
+        // FIM keeps 32 because it spends against a keystroke; this path is a
+        // gesture a developer asked for and is waiting on, and 48 is the number
+        // the real Python population needs (32 cuts 6 members off one class of
+        // eleven, 48 cuts nothing anywhere). With a field walk live, a capped
+        // member is a lost EDGE and not only a lost line.
+        PREFILL_HOVER_SIGNATURE_CAP,
       );
     } catch {
       shape = undefined;
@@ -2628,6 +2666,30 @@ export async function resolvePrefill(
     ...resolvedCandidates.filter((c) => !isClosedSurface(c.derived, profile.memberCap)),
   ];
 
+  // THE MEMBER FLOOR (session-v51 phase 0). The whole prompt's member blocks are
+  // priced HERE, before the loop below renders anything, because the aggregate is
+  // spent across roots and a reservation taken inside a renderer arrives too late
+  // - session-v50 built that one and reverted it.
+  //
+  // What the floor buys: a member surface a developer had before the field leg is
+  // never what the leg costs them. What it costs: at widths where the member half
+  // alone nearly fills the aggregate, fewer data-shape blocks render than did
+  // before this session, and every one of them is named on the drop lines below.
+  // That trade is one-directional on purpose. The shape block is new surface; the
+  // member list is surface a developer already reads.
+  //
+  // C# only, and structurally so: it is the one language whose member blocks come
+  // out of this aggregate at all. `priceMemberBlocks` absent leaves `memberFloor`
+  // absent, which leaves every walk in every other language spending exactly what
+  // it spent before.
+  const memberPrice = new Map<string, number>();
+  if (lang.priceMemberBlocks !== undefined) {
+    const shapePath = closedFirst.filter((c) => takesShapePath(lang, c.derived));
+    const priced = lang.priceMemberBlocks(shapePath, profile, sharedWalk.remainingChars);
+    shapePath.forEach((c, i) => memberPrice.set(c.type, priced[i] ?? 0));
+    sharedWalk.memberFloor = { reserve: priced.reduce((sum, n) => sum + n, 0), own: 0 };
+  }
+
   for (const { type, refCursor, shape, derived } of closedFirst) {
     // Nothing here refuses on provenance: a stdlib root never reaches this loop,
     // because it was refused at admission above, where the slot it would have
@@ -2648,11 +2710,24 @@ export async function resolvePrefill(
     // +7.3 rows of 237 on the acme corpus for 122 more prompt bytes and no
     // extra round trip (session-v38 item 1). The fastbloom bar is untouched: the
     // private-fields struct is not an enum, and answers no.
-    if (
-      derived &&
-      (derived.methods.length > 0 || derived.fields.length > 0 || lang.admitsEmptyShape?.(derived) === true)
-    ) {
+    if (takesShapePath(lang, derived)) {
+      // THIS CANDIDATE'S OWN SHARE, named to the renderer before it runs and
+      // released after. The renderer needs it BEFORE, because a shape block that
+      // sheds repays its own share and is allowed to borrow that much; it is
+      // released AFTER, because releasing it earlier would let a walk borrow
+      // against a shed it never delivers.
+      const own = memberPrice.get(type) ?? 0;
+      if (sharedWalk.memberFloor !== undefined) {
+        sharedWalk.memberFloor.own = own;
+      }
       const block = lang.renderShapeBlock(type, shape as CrossFileShape, sharedWalk, log, profile);
+      // Released even when the block came back undefined: a candidate that
+      // rendered nothing is owed nothing either, and leaving its share held would
+      // starve every candidate behind it of the surplus.
+      if (sharedWalk.memberFloor !== undefined) {
+        sharedWalk.memberFloor.reserve = Math.max(0, sharedWalk.memberFloor.reserve - own);
+        sharedWalk.memberFloor.own = 0;
+      }
       if (block) {
         blocks.push(block.text);
         blockTypes.push([...block.types]);
@@ -2753,8 +2828,34 @@ export async function resolvePrefill(
   const droppedLedger = [...(sharedWalk.droppedBy ?? new Map<string, DroppedType>()).values()];
   if (droppedLedger.length > 0 && !forConstruction) {
     const named = droppedNames(droppedLedger, profile.dataShape);
+    // TWO CLASSES SINCE session-v51, and the sentence has to tell them apart.
+    // A cap drop costs a type its whole presence; a member-floor refusal costs
+    // it only its data shape, because the floor exists precisely so its member
+    // list survives. One word, "entirely", covering both would tell a developer
+    // eight types vanished while eight member lists sit in the prompt in front
+    // of them. Each clause is omitted when its class is empty, so a prompt with
+    // only cap drops reads exactly as it always did.
+    //
+    // "dropped" stays the verb in every shape of the line: it is the phrase a
+    // developer greps for and the phrase four blind-authored rows are bound to.
+    //
+    // WHICH CLASS A NAME IS IN IS READ OFF WHAT RENDERED, not off the drop's
+    // cause. The two disagree, and the cause is the one that lies: a type the
+    // walk's own total-types cap dropped can still be given a member block by
+    // C#'s member renderer a moment later, and it would then be counted as
+    // dropped ENTIRELY while its member list sits in the prompt in front of the
+    // developer reading the line. `rendered` is the payload's own account of
+    // which types got a header, so this partition cannot drift from the prompt.
+    const heldBack = droppedLedger.filter((d) => rendered.includes(d.name)).length;
+    const entirely = droppedLedger.length - heldBack;
+    const what = [
+      entirely > 0 ? `${entirely} type(s) entirely` : undefined,
+      heldBack > 0 ? `${heldBack} data shape(s) whose member lists stay` : undefined,
+    ]
+      .filter((c) => c !== undefined)
+      .join(" and ");
     log(
-      `[fngen] injected context dropped ${droppedLedger.length} type(s) entirely at the \`${stop}\` stop: ` +
+      `[fngen] injected context dropped ${what} at the \`${stop}\` stop: ` +
         `${named}. Raise \`column80.injectedContext\` to fit more of them.`,
     );
   }
@@ -2838,6 +2939,11 @@ function dropCauseLabel(d: DroppedType, bounds: WalkBounds): string {
   }
   if (d.cause === "breadth") {
     return `breadth cap ${bounds.B_MAX}`;
+  }
+  if (d.cause === "member-floor") {
+    // Not a cap. The block was affordable and refused anyway, because what it
+    // would have cost is held for member lists this prompt already renders.
+    return "member lists hold the rest of the budget";
   }
   if (d.budgetBound === undefined) {
     return `render budget ${bounds.TOK_MAX} tok`;
@@ -3454,6 +3560,32 @@ interface PrefillLang {
    *  hook, and Go, Python and TypeScript each need their own measurement before
    *  their prompts move by a byte. */
   admitsEmptyShape?: (derived: DerivedType) => boolean;
+  /** PRICE THE WHOLE PROMPT'S MEMBER BLOCKS, before any data-shape block spends
+   *  the shared aggregate. Present for exactly one language, and the reason is
+   *  structural rather than stylistic: C# is the only one whose MEMBER blocks
+   *  come out of the same per-prompt character aggregate its data-shape blocks
+   *  come out of. Go's member half and Python's never touch it, so neither can
+   *  lose a member list to a shape block and neither needs a floor.
+   *
+   *  Returns one charged char count per candidate, in the render order it was
+   *  handed, priced UN-SHED - the member render a developer had before the field
+   *  leg existed. Un-shed is the point: the floor is the surface they already
+   *  have, and a shape block that renders sheds fields out of the member block it
+   *  reserved for, so the real spend is always at or under the price.
+   *
+   *  `totalChars` is the aggregate the pricing pass is allowed to spend, so a
+   *  width where the member half alone already overran the budget prices only the
+   *  blocks that fit. Nothing is owed to a type that had no block to begin with.
+   *
+   *  WHY THE CALLER OWNS THIS and `csShapeBlock` cannot. The aggregate is spent
+   *  ACROSS ROOTS: by the time a starved root is rendered, the earlier roots'
+   *  shape blocks have already taken it. A reservation inside the renderer was
+   *  built in session-v50 and reverted for exactly that reason. */
+  priceMemberBlocks?: (
+    candidates: readonly { type: string; shape: CrossFileShape | undefined }[],
+    profile: PrefillProfile,
+    totalChars: number,
+  ) => number[];
   /** WHICH OF THE DIAL'S STRUCTURAL NUMBERS ACTUALLY REACH THIS LANGUAGE.
    *
    *  Not decoration: the channel line names what a stop bought, and three of the
@@ -3494,6 +3626,23 @@ interface PrefillLang {
    *  `small`..`frontier` keep one root cap for every language (ruled
    *  2026-08-10), which is why this is read only when the stop is `shipped`. */
   shippedRootCap?: number;
+  /** May the GATHER stop at the same per-node field fan-out the RENDER applies?
+   *  Opt-in per language, because it is only sound where nothing downstream can
+   *  read a type the render's own BFS cannot reach.
+   *
+   *  Go can: `goShapeBlock` renders one data-shape block (through
+   *  `walkDataShape`, which walks at most `B_MAX` local field types per node)
+   *  plus the ROOT's member list, and nothing else in the prompt ever names a
+   *  collaborator. C# cannot: `csShapeBlock` gives EVERY type in the shape its
+   *  own member block, reachable by the field BFS or not, so the gather is its
+   *  supply and capping it would delete prompt bytes.
+   *
+   *  Measured before it was wired (session-v51 phase 2, `session-v51/hover-A.txt`):
+   *  over 20 real `pgx` roots the Go gather resolved 117 types, of which 31 were
+   *  outside the render's BFS at any budget - 11 of the 26 on `Conn` alone. Each
+   *  one costs a definition, a hover and a documentSymbol, and a hover into a
+   *  package gopls has not type-checked measured 71-76ms. */
+  gatherBreadth?: boolean;
 }
 
 /** One rendered injection block and the types whose headers it carries. */
@@ -3834,6 +3983,111 @@ function csFindTypeReference(
   return undefined;
 }
 
+/** Run one data-shape walk against a CEILING lower than the aggregate, and charge
+ *  the aggregate by what it really spent.
+ *
+ *  `walkDataShape` reads `shared.remainingChars` as its ceiling and subtracts
+ *  what it rendered, so the whole mechanism is: hand it a smaller ceiling, then
+ *  put the withheld part back on top of whatever it left. The alternative was a
+ *  second budget field threaded through every walk in the codebase for one
+ *  language's benefit.
+ *
+ *  An allowance at or above `remainingChars` leaves this a pass-through, which
+ *  is every language but C# and every non-prefill caller. */
+function walkWithinAllowance<T>(sharedWalk: SharedWalkState, allowance: number, run: () => T): T {
+  const before = sharedWalk.remainingChars;
+  if (allowance >= before) {
+    return run();
+  }
+  sharedWalk.remainingChars = Math.max(0, allowance);
+  const out = run();
+  sharedWalk.remainingChars = before - (Math.max(0, allowance) - sharedWalk.remainingChars);
+  return out;
+}
+
+/** Which fields each type may shed from its member list: the ones its OWN
+ *  rendered def printed, and only when that def is complete.
+ *
+ *  A type whose def the walk TRUNCATED (`... N more fields`) sheds nothing. The
+ *  walk cuts fields at TOK_MAX and the member list cuts at memberCap; both are
+ *  honest caps, and shedding on one side while the other is already cutting is
+ *  how a field disappears from both. Fields may be cut from one place or the
+ *  other, never from both. */
+function shedFromDefs(
+  defs: ReadonlyArray<{ name: string; def: string }>,
+  shape: CrossFileShape,
+): Map<string, Set<string>> {
+  const shed = new Map<string, Set<string>>();
+  for (const d of defs) {
+    const t = shape.types.get(d.name);
+    if (t === undefined || t.fields.length === 0 || /\.\.\.\s+\d+\s+more fields/.test(d.def)) {
+      continue;
+    }
+    shed.set(d.name, new Set(t.fields.map((f) => f.name)));
+  }
+  return shed;
+}
+
+/** What C#'s member blocks would cost this prompt if no data-shape block existed
+ *  - the pre-leg render, replayed through the same pure renderer that produces
+ *  the real one, with nothing shed and the same cross-root dedup.
+ *
+ *  One number per candidate, in the render order handed in, so the caller can
+ *  release each candidate's share the moment that candidate's member render has
+ *  happened.
+ *
+ *  ROOTS ARE PRICED BEFORE COLLABORATORS, and that ordering is the whole
+ *  correctness of the floor rather than a nicety.
+ *
+ *  The aggregate can run out INSIDE this pass. Priced candidate by candidate,
+ *  the first candidate's collaborators are charged before the last candidate's
+ *  own type is reached, so a tail root prices ZERO, is owed nothing, and an
+ *  earlier candidate's shape block then spends exactly what that root's member
+ *  list needed. Measured by the session-v51 phase 0 review at 6 roots x 20
+ *  fields with one shared 12-field collaborator: `Foxes` ended with neither
+ *  block.
+ *
+ *  Roots first is the fix because it matches what the floor is FOR. The
+ *  guarantee is that a member surface a developer had BEFORE the field leg is
+ *  never what the leg costs them. Every candidate root had a member block before
+ *  the leg; a collaborator reached through a FIELD edge did not exist in the
+ *  prompt at all until the leg derived it. So a root outranks a collaborator for
+ *  the reserve, and the two-pass order says so in the only place that can act on
+ *  it.
+ *
+ *  It is a REPLAY and not an estimate. Anything else and the floor would be a
+ *  number nobody can tie back to what a developer actually had. */
+function csPriceMemberBlocks(
+  candidates: readonly { type: string; shape: CrossFileShape | undefined }[],
+  profile: PrefillProfile,
+  totalChars: number,
+): number[] {
+  const visited = new Set<string>();
+  const budget = { remaining: totalChars };
+  const priced = candidates.map(() => 0);
+  const charge = (i: number, names: readonly string[], shape: CrossFileShape): void => {
+    const types = names.map((name) => ({ name, methods: shape.types.get(name)?.methods ?? [] }));
+    const before = budget.remaining;
+    csShapeGraphBlock(types, { memberCap: profile.memberCap, fence: FENCE, visited, budget });
+    priced[i] += before - budget.remaining;
+  };
+  candidates.forEach(({ type, shape }, i) => {
+    if (shape !== undefined) {
+      charge(i, [type], shape);
+    }
+  });
+  candidates.forEach(({ type, shape }, i) => {
+    if (shape !== undefined) {
+      charge(
+        i,
+        [...shape.types.keys()].filter((n) => n !== type),
+        shape,
+      );
+    }
+  });
+  return priced;
+}
+
 // The C# injection block: a DATA SHAPE for every type whose fields the walk
 // derived, then the member signatures, both cs-fenced.
 //
@@ -3883,35 +4137,142 @@ function csShapeBlock(
   // a type the budget or the dedup dropped rendered no header to be scoped to.
   const parts: string[] = [];
   const derived = shape.types.get(type);
-  // THE MEMBER LIST IS NOT THE FLOOR IN C#, AND THAT IS AN OPEN DEFECT.
+  // THE MEMBER LIST IS THE FLOOR IN C#, AND THIS IS WHERE THE FLOOR IS HELD.
   //
   // C# is the one language whose member blocks spend the shared per-prompt
   // budget: `csShapeGraphBlock` renders a block per collaborator and stops when
-  // the budget runs out. Data-shape blocks now spend the same budget and they
-  // spend it first, so a fat graph can take a member block a developer had
-  // before this session. Measured at 8 types x 15 fields on the install default:
-  // two types lose the member block they had, and one ends up in the prompt with
-  // neither block. `test/review-v50-p4-starvation.test.cjs` P4-7 is that
-  // measurement and it is RED on purpose.
+  // the budget runs out. Data-shape blocks spend the same budget and they spend
+  // it first, so until session-v51 a fat graph could take a member block a
+  // developer had before the field leg existed. Measured at 8 types x 15 fields
+  // on the install default: two types lost the member block they had and one
+  // ended up in the prompt with neither. That was P4-7 in
+  // `test/review-v50-p4-starvation.test.cjs`, red on purpose for a session.
   //
-  // It breaks the guard stated below, and Go and Python both hold that guard
-  // because their member halves do not touch the aggregate at all.
+  // `resolvePrefill` now prices the WHOLE prompt's member blocks before this
+  // renderer is called for the first root, and parks the total on
+  // `sharedWalk.memberFloor`. A reservation computed HERE could never work:
+  // the budget is spent ACROSS ROOTS, so by the time a starved root reaches this
+  // function the earlier roots' shape blocks have already taken it.
   //
-  // A reservation inside this function was built and does NOT fix it: the budget
-  // is spent ACROSS ROOTS, and by the time a starved root reaches here the
-  // earlier roots' shape blocks have already taken it. The fix has to price the
-  // whole prompt's member blocks before the render loop starts, which is
-  // `resolvePrefill`'s scope and a change to how the aggregate is apportioned.
-  // Left as a reported defect rather than a rushed apportionment.
+  // What is left here is the spend against that reserve, and it is an ARITHMETIC
+  // rule rather than a heuristic. Write `S` for the surplus above the reserve,
+  // `P` for this candidate's own priced share, `w` for what its walk spends and
+  // `a` for what its member render then costs. The prompt stays solvent for
+  // every candidate behind this one exactly when
+  //
+  //     w + a <= S + P
+  //
+  // A shape block PAYS FOR ITSELF by shedding: the fields it prints leave the
+  // member list, so `a` drops from `P` to the shed floor. The walk is therefore
+  // allowed to borrow that difference up front - and the borrow is CHECKED after
+  // the walk, not assumed, because a def the walk truncated sheds nothing and
+  // repays nothing. A walk whose block does not pay for itself is refused and
+  // refunded whole.
+  //
+  // Refusal is the right answer and not a shortfall: an unshed truncated stub is
+  // a block that costs the prompt characters and tells the model nothing it does
+  // not already read in the member list underneath it.
+  //
   // NO FIELDS, NO SHAPE BLOCK, the same decision `goShapeBlock` makes and for the
   // same reason: an enum, an interface, or a service class whose members are all
   // callables would otherwise start carrying a second block that repeats its own
   // declaration head and names no collaborator. Pure cost on a path where the
   // budget is the whole risk.
-  const walk =
+  // Read at each use, never captured: the dedup set the member render will
+  // really consult is whatever `sharedWalk` holds at the moment it runs.
+  const memberSeed = () => sharedWalk.memberBlocks ?? sharedWalk.visited;
+  const order = [type, ...[...shape.types.keys()].filter((n) => n !== type)];
+  const firstToken = (line: string) => /^\s*([A-Za-z_]\w*)/.exec(line)?.[1];
+  const memberTypesWith = (shed: ReadonlyMap<string, ReadonlySet<string>>) =>
+    order.map((name) => {
+      const methods = shape.types.get(name)?.methods ?? [];
+      const drop = shed.get(name);
+      return { name, methods: drop ? methods.filter((m) => !drop.has(firstToken(m) ?? "")) : methods };
+    });
+  // What a member render WOULD charge, against a scratch dedup set and no
+  // ceiling. The same renderer that produces the real block, so the number is a
+  // replay and not an estimate; only the cost is wanted, so the text is dropped.
+  const priceMembers = (types: ReturnType<typeof memberTypesWith>): number => {
+    const budget = { remaining: Number.MAX_SAFE_INTEGER };
+    csShapeGraphBlock(types, { memberCap: profile.memberCap, fence: FENCE, visited: new Set(memberSeed()), budget });
+    return Number.MAX_SAFE_INTEGER - budget.remaining;
+  };
+  const floor = sharedWalk.memberFloor;
+  const surplus = floor === undefined ? 0 : Math.max(0, sharedWalk.remainingChars - floor.reserve);
+  // The best case the walk could ever repay: every type sheds every field it has.
+  const shedFloorPrice =
+    floor === undefined
+      ? 0
+      : priceMembers(
+          memberTypesWith(
+            new Map(
+              order.flatMap((name) => {
+                const t = shape.types.get(name);
+                return t === undefined || t.fields.length === 0
+                  ? []
+                  : [[name, new Set(t.fields.map((f) => f.name))] as [string, Set<string>]];
+              }),
+            ),
+          ),
+        );
+  const allowance =
+    floor === undefined
+      ? sharedWalk.remainingChars
+      : Math.min(sharedWalk.remainingChars, Math.max(0, surplus + floor.own - shedFloorPrice));
+
+  const charsBefore = sharedWalk.remainingChars;
+  // WHAT A REFUSAL HAS TO PUT BACK. The walk mutates three things on the shared
+  // state and all three are snapshotted, because restoring two of them is what
+  // the first version of this code did and it left the drop ledger holding an
+  // entry from a walk that never happened, carrying that walk's private
+  // allowance as if it were the prompt's aggregate. `remainingChars` is a
+  // number; `visited` is restored by CONTENT rather than by swapping the object,
+  // so nothing holding a reference to the set is left looking at a stale one.
+  const visitedBefore = floor === undefined ? undefined : new Set(sharedWalk.visited);
+  const ledgerBefore = floor === undefined || sharedWalk.droppedBy === undefined ? undefined : new Map(sharedWalk.droppedBy);
+  let walk =
     derived && derived.fields.length > 0
-      ? walkDataShape(type, toResolveStruct(shape, csShapeHooks), profile.dataShape, sharedWalk)
+      ? walkWithinAllowance(sharedWalk, allowance, () =>
+          walkDataShape(type, toResolveStruct(shape, csShapeHooks), profile.dataShape, sharedWalk),
+        )
       : { block: "", defs: [] as Array<{ name: string; def: string }>, dropped: [] as string[], droppedBy: [] };
+
+  // THE CHECK. `shedFromDefs` below is called on the same defs, so pricing the
+  // member render here is pricing the one that is about to happen.
+  if (floor !== undefined && walk.block) {
+    const spent = charsBefore - sharedWalk.remainingChars;
+    if (spent + priceMembers(memberTypesWith(shedFromDefs(walk.defs, shape))) > surplus + floor.own) {
+      // EVERY name the refused block would have carried, and the walk's own
+      // drops with them. None of these types is getting a data shape, and the
+      // reason none of them is is this refusal: a cap that fired INSIDE a walk
+      // that was then withdrawn is not a figure that was ever in force, and
+      // reporting it would be the exact class of confident-wrong number the
+      // recorded budget bound exists to end.
+      const carried = [...new Set([type, ...walk.defs.map((d) => d.name), ...walk.dropped])];
+      log(
+        `[fngen] data-shape walk \`${type}\` refused: its block would cost ${spent} char(s) it cannot repay by shedding, ` +
+          `and the member lists in this prompt are already holding the rest of the budget. ` +
+          `Dropped with it: ${carried.join(", ")}. Raise \`column80.injectedContext\` to fit it.`,
+      );
+      sharedWalk.remainingChars = charsBefore;
+      if (visitedBefore !== undefined) {
+        sharedWalk.visited.clear();
+        for (const n of visitedBefore) {
+          sharedWalk.visited.add(n);
+        }
+      }
+      if (ledgerBefore !== undefined && sharedWalk.droppedBy !== undefined) {
+        sharedWalk.droppedBy.clear();
+        for (const [k, v] of ledgerBefore) {
+          sharedWalk.droppedBy.set(k, v);
+        }
+      }
+      for (const name of carried) {
+        sharedWalk.droppedBy?.set(name, { name, cause: "member-floor" });
+      }
+      walk = { block: "", defs: [], dropped: [], droppedBy: [] };
+    }
+  }
   if (walk.block) {
     parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}cs\n${walk.block}\n${FENCE}`);
   }
@@ -3933,28 +4294,24 @@ function csShapeBlock(
     );
   }
 
-  // Which fields each type may shed: the ones its OWN rendered def printed, and
-  // only when that def is complete.
-  const shedByType = new Map<string, Set<string>>();
-  for (const d of walk.defs) {
-    const t = shape.types.get(d.name);
-    if (t === undefined || t.fields.length === 0) {
-      continue;
-    }
-    if (/\.\.\.\s+\d+\s+more fields/.test(d.def)) {
-      continue; // the walk already cut this type's fields; the member list keeps them all
-    }
-    shedByType.set(d.name, new Set(t.fields.map((f) => f.name)));
-  }
-  const firstToken = (line: string) => /^\s*([A-Za-z_]\w*)/.exec(line)?.[1];
-
-  const order = [type, ...[...shape.types.keys()].filter((n) => n !== type)];
-  const types = order.map((name) => {
-    const methods = shape.types.get(name)?.methods ?? [];
-    const shed = shedByType.get(name);
-    return { name, methods: shed ? methods.filter((m) => !shed.has(firstToken(m) ?? "")) : methods };
-  });
-  const budget = { remaining: sharedWalk.remainingChars };
+  const types = memberTypesWith(shedFromDefs(walk.defs, shape));
+  // THE MEMBER RENDER IS BOUNDED BY THE FLOOR TOO, and that is the structural
+  // half of the guarantee. Pricing says what each candidate is OWED; this says
+  // what it may SPEND. `reserve` still includes this candidate's own share here
+  // (the caller releases it after this function returns), so the bound is
+  // "everything left except what later candidates are owed" and a candidate can
+  // always afford at least the blocks it was priced for.
+  //
+  // Without it the floor leaks: a type this render reaches that the pricing pass
+  // never charged to this candidate - because an earlier candidate's shed made
+  // it look free, or because the pricing pass ran out of budget before it -
+  // spends chars a later candidate's member list is holding. That is the shape
+  // the phase 0 review reproduced with a shared collaborator whose member block
+  // shed to nothing.
+  const memberCeiling =
+    floor === undefined ? sharedWalk.remainingChars : Math.max(0, sharedWalk.remainingChars - (floor.reserve - floor.own));
+  const charsBeforeMembers = sharedWalk.remainingChars;
+  const budget = { remaining: memberCeiling };
   const emitted: string[] = [];
   const out = csShapeGraphBlock(types, {
     memberCap: profile.memberCap,
@@ -3966,7 +4323,9 @@ function csShapeBlock(
       log(`[fngen] pre-fill truncated \`${name}\` members: kept ${profile.memberCap} of ${total} (dropped ${dropped.join(", ")})`),
     onBudget: (name) => log(`[fngen] pre-fill budget exhausted; \`${name}\` block dropped`),
   });
-  sharedWalk.remainingChars = budget.remaining;
+  // The ceiling withheld what later candidates are owed; charge the aggregate by
+  // what this render actually spent and hand the withheld part back.
+  sharedWalk.remainingChars = charsBeforeMembers - (memberCeiling - budget.remaining);
   if (out !== undefined) {
     parts.push(out);
   }
@@ -3986,6 +4345,7 @@ const CS_PREFILL_LANG: PrefillLang = {
   typeReference: csFindTypeReference,
   shapeHooks: csShapeHooks,
   renderShapeBlock: csShapeBlock,
+  priceMemberBlocks: csPriceMemberBlocks,
   exampleFallback: false,
   firmInstruction: CS_FIRM_INSTRUCTION,
   memberVisibility: visibilityFor("csharp"),
@@ -4418,6 +4778,11 @@ const GO_PREFILL_LANG: PrefillLang = {
   // driving `resolveCrossFileShape` with the hooks by hand saw a different Go
   // from the one the product shipped.
   shapeHooks: goShapeHooks,
+  // Go's prompt names a collaborator in exactly one place, the data-shape block
+  // `walkDataShape` renders, and that walk takes at most `B_MAX` field types per
+  // node. So a gathered type outside that BFS is unspendable by construction -
+  // measured at 31 of 117 over the real corpus - and the gather stops there too.
+  gatherBreadth: true,
   localTypeDefs: (fullText) => goLocalTypeDefinitions(fullText),
   candidates: goPrioritizedTypes,
   receiver: RECEIVER_RULES.go,
@@ -4449,6 +4814,19 @@ const GO_PREFILL_LANG: PrefillLang = {
 // The clamp that setting carried (never promise more roots than the resolve
 // cap can fill) survives as a property OF THE STOP TABLE: no row's `rootCap`
 // exceeds its own `resolveCap`.
+
+/** The bound the PRE-FILL hands the cross-file gather, for this language at this
+ *  profile. One function, exported, because two callers must agree on it: the
+ *  pre-fill spends it and the latency rig times it. A rig that rebuilt this
+ *  would be a re-derived mapping, and a re-derived mapping has already inverted
+ *  one measurement in this project (`fnGenProfileFor` carries the same warning
+ *  for the same reason).
+ *
+ *  It is `profile.crossFile`, plus the render's own per-node field fan-out for a
+ *  language that has opted in - see `PrefillLang.gatherBreadth` for what opting
+ *  in claims and `CrossFileBound.B_MAX` for what it costs. */
+export const prefillGatherBound = (lang: PrefillLang, profile: PrefillProfile): CrossFileBound =>
+  lang.gatherBreadth === true ? { ...profile.crossFile, B_MAX: profile.dataShape.B_MAX } : profile.crossFile;
 
 export const prefillLangFor = (languageId: string): PrefillLang =>
   TS_LANGUAGE_IDS.has(languageId)
