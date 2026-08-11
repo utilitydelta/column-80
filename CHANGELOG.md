@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.0.0
+
+C# stops paying for a data shape with a member list you already had. C# is the
+one language whose member blocks come out of the same per-prompt budget its data
+shape blocks come out of, and the shape blocks spent it first. A fat graph could
+take the member list a type had before the shape block existed, and one type
+could end up in the prompt with neither. The prompt now prices every member block
+before it renders anything, and a shape block may only spend what is left over
+plus what its own shedding will pay back. A shape block that cannot pay for
+itself is refused and says so on the channel, naming the setting that buys it
+back.
+
+Measured over 1120 shapes of prompt: no prompt loses a member block, where 433
+of them did before. It costs 28% of the data shape blocks and 5.7% of
+the prompt bytes. That trade is deliberate. A data shape is new surface; the
+member list is surface you already read.
+
+The hover fan-out cap is two numbers instead of one. Tab completion still stops
+at 32 members, because it spends its time against your next keystroke and
+anything that arrives late is wasted. Function generation now goes to 48, because
+you asked for it and are waiting on it. Nothing about tab completion moves.
+
+Go asks the language server 26% fewer questions per function generation, and
+renders exactly what it rendered before, byte for byte. The walk was buying a
+hover for every collaborator it found while the render dropped 46% of them, and
+31 of the 117 it gathered could never have been rendered at any budget.
+
+Nothing changes for Python in the editor, and here is what it was already worth.
+Function generation has always put the type that encloses your function into the
+prompt; what did not exist was any way to measure it outside a running editor, so
+it had never been graded. It has now. Against a compiler, on real Python, the
+enclosing type takes 15 of 40 functions compiling to 35 of 40, and it removes the
+failure that matters: of the generations that invented a member that does not
+exist, none still invent one. Missing imports are what is left, and the injected
+surface carries no imports.
+
 ## 1.3.0
 
 Function generation can now run on a Claude subscription instead of an API key.
