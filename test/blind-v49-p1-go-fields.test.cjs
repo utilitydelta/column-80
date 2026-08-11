@@ -250,7 +250,14 @@ test("guard: both bundles build headless and every entry point this file drives 
 // THE REAL CAPTURED HOVERS.
 // ===========================================================================
 
-const CAPTURE = path.join(ROOT, "session-v48", "capture-go-hovers.json");
+// TRACKED, not read out of a session directory. The capture used to be read
+// from `session-v48/`, which `.gitignore` drops, so this file's P1 rows were
+// green on the author's box and RED on every fresh clone: CI went red the day
+// four sessions' worth of commits were first pushed, and stayed red through a
+// release. The guard below is doing its job by FAILING rather than skipping
+// (`green-on-my-box-is-not-green`); what was wrong is that the evidence it
+// guards was never committed. Copied here byte for byte, hash checked below.
+const CAPTURE = path.join(__dirname, "fixtures", "go-hover-capture", "capture-go-hovers.json");
 const HOVERS = (() => {
   try {
     return JSON.parse(fs.readFileSync(CAPTURE, "utf8"));
@@ -2060,7 +2067,7 @@ wtest("P6c: FIM is untouched - the Go member-site injection is byte-identical to
 // ===========================================================================
 
 test("P7: the gate's LEFT-HAND SIDE is recorded, and the contract's numbers are the ones in it", () => {
-  const f = path.join(ROOT, "session-v49", "baselines.md");
+  const f = path.join(__dirname, "fixtures", "go-hover-capture", "baselines.md");
   assert.ok(fs.existsSync(f), `${f} must exist - "without this the latency gate has no left-hand side"`);
   const src = fs.readFileSync(f, "utf8");
   const goRow = src.split("\n").find((l) => /^\|\s*Go\s*\|/.test(l));
