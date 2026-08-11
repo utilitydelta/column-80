@@ -22,6 +22,9 @@ Proven broken, no design question left. Each is small and each is about the prod
 - **2.** a frozen live test is red and nobody runs it
 - **26.** a classified diagnostic that resolves nothing gets no harvest
 - **21.** the cross-file argument-type leg, unbuilt since v14
+- **48.** the injected surface carries no imports, now Python's largest measured failure family
+- **47.** Python's pre-fill gate has never been decomposed and its last number was 7.8x
+- **50.** the gather buys a hover per collaborator the render drops; fixed in Go, unmeasured in three languages
 
 **2. Trust the instruments, before building on them**
 Two independent rig defects turned up in one session, and each had been silently wrong for months. Until this tier is settled, a number from the harness is a hypothesis.
@@ -32,6 +35,8 @@ Two independent rig defects turned up in one session, and each had been silently
 - **30.** item 1 needs a third arm before anyone knows what it did
 - **45.** the latency probe cannot make a cold row, so three of its five falsification numbers are about the probe
 - **46.** two frozen v21 rows model a cold answer no server gives, and a bound that killed their case passed them
+- **49.** the count cap's server justification is measured false on Python and untested on TypeScript
+- **51.** the arm runner has no Python entry, so every Python number comes off a second code path
 
 **3. The big builds**
 Each needs its own goal and scout. Ordered by measured value, not by age.
@@ -462,6 +467,92 @@ deleted the exact case they exist to protect; an adversarial review caught it ag
 
 Re-cut both at the measured shape, by an agent that did not write the change. Small, and it makes a
 whole family of future bounds falsifiable.
+
+### 47. Python's pre-fill gate has never been decomposed, and its last number was 7.8x
+
+Raised 2026-08-11 by session-v51, which was sent to decompose it and did not. PROVEN miss, unknown
+cause.
+
+v50 measured Python at p95 1957ms net against a 250ms absolute gate. The shape of the cost is known
+one level down and no further: Python's leg is not hover and not sleep, it is cross-file
+`definition()` into files pyright has not seen, with nine discovered-file opens across eleven rows and
+one row spending 603ms in two hover calls on a freshly opened file.
+
+Every other language's gate got a per-primitive decomposition and Python's did not, so it is the one
+gate where "a miss is a defect report, not a decision" has no report behind it. Go's equivalent work
+found that the headline primitive was not the one anybody expected: "26 hovers cost 121ms" turned out
+to be a count of cold PACKAGES, not of round trips. Assume nothing about Python's until it is measured.
+
+The instrument exists (`session-v50/probe/latency-baseline.cjs py`) and inherits item 45's limit: it
+measures warm.
+
+### 48. The injected surface carries no imports, and that is now Python's largest failure family
+
+Raised 2026-08-11 by session-v51. PROVEN on a compile-graded arm.
+
+With the enclosing type in the prompt, Python function generation goes from 15 of 40 compiling to 35
+of 40, and the invented-member family collapses from 21 to 1. What survives is imports: 3 of the 5
+remaining reds are a name the body needs and the file does not import (`contextlib`, `FileResponse`,
+`run_server`).
+
+The surface names types and members. It does not say where they come from, and the model cannot infer
+an import it was never shown. In Rust this is masked because the surface already carries a use-path
+leg; in Python nothing does.
+
+Not a cap and not a budget. It is a missing payload, and it is measurable the day someone builds it:
+the same 40 rows, one arm, and the same span-scoped verdict.
+
+### 49. The count cap's server justification is measured false on Python and untested on TypeScript
+
+Raised 2026-08-11 by session-v51. Half PROVEN, half unmeasured, and the unmeasured half is the one
+that matters.
+
+The hover fan-out is time-bounded already: `withinBudget` races every ask against a 50ms deadline. The
+count cap survives on top of that because the race abandons the RESULT and not the WORK, so abandoned
+requests stay queued against a server that answers one thing at a time. That was reasoning, never a
+number.
+
+Measured against a real pyright: a 400-hover fan-out costs 13ms, so the deadline never cuts, nothing
+is ever abandoned, and the next request costs 0ms whether 4 or 400 asks preceded it. The hazard is
+unreachable on that server at any population, real or synthetic.
+
+TypeScript is the other fan-out language and is the slower server, cold first calls at 33ms and 51ms
+against Python's flat 10-14ms. It is where a deadline would cut first, and it was not measured,
+because its fan-out lives in the vscode transport and needs a real extension host. The headless
+`TsLsExtractor` reads the checker directly and asks no hover, so no headless row can produce the case.
+
+A `test:vscode` tier measurement. Until it runs, the cap stands on population sizing alone, and the
+constant's own comment says so.
+
+### 50. The gather buys a hover for every collaborator the render drops, and only Go was measured
+
+Raised 2026-08-11 by session-v51. PROVEN in Go, unmeasured in the other four.
+
+Over 20 real Go roots the gather resolved 117 types and bought 117 hovers; the render kept 63 solo and
+14 inside a real 8-root prompt. 31 of the 117 sit outside `walkDataShape`'s own BFS at ANY budget,
+because the render walks at most `B_MAX` distinct local field types per node and the gather walked all
+of them.
+
+Go got a commit-counted breadth bound on the gather: round trips down 26%, and 0 of 20 roots changed a
+byte of surface. C# is provably ineligible, because `csShapeBlock` gives every gathered type a member
+block, so nothing it gathers is wasted. Rust, TypeScript and Python were not looked at.
+
+The waste is structural rather than Go-shaped, so the prior should be that it is there. What is not
+known is the size, and a bound shipped without measuring a language's own surface is how a render
+loses a type nobody was watching.
+
+### 51. The arm runner has no Python entry, and one function is why
+
+Raised 2026-08-11 by session-v51. Instrument, not product.
+
+`session-v46/run-arm.cjs` carries `cs`, `rs` and `ts` in `LANG_DEFS` and everything else in it is
+language-parameterised. `preparedDoc` is not: it writes braces around a hole and replaces a doc
+comment above the declaration, and Python's docstring lives INSIDE the body. Changing it touches an
+instrument three languages' committed arms depend on, which is why session-v51 wrote a one-row driver
+(`session-v51/run-row-py.cjs`) instead.
+
+The cost of leaving it: Python cannot join a multi-language arm grid, so every Python number is
+produced by a second code path that can drift from the one the other three are measured on.
 
 ## 3. The big builds
 
@@ -1773,6 +1864,11 @@ gaps below), items 27, 34 and 35 amended for what session-v40 shipped, and items
 the v39 scraps so they survive the session folders. Caught up again on 2026-08-08: items **38**
 (the Claude Code backend, shipped in session-v43) and **40** (prompt caching on both off-machine
 backends, shipped in session-v44 and measured live through the product) struck.
+Caught up to 2.0.0 on 2026-08-11 by session-v51: item **45** gained the number it was blocking on
+(Go's gate is failed by the member re-poll allowance on both sides, and with the sleep at zero Go
+passes with margin), and items **47** through **51** were added from that session's scraps so they
+outlive the gitignored directory. Nothing was struck: v51 shipped the C# member floor, the hover cap
+split and Go's gather bound, and none of the three was ever an item here.
 PROVEN means tested; REASONED means read but not run.
 
 Item numbers never move once assigned, because items cross-reference each other by number. A gap
