@@ -60,6 +60,67 @@ interface StreamDelta {
 }
 
 /**
+ * The parts of the request body that newer models reject outright. OpenAI's
+ * reasoning-era models (gpt-5 and the o-series) renamed `max_tokens` to
+ * `max_completion_tokens` and dropped `temperature` entirely, and other compat
+ * surfaces have not followed; there is no single body that both eras accept.
+ *
+ * Rather than pin a model-id list that rots on every rename - the same reason
+ * the presets above carry no model - the dialect is LEARNED from the provider's
+ * own 400. The first request for an unknown model goes out in the old shape,
+ * and a rejection naming the offending param narrows it. Nothing is generated
+ * on that failed attempt, so the cost is one fast round trip, paid once.
+ */
+interface ChatDialect {
+  tokenParam: "max_tokens" | "max_completion_tokens";
+  sendTemperature: boolean;
+}
+
+const DEFAULT_DIALECT: ChatDialect = { tokenParam: "max_tokens", sendTemperature: true };
+
+/** Learned quirks per endpoint+model. A stale entry costs nothing: the retry
+ *  loop re-derives the dialect from whatever the provider says next. */
+const learnedDialects = new Map<string, ChatDialect>();
+
+/**
+ * Narrow the dialect from a rejected request, or undefined when the error is
+ * not one this client can adapt to (bad key, unknown model, quota - all of
+ * which belong in front of the user unchanged).
+ *
+ * Both branches are one-way, so the retry loop they drive terminates.
+ */
+function adaptDialect(status: number, detail: string, current: ChatDialect): ChatDialect | undefined {
+  if (status !== 400) {
+    return undefined;
+  }
+  // `param` is the reliable half of an OpenAI error; the message text is the
+  // fallback for compat servers that echo the complaint without the field.
+  const param = errorParam(detail);
+  if (
+    current.tokenParam === "max_tokens" &&
+    (param === "max_tokens" || detail.includes("max_completion_tokens"))
+  ) {
+    return { ...current, tokenParam: "max_completion_tokens" };
+  }
+  // Dropping temperature hands the sampling decision to the provider's default.
+  // A body the model refuses to read is worth less than one sampled its way.
+  if (current.sendTemperature && param === "temperature") {
+    return { ...current, sendTemperature: false };
+  }
+  return undefined;
+}
+
+function errorParam(detail: string): string | undefined {
+  try {
+    const parsed = JSON.parse(detail) as { error?: { param?: unknown } };
+    const param = parsed.error?.param;
+    return typeof param === "string" ? param : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Build an InstructGenerateFn bound to one provider endpoint + key. The
  * returned fn ignores the ollama-only params (`apiBase`, `numGpu`): the base
  * URL is fixed at construction and there is no GPU to carve.
@@ -73,35 +134,8 @@ async function streamChat(
   config: CloudInstructConfig,
   params: InstructGenerateParams,
 ): Promise<InstructGenerateResult> {
-  // The whole assembled fn-gen prompt is one user turn: prompt.ts already
-  // carries the instruction, so there is no separate system message - the same
-  // "the prompt is the prompt" identity the local path holds.
-  const body = {
-    model: params.model,
-    messages: [{ role: "user", content: params.prompt }],
-    stream: true,
-    max_tokens: params.maxTokens,
-    temperature: params.temperature,
-  };
+  const { res, started } = await postChat(config, params);
 
-  const url = new URL("chat/completions", withTrailingSlash(config.baseUrl));
-  const started = Date.now();
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      // Bearer is the shared scheme across all four compat surfaces.
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: params.signal,
-  });
-
-  if (!res.ok) {
-    // Surface the provider's own message (invalid key, unknown model, quota):
-    // it is the actionable half. The key is never in the body we send back.
-    throw new Error(`Cloud ${res.status} ${res.statusText}: ${await safeText(res)}`);
-  }
   if (!res.body) {
     throw new Error("Cloud: response has no body");
   }
@@ -172,6 +206,60 @@ async function streamChat(
   const end = Date.now() - started;
   const total = totalMs ?? end;
   return { text, ttftMs: ttftMs ?? total, totalMs: total, doneReason };
+}
+
+/**
+ * Send the request, re-sending once per dialect quirk the provider names in a
+ * 400. Returns the accepted response and the clock start of the attempt that
+ * produced it, so a rejected probe never inflates the reported TTFT.
+ */
+async function postChat(
+  config: CloudInstructConfig,
+  params: InstructGenerateParams,
+): Promise<{ res: Response; started: number }> {
+  const url = new URL("chat/completions", withTrailingSlash(config.baseUrl));
+  const key = `${config.baseUrl}\n${params.model}`;
+  let dialect = learnedDialects.get(key) ?? DEFAULT_DIALECT;
+
+  for (;;) {
+    const started = Date.now();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Bearer is the shared scheme across all four compat surfaces.
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(chatBody(params, dialect)),
+      signal: params.signal,
+    });
+    if (res.ok) {
+      return { res, started };
+    }
+
+    const detail = await safeText(res);
+    const next = adaptDialect(res.status, detail, dialect);
+    if (!next) {
+      // Surface the provider's own message (invalid key, unknown model, quota):
+      // it is the actionable half. The key is never in the body we send back.
+      throw new Error(`Cloud ${res.status} ${res.statusText}: ${detail}`);
+    }
+    learnedDialects.set(key, next);
+    dialect = next;
+  }
+}
+
+// The whole assembled fn-gen prompt is one user turn: prompt.ts already carries
+// the instruction, so there is no separate system message - the same "the
+// prompt is the prompt" identity the local path holds.
+function chatBody(params: InstructGenerateParams, dialect: ChatDialect): Record<string, unknown> {
+  return {
+    model: params.model,
+    messages: [{ role: "user", content: params.prompt }],
+    stream: true,
+    [dialect.tokenParam]: params.maxTokens,
+    ...(dialect.sendTemperature ? { temperature: params.temperature } : {}),
+  };
 }
 
 function abortError(): Error {

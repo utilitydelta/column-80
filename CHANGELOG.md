@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.1
+
+Function generation against OpenAI's reasoning models failed on the first
+request. Those models renamed `max_tokens` to `max_completion_tokens` and take
+no temperature but their own, and the client sent the old body regardless.
+It now reads which parameter the provider objected to, corrects the body, and
+re-sends. What it learns it keeps per model, so a model costs one rejected round
+trip the first time you use it and nothing after. No setting, and no model list
+here to go stale.
+
 ## 2.0.0
 
 C# stops paying for a data shape with a member list you already had. C# is the

@@ -143,6 +143,77 @@ test("rejects on non-2xx with the status and the provider's error body [actionab
   await assert.rejects(run(srv.baseUrl), (err) => err instanceof Error && /401/.test(err.message) && /invalid api key/.test(err.message));
 });
 
+// gpt-5 / o-series reject `max_tokens` and `temperature`. The client must learn
+// that from the 400 rather than from a model-id list, and must not lose the
+// generation over it.
+const unsupported = (res, param, code) => {
+  res.writeHead(400, { "Content-Type": "application/json" });
+  res.end(
+    JSON.stringify({
+      error: {
+        message: `Unsupported parameter: '${param}' is not supported with this model.`,
+        type: "invalid_request_error",
+        param,
+        code,
+      },
+    })
+  );
+};
+
+test("400 naming max_tokens is retried as max_completion_tokens [surface: gpt-5 / o-series]", async (t) => {
+  const srv = await startServer((req, res, body) => {
+    if ("max_tokens" in body) return unsupported(res, "max_tokens", "unsupported_parameter");
+    sse(res, [contentFrame("a + b", "stop")]);
+  });
+  t.after(srv.close);
+
+  const out = await run(srv.baseUrl, { model: "reasoning-era-model" });
+  assert.strictEqual(out.text, "a + b", "the generation survives the renamed param");
+  assert.strictEqual(srv.requests.length, 2, "one rejected probe, one accepted request");
+  const retry = srv.requests[1].body;
+  assert.strictEqual(retry.max_completion_tokens, 512);
+  assert.ok(!("max_tokens" in retry), "the old name is gone, not duplicated");
+});
+
+test("400 naming temperature drops it and retries [surface: models that pin their own sampling]", async (t) => {
+  const srv = await startServer((req, res, body) => {
+    if ("temperature" in body) return unsupported(res, "temperature", "unsupported_value");
+    sse(res, [contentFrame("body", "stop")]);
+  });
+  t.after(srv.close);
+
+  const out = await run(srv.baseUrl, { model: "fixed-sampling-model" });
+  assert.strictEqual(out.text, "body");
+  assert.ok(!("temperature" in srv.requests[1].body), "temperature left to the provider default");
+});
+
+test("both quirks at once are learned in sequence, then remembered for later calls [cost: one probe, paid once]", async (t) => {
+  const srv = await startServer((req, res, body) => {
+    if ("max_tokens" in body) return unsupported(res, "max_tokens", "unsupported_parameter");
+    if ("temperature" in body) return unsupported(res, "temperature", "unsupported_value");
+    sse(res, [contentFrame("ok", "stop")]);
+  });
+  t.after(srv.close);
+
+  const model = `learned-model-${Date.now()}`;
+  assert.strictEqual((await run(srv.baseUrl, { model })).text, "ok");
+  assert.strictEqual(srv.requests.length, 3, "two rejections, then the accepted shape");
+
+  assert.strictEqual((await run(srv.baseUrl, { model })).text, "ok");
+  assert.strictEqual(srv.requests.length, 4, "the second call goes out in the learned shape directly");
+});
+
+test("a 400 this client cannot adapt to is raised, not retried [invariant: no blind retry loop]", async (t) => {
+  const srv = await startServer((req, res) => {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "model not found", param: "model" } }));
+  });
+  t.after(srv.close);
+
+  await assert.rejects(run(srv.baseUrl), (err) => /400/.test(err.message) && /model not found/.test(err.message));
+  assert.strictEqual(srv.requests.length, 1, "exactly one attempt");
+});
+
 test("abort via signal rejects with an abort error", async (t) => {
   const srv = await startServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/event-stream" });
