@@ -1,5 +1,44 @@
 # Changelog
 
+## 2.1.0
+
+You cannot say a backtick. Dictate a doc comment and the mic drops one long line into the buffer
+with no paragraph breaks and none of the gestures that put a type's real surface in front of the
+model, so the comment-named-type leg is not degraded, it is lost outright.
+`Column 80: Tighten Doc Comment` repairs that, and it never writes a word of its own.
+
+It breaks the prose into paragraphs and wraps it under 80 columns without changing a word. The
+guarantee is mechanical rather than reviewed: strip the whitespace and the backticks from the
+comment before and after, and the two strings are equal byte for byte. Press it twice and nothing
+moves, not the bytes and not the indentation. Five languages, and a Python docstring stays inside
+the body where it belongs.
+
+Then it asks a model which spans of your prose are type names, and throws most of the answer away.
+A backtick on a type the prompt already carries is not free: the type cap is four, the
+comment-backtick tier outranks two others, and a redundant gesture evicts a type the file is known
+to define. Measured on this repository's own TypeScript, the backticks developers write by hand
+cost 32% of the injected surface, 177,152 bytes against 261,578, and on 11 of 187 targets they
+cost all of it. So the command proposes only what is absent from the surface function generation
+would already build. Across 60 live rows it proposed nothing that was already there.
+
+Every surviving backtick is checked against the language server before you see it. One that
+resolves nowhere is stripped, with a channel line naming the word and the tier that refused it,
+because a silent removal is the one behaviour this must not have. A type that exists in the
+workspace but is not imported into this file carries its import path with it, per language, since
+injecting a surface with no way to reach the type manufactures the very failure it was meant to
+prevent. Graded by `cargo check`, `go list`, the CPython interpreter, `tsc` and a live Roslyn
+server, every import line it emits compiles, on all five.
+
+Two flags, both raised and neither filled. A term the comment uses in an instruction and never
+defines, which is the defect that produced a silent off-by-four in the write-up's own experiment.
+And a restated span, offered for deletion, because a deletion cannot introduce a claim. The
+undefined-term flag fires on 0.7% of 17,774 real doc comments, so it is quiet enough to be worth
+reading when it is not.
+
+The command is manual, has no keybinding, and is in no automatic path. It applies to whatever
+comment the cursor is in: the product never sees your microphone, and it does not pretend to.
+Nothing about function generation, repair or tab completion changes.
+
 ## 2.0.1
 
 Function generation against OpenAI's reasoning models failed on the first

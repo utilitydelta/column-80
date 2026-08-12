@@ -10,3 +10,8 @@ session*/
 *.vsix
 session-v45/census-tool/bin/
 session-v45/census-tool/obj/
+
+# Context docs. These carry client material and were protected only by a GLOBAL
+# ignore (~/.config/git/ignore), which does not travel with the repo: on any other
+# machine `git add -A` would have staged them.
+.index.md

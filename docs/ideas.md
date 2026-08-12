@@ -257,3 +257,7 @@ obvious version is expensive:
 Scout the second before the first. Also worth knowing before anything is built: how often does a real
 generation actually fail on a caller-direction fact, rather than on the spec defects item 52 already
 covers? On the session's evidence it was one round of five, but one function is not a rate.
+
+# Other models
+
+Evaluate https://developer.nvidia.com/blog/nvidia-nemotron-3-5-lightning-delivers-fast-accurate-specialized-task-execution-for-long-running-agents/

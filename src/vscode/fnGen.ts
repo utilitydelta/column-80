@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
 import { FnGenConfig } from "../core/config";
+// TYPE-ONLY, and it must stay that way: it is erased before emit, so no runtime
+// edge is added from fnGen to the tighten command's pure classifier. See
+// `PrefillLedgerViewIsPinned` below.
+import type { PrefillLedgerView } from "../core/tightenClassify";
 import { ContextBlockStore } from "../core/contextBlocks";
 import { ProbeCommandFn, ProbeHardwareOptions, probeCommandRunner } from "../core/hardware";
 import { FnGenService } from "../core/fnGenService";
@@ -28,6 +32,7 @@ import { makeAnthropicInstruct } from "../core/anthropicInstruct";
 import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/claudeCodeInstruct";
 import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
+import { registerTightenDocComment } from "./tightenDocComment";
 import {
   DocumentSymbolLite,
   MEMBER_CAP,
@@ -37,13 +42,14 @@ import {
   exampleNamesItsType,
   findEnclosingContainer,
 } from "../core/extraction";
-import { PRELUDE_TYPES, assembleSurfacePayload, firmInstructionFor, ofTypes, typesFromUses, typesNamedIn } from "../core/compilerDirected";
+import { assembleSurfacePayload, firmInstructionFor, ofTypes, typesFromUses, typesNamedIn } from "../core/compilerDirected";
 import { commentTypesIn, firstCodeOccurrence } from "../core/commentTypes";
 import { DisclosedType, memberNameOf } from "../core/repairGate";
 import {
   csTypesFromQualifiedUsage,
   goTypesFromQualifiedUsage,
   isAllCapsConstant,
+  prefillStopNamesFor,
   pathQualifiersIn,
   stopNamesFor,
 } from "../core/repairTypes";
@@ -2114,7 +2120,7 @@ export function prioritizedTypes(
   // `PREFILL_TYPE_CAP` binds. That is intended: the backtick is an explicit
   // gesture and the local-symbol leg is a heuristic over prose, and this product
   // ranks the thing the developer asked for above the thing it guessed.
-  push(commentTypesIn(spanText, "rust", excludeName, PRELUDE_TYPES));
+  push(commentTypesIn(spanText, "rust", excludeName, prefillStopNamesFor("rust")));
   push(referencedLocalSymbols(signature, docComment, localTypeNames));
   push(typesFromUses(fullText), deriveOnly);
   return out;
@@ -2130,6 +2136,71 @@ export function prioritizedTypes(
  * rather than a pre-computed table because the overwhelmingly common case fits
  * at full size and must not pay for a single one of them.
  */
+/**
+ * What one pre-fill DID, as a record rather than as channel prose (session-v52
+ * phase 2).
+ *
+ * The tighten command has to answer a question no existing hook answers: would
+ * backticking this name change the injected set, or evict something for nothing?
+ * `onDisclosed` reports what rendered and is the repair gate's evidence; it says
+ * nothing about the types a cap never looked at, which is exactly the population
+ * a backtick can rescue. Every field below is already computed by the walk. This
+ * is a read of it, not a second derivation.
+ *
+ * READ-ONLY BY CONSTRUCTION. The arrays are copies, so a consumer cannot mutate
+ * the walk's own bookkeeping through them.
+ */
+export interface PrefillLedger {
+  /** Type names whose own block rendered into the surface. Root, injected. */
+  rendered: readonly string[];
+  /** Every type name the prompt's walks EMITTED, root or not (`SharedWalkState.visited`).
+   *  A name here already has its surface in the prompt without being a root. */
+  visited: readonly string[];
+  /** Candidates that spent a cap slot and rendered nothing, with the reason verbatim. */
+  noBlock: readonly { type: string; reason: string }[];
+  /** Candidates a cap never looked at. */
+  notLookedAt: readonly string[];
+  /** Types a walk dropped ENTIRELY, with the cap that did it. Never a name that
+   *  also rendered: `droppedBy` holds a second, HELD-BACK class (a `member-floor`
+   *  refusal withdraws a data shape while the member list stays), and the
+   *  channel partitions the two a few lines from the hand-over. This field is
+   *  the first partition only. */
+  dropped: readonly { name: string; cause: string }[];
+  /** The root cap in force for this language and stop. */
+  typeCap: number;
+  /** Slots spent. At or past `typeCap`, a new root displaces one. */
+  admitted: number;
+  /** The rendered surface, byte-identical to the return value. */
+  surface: string;
+}
+
+/**
+ * COMPILE-TIME ONLY, and it emits nothing.
+ *
+ * The delta gate that consumes this ledger is pure (`src/core/tightenClassify.ts`)
+ * and `src/core/` never imports a module that imports `vscode`, so it redeclares
+ * the shape as `PrefillLedgerView`. Two hand-kept copies of one record drift,
+ * and the drift is invisible: a renamed field reads as `undefined` in the
+ * classifier and every candidate silently becomes class 4. This assertion is
+ * the pin. Both directions, so an addition on EITHER side is a build failure
+ * HERE, next to the producer, rather than a wrong answer over there.
+ *
+ * THE MISMATCH BRANCH IS `false`, NOT `never`, and the first version of this got
+ * it wrong (session-v52 adversarial defect 1). `never` is assignable to every
+ * type including `true`, so `AssertTrue<never>` satisfies its own constraint and
+ * a drifted shape compiled clean in both directions. A guard that cannot fail is
+ * decoration. `test/impl-v52-p2-ledger.test.cjs` now drifts the shape in a copy
+ * of the tree and asserts `tsc --noEmit` rejects it, in both directions, because
+ * a guard nobody has watched fail is the same decoration one step later.
+ */
+export type PrefillLedgerMatchesView = PrefillLedger extends PrefillLedgerView
+  ? PrefillLedgerView extends PrefillLedger
+    ? true
+    : false
+  : false;
+type AssertTrue<T extends true> = T;
+export type PrefillLedgerViewIsPinned = AssertTrue<PrefillLedgerMatchesView>;
+
 export interface PrefillSurface {
   /** The full surface - byte-identical to what `resolvePrefill` returned. */
   text: string;
@@ -2199,6 +2270,11 @@ export async function resolvePrefill(
     // cost at a smaller size. Called once, with the finished surface, before
     // this function returns; absent (every other caller) changes nothing.
     onSurface?: (surface: PrefillSurface) => void;
+    // session-v52 phase 2: the whole ledger, for the caller that has to decide
+    // whether a proposed backtick is a delta or an eviction. Additive and read
+    // by nobody else, so the surface bytes every existing caller receives are
+    // unchanged. Called once, with the finished record, before this returns.
+    onLedger?: (ledger: PrefillLedger) => void;
   },
 ): Promise<string | undefined> {
   if (!extractor) {
@@ -2860,7 +2936,41 @@ export async function resolvePrefill(
     );
   }
 
+  // THE LEDGER, BUILT ONCE AND HANDED OVER FROM BOTH EXITS (session-v52
+  // adversarial defect 2). `surface` is the only field that differs between
+  // them, so it is the only parameter: the no-block exit returns `undefined`
+  // and the ledger's surface is the empty string.
+  //
+  // Why the early exit needs it at all. The walk has already run by the time
+  // control reaches here: `noBlock`, `notLookedAt` and `droppedBy` are full and
+  // every one of them has already been LOGGED. A run that injects nothing is
+  // precisely the run where the delta gate has the most to say, and skipping
+  // the hook there made it say the opposite - an absent ledger classifies every
+  // candidate as class 4, and class 4 ranks AHEAD of class 3, so the targets
+  // with the most class-3 evidence got their proposals ordered worst.
+  const handOverLedger = (surface: string): void => {
+    opts?.onLedger?.({
+      rendered: [...rendered],
+      visited: [...sharedWalk.visited],
+      noBlock: noBlock.map((d) => ({ type: d.type, reason: d.reason })),
+      notLookedAt: [...notLookedAt],
+      // DROPPED ENTIRELY, which is what the field's own comment claims and what
+      // a class-3 consumer needs (adversarial defect 5). `droppedBy` also holds
+      // the HELD-BACK class: a `member-floor` refusal names a type whose data
+      // shape was withdrawn while its member list still rendered, so that name
+      // is in `rendered` too and calling it dropped is a lie the channel does
+      // not tell. The channel prints both partitions ("N entirely" / "M data
+      // shapes whose member lists stay") a few lines above; this field carries
+      // the first one only.
+      dropped: droppedLedger.filter((d) => !rendered.includes(d.name)).map((d) => ({ name: d.name, cause: d.cause })),
+      typeCap,
+      admitted,
+      surface,
+    });
+  };
+
   if (blocks.length === 0 && !importHint) {
+    handOverLedger("");
     return undefined;
   }
   if (blocks.length > 0) {
@@ -2911,6 +3021,7 @@ export async function resolvePrefill(
   const text = renderSurface(blocks.length) ?? "";
   opts?.onDisclosed?.(disclosed.filter((d) => rendered.includes(d.name)));
   opts?.onSurface?.({ text, blocks: blocks.length, keep: renderSurface });
+  handOverLedger(text);
   return text;
 }
 
@@ -3692,7 +3803,7 @@ export function tsPrioritizedTypes(
     }
   };
   push(typesNamedIn(signature, docComment, excludeName, TS_STD_TYPE_NAMES));
-  push(commentTypesIn(spanText, "typescript", excludeName, TS_STD_TYPE_NAMES));
+  push(commentTypesIn(spanText, "typescript", excludeName, prefillStopNamesFor("typescript")));
   push(referencedLocalSymbols(signature, docComment, localTypeNames));
   push(tsTypesFromImports(fullText));
   return out;
@@ -3950,7 +4061,7 @@ export function csPrioritizedTypes(
     }
   };
   push(typesNamedIn(signature, docComment, excludeName, CS_STD_TYPE_NAMES));
-  push(commentTypesIn(spanText, "csharp", excludeName, CS_STD_TYPE_NAMES));
+  push(commentTypesIn(spanText, "csharp", excludeName, prefillStopNamesFor("csharp")));
   push(referencedLocalSymbols(signature, docComment, localTypeNames));
   push(csTypesFromQualifiedUsage(signature, docComment, spanText, fullText));
   return out;
@@ -4409,7 +4520,7 @@ export function pyPrioritizedTypes(
     }
   };
   push(typesNamedIn(signature, docComment, excludeName, PY_STD_TYPE_NAMES));
-  push(commentTypesIn(spanText, "python", excludeName, PY_STD_TYPE_NAMES));
+  push(commentTypesIn(spanText, "python", excludeName, prefillStopNamesFor("python")));
   push(referencedLocalSymbols(signature, docComment, localTypeNames));
   return out;
 }
@@ -4596,7 +4707,7 @@ export function goPrioritizedTypes(
   // the declared name) can never feed the target back as a candidate.
   const bare = excludeName === undefined ? undefined : (parseGoReceiverSymbol(excludeName)?.member ?? excludeName);
   push(typesNamedIn("", docComment, bare, GO_STD_TYPE_NAMES));
-  push(commentTypesIn(spanText, "go", bare, GO_STD_TYPE_NAMES));
+  push(commentTypesIn(spanText, "go", bare, prefillStopNamesFor("go")));
   push(referencedLocalSymbols(signature, docComment, localTypeNames));
   push(goTypesFromQualifiedUsage(signature, docComment, spanText, fullText));
   return out;
@@ -4967,6 +5078,25 @@ export function registerFnGen(
   // (queries return empty when the language server is not answering).
   const injectionExtractor = (languageId: string): SurfaceExtractor | undefined =>
     readOracleConfig().injectionEnabled ? extractorFor(languageId) : undefined;
+
+  // `Column 80: Tighten Doc Comment` (session-v52). Registered from here
+  // because the presenter is the extension's ONE consent gate and lives in this
+  // closure; everything else the command needs is passed rather than imported,
+  // so `tightenDocComment.ts` carries no runtime edge back into this file and
+  // its whole pipeline runs headless in the suite. It is MANUAL: its one
+  // `resolvePrefill` is a pre-fill-class resolve, so it is wired to no
+  // keystroke and to no automatic path.
+  registerTightenDocComment(context, output, {
+    presenter,
+    resolveFunction: resolveFunctionAtCursor,
+    resolvePrefill,
+    prefillLangFor,
+    extractorFor: (languageId) => injectionExtractor(languageId),
+    // The SAME transport fn-gen's rounds go through, read at call time so a
+    // settings change that rebuilds the service is followed here too.
+    transport: () => service.transport,
+    modelTag: () => service.modelTag,
+  });
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {

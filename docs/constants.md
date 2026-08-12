@@ -90,6 +90,66 @@ identity defaults, waiting on measured cells.
 | arg-type / usage margins | 5-20ms, per-language floors | `src/core/argTypeSurface.ts`, `usageSurface.ts` | whether a leg starts inside the deadline | MEASURED-NARROW (warm per-language leg costs) |
 | compiler oracle spawns | none | `src/core/compilerOracle.ts` | `cargo check` / `tsc` / `dotnet` have NO timeout; a hung toolchain hangs the repair round indefinitely | missing, known, unfixed |
 
+## The tighten command
+
+| constant | value | home | gates | verdict |
+|---|---|---|---|---|
+| `TIGHTEN_PARAGRAPH_WORDS` | 50 | `src/core/tightenRender.ts` | where `Column 80: Tighten Doc Comment` closes a paragraph and starts the next | JUDGMENT CALL, and the code says so. Anchored on session-v52's scout table: 46 words between breaks in round 2 (the spec that made a 30B produce correct linear code), 60 in written Rust doc comments, 94 in dictation. It is NOT a measurement of this product. The arm that would earn it - take written doc comments that already carry breaks, join each into one block, generate from both, grade on compile - has never been run, and the render ships as a readability fix until it is |
+| `TIGHTEN_COLUMN` | 80 | `src/core/tightenRender.ts` | the wrap budget, minus the region's indent and comment prefix | the product's name, not a tuning dial |
+| `TIGHTEN_TAB_WIDTH` | 4 | `src/core/tightenRegion.ts` | columns a tab counts when the wrap measures width; the caller overrides it from the editor | DERIVED from the editor default, and overridden per target |
+| `PROPOSER_SPAN_CAP` | 12 | `src/core/tightenProposer.ts` | spans the proposer's reply may claim from one comment, applied after the longest-first sort and after overlap removal | JUDGMENT CALL, no arm. It bounds the LIST A HUMAN READS, not the round trips: the delta gate drops classes 1 and 2 before anything reaches the diff, and phase 3 owns its own resolver cap. Three times `PREFILL_TYPE_CAP` so the gate has real choice after the drops, and the same number `DROP_LEDGER_NAME_CAP` uses for the same reason - past a dozen names a list stops being read |
+| the proposer's `num_predict` | `max(64, PROPOSER_SPAN_CAP * 16)` = 192 | `src/vscode/tightenDocComment.ts` | how many tokens the tighten command's ONE model round may spend | DERIVED from `PROPOSER_SPAN_CAP`, deliberately NOT from `maxTokens`. The reply is at most twelve short lines copied out of the prose, so sixteen tokens a line with a floor is the shape of the answer rather than the shape of a function body. Spending the code budget here would let a model that ignores the format run for a minute before the parse drops every line of it |
+| `TIGHTEN_QUERY_BUDGET` / `TIGHTEN_SWEEP_CAP` | 12 / 3 | `src/vscode/tightenDocComment.ts` | workspace-symbol queries ONE tighten invocation may spend in total, and how many any one phrase may spend | **MEASURED, and the measurement replaced a borrowed number.** `PROPOSER_SPAN_CAP` (12) times `RATIFY_QUERY_CAP` (9) is 108 and nothing capped the product: 85 serial round trips were reachable (phase 5 adversarial, defect 8). The budget is one first query per span the developer could be shown, spent breadth before depth, because the measured marginal recall of the whole sweep over the first query is 0 of 451 names. Sized against `session-v52/ratify-query-cost.md`'s warm p95 per server - Roslyn 0.9ms, gopls 4.4ms, rust-analyzer 5.3ms, tsserver navto 16.9ms - so 12 queries is about 0.2s at the slowest. NOT sized against `refine.ts`'s ~500ms Roslyn floor, which is a REFERENCE call and over-prices this operation by two orders of magnitude. Pylance is unmeasured: it refuses to run outside VS Code |
+| the fold's variant sweep | 9 spellings per phrase | `src/core/spokenName.ts` (`identifierVariants`) | candidate spellings handed to a symbol provider for one spoken phrase | MEASURED-NARROW and DISCOUNTED IN PLACE. `session-v52/spikes/variants.cjs` recovered 100% of the 543 declared type names in celeriant-db at commit 487f8c1 (2026-08-08, `git archive HEAD` so the count reproduces), but the spoken form it swept with was derived by splitting each identifier on its own humps, so the generator was measured as the inverse of the splitter. The non-circular half is **0%**: of the type names whose spoken form differs from their own humps, 53 carry an abbreviation a person expands (`mem` said "memory") and the sweep recovers 0 of 53. So the set covers the conventions the five languages use, and 9.6% of this corpus's type names reach the developer as a guess that never auto-applies |
+| the fold's auto-accept gate | `fold` matches only | `src/core/spokenName.ts`, ruled in `src/core/tightenClassify.ts` (`autoAppliesUnderFold`) | which respellings the tighten diff may apply without an explicit human accept | RULED, on a measured hazard. A `plural` match breaks fold equality (`client sets` folds to `clientsets`, `ClientSet` to `clientset`), so it is a guess about English and not a respelling of what was said. Auto-applying it would rewrite a word the human said. Amendment 17 makes the guess a much better guess and does not make it an auto-apply. Every `Proposal` carries the answer as `autoApply`, so no consumer derives it from `match` |
+| the plural retry | 2 candidate strips (`s` and `es`), last word only | `src/core/spokenName.ts` (`pluralCandidates`) | the one deterministic retry when a spoken phrase does not fold to any identifier | PROVEN on the corpus, after a ruling that was measured wrong once. A SINGLE strip has to choose, and English cannot: contract amendment 5 chose `es` first and was wrong for every word ending in a silent `e` - 102 of 549 pluralisable celeriant-db type names, 18.6%, and `planes` resolved to `Plan` with no collision to refuse on. Amendment 17 generates both and lets the identifier set decide; re-measured on the same 549, recovery is 549/549 with zero wrong answers. `stripPlural` is kept, superseded, because the blind oracle pins it |
+| `RESTATEMENT_THRESHOLD` | 0.7 | `src/core/tightenFlags.ts` | lexical containment at or above which two spans are called a restatement, and one is offered for deletion | INHERITED from `session-v52/spikes/detector.cjs`, and validated rather than derived: the scout checked the instrument against three known cases before believing its corpus numbers. Inclusive, as the spike's `>=` is. The port re-runs the spike's own tokeniser and containment, so the number still means what it meant when it was checked |
+| `RESTATEMENT_MIN_TOKENS` | 5 | `src/core/tightenFlags.ts` | content tokens a unit needs before it is compared at all | INHERITED from the same spike, same reason. Below it, short units score 1.00 against each other on nothing |
+| the restatement splitter | `.!?` + whitespace, and blank lines | `src/core/tightenFlags.ts` (`sentenceSpans`) | what counts as one comparable unit | **CHANGED 2026-08-12, and it moved a published digit.** The spike also split on a BARE newline, which is wrong for this product: phase 1 hard-wraps the comment at 80 columns, so a newline is a wrap and never a boundary. On 17,774 real doc-comment blocks, 47 of 582 sentence pairs were two lines of ONE sentence or a split URL, and a reported span is what phase 5 offers to DELETE. See the digit note below |
+| `MAX_REPORTED_PAIRS_PER_GRAIN` | 100 | `src/core/tightenFlags.ts` | pairs the report shows per grain; never a cap on pairs compared, so `units`, `worst` and `totalPairs` stay exact | JUDGMENT CALL. Pair count is quadratic in units and a self-similar 100KB paste fires on nearly every pair. PER GRAIN because a shared cap let the sentence pass spend the whole budget and report the duplicated paragraph nowhere, which is the one grain round 5's failure shows in |
+| the undefined-term gate | under 1% of real doc comments may fire | `src/core/tightenFlags.ts` (`objectHead`) | whether the undefined-term flag ships at all | PROVEN-ARM, and the arm is the reason the rule is what it is. Measured on the 17,774-block corpus: "instruction verb plus a determiner in its object" fires on 10.5% (top terms `object`, `list`, `name`, `string`, `path` - ordinary technical English); adding an `of the X` leg to a possessive requirement gives 1.3%; POSSESSIVE ALONE, what ships, gives 0.7%. The `of` leg was dropped because it carries 113 of 234 flags almost entirely out of CPython, where "Return the sum of the two operands" defines nothing. Named cost: "subtract the known saving of the entry" is now missed. Re-run `session-v52/spikes/adv-p4-fprate.cjs` before loosening it |
+
+### What the delta gate is worth, measured
+
+Two numbers from `session-v52/census-delta.md`. They are the gate's whole justification and they
+are easy to lose in a census file.
+
+**The eviction is real, it is happening today, and it has a size.** Ungated, on this repo's own
+TypeScript, the human's own backticks cost **32% of the injected surface** (177,152 bytes with them,
+261,578 without), and on **11 of 187 targets they cost ALL of it**: every cap slot went to a
+backticked name that resolved no block. Rust pays 4.2%. Nothing goes the other way in either
+language, on any crate split. That is the eviction `goal.md` predicted, at a size nobody guessed,
+and it is the argument for the gate rather than against the gesture.
+
+**Ship condition 1 holds on LIVE model output, not only against synthetic ledgers.** Census B ran
+the shipping proposer over 60 real targets, 30 Rust and 30 TypeScript, and **zero class-1 and zero
+class-2 proposals reached a caller**. The gate dropped 10 of 12 ratified Rust candidates and 4 of 9
+TypeScript ones; 2 Rust and 5 TypeScript survived, every one carrying a `displaces` because the cap
+was full on all seven targets. Nine of Rust's twelve were class 1 - the model names the type that is
+already the injected root, because it can see it in the signature quoted in the prose. The same
+redundancy the census found in the human, reproduced by the model.
+
+### The round-5 digit: 0.79 became 0.83 on 2026-08-12
+
+Anyone reading `0.79` in the scout notes, `session-v52/goal.md`, `contract-p4.md` or
+`docs/dumb-models-work.md` and then running the code will get **`worst` = 0.83**. Nothing
+regressed. Dropping the bare-newline split (row above) joins hard-wrapped lines into whole
+sentences, and the sentence grain can finally see a pair it was blind to:
+
+| | before | after |
+|---|---|---|
+| `worst` on round 5's duplicated paragraph | 0.79 | **0.83** |
+| the pair at 0.83 | not visible | `Re-checking wire_size() per drop is O(n^2) and stalls the executor.` against `Re-checking wire_size() on every drop is quadratic and stalls the executor.` (sentence grain) |
+| the pair at 0.70 | not visible | the two `wire_size() is O(n)` instructions (sentence grain) |
+| **the contract's paragraph pair** | 0.79 | **0.79, unchanged** |
+| round 2 clean | 0.33, quiet | 0.33, quiet |
+| verbatim paste | 1.00 | 1.00 |
+
+The digit rose because the detector got MORE right: those two sentences are the same instruction
+written twice, which is round 5's actual failure. Ship condition 1 is intact and the blind oracle
+held 29/29 across the change. Unit counts fell with the same fix (15/17/19 to 9/11/12) because
+those fixtures are hard-wrapped and several "sentences" were lines.
+
 ## What is deliberately left alone
 
 `GO_PREFILL_TYPE_CAP = 8`, `MAX_BOUND_LINES = 4`, `REFINE_TARGET_CAP = 6` and the FIM deadline

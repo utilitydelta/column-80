@@ -183,6 +183,16 @@ export class FnGenService {
     return this.modelLabel ?? this.config.model;
   }
 
+  /** The tier-resolved transport this service's rounds go through, for a
+   *  gesture that is NOT a function generation and must not be postprocessed as
+   *  one. `Column 80: Tighten Doc Comment` asks a model to POINT at spans of a
+   *  comment, and `generate` would trim that reply to a function and reject it
+   *  for not containing the one it asked for. Read-only: nothing may swap a
+   *  service's transport after construction. */
+  get transport(): InstructGenerateFn {
+    return this.generateFn;
+  }
+
   async generate(request: FnGenRequest, signal?: AbortSignal): Promise<FnGenResult | undefined> {
     const blocks = request.contextBlocks ?? [];
     const promptInput: FnGenPromptInput = {

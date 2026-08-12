@@ -16,7 +16,7 @@
 
 import { CS_STD_TYPE_NAMES, csUsingNamespaces } from "./csExtraction";
 import { commentTypesIn } from "./commentTypes";
-import { typesNamedIn } from "./compilerDirected";
+import { PRELUDE_TYPES, typesNamedIn } from "./compilerDirected";
 import { PY_STD_TYPE_NAMES, STD_TYPE_NAMES } from "./crossFileShape";
 import { maskNonCode } from "./fimInject";
 import {
@@ -114,6 +114,30 @@ export function stopNamesFor(languageId: string): ReadonlySet<string> {
     return GO_STD_TYPE_NAMES;
   }
   return STD_TYPE_NAMES;
+}
+
+/**
+ * The names the PRE-FILL refuses as a comment-named candidate, per language.
+ *
+ * Identical to `stopNamesFor` in four languages and DIFFERENT IN RUST, which is
+ * the whole reason it exists. `stopNamesFor` answers "is this std, so not worth
+ * a resolver round trip" and hands Rust `STD_TYPE_NAMES`. The pre-fill's doc and
+ * comment legs hand Rust `PRELUDE_TYPES`, which also carries `None`, `Some`,
+ * `Ok`, `Err` and `Self` - names that are in scope everywhere and can never be a
+ * candidate.
+ *
+ * The delta gate has to answer the pre-fill's question and not the resolver's.
+ * The census measured what the difference costs: 29 of Rust's 109 class-4
+ * instances were those five words, proposed to a developer who accepts them and
+ * gets nothing, because the pre-fill throws each one away the moment it is
+ * backticked (`session-v52/census-delta.md`).
+ *
+ * ONE SOURCE, read by both. `fnGen.ts`'s five comment legs call this rather than
+ * naming a set each, so the gate and the pre-fill cannot drift again. The values
+ * are the ones those call sites already passed, so no prompt byte moves.
+ */
+export function prefillStopNamesFor(languageId: string): ReadonlySet<string> {
+  return languageId === "rust" ? PRELUDE_TYPES : stopNamesFor(languageId);
 }
 
 function signatureTypes(languageId: string, signature: string): string[] {

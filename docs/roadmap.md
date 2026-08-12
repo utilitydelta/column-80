@@ -971,7 +971,53 @@ If C# moved and Rust/TS did not, the item shrinks to those two.
 ### 52. Nothing tightens a dictated doc comment between the mic and the model
 
 Human idea, 2026-08-12, out of the celeriant A/B session written up in `dumb-models-work.md`.
-Unscouted. The workflow it serves: the developer holds the mic and brain-dumps the spec they already
+
+**SCOUTED AND RULED 2026-08-12.** Read `session-v52/goal.md` and `session-v52/scout-notes.md` before
+building any of what follows. The command is `Column 80: Tighten Doc Comment` (`refine` is already
+taken by the code style rewrite), and it does five things: take the single-line brain dump the mic
+left, break it into paragraphs and wrap it under 80 columns WITHOUT changing a word, backtick the
+type names a model spots that are absent from the injected surface, verify each against the resolver
+before the developer sees the diff, and strip the ones that do not exist.
+
+Two of the item's three original claims are measured false.
+
+- **Redundancy is refuted.** 76 genuine dictated utterances from this human's own transcripts
+  restate 0.6% of their units, against 0.4% for 408 written Rust doc-comment blocks. The detector
+  was validated first and fires on round 5's exact shape. Round 5 was a clipboard slip in a typed
+  session, which the write-up says itself, so it was never evidence about speech.
+- **The no-new-claims rule is enforceable AND it forbids the fix.** A lexical provenance check
+  passes a pure dedupe at 0 of 15 sentences and flags round 1 to round 2 at 15 of 15. It also flags
+  the minimal fix for the undefined "saving" bug. So refine kills one failure class, not two, and
+  that one measures at roughly zero.
+- **Merge, reorder, tighten and run-on repair are all refuted, and reorder backwards.** Dictation
+  interleaves its topics LESS than written doc comments (0.43 against 0.50) and much less than round
+  2, the spec that worked (0.64). Sentence length is 23.0 against 21.0 words with no sentence over 40
+  in any population. The only real structural gap is paragraph breaks, 94 words between them against
+  60 written and 46 in round 2, and you cannot say a break. That is goal phase 4, gated on an arm.
+- **The backtick half survives and is the build, as a DELTA against the injected surface.** Dictation
+  produces no backticks at all, so the comment-named-type leg is lost outright rather than degraded.
+  `findTypeReference` already ratifies, in five languages. What a backtick buys is a RE-ROOT: depth is
+  2 at every context stop and is not a dial, so a type at level 3 of the walk is unreachable
+  everywhere until its name becomes a root. A proposal for a type the walk already reached is an
+  eviction, not a no-op, because `PREFILL_TYPE_CAP` is 4 and the backtick tier outranks
+  `referencedLocalSymbols` and `typesFromUses` by design. The scout's 38.6% recall and 65.5%
+  precision are against human backticking habit, which is the wrong denominator; the delta
+  measurement is the proposer's ship gate.
+- **The mic says "shard mem cache" and the repo says `ShardMemCache`.** Fold to compare (lowercase,
+  drop non-alphanumerics): 0.99% of 3,753 fold keys in celeriant-db carry two spellings, and every
+  one is a type against a const or function of the same concept, so a kind filter clears them. Sweep
+  to query, 8 deterministic variants per phrase. A fold match is applied silently; a mismatch (the
+  abbreviation case, "shard memory cache" against `ShardMemCache`) reaches the diff labelled a guess
+  and needs an explicit accept.
+- **The missing import is the hard part, and it lands on item 48.** A dictated comment names a type
+  the developer is about to use, so the import is not there yet. That type has no anchor in the file
+  and a real definition elsewhere, which `vscode.executeWorkspaceSymbolProvider` finds (already used
+  in `extractors.ts`, `csExtractor.ts`, `goExtractor.ts`). Injecting its surface without its import
+  path manufactures item 48's failure rather than suffering it, so the goal rules that a
+  workspace-resolved backtick carries the import path or does not ship.
+
+The rest of this item is the pre-scout text, kept for its reasoning and superseded on those three
+points. The workflow it serves: the developer holds the mic and brain-dumps the spec they already
 hold in their head, edge cases, ordering policy and the reason the obvious implementation is wrong.
 The model's job is then narrow and mechanical, mapping a spoken spec onto the language in front of
 them.
