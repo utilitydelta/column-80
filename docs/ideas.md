@@ -188,3 +188,72 @@ a call graph reliably enough to offer, and where is the tool/agent line.
 - The ordering preference if one is picked next: scout A (property-based) for the cleanest safety
   story, spike E (trace-assertions) as the tractable slice of observability, and treat G as its own
   larger scout because its UX question needs a human in the loop.
+
+### Test generation builds fixtures that cannot reach the state under test, and a stub passes the suite
+
+Raised 2026-08-12 from the same session. **PROVEN**, on one function, and the proof is two minutes of
+work anybody can repeat.
+
+`trim_out_client_sets` enforces a 4 MiB cap. Asked for tests blind of the implementation,
+`qwen3-coder:30b` produced five scenarios whose largest fixture serialises to **406 bytes**, off by a
+factor of roughly 10,300. Every scenario therefore sits under the cap, `0` is the truthful expected
+value for all five, and the human typing `0` five times was typing the right answer every time. The
+model's own comments name the intent it could not build: `// Both sets trimmed` sits beside an
+assertion that zero were trimmed.
+
+Replace the body with `{ 0 }` and rerun: the qwen suite passes, the `gpt-5.6-sol` suite fails on its
+second scenario. Both suites pass against the real implementation, so a green board does not
+distinguish them.
+
+**Why this is structural and not a model-size complaint.** Implementation from a spec is translation:
+the doc comment names the shape, the injected surface names the tools, and a 30B renders it fine, five
+rounds running. A test from a spec is adversarial construction: you have to invent inputs that reach
+the states the spec describes. Nothing in the injected surface says `SUMMARY_PAYLOAD_MAX_BYTES` is 4
+MiB, that reaching it needs tens of thousands of entries, or that one `Option<Vec<u64>>` field is a
+cheap lever on `wire_size()`. Sol found that lever and wrote a doubling search plus a binary search to
+land the payload just over an arbitrary target. Qwen did not, and defaulted to what compiles.
+
+**The blanked-expected-values rule cannot save this, and that is the sharp part.** Ratification worked
+exactly as designed. No wrong value entered the suite. The suite is still worthless.
+
+Two candidate builds, and they are not exclusive:
+
+1. **Refuse rather than emit.** The classifier already refuses async, IO, needs-fixture,
+   underspecified. A threshold function whose fixture must span orders of magnitude is arguably the
+   same category, and refusal is the product's existing answer to "cannot do this honestly".
+2. **Supply the constants.** The doc comment names `SUMMARY_PAYLOAD_MAX_BYTES` and the injected
+   surface does not carry its VALUE. A const-value leg is small, deterministic, and would at least
+   let a model know what magnitude it is aiming at. Scout whether that alone moves fixture quality,
+   because it is much cheaper than the alternative.
+
+Detection belongs to item 13. This item is the defect; 13 is the instrument that would have caught it.
+
+### Injection expands downward only, so no caller-direction fact can reach the model
+
+Raised 2026-08-12 from the same session. REASONED, from the injection log of four real generations.
+
+The pre-fill walks INTO the enclosing type: its fields, its nested types, their public members,
+roughly depth 2 inside the token budget. Every failure in that session's round table that was not a
+spec defect was a fact living in the other direction:
+
+- the function runs inline on a single-threaded executor, so an O(n) call inside its loop stalls the
+  event loop
+- the vec it iterates is sorted and binary-searched by a read path two crates away, so plain
+  iteration order is a permanent per-tenant bias
+
+Neither is reachable at any depth downward. The frontier model missed both exactly as the 30B did,
+which is the evidence that this is an injection property and not a capability one.
+
+Today the answer is that the human writes those facts into the doc comment, and that works. The open
+question is whether any of it can be supplied deterministically, and it is genuinely open because the
+obvious version is expensive:
+
+- **Callers** are a reference query the language server can answer, but rendering them costs budget
+  that item 41a says is already the binding constraint, and most callers are noise.
+- **Enclosing-file or module doctrine** is cheaper and blunter: a crate- or module-level comment
+  stating "this path runs on the shard executor" injected for every function in it. That is a
+  convention the way item 34's Go answer became a taught convention, not a resolver feature.
+
+Scout the second before the first. Also worth knowing before anything is built: how often does a real
+generation actually fail on a caller-direction fact, rather than on the spec defects item 52 already
+covers? On the session's evidence it was one round of five, but one function is not a rate.

@@ -51,6 +51,9 @@ Each needs its own goal and scout. Ordered by measured value, not by age.
 **4. Ideas and unscouted**
 Worth doing, not yet worth a goal file. Scout before scoping.
 
+- **53.** a ratified test suite passes against a body replaced with `{ 0 }`; PROVEN 2026-08-12
+- **52.** nothing tightens a dictated doc comment before it becomes the prompt
+- **54.** injection walks downward only, so no caller-direction fact ever reaches the model
 - **17.** ask the model which types it needs, then inject their surfaces
 - **39.** other agent CLIs as fn-gen backends: codex, opencode, and whatever comes next
 - **11.** include block, the recursive variant
@@ -965,6 +968,73 @@ If C# moved and Rust/TS did not, the item shrinks to those two.
 - Needs: element-type unwrapping at a collection receiver, plus a per-statement injection cache
   that outlives a single dot.
 
+### 52. Nothing tightens a dictated doc comment between the mic and the model
+
+Human idea, 2026-08-12, out of the celeriant A/B session written up in `dumb-models-work.md`.
+Unscouted. The workflow it serves: the developer holds the mic and brain-dumps the spec they already
+hold in their head, edge cases, ordering policy and the reason the obvious implementation is wrong.
+The model's job is then narrow and mechanical, mapping a spoken spec onto the language in front of
+them.
+
+Two measured failure families from that session, both properties of speech rather than of the model:
+
+1. **Redundancy.** A doc comment carrying two overlapping copies of the same paragraph, an editing
+   slip, broke `qwen3-coder:30b` outright. Dedupe the paragraph and the same model produced output
+   behaviourally identical to `gpt-5.6-sol`. Spoken prose is redundant by construction, because
+   restating is how people think out loud, so the dictation path walks straight into the one thing
+   that reliably breaks a small model.
+2. **Undefined terms.** The comment said "subtract each entry's known saving" and never defined
+   saving. The frontier model supplied the right definition from prior; the 30B took the nearest
+   reading and shipped an off-by-4 running total that no test in the repo caught. Speech is loose
+   about definitions.
+
+**The shape, and the human already ruled on it: a separate command, not a tool call inside
+generation.** `Column 80: Refine Comments` reads the dictated comment, rewrites it, and shows a diff
+the developer edits or accepts. The accepted comment is what fn-gen then reads.
+
+Three reasons the separation is right, and the third is the one that is not obvious:
+
+- The refined comment is a durable repo artifact; a generation is disposable. Folded into generate,
+  the tightening evaporates, gets re-paid on every regeneration, and lands differently each time.
+- It makes failure attributable. One combined pass and a bad body cannot be blamed on the spec or on
+  the render. Two passes and the developer has already read the spec.
+- It keeps the autonomy where the product puts everything else. A model rewriting the human's intent
+  inside an opaque call is the same category as a model writing an expected value.
+
+**The rule that makes it safe, and it belongs with the other bans.** Refine may delete, merge,
+reorder, tighten and backtick. Refine may NOT introduce a behavioural claim with no antecedent in the
+dictation. Same family as "wrong-value repair is banned" and "test-repair is banned". It is also
+checkable: a sentence with no source in the input renders differently in the diff, so added claims
+look different from tightened ones and the review becomes "read the three highlighted bits".
+
+**Backticks are the second half and they are not formatting.** A backtick resolves that type's
+surface into the prompt, so refine choosing what to backtick is refine choosing what enters the
+generation context. Two failure modes: it backticks a word that looks like a type and resolves to
+nothing, or it backticks four types and eats the budget so the ones that matter get squeezed. Both
+are fixable deterministically, and the shape is the one item 43's guard already uses: **the model
+proposes, the language server ratifies**, anything that fails to resolve stays as prose. The diff
+should show the consequence rather than the punctuation, something like `ClientSet (4 members, ~60
+tok)` beside each new backtick with a running total against the window. Sequence this against item
+43, which owns the budget arithmetic, and note it interacts with item 17: refine is the deterministic
+version of asking the model what it needs.
+
+**What the scout has to answer, in order.**
+
+- What does the redundancy rate on real dictated comments actually look like? Nobody has recorded a
+  dictation corpus. Without one, the whole item rests on a single editing accident.
+- Does refine measurably improve generation, or only comment hygiene? The arm is the same function,
+  two runs, dictated-raw against refined, graded on compile.
+- Can the "no new claims" rule be enforced, or only rendered? A rendering the developer skims is a
+  weaker gate than typing a value, and the whole design leans on it.
+
+**One honest limit that must not get lost.** Refine sees the same downward type graph fn-gen does. It
+cannot know the target runs on a single-threaded executor, or that a vec is binary-searched two
+crates away. In the write-up's round 1 the thin comment was not redundant, not ambiguous and not
+missing backticks; it was silent about three invariants the developer knew and did not say, and a
+refine pass would have left it untouched. Refine kills two of the three measured failure classes. The
+third stays the human's job, which is an argument for cueing the dictation, not for widening refine.
+
+
 ## 5. The long tail
 
 Real, filed, and not urgent. Priority within the tier is unchanged.
@@ -1083,6 +1153,36 @@ The mocking question, answered honestly or not at all:
   fills, or accept the gesture is for leaf logic.
 
 All three sit behind item 14, which builds the machinery they reuse.
+
+**Amendment 2026-08-12: the family now has a PROVEN instance and a ranking, and property tests were
+missing from it.** Item 53 records a ratified suite that passes against a body replaced with
+`{ 0 }`. That took two minutes by hand and separated a real suite from a hollow one with no ambiguity
+to argue about. The four techniques are not equal against it and shipping them as a bundle would hide
+which one is doing the work.
+
+1. **A single trivial-return mutant, first.** No framework, no `cargo-mutants`, no runtime question:
+   one body replaced with `return Default::default()` and a rerun. It is the direct counter to item
+   53, it cannot produce a false positive worth debating, and it retires the "is the runtime a
+   nightly" scout question for the cheap case. Full mutation testing stays as scoped above; this is
+   the rung that ships first.
+2. **Property tests, and they are the gap in the list above.** The session's off-by-4 running-total
+   drift survived every example test in the repo, and would survive coverage AND a trivial-return
+   mutant. It dies instantly to a generated-payload invariant. Arithmetic drift is precisely what a
+   small model produces from an ambiguous spec, so this is aimed at the failure item 52 documents.
+   The design question it drags in belongs in the scout, not after it: if the human types every
+   expected value, the human types the invariant too, and an invariant is harder to type than a
+   scalar. That may be the honest reason this rung is second rather than first.
+3. **Coverage, as a pre-filter only.** It WOULD have caught item 53's suite, because a 406 byte
+   payload returns at the guard and leaves the sort and the loop unexecuted. It goes blind the moment
+   a fixture reaches the code without asserting the outcome, which is the more common hollow test.
+4. **Fuzzing stays off this rung.** The scoping above is right and the session confirmed it from the
+   other side: the function under test parses nothing and takes no untrusted bytes. Its subsystem's
+   real fuzz target is the sidecar deserialiser, where a torn file meets a CRC check and a version
+   gate.
+
+None of this reduces how much the developer has to think and it must not be sold that way. Green
+currently tells them nothing, so suspicion spreads evenly over everything a generation produced. One
+line saying *this suite survives a stub* collapses that into one place to look.
 
 ### 14. A failing test does not drive repair
 
