@@ -25,6 +25,7 @@ Proven broken, no design question left. Each is small and each is about the prod
 - **48.** the injected surface carries no imports, now Python's largest measured failure family
 - **47.** Python's pre-fill gate has never been decomposed and its last number was 7.8x
 - **50.** the gather buys a hover per collaborator the render drops; fixed in Go, unmeasured in three languages
+- **55.** every fn-gen refusal blames the cursor, including the one that means no language server is installed
 
 **2. Trust the instruments, before building on them**
 Two independent rig defects turned up in one session, and each had been silently wrong for months. Until this tier is settled, a number from the harness is a hypothesis.
@@ -214,6 +215,42 @@ one to take it off sooner. PROVEN red 2026-07-28.
   definition at is unreachable even when it is defined in the same workspace. C# has one.
 - The fixture is a deliberate trap and is already written: `Tile` lives in another file, the helper
   class shares no member name with it, so which tree a resolution reached is always decidable.
+
+### 55. Every fn-gen refusal blames the cursor, including the one that means no language server is installed
+
+`resolveFunctionAtCursor` (`src/vscode/fnGen.ts:293`) refuses on three distinct causes and returns
+the same bare `undefined` for all of them:
+
+```ts
+if (!symbols || symbols.length === 0 || !hasDocumentSymbolShape(symbols)) return undefined;
+```
+
+Only the third is the human's fault, and it is the rarest. The callers turn all three into a message
+that points at the cursor: `no function at the cursor` and `nothing to generate here - the cursor is
+not inside a function or on a generatable type header` (`fnGen.ts:5175`), `place the cursor in a
+function to generate TDD tests` (`fnGen.ts:5783`), the TDD-run twin (`fnGen.ts:6128`), and the repair
+gate.
+
+PROVEN 2026-08-16 by a first-run user on Windows 11 with Rust: no rust-analyzer extension installed,
+FIM working, both generation gestures refusing. He read the message, checked the cursor, found the
+cursor was right, and had nowhere else to go. The message sent him to the one thing that was not
+broken.
+
+- **FIM masks it.** FIM is Ollama-only and its language-server legs are raced against a 50ms deadline
+  and fall back silently, so a missing server looks like a working install. "FIM works" is what makes
+  the user believe the setup is fine.
+- **No channel line.** The tier gate logs, the unsupported-language gate logs, this branch logs
+  nothing. The toast is the only signal in the product, and it names the wrong cause.
+- **The platform is incidental.** The resolver hands `document.uri` to
+  `vscode.executeDocumentSymbolProvider` and touches no path, no separator, no filesystem. This is not
+  the Windows gap in item 18, and a session that goes looking for a path bug here will find nothing.
+- **The fix is at the resolver**, so one change covers fn-gen, both TDD gestures and repair. Split the
+  three branches, name the expected server for the language in the undefined case (rust-analyzer,
+  gopls, Roslyn, Pylance, the TS server), say "still indexing" on the empty tree, and keep today's
+  wording only for flat `SymbolInformation`. Add the `[fngen] refused:` line on all three.
+- **Requirements are silent too.** `docs/user-manual.md:52` lists Ollama, the VS Code version, the GPU
+  and the per-language compiler toolchain. It never says the language server extension has to be
+  installed, and every gesture past FIM depends on one.
 
 ## 2. Trust the instruments, before building on them
 
