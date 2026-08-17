@@ -97,6 +97,75 @@ export const DEFAULT_FNGEN_CONFIG: FnGenConfig = {
   logPrompts: false,
 };
 
+/** Loopback in every spelling that reaches this product, and nothing wider.
+ *  `URL` has already normalised `127.1`, `0177.0.0.1` and `2130706433` to a
+ *  dotted quad and bracketed any IPv6, so this reads the normalised form only.
+ *
+ *  `0.0.0.0` is here because `OLLAMA_HOST=0.0.0.0` is the standard way people
+ *  expose Ollama and clients then get pointed at `http://0.0.0.0:11434`. That
+ *  is this machine. Treating it as somebody else's skips the hardware probe on
+ *  a purely local setup, which is the failure this predicate exists to avoid.
+ *
+ *  Deliberately NOT here: `ip6-localhost` and IPv4-mapped IPv6. Those are
+ *  alias-resolution policy (an /etc/hosts convention in the first case), and
+ *  chasing host aliases past the IP families is a different question. */
+function isLoopbackHost(host: string): boolean {
+  if (host === "localhost" || host === "[::1]" || host === "[::]") {
+    return true;
+  }
+  if (host === "0.0.0.0") {
+    return true;
+  }
+  // All of 127.0.0.0/8 is loopback, not just 127.0.0.1.
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+/**
+ * Is this apiBase another machine? Roadmap item 19: a non-default apiBase used
+ * to fall through to a probe of THIS box's VRAM, so a laptop pointed at an idle
+ * GPU server was told it had no usable GPU.
+ *
+ * Two rules, and the second is the one worth reading twice.
+ *
+ * Normalise before comparing, so a hand-typed trailing slash on the default is
+ * still the default.
+ *
+ * Then: a LOOPBACK host is local on any port. The hardware probe measures the
+ * machine that serves the model, and when that machine is this one the probe is
+ * right and must keep running. Somebody serving Ollama from a container on
+ * 11500 still wants their own VRAM measured.
+ *
+ * Lives here rather than beside its caller because `fnGen.ts` imports
+ * `firstRun.ts`, and `firstRun.ts` needs this predicate too.
+ */
+export function isRemoteApiBase(apiBase: string): boolean {
+  // Defensive rather than load-bearing, and that is a measured claim: a
+  // differential over 51,853 inputs found ZERO verdict differences with this
+  // line removed. WHATWG `new URL()` already strips surrounding whitespace, a
+  // trailing slash never reaches `.hostname`, and the default's own host is
+  // `localhost`, which the loopback branch below covers anyway. Kept because a
+  // reader should not have to know all three to trust the compare.
+  const normalized = apiBase.trim().replace(/\/+$/, "");
+  if (normalized === "" || normalized === DEFAULT_FNGEN_CONFIG.apiBase) {
+    return false;
+  }
+  let host: string;
+  try {
+    host = new URL(normalized).hostname.toLowerCase();
+  } catch {
+    // Unparseable is not a reason to route a user off the hardware table. It
+    // stays local and fails the way a bad apiBase already fails.
+    return false;
+  }
+  // An EMPTY hostname is the case that comment used to intend and miss:
+  // `new URL("localhost:11434")` does not throw, it parses to hostname "".
+  // Same for `unix://` and `file://`. None of those is somebody else's GPU box.
+  if (host === "") {
+    return false;
+  }
+  return !isLoopbackHost(host);
+}
+
 /**
  * The spike-proven 16GB reference carve: cap the 30b's GPU layers so the
  * co-resident FIM model stays 100% on GPU. The 16gb-large-ram tier row

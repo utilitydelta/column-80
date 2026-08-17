@@ -732,3 +732,121 @@ test("registerFirstRun: activation runs the flow once per install; a second acti
     "every probe in this test came from the injected fake, never host hardware"
   );
 });
+
+// ---- session-v55 phase 2: the remote apiBase arm reaches the FLOW, not just
+// the build [surface: 'First-run flow', roadmap item 19]
+//
+// buildFnGenService grew a remote arm and runFirstRunFlow did not, so on a
+// remote apiBase a user was told BOTH "no usable GPU detected" (here, at
+// activation and on every Select Hardware Tier) and "tier=remote fnGen=enabled"
+// (by the build). The first sentence is the one item 19 exists to stop
+// printing, and this is where a user meets it first.
+
+const REMOTE_HOST = "http://ml-box.invalid:11434";
+
+test("remote apiBase: the flow does not tell a user with a GPU server that they have no usable GPU", async () => {
+  resetState();
+  __state.config = { apiBase: REMOTE_HOST };
+  __state.quickPickImpl = async (items) => items[0];
+  const out = output();
+  await runFirstRunFlow(fakeContext(), out, {
+    probe: noGpuProbe(),
+    listModels: async () => [FIM_MODEL],
+  });
+  const shown = __state.messages.map((m) => m.message).join("\n");
+  assert.ok(
+    !/no usable GPU/i.test(shown),
+    `must not blame local VRAM when the model is served elsewhere: ${JSON.stringify(__state.messages)}`
+  );
+  assert.ok(
+    !out.lines.some((l) => l.startsWith("[carve] fn-gen disabled: ")),
+    "and must not log the local disabled line either"
+  );
+  assert.ok(
+    out.lines.includes(`[carve] fn-gen backend=remote host=${REMOTE_HOST} (no local model pull)`),
+    `the channel names which backend suppressed it: ${JSON.stringify(out.lines)}`
+  );
+});
+
+test("remote apiBase: the LOCAL tier row's model is never offered to somebody else's server", async () => {
+  resetState();
+  // A 16GB box, so the tier resolves and fn-gen is locally "enabled". This is
+  // the case where the flow offered to download qwen3-coder:30b - this box's
+  // tier row - onto the remote host, citing this box's tier as the reason,
+  // while the service was coming up on the user's own fnGenModel.
+  // fnGenModel is set but NOT explicit (no configInfo entry), which is the
+  // case applyTier substitutes the tier row's model into. Marking it explicit
+  // here would make this row pass vacuously: applyTier would keep 480b and
+  // 30b would never be a candidate to offer.
+  __state.config = { apiBase: REMOTE_HOST, fnGenModel: "qwen3-coder:480b" };
+  __state.quickPickImpl = async (items) => items[0];
+  __state.infoResponses = ["Download"];
+  const out = output();
+  const { calls, pull } = recordingPull(out);
+  await runFirstRunFlow(fakeContext(), out, {
+    probe: referenceProbe(),
+    listModels: async () => [FIM_MODEL],
+    pull,
+  });
+  const offered = out.lines.filter((l) => l.startsWith("[carve] pull offered"));
+  assert.ok(
+    !offered.some((l) => l.includes(MODEL_30B)),
+    `the local row's model must never be offered to a remote host: ${JSON.stringify(offered)}`
+  );
+  assert.ok(
+    !calls.some((c) => c.model === MODEL_30B),
+    `and never actually pulled there: ${JSON.stringify(calls.map((c) => c.model))}`
+  );
+});
+
+test("remote apiBase: FIM's own model IS still offered, because FIM rides the same apiBase", async () => {
+  resetState();
+  __state.config = { apiBase: REMOTE_HOST };
+  __state.quickPickImpl = async (items) => items[0];
+  __state.infoResponses = [undefined];
+  const out = output();
+  const { pull } = recordingPull(out);
+  await runFirstRunFlow(fakeContext(), out, { probe: noGpuProbe(), listModels: async () => [], pull });
+  const offered = out.lines.filter((l) => l.startsWith("[carve] pull offered"));
+  assert.ok(
+    offered.some((l) => l.includes(FIM_MODEL)),
+    `FIM is not suppressed, it genuinely uses this host: ${JSON.stringify(out.lines)}`
+  );
+});
+
+test("the default apiBase is untouched: the local disabled message still prints on a no-GPU box", async () => {
+  resetState();
+  __state.quickPickImpl = async (items) => items[0];
+  const out = output();
+  await runFirstRunFlow(fakeContext(), out, {
+    probe: noGpuProbe(),
+    listModels: async () => [FIM_MODEL],
+  });
+  assert.ok(
+    __state.messages.some((m) => /no usable GPU/i.test(m.message)),
+    `the honest local message must survive: ${JSON.stringify(__state.messages)}`
+  );
+  assert.ok(out.lines.some((l) => l.startsWith("[carve] fn-gen disabled: ")), "and its channel line with it");
+  assert.ok(!out.lines.some((l) => l.includes("backend=remote")), "and nothing claims a remote backend");
+});
+
+test("0.0.0.0 is THIS box, so the tier gate still governs it", async () => {
+  resetState();
+  // The regression this rule exists to stop. OLLAMA_HOST=0.0.0.0 is the normal
+  // way to expose ollama, so clients get pointed at http://0.0.0.0:11434
+  // routinely. Reading that as "somebody else's machine" would let a 6GB laptop
+  // slide past the tier gate onto the 30b default instead of the honest
+  // below-12gb refusal.
+  __state.config = { apiBase: "http://0.0.0.0:11434" };
+  __state.quickPickImpl = async (items) => items[0];
+  const out = output();
+  await runFirstRunFlow(fakeContext(), out, {
+    probe: noGpuProbe(),
+    listModels: async () => [FIM_MODEL],
+  });
+  assert.ok(
+    __state.messages.some((m) => /no usable GPU/i.test(m.message)),
+    `0.0.0.0 is local, so the local probe is the right measurement: ${JSON.stringify(__state.messages)}`
+  );
+  assert.ok(!out.lines.some((l) => l.includes("backend=remote")), "and no remote carve is claimed");
+});

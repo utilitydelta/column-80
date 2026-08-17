@@ -235,3 +235,23 @@ And one standing instruction a loop must carry: **the `KNOWN WRONG` rows** in
 `blind-v15-argtype-identity.test.cjs` (item 21) and `adversarial-v36-p1.test.cjs` (Q17) **are
 green today and go red when their fix lands. That red is success. Flip the row in the same phase;
 never revert the fix to keep them green.**
+
+### Q26b. NEW 2026-08-17. The remote arm treats a reachable server with zero models as ready
+
+Session-v55 phase 2. `listModels` answers both "is the server up" and "what is pulled"
+(`src/core/ollama.ts:307-309`), and the remote arm uses only the first half: `[]` from a fresh remote
+Ollama with nothing pulled enables fn-gen on a model the server provably lacks, and the first
+generate arrives as an opaque model-not-found. `firstRun.ts` already uses the second half via
+`hasModel`.
+Fix: fold `hasModel` into the enable decision so a missing model is NAMED.
+Falsify: a reachable host with an empty model list disables fn-gen and names the missing model; a
+host carrying the model still enables.
+
+### Q26c. NEW 2026-08-17. Tighten Doc Comment fires rounds through a transport the build declared dead
+
+Session-v55 phase 2. `registerTightenDocComment` is handed `transport: () => service.transport` and
+consults NO tier gate, so it runs against a host `buildFnGenService` has just disabled. Pre-existing
+and not remote-specific: `below-12gb` behaves the same. The claude-code arm deliberately makes its
+disabled service inert; every other disabled arm does not.
+Fix: decide whether a disabled service goes inert, then apply it to all arms.
+Falsify: the gesture on a disabled tier refuses instead of dialling.

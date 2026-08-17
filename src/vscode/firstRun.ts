@@ -10,6 +10,7 @@ import {
 } from "../core/hardware";
 import { listModels, pullModel } from "../core/ollama";
 import { TIER_TABLE, TierId, TierRow, TierSelection, applyTier, computeTier, tierLogLine } from "../core/tiers";
+import { isRemoteApiBase } from "../core/config";
 import { readCloudConfig, readConfig, readFnGenConfig, readTierConfig } from "./config";
 
 // First-run tier flow, the modelPull pattern ported from the
@@ -132,7 +133,18 @@ export async function runFirstRunFlow(
     output.appendLine(`[carve] fn-gen backend=cloud provider=${cloud.provider} (no local model pull)`);
   }
 
-  if (!cloud && !selection.fnGenEnabled) {
+  // A remote Ollama detaches fn-gen from local hardware the same way, and for a
+  // sharper reason: this flow is where "no usable GPU detected" actually
+  // reaches the user. buildFnGenService grew its remote arm and this function
+  // did not, so a laptop pointed at an answering GPU server was told the tier
+  // was disabled while the service came up enabled. Roadmap item 19 is that
+  // sentence, and suppressing it here is most of the item.
+  const remoteHost = isRemoteApiBase(readFnGenConfig().apiBase) ? readFnGenConfig().apiBase : undefined;
+  if (remoteHost !== undefined) {
+    output.appendLine(`[carve] fn-gen backend=remote host=${remoteHost} (no local model pull)`);
+  }
+
+  if (!cloud && remoteHost === undefined && !selection.fnGenEnabled) {
     output.appendLine(`[carve] fn-gen disabled: ${selection.message}`);
     void vscode.window.showInformationMessage(`Column 80: ${selection.message}`);
   }
@@ -164,7 +176,12 @@ export async function runFirstRunFlow(
   ];
   // The cloud backend serves fn-gen from the provider, so no local fn-gen
   // model is ever pulled; FIM above is the only local model a cloud user needs.
-  if (!cloud && selection.fnGenEnabled) {
+  // A remote host is excluded for a different reason: `applyTier` would name
+  // the LOCAL VRAM row's model here, and `offerModelPull` targets apiBase, so
+  // this used to offer to download this box's tier model onto somebody else's
+  // server, citing this box's tier as the reason. FIM's entry above still runs
+  // and is still right, because FIM rides the same apiBase.
+  if (!cloud && remoteHost === undefined && selection.fnGenEnabled) {
     needed.push({
       model: fnGenConfig.model,
       why: `function generation on the ${selection.id} tier needs its model`,

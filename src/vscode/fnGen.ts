@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { FnGenConfig } from "../core/config";
+import { FnGenConfig, isRemoteApiBase } from "../core/config";
 // TYPE-ONLY, and it must stay that way: it is erased before emit, so no runtime
 // edge is added from fnGen to the tighten command's pure classifier. See
 // `PrefillLedgerViewIsPinned` below.
@@ -1191,7 +1191,7 @@ export async function buildFnGenService(
   output: vscode.OutputChannel,
   log: (line: string) => void,
   probeOpts?: ProbeHardwareOptions,
-  claudeCode?: ClaudeCodeDeps,
+  claudeCode?: FnGenBackendDeps,
 ): Promise<{ service: FnGenService; tier: TierSelection; config: FnGenConfig }> {
   // Cloud short-circuits the whole local machine story: no hardware probe, no
   // VRAM tier, no carve. FIM stays local and is wired elsewhere, untouched.
@@ -1202,9 +1202,68 @@ export async function buildFnGenService(
   if (cloud) {
     return buildCloudFnGenService(cloud, log);
   }
+  // A remote Ollama is the third off-table backend, and it is checked AFTER the
+  // two cloud arms so a configured cloud provider still wins. Roadmap item 19:
+  // the transport was always there (apiBase is the base of every ollama
+  // request), and the product still measured THIS box's VRAM and then acted on
+  // it, so a laptop pointed at an idle GPU server was told it had no GPU.
+  const localConfig = readFnGenConfig();
+  if (isRemoteApiBase(localConfig.apiBase)) {
+    return buildRemoteFnGenService(localConfig, log, claudeCode?.listModels);
+  }
   const { selection } = await resolveTier(output, probeOpts);
   const config = applyTier(readFnGenConfig(), selection, readTierConfig().explicitFnGenModel);
   return { service: new FnGenService(config, undefined, log), tier: selection, config };
+}
+
+/** How long activation will wait to learn whether a remote host is up. The
+ *  probe is raced rather than merely signalled, because a seam that ignores its
+ *  AbortSignal would otherwise hang activation. */
+const REMOTE_REACHABILITY_MS = 2000;
+
+/** The remote arm: the same off-table treatment the cloud backends get, for the
+ *  one case that was falling through to a probe of the wrong machine. No
+ *  hardware probe, no model override, no local carve. Fails CLOSED on a host
+ *  that does not answer, naming the HOST, because "no usable GPU detected" is
+ *  the sentence this entry exists to stop printing. */
+async function buildRemoteFnGenService(
+  read: FnGenConfig,
+  log: (line: string) => void,
+  listModelsFn: typeof listModels = listModels,
+): Promise<{ service: FnGenService; tier: TierSelection; config: FnGenConfig }> {
+  const host = read.apiBase;
+  const config: FnGenConfig = { ...read };
+  // numGpu is a local serving carve, tuned against a VRAM row on this box. It
+  // means nothing about somebody else's machine.
+  delete config.numGpu;
+  const service = new FnGenService(config, undefined, log);
+  // Raced, not just signalled: an injected seam that ignores the signal still
+  // must not hold activation open.
+  const bounded = new Promise<undefined>((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), REMOTE_REACHABILITY_MS);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  const models = await Promise.race([
+    listModelsFn(host, AbortSignal.timeout(REMOTE_REACHABILITY_MS)),
+    bounded,
+  ]);
+  if (models === undefined) {
+    log(`[carve] tier=remote host=${host} fnGen=disabled reason=unreachable`);
+    return {
+      service,
+      tier: {
+        id: "remote",
+        fnGenEnabled: false,
+        provisional: false,
+        message: `Function generation is disabled: the Ollama server at ${host} did not answer. FIM tab-completion still works.`,
+      },
+      config,
+    };
+  }
+  // model is the user's verbatim, explicit or not. The tier table's row model is
+  // a fact about local VRAM and this is not a local model.
+  log(`[carve] tier=remote host=${host} model=${config.model} fnGen=enabled`);
+  return { service, tier: { id: "remote", fnGenEnabled: true, provisional: false }, config };
 }
 
 /** The cloud arm of buildFnGenService: a synthetic "cloud" tier (no VRAM to
@@ -1265,6 +1324,16 @@ function buildCloudFnGenService(
 /** What the Claude Code arm needs from the host, injectable so its oracles run
  *  without a host `claude` and without spending a single token of subscription
  *  quota. */
+/** What `buildFnGenService` accepts from the host. The claude-code fields are
+ *  the original bag; `listModels` arrived with the remote arm and rides the
+ *  same parameter rather than growing a fifth, because it is the same kind of
+ *  thing: a host call an oracle must be able to replace. */
+export interface FnGenBackendDeps extends ClaudeCodeDeps {
+  /** Remote-host reachability. The same call firstRun uses to answer "is the
+   *  server up", so there is one such call in the product, not two. */
+  listModels?: typeof listModels;
+}
+
 export interface ClaudeCodeDeps {
   /** The extension's global storage path. The CLI is spawned in a directory
    *  under it, never in the user's workspace. Absent means fail CLOSED. */
@@ -1445,7 +1514,7 @@ export interface FnGenDeps {
   /** Host seams for the Claude Code backend. `storagePath` defaults to the
    *  extension's own global storage; the oracles override it (and the PATH
    *  probe) so they never need a host `claude` or spend subscription quota. */
-  claudeCode?: ClaudeCodeDeps;
+  claudeCode?: FnGenBackendDeps;
 }
 
 // The post-accept check + repair runs non-blocking (a hiccup must never break
@@ -5111,6 +5180,11 @@ export function registerFnGen(
     const built = await (deps.buildService ?? buildFnGenService)(output, log, deps.probeOpts, {
       ...deps.claudeCode,
       storagePath: deps.claudeCode?.storagePath ?? context.globalStorageUri?.fsPath,
+      // The remote arm's reachability probe is a real network call at
+      // activation. FnGenDeps already carried a listModels for the repair
+      // pre-flight and it did not reach here, so a test that set it believed
+      // it had covered activation and had not.
+      listModels: deps.claudeCode?.listModels ?? deps.listModels,
     });
     service.dispose();
     service = built.service;

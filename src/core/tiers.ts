@@ -59,7 +59,7 @@ export interface TierSelection {
   // because they fail closed for different reasons - a missing key or endpoint
   // for "cloud", a missing CLI or product-owned directory for "claude-code" -
   // and the evidence line names which.
-  id: TierId | "cloud" | "claude-code";
+  id: TierId | "cloud" | "claude-code" | "remote";
   fnGenEnabled: boolean;
   fnGenModel?: string;
   fnGenNumGpu?: number;
