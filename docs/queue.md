@@ -188,12 +188,34 @@ import hint for a type the file never needed hinting.
 Fix: provenance filter at the collection site (the walk already knows the definition URI).
 Falsify: a std-typed collaborator produces no use-path hint; a workspace type still does.
 
-### Q24. NEW. `firstRun.ts`: multi-window activation double-runs the first-run flow
+### Q24. REDIAGNOSED 2026-08-17 by session-v55. The double-run is CROSS-HOST, and the filed mechanism was wrong
 
-Verified live (C322, blind-confirmed): non-atomic read-then-void-update of
-`column80.firstRunDone` (`firstRun.ts:331-337`); two activating windows both read false.
-Fix: an atomic guard (globalState transaction or lock file).
-Falsify: two simulated concurrent activations run the flow once.
+The defect is real and the mechanism C322 recorded is not. Two facts, both checked against VS Code's
+own source rather than reasoned about:
+
+- **One extension host per WINDOW**, always (VS Code's sandboxing blog states it verbatim;
+  `extensionHostStarter.ts` mints a `WindowUtilityProcess` per window). So "two activating windows"
+  is two processes, not two activations in one.
+- **`Memento.update` commits synchronously in memory** (`extHostMemento.ts` assigns `this._value[key]`
+  before returning; the promise it returns tracks PERSISTENCE only). So the existing
+  `if (get() !== true)` already guards every same-host case. "Both read false" cannot happen in one
+  host.
+
+Measured: driving both the shipped code and a candidate fix against a faithful memento, the SHIPPED
+code already runs the flow exactly once for two same-host activations. An in-process guard is
+therefore inert, and session-v55 built one, proved it inert and reverted it.
+
+What is actually open: two windows are two hosts, `globalState` propagates between them through a
+100ms debounce (`STORAGE_CHANGE_DEBOUNCE_TIME`) plus two IPC hops, and `Memento` exposes no change
+event, so an extension cannot observe the propagation at all. Two windows opened together inside that
+window both run the flow: two tier pickers, two concurrent pulls of the same model.
+
+**This is no longer a queue entry.** The only honest fix is a lock file under `globalStorageUri` with
+stale-lock handling, which is machinery with its own failure modes, and whether a duplicate tier
+picker is worth it is a value judgement. Scout it or rule it WONTFIX.
+Falsify: two separate hosts sharing one storage backend, activating together, run the flow once.
+A `KNOWN WRONG` row in `test/blind-v55-p3-firstrun-once.test.cjs` pins today's behaviour and goes red
+when a real fix lands.
 
 ### Q25. NEW 2026-08-16. S52-9: `[RECORD] E` counts, and should ratio
 
