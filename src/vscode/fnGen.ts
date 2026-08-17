@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { FnGenConfig, isRemoteApiBase } from "../core/config";
+import { withDocumentEol } from "./eol";
 // TYPE-ONLY, and it must stay that way: it is erased before emit, so no runtime
 // edge is added from fnGen to the tighten command's pure classifier. See
 // `PrefillLedgerViewIsPinned` below.
@@ -977,7 +978,10 @@ export class ProposalPresenter {
   }
 
   async present(request: ProposalRequest): Promise<ProposalOutcome> {
-    const { document, span, versionAtResolve, text, service } = request;
+    const { document, span, versionAtResolve, service } = request;
+    // Before the preview, not between the preview and the write: the human must
+    // review the bytes that land.
+    const text = withDocumentEol(request.text, document);
     // System discard: warn, log outcome=discarded (distinct from a human
     // reject so accept/reject stats stay honest), never touch the document.
     const discard = (why: string): ProposalOutcome => {

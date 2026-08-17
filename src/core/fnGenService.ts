@@ -157,6 +157,12 @@ export interface RawGenerateOptions {
   contextBlocks?: readonly ContextBlock[];
 }
 
+/** Line terminators to LF. Only real terminators: a backslash-r escape inside a
+ *  string literal is two characters and nothing here parses source. */
+function normalizeEol(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
 export class FnGenService {
   private inflight: AbortController | undefined;
   private disposed = false;
@@ -524,6 +530,16 @@ export class FnGenService {
         return undefined;
       }
 
+      // Core is LF-canonical from here down. A model may answer in either
+      // ending and this layer's guards all compare against "\n": the
+      // doc-comment dedup, the fence-line scan, the function trim. Queue Q15:
+      // a CRLF reply walked straight past the dedup because `next === "\n"` is
+      // false for `\r`, and the doc comment was spliced twice. Normalising once
+      // here is what lets every guard below stay written in LF, and the vscode
+      // layer puts the DOCUMENT's own ending back at the write
+      // (`withDocumentEol`), so nothing downstream has to remember.
+      raw = { ...raw, text: normalizeEol(raw.text) };
+
       // Producer-side truncation is failure, never material to splice: a
       // body cut at num_predict looks like code but is not a complete
       // function, and the arithmetic boundary oracle cannot see that.
@@ -567,10 +583,19 @@ export class FnGenService {
         // stripping would leave a junk fragment at the top of the span.
         // Dedup can legitimately leave "" — that flows into the empty-rejects
         // path below like any other empty generation.
-        if (request.docComment && text.startsWith(request.docComment)) {
-          const next = text[request.docComment.length];
+        //
+        // Both sides are LF here because core is LF-canonical (see the
+        // normalisation at the top of this method). Queue Q15: this guard used
+        // to compare a possibly-CRLF reply against a possibly-CRLF doc comment
+        // taken off the document, and `next === "\n"` is false for `\r`, so a
+        // CRLF reply re-typed the comment straight past the guard and the
+        // splice carried it twice. The vscode layer puts the document's own
+        // ending back at the write.
+        const docComment = request.docComment && normalizeEol(request.docComment);
+        if (docComment && text.startsWith(docComment)) {
+          const next = text[docComment.length];
           if (next === undefined || next === "\n") {
-            text = text.slice(request.docComment.length);
+            text = text.slice(docComment.length);
             if (text.startsWith("\n")) {
               text = text.slice(1);
             }

@@ -39,6 +39,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { withDocumentEol } from "./eol";
 
 import { InstructGenerateFn } from "../core/ollama";
 import { FnGenConfig } from "../core/config";
@@ -1343,7 +1344,17 @@ async function defaultApplyEdit(
   text: string,
 ): Promise<boolean> {
   const edit = new vscode.WorkspaceEdit();
-  edit.replace(document.uri, new vscode.Range(document.positionAt(start), document.positionAt(end)), text);
+  // The DOCUMENT's ending, not the region's. `tightenRegion` derives the
+  // ending from the region's own slice, which agrees with the document
+  // everywhere except the one place it cannot: the file's last line with no
+  // trailing terminator carries nothing to copy, so an LF rewrap landed in a
+  // CRLF file. Region-local and document-global are two mechanisms for one
+  // concern, and this is the one the whole extension shares.
+  edit.replace(
+    document.uri,
+    new vscode.Range(document.positionAt(start), document.positionAt(end)),
+    withDocumentEol(text, document),
+  );
   return vscode.workspace.applyEdit(edit);
 }
 
