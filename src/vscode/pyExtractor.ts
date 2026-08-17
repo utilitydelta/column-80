@@ -135,9 +135,13 @@ export class PyCommandExtractor implements SurfaceExtractor {
     // transport renders FEWER real-member signatures than the headless path,
     // which filters dunders BEFORE its resolve budget. The safety gate is
     // unaffected (it keys on member NAMES, which come through regardless of
-    // resolve); only the signature-hint richness diverges. REASONED only — real
-    // Pylance resolve ordering is unverifiable headless, so resolveCount is NOT
-    // tuned here (a blind guess against unknown ordering); tune on dogfood.
+    // resolve); only the signature-hint richness diverges. REASONED only, and
+    // resolveCount is NOT tuned here: it would be a blind guess against an
+    // ordering nobody has looked at. That is now a gap rather than a barrier.
+    // The sentence this used to carry, "real Pylance resolve ordering is
+    // unverifiable headless", stopped being true when the VS Code tier landed:
+    // the tier drives a real Pylance and can observe the order. Tune it there
+    // or on dogfood, not from a guess.
     const result = await this.run(COMPLETION_COMMAND, cursor, { resolveCount: MEMBER_RESOLVE_CAP });
     const items = Array.isArray(result) ? result : ((result as { items?: unknown[] })?.items ?? []);
     const members: CompletionMember[] = [];

@@ -73,13 +73,13 @@ A crate nested under a plain `[package]` ancestor loses repair entirely.
 Fix: anchor only at manifests declaring `[workspace]`.
 Falsify: fixture crates under each ancestor kind anchor correctly.
 
-### Q7. One comment that is wrong (was two)
+### Q7. STRUCK 2026-08-17. Both wrong comments are fixed
 
-The `extraction.ts` half is DONE - the comment now states the opposite, honestly ("'parallel' buys
-overlap of the transport hop and nothing else", verdict C312). What remains:
-- `pyExtractor.ts`: "resolveCount unverifiable headless" is stale; the VS Code tier made it
-  observable.
-Falsify: none available; read-and-fix. Verify the sentence is still there on touch.
+The `extraction.ts` half was already done (verdict C312). The `pyExtractor.ts` half shipped in
+session-v55: the comment no longer claims Pylance resolve ordering is "unverifiable headless", which
+stopped being true when the VS Code tier landed, and it now names the tier as where the tuning
+measurement belongs. The resolveCount value itself is unchanged and still untuned, which is a gap
+rather than a barrier and the comment says so.
 
 ### Q8. `gesture.test.js` asserts `some` where the evidence supports `every`
 
