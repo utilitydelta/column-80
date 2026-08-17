@@ -2648,6 +2648,13 @@ export async function resolvePrefill(
   // type (root and nested), deduped, so the block imports the whole graph the
   // test may construct — not just the types whose data-shape block was emitted.
   const importTypes = new Map<string, string>();
+  // Sysroot types whose import hint was withheld (Q23). Deliberately NOT a
+  // `noBlock` entry: that ledger is one-to-one on CANDIDATES and feeds the
+  // `kept= injected= no-block=` arithmetic, and a nested field-hop type was
+  // never a candidate, so putting it there corrupts the line. This is the
+  // evidence channel instead, because a refusal nobody can see is a refusal
+  // nobody can debug.
+  const sysrootHintsWithheld = new Set<string>();
   // Every kept candidate that produces no block, with the reason class. The
   // loop has more exits than it has evidence lines, and a candidate that dies on
   // a silent one is indistinguishable from a candidate that was never kept —
@@ -2806,6 +2813,47 @@ export async function resolvePrefill(
     }
     if (shape) {
       for (const [name, t] of shape.types) {
+        // Q23: a sysroot def contributes no import hint. `deriveUsePath` walks
+        // the definition's file tree for the owning manifest, and for a stdlib
+        // type that walk lands on `<sysroot>/library/std/Cargo.toml`, reads
+        // `name = "std"`, and builds a `use std::…` line out of a directory
+        // layout nobody meant to be read that way. Unnecessary when the prelude
+        // already had the type in scope, and wrong when the layout and the
+        // module path disagree. A confident false `use` line in the prompt is
+        // not inert.
+        //
+        // THIS IS NOT A COLD-START GUARD. Read that before deleting it as dead.
+        // The 1.3.0 provenance pre-check judges only the ROOT candidate, and
+        // `STD_TYPE_NAMES` (the field hop's stop set) carries 28 prelude-ish
+        // names that do not include `File`, `BufReader`, `SocketAddr`,
+        // `AtomicU64` or `SystemTime`. So a workspace struct with a sysroot-typed
+        // FIELD walks straight in here with a warm resolver. A first
+        // `definition()` miss is an additional way in, not the only one.
+        //
+        // And the harm is not the redundancy the entry filed. Measured on this
+        // box against the real rustup sysroot and real `rustc`, one `use` line
+        // per file so no failure masks another: 15 of 53 derived stdlib lines
+        // compile, 38 fail, 35 of those `error[E0603]: module is private`.
+        // `deriveUsePath` walks the FILE tree and Rust resolves the MODULE tree,
+        // so `library/std/src/io/buffered/bufreader.rs` yields
+        // `use std::io::buffered::bufreader::BufReader;` where the real path is
+        // `std::io::BufReader`. The 15 that work are the types declared in one
+        // top-level module file, `std/src/fs.rs` and `std/src/process.rs`
+        // almost entirely.
+        //
+        // Withholding those 15 is the price of removing 38 confident false facts
+        // under a header that reads "Import these collaborators (they are
+        // already defined)", and `usePath.ts:67` already ratified which way that
+        // trade goes: no import hint beats a wrong one.
+        //
+        // The type is NOT dropped: it still reaches the assembly and is still
+        // accounted for by name in the noBlock ledger with its stdlib reason.
+        // Only the import line is withheld. Dropping it would revert
+        // session-v34 item 1, which is a different and much larger change.
+        if (t.defUri && isRustSysrootDef(t.defUri)) {
+          sysrootHintsWithheld.add(name);
+          continue;
+        }
         if (t.defUri && !importTypes.has(name)) {
           importTypes.set(name, vscode.Uri.parse(t.defUri).fsPath);
         }
@@ -3164,6 +3212,12 @@ export async function resolvePrefill(
   }
   if (importHint) {
     log(`[fngen] pre-fill import hint: ${importHint.replace(/\n/g, " ")}`);
+  }
+  if (sysrootHintsWithheld.size > 0) {
+    log(
+      `[fngen] pre-fill import hint withheld for ${[...sysrootHintsWithheld].join(", ")}:` +
+        ` defined in the rust sysroot, where the derived path is wrong far more often than right`,
+    );
   }
 
   // The surface AT A CHOSEN SIZE (session-v48 phase 2). `renderSurface(blocks.length)`
