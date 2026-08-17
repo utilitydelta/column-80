@@ -436,7 +436,8 @@
         "column80.debounceMs": {
           "type": "number",
           "default": 150,
-          "description": "Delay after the last keystroke before requesting a completion."
+          "minimum": 0,
+          "description": "Delay after the last keystroke before requesting a completion. 0 disables the debounce, so every keystroke issues a full extractor call and a model request: observable per keystroke, and expensive on a busy box. Negative values are not a faster 0 and the schema refuses them."
         },
         "column80.prefixChars": {
           "type": "number",
