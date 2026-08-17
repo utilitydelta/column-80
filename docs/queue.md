@@ -33,13 +33,13 @@ Unchanged from 2026-08-14, all re-verified:
 defaulting `languageId` is silently wrong for every language but one. Re-file against whatever
 replaces the rig.
 
-### Q2. `column80.debounceMs` has no schema minimum
+### Q2. SHIPPED session-v55 (651446a). `column80.debounceMs` has no schema minimum
 
 `package.json`: `{"type":"number","default":150}`, no `minimum`. Zero disables the debounce.
 Fix: add a `minimum` with its reason in the description.
 Falsify: a row reading the packaged schema asserts the bound.
 
-### Q3. `cargo test` filters are substring, not exact
+### Q3. SHIPPED session-v55 (85ee388). `cargo test` filters are substring, not exact
 
 Verified live (C334, blind-confirmed): `buildTestCommand` pushes bare positionals, no `--exact`
 (`compilerOracle.ts:897-903`), so `tests::add` also runs `tests::add_more`.
@@ -67,7 +67,7 @@ What shipped is a bound on SILENCE, re-armed on every line: 60s before any data,
 Left open deliberately: a server that emits lines forever and never finishes is never cut, because
 that is a live connection rather than a hang and cutting it is the failure the bound may not cause.
 
-### Q6. `compilerOracle.ts` anchors on any ancestor `Cargo.toml`
+### Q6. SHIPPED session-v55 (c1b7ee1). `compilerOracle.ts` anchors on any ancestor `Cargo.toml`
 
 A crate nested under a plain `[package]` ancestor loses repair entirely.
 Fix: anchor only at manifests declaring `[workspace]`.
@@ -141,7 +141,7 @@ Worth more since v33 (blocks are read live).
 Fix: length-adaptive fences; v38's fence-run work is the prior art.
 Falsify: a block containing each fence length renders balanced.
 
-### Q15. Splice path: LF bodies into CRLF documents
+### Q15. SHIPPED session-v55 (3d85a82). Splice path: LF bodies into CRLF documents
 
 Fix: one EOL-normalization bundle at the vscode layer.
 Falsify: CRLF document + LF body gives uniform endings, one doc comment.
@@ -198,13 +198,28 @@ Updated by verification (C307): the split is no longer purely structural -
 stands: record that the ratified "always injected" ships as refine-always plus an opt-in for
 repair, and why. Docs only; do not "fix" the code to match the ratification.
 
-### Q23. NEW. `deriveUsePath` emits `use std::...` from the sysroot manifest
+### Q23. SHIPPED session-v55 (a6fa9da), and its filed premise was wrong. `deriveUsePath` emits `use std::...` from the sysroot manifest
 
-Verified live (C294, blind-confirmed): `importTypes` has no provenance filter, `deriveUsePath`
-walks to `<sysroot>/library/std/Cargo.toml`, reads `name = "std"`, and produces a valid-looking
-import hint for a type the file never needed hinting.
-Fix: provenance filter at the collection site (the walk already knows the definition URI).
-Falsify: a std-typed collaborator produces no use-path hint; a workspace type still does.
+Shipped as filed: `isRustSysrootDef` at the collection site, so a sysroot def contributes no
+import hint and the withheld name goes on the channel. Two corrections the entry needs on the way
+out, because both were wrong and both matter to whoever reads this next.
+
+**The premise was wrong.** "A type the file never needed hinting" describes redundancy. The actual
+harm is that the hint is usually WRONG: `deriveUsePath` walks the FILE tree and Rust resolves the
+MODULE tree. Measured against the real rustup sysroot and real `rustc`, one `use` line per file so
+no failure masks another: **15 of 53 compile, 38 fail, 35 of them E0603.** `use std::fs::File;` is
+real; `use std::io::buffered::bufreader::BufReader;` is not.
+
+**The reachability was wrong twice.** A blind oracle found the 1.3.0 provenance pre-check refuses
+stdlib candidates and concluded this was cold-start only. The adversarial review disproved that: the
+pre-check judges only the ROOT candidate, and `STD_TYPE_NAMES` does not carry `File`, `BufReader`,
+`SocketAddr`, `AtomicU64` or `SystemTime`, so a workspace struct with a sysroot-typed FIELD reaches
+the site with a WARM resolver.
+
+**Not closed by this fix:** the same derivation damages workspace and cargo-registry hints, measured
+at `tightenRatify.ts:611-616` (110 of 249 compiled, 136 failures E0603). `rustImport` already solves
+it for repair and is not shared with fn-gen. That is a design call and it is in
+`session-v55/scraps.md` for the human.
 
 ### Q24. REDIAGNOSED 2026-08-17 by session-v55. The double-run is CROSS-HOST, and the filed mechanism was wrong
 
@@ -242,7 +257,7 @@ comments, so it measures how big the codebase is. Re-baselined 820 to 1000 on th
 will tip again. Ratified 2026-08-16: make it a ratio against total doc-comment blocks.
 Falsify: the row holds across a synthetic doubling of doc-comment volume.
 
-### Q26. NEW 2026-08-16. Item 19: a remote Ollama is gated on the LOCAL box's VRAM
+### Q26. SHIPPED session-v55 (4affd58). Item 19: a remote Ollama is gated on the LOCAL box's VRAM
 
 A non-default `column80.apiBase` falls through to `resolveTier`, so a laptop pointed at a GPU
 server reads "no usable GPU detected" and `applyTier` overrides the model with the local tier

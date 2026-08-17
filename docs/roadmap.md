@@ -31,13 +31,11 @@ audit is what caught it the second time.
 **1. Fix now**
 Proven broken, no design question left. Each is small and each is about the product or its gate telling the truth.
 
-- **55.** every fn-gen refusal blames the cursor, including the one that means no language server is installed
 - **22.** shipped source cites folders a clone does not have; 234 citations across 57 files
 - **23.** a few rows measure wall clock and CI is not their hardware
 - **2.** a frozen live test is red and nobody runs it
 - **21.** the cross-file argument-type leg, unbuilt since v14 - and its rows are GREEN today by asserting the defect
 - **7.** Rust has injection and zero enforcement, the last such language
-- **19.** a remote Ollama is gated on the LOCAL box's VRAM, so pointing at a GPU server disables fn-gen
 
 **2. Trust the instruments, before building on them**
 A number from the harness is a hypothesis until the instrument that produced it has been looked at. Mostly blocked on taking a measurement rather than on a design call.
@@ -99,9 +97,17 @@ entry, so the file's own "a gap means it shipped" rule could not classify it eit
 
 Proven broken, no design question left. Each is small and each is about the product or its gate telling the truth.
 
-### 55. Every fn-gen refusal blames the cursor, including the one that means no language server is installed
+### 55. SHIPPED session-v55 (85c8952 + 17718a9). Every fn-gen refusal blames the cursor
 
-**The next build, ratified 2026-08-16.**
+The resolver splits its three causes, each refusal names the expected language server for that
+language, and all three log a `[fngen] refused:` line where the branch logged nothing. The manual's
+requirements list now carries the language-server dependency it never mentioned.
+
+Two things it did NOT close, both in `session-v55/scraps.md`: the fifth resolver-driven gesture
+(`tightenDocComment.ts`) did not inherit the split, and the product still cannot tell "no extension"
+from "extension up, no symbols in this file" because VS Code collapses both to `undefined`.
+
+**Superseded, kept for the reasoning.**
 
 `resolveFunctionAtCursor` (`src/vscode/fnGen.ts:293`) refuses on three distinct causes and returns
 the same bare `undefined` for all of them:
@@ -291,9 +297,16 @@ Two traps from the scout, both still live:
 - The motivating capture had no dot typed yet, so the gate as designed would not have caught that
   exact case. The goal must say so rather than claim the capture as its falsification.
 
-### 19. A remote Ollama is gated on the local box's VRAM, so pointing at a GPU server disables fn-gen
+### 19. SHIPPED session-v55 (4affd58, extended by a47ff30). A remote Ollama is gated on the local box's VRAM
 
 Filed as "Ollama but custom", a UX wish. It is not one. Ratified 2026-08-16 as a live LOCKOUT with a
+An off-table `remote` arm now short-circuits before the hardware table: no probe, no model
+override, `[carve] tier=remote`, fail closed with a message naming the HOST rather than the GPU.
+
+Extended after shipping by a human design call (goal amendment A, commit `a47ff30`): FIM is a LOCAL
+model always, so `apiBase` no longer moves both halves. That closed the sentence this item's own
+message ended on - "FIM tab-completion still works" was false while FIM shared the dead host.
+
 minimal fix. REASONED: read off the code below, not run. Promoted to a numbered item the same day -
 it had been an unnumbered paragraph sitting after item 18's bullets, in neither the index nor the
 History gap list, so the file's own "a gap means it shipped" rule could not classify it either way.
