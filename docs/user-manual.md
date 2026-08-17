@@ -55,6 +55,7 @@ Any other language: FIM only, and only if you add its language id to `column80.f
 - VS Code 1.85 or newer to install. **1.130 or newer** if you want the scoped-ghost gesture in C# and TypeScript: 1.124 never re-requests inline completions when the suggest selection changes, so the gesture is silently dead there.
 - An NVIDIA GPU for function generation. No GPU still gets you FIM, labelled honestly.
 - Your language's own toolchain for the compiler check: `cargo`, `go`, a project-local `node_modules/typescript`, `dotnet`. Python needs no pyright install, it ships inside the extension, but it does want a `.venv` or `venv` beside your project root. Without one the check falls back to system python and you get a missing-imports storm.
+- **Your language's language server extension, installed and enabled**: rust-analyzer for Rust, the Go extension for Go, the C# extension for C#, Pylance for Python. TypeScript and JavaScript need nothing extra, VS Code ships theirs. Every gesture past FIM asks it for document symbols, so without one, generate, repair and TDD all refuse. FIM keeps working, which is what makes a missing server look like a working install.
 
 ### The first-run flow
 
@@ -269,7 +270,9 @@ Run the command again and the old body is **not in the prompt**. Regeneration is
 
 ### When it says no
 
-- **No function at the cursor**: the language needs a hierarchical document symbol provider. Flat `SymbolInformation` resolves to "no function here" rather than guessing a span.
+- **No function at the cursor**: the cursor is not inside a function, or is on a symbol kind this language does not generate (a C# interface, a Rust trait: both bodyless). Move the cursor into the body or onto the declaration head.
+- **No document symbols for this file**: the language server is not answering. Check its extension is installed and enabled (rust-analyzer, the Go extension, the C# extension, Pylance; TypeScript and JavaScript use VS Code's own), and give it a moment if the window just opened. FIM keeps working without one, so this is the message you get when everything else looks fine. A brand-new empty file lands here too, because a file with no symbols and a server with no answer look identical from inside the extension.
+- **Still indexing**: the server is up and has nothing for this file yet. Wait and re-run.
 - **Generation discarded**: you edited the document while the model was generating or while the preview was open. Any change discards rather than risking a mis-splice. Re-run.
 - **Failed: truncated**: the reply hit the token budget. On a local model the fix is a smaller
   function, not a bigger budget: the ceiling is 2048 tokens and it shares the context window with

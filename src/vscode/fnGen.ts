@@ -281,30 +281,143 @@ function genKind(kind: vscode.SymbolKind, _languageId: string): GenKind {
   return "function";
 }
 
+/** Why a resolution produced no function. Three of the four are the
+ *  environment's fault and only `no-symbol-at-cursor` is the human's, which is
+ *  the entire point of keeping them apart. */
+export type ResolveRefusalReason =
+  | "no-provider"
+  | "empty-tree"
+  | "flat-symbols"
+  | "no-symbol-at-cursor";
+
+export interface ResolveRefusal {
+  reason: ResolveRefusalReason;
+}
+
+export type FunctionResolution =
+  | { ok: true; fn: ResolvedFunction }
+  | { ok: false; refusal: ResolveRefusal };
+
+/** The extension that owns document symbols for a language, and whether the
+ *  user has to install it. TS-family symbols ship inside VS Code, so telling a
+ *  TypeScript user to install a server is a message that cannot be acted on. */
+const SYMBOL_PROVIDERS: Record<string, { name: string; builtIn?: true }> = {
+  rust: { name: "rust-analyzer" },
+  go: { name: "gopls (the Go extension)" },
+  csharp: { name: "the C# extension (Roslyn)" },
+  python: { name: "Pylance (the Python extension)" },
+  typescript: { name: "VS Code's built-in TypeScript language features", builtIn: true },
+  typescriptreact: { name: "VS Code's built-in TypeScript language features", builtIn: true },
+  javascript: { name: "VS Code's built-in TypeScript language features", builtIn: true },
+  javascriptreact: { name: "VS Code's built-in TypeScript language features", builtIn: true },
+};
+
+/** The message the human sees. `cursorText` is the gesture's own wording for
+ *  the one cause that IS about the cursor: generate, repair and the two TDD
+ *  gestures each want to say something different there, and all four want the
+ *  same thing said about a missing server. */
+export function refusalMessage(
+  refusal: ResolveRefusal,
+  languageId: string,
+  cursorText: string,
+): string {
+  if (refusal.reason === "no-symbol-at-cursor") {
+    return cursorText;
+  }
+  if (refusal.reason === "empty-tree") {
+    return `Column 80: the language server has no symbols for this ${languageId} file yet, so it is probably still indexing. Try again in a moment.`;
+  }
+  if (refusal.reason === "flat-symbols") {
+    return `Column 80: ${languageId}'s symbol provider answers a flat symbol list, and Column 80 needs a hierarchical document symbol provider to do sound span math.`;
+  }
+  const provider = SYMBOL_PROVIDERS[languageId];
+  if (provider?.builtIn) {
+    return `Column 80: no language server answered for ${languageId}. ${provider.name} are disabled or still starting, and generate, repair and TDD all need them.`;
+  }
+  const install = provider ? provider.name : `a language server extension for ${languageId}`;
+  // Deliberately does NOT say "install it". The code has one bit here, an
+  // `undefined` from the command, and that bit does not prove the extension is
+  // missing: VS Code's isFalsyOrEmpty converts an EMPTY symbol result to
+  // undefined twice on the way out (the DocumentSymbolAdapter and the command's
+  // own result converter), so a working server looking at a file with no symbols
+  // lands in this branch too. An empty new file, a Python script of only
+  // top-level statements, a C# file of only `using` lines. Claiming "install
+  // rust-analyzer" at a user who already has it working is the exact message
+  // item 55 exists to kill, so the string names the server and stops there.
+  return `Column 80: no document symbols for this ${languageId} file. Either ${install} is not installed or not enabled, or it is still starting up. Inline completions work without it, which is why the setup can look fine.`;
+}
+
+/** The channel line. This branch logged NOTHING before item 55, so the toast was
+ *  the only signal in the product and it named the wrong cause. */
+export function refusalLogLine(refusal: ResolveRefusal, languageId: string): string {
+  // `cause=` because `[fngen] refused: ` is a SHARED prefix: promptBudget.ts and
+  // the unsupported-language gate both emit it with a prose tail. A reader
+  // parsing the tail as a slug is right only by luck without the key.
+  return `[fngen] refused: cause=${refusal.reason} (${languageId})`;
+}
+
 /**
  * Innermost function-like symbol containing the cursor, via
- * executeDocumentSymbolProvider. Undefined when no provider answers, when
- * the provider returns flat SymbolInformation[] (no selectionRange or
- * hierarchy to do sound span math with — degrade, never throw), or when
- * the cursor is outside every function. Rust via rust-analyzer is the
- * proven path; head normalization covers exactly the trivia shapes
+ * executeDocumentSymbolProvider. Refuses when no provider answers, when the
+ * provider has no symbols yet, when it returns flat SymbolInformation[] (no
+ * selectionRange or hierarchy to do sound span math with: degrade, never
+ * throw), or when the cursor is outside every function. Rust via rust-analyzer
+ * is the proven path; head normalization covers exactly the trivia shapes
  * src/core/symbols.ts documents.
  */
-export async function resolveFunctionAtCursor(
+export async function resolveFunctionOrRefusal(
   document: vscode.TextDocument,
   position: vscode.Position,
   // Admit Struct/Enum as targets. Off (the default, and the post-accept
   // oracle's re-resolution path) keeps v1 function-only resolution, so the
   // extension is byte-for-byte v1 when compilerDirectedInjection is off.
   admitTypes = false,
-): Promise<ResolvedFunction | undefined> {
+): Promise<FunctionResolution> {
   const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[] | undefined>(
     "vscode.executeDocumentSymbolProvider",
     document.uri,
   );
-  if (!symbols || symbols.length === 0 || !hasDocumentSymbolShape(symbols)) {
-    return undefined;
+  // Three server-side causes and one human-side cause, kept apart because the
+  // product used to render all four as "move your cursor". Roadmap item 55: a
+  // first-run Windows user with no rust-analyzer read that message, checked the
+  // cursor, found it right, and had nowhere left to go.
+  if (!symbols) {
+    return { ok: false, refusal: { reason: "no-provider" } };
   }
+  if (symbols.length === 0) {
+    return { ok: false, refusal: { reason: "empty-tree" } };
+  }
+  if (!hasDocumentSymbolShape(symbols)) {
+    return { ok: false, refusal: { reason: "flat-symbols" } };
+  }
+  const fn = resolveFromSymbolTree(symbols, document, position, admitTypes);
+  return fn ? { ok: true, fn } : { ok: false, refusal: { reason: "no-symbol-at-cursor" } };
+}
+
+/** The pre-item-55 signature, kept because most callers only need "did it
+ *  resolve". A caller that renders a message to the HUMAN uses
+ *  `resolveFunctionOrRefusal` instead, or it renders the wrong cause. One
+ *  channel-only caller still does not: `tightenDocComment.ts:253` logs the
+ *  cursor cause for every cause. It degrades and continues rather than
+ *  refusing, so no toast lies, and routing the cause through it means changing
+ *  the `wiring.resolveFunction` seam. Deferred, session-v55 scraps. */
+export async function resolveFunctionAtCursor(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  admitTypes = false,
+): Promise<ResolvedFunction | undefined> {
+  const resolution = await resolveFunctionOrRefusal(document, position, admitTypes);
+  return resolution.ok ? resolution.fn : undefined;
+}
+
+/** Everything past the provider call: pure span math over a tree that is
+ *  already known to be hierarchical and non-empty. */
+function resolveFromSymbolTree(
+  symbols: vscode.DocumentSymbol[],
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  admitTypes: boolean,
+): ResolvedFunction | undefined {
   const kinds = admitTypes
     ? new Set<vscode.SymbolKind>([...FUNCTION_KINDS, ...typeKindsFor(document.languageId)])
     : FUNCTION_KINDS;
@@ -5162,21 +5275,30 @@ export function registerFnGen(
       // is on. Off keeps the v1 function-only resolution, so the gate is
       // byte-for-byte v1.
       const admitTypes = readOracleConfig().injectionEnabled;
-      const resolved = await resolveFunctionAtCursor(document, editor.selection.active, admitTypes);
-      if (!resolved) {
-        // Undefined has several honest causes: the cursor is outside every
-        // symbol, the provider answered flat (no hierarchy), OR the symbol at the
-        // cursor is a kind this language deliberately does not generate (a C#
-        // interface, a Rust trait — both excluded, bodyless members). The old
-        // message blamed the provider, which is wrong for the excluded-kind case
-        // that type admission makes routine; state the accurate general reason.
+      const resolution = await resolveFunctionOrRefusal(
+        document,
+        editor.selection.active,
+        admitTypes,
+      );
+      if (!resolution.ok) {
+        // The cursor case has several honest sub-causes: the cursor is outside
+        // every symbol, OR the symbol at the cursor is a kind this language
+        // deliberately does not generate (a C# interface, a Rust trait, both
+        // excluded bodyless members). The other three causes are the
+        // environment's and are named by refusalMessage.
+        log(refusalLogLine(resolution.refusal, document.languageId));
         void vscode.window.showWarningMessage(
-          admitTypes
-            ? "Column 80: nothing to generate here — the cursor is not inside a function or on a generatable type header."
-            : "Column 80: no function at the cursor.",
+          refusalMessage(
+            resolution.refusal,
+            document.languageId,
+            admitTypes
+              ? "Column 80: nothing to generate here — the cursor is not inside a function or on a generatable type header."
+              : "Column 80: no function at the cursor.",
+          ),
         );
         return;
       }
+      const resolved = resolution.fn;
       if (document.version !== versionAtResolve) {
         void vscode.window.showWarningMessage(
           "Column 80: generation discarded — the document changed while the function was being resolved.",
@@ -5657,13 +5779,23 @@ export function registerFnGen(
         return;
       }
       const admitTypes = readOracleConfig().injectionEnabled;
-      const resolved = await resolveFunctionAtCursor(document, editor.selection.active, admitTypes);
-      if (!resolved) {
+      const resolution = await resolveFunctionOrRefusal(
+        document,
+        editor.selection.active,
+        admitTypes,
+      );
+      if (!resolution.ok) {
+        log(refusalLogLine(resolution.refusal, document.languageId));
         void vscode.window.showWarningMessage(
-          "Column 80: no function at the cursor to repair (the language needs a hierarchical document symbol provider).",
+          refusalMessage(
+            resolution.refusal,
+            document.languageId,
+            "Column 80: no function at the cursor to repair.",
+          ),
         );
         return;
       }
+      const resolved = resolution.fn;
       // Repair rounds need the model server. Pre-flight it and offer the same
       // start gesture generate and FIM use, so a down daemon surfaces HERE
       // instead of as a silently-failed round buried in the oracle. One
@@ -5777,8 +5909,20 @@ export function registerFnGen(
       const document = editor.document;
       const versionAtResolve = document.version;
       // TDD tests target FUNCTIONS only (a struct/enum has no behaviour to assert).
-      const resolved = await resolveFunctionAtCursor(document, editor.selection.active, false);
-      if (!resolved || resolved.kind !== "function") {
+      const resolution = await resolveFunctionOrRefusal(document, editor.selection.active, false);
+      if (!resolution.ok) {
+        log(refusalLogLine(resolution.refusal, document.languageId));
+        void vscode.window.showWarningMessage(
+          refusalMessage(
+            resolution.refusal,
+            document.languageId,
+            "Column 80: place the cursor in a function to generate TDD tests.",
+          ),
+        );
+        return;
+      }
+      const resolved = resolution.fn;
+      if (resolved.kind !== "function") {
         void vscode.window.showWarningMessage(
           "Column 80: place the cursor in a function to generate TDD tests.",
         );
@@ -6122,8 +6266,20 @@ export function registerFnGen(
       // Scope the rung to EXACTLY this function's generated tests, so a red never
       // blames the whole project's tests on this implementation (the human
       // adjudicates THIS function's test-vs-impl divergence, not unrelated tests).
-      const resolved = await resolveFunctionAtCursor(document, editor.selection.active, false);
-      if (!resolved || resolved.kind !== "function") {
+      const resolution = await resolveFunctionOrRefusal(document, editor.selection.active, false);
+      if (!resolution.ok) {
+        log(refusalLogLine(resolution.refusal, document.languageId));
+        void vscode.window.showWarningMessage(
+          refusalMessage(
+            resolution.refusal,
+            document.languageId,
+            "Column 80: place the cursor in the function whose TDD tests you want to run.",
+          ),
+        );
+        return;
+      }
+      const resolved = resolution.fn;
+      if (resolved.kind !== "function") {
         void vscode.window.showWarningMessage(
           "Column 80: place the cursor in the function whose TDD tests you want to run.",
         );
