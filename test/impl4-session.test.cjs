@@ -226,6 +226,11 @@ const MEMBER_SCOPE = {
   byteStart: 0,
   byteEnd: 500,
   fileExists: scopeFs(WS_FILES),
+  // Q6: the anchor is the outermost manifest that DECLARES a workspace, so a
+  // fixture built from a path list has to say which one that is. This one
+  // always meant /w; under the old rule any ancestor manifest anchored, which
+  // was the defect.
+  readManifest: (p) => (p === "/w/Cargo.toml" ? "[workspace]\nmembers = [\"member\"]\n" : '[package]\nname = "member"\n'),
 };
 
 test("P4-F12 collision repro: workspace-root src/lib.rs error is out-of-span for a member scope, zero suffix leakage", () => {

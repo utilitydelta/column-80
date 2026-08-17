@@ -51,6 +51,11 @@ export interface RepairScope {
   byteEnd: number;
   /** Injectable for headless grids; absent means the real filesystem. */
   fileExists?: (p: string) => boolean;
+  /** Manifest text for the workspace-anchor walk (Q6). Absent reads the real
+   *  filesystem. A scope that models a layout as a path list alone cannot say
+   *  WHICH manifest is the workspace root, and since the anchor rule reads
+   *  content that is now under-specified rather than merely terse. */
+  readManifest?: (p: string) => string | undefined;
   /** The oracle's own span-path resolution. Absent falls back to the
    *  Rust-shaped resolveDiagnosticPath — the default the frozen contract
    *  oracles pin; the live path always passes the strategy's resolver. */
@@ -68,7 +73,7 @@ export interface EligibilityHooks {
 function scopeResolvePath(scope: RepairScope, fileName: string): string {
   return scope.resolvePath
     ? scope.resolvePath(scope.crateRoot, fileName)
-    : resolveDiagnosticPath(scope.crateRoot, fileName, scope.fileExists);
+    : resolveDiagnosticPath(scope.crateRoot, fileName, scope.fileExists, scope.readManifest);
 }
 
 function primarySpanInScope(span: DiagnosticSpan, scope: RepairScope): boolean {

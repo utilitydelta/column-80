@@ -298,6 +298,11 @@ const resolveCases = [
     name: "P4-F12: under a workspace anchor, root-relative src/lib.rs resolves to the WORKSPACE file even when the member has one too",
     crateRoot: "/ws/member", fileName: "src/lib.rs",
     existing: ["/ws/Cargo.toml", "/ws/member/Cargo.toml", "/ws/member/src/lib.rs", "/ws/src/lib.rs"],
+    // Q6: the anchor is now the outermost manifest that DECLARES a workspace,
+    // not the outermost manifest of any kind, so this fixture has to say which
+    // one is the workspace root. It always meant /ws; under the old rule any
+    // ancestor manifest would do, and that was the defect.
+    workspaces: ["/ws/Cargo.toml"],
     want: "/ws/src/lib.rs",
   },
   {
@@ -310,17 +315,43 @@ const resolveCases = [
     name: "P4-F12: member-prefixed path under the workspace anchor resolves to the member file",
     crateRoot: "/ws/member", fileName: "member/src/lib.rs",
     existing: ["/ws/Cargo.toml", "/ws/member/Cargo.toml", "/ws/member/src/lib.rs"],
+    workspaces: ["/ws/Cargo.toml"],
     want: "/ws/member/src/lib.rs",
   },
   {
-    name: "outermost manifest wins as the anchor when workspaces stack",
-    crateRoot: "/outer/inner/member", fileName: "inner/member/src/lib.rs",
-    existing: ["/outer/Cargo.toml", "/outer/inner/Cargo.toml", "/outer/inner/member/Cargo.toml", "/outer/inner/member/src/lib.rs"],
+    // Q6: NEAREST workspace, and this row has to be able to tell the difference.
+    // Its previous form asserted "outermost wins" and was green under every
+    // annotation including none, because the wanted path was reachable through
+    // the downward fallback either way - a row that names a rule it cannot
+    // test. Here /outer/member/src/lib.rs EXISTS, so an outermost anchor lands
+    // on a real file the crate does not own, which is the whole defect class.
+    // Measured against cargo 1.96: from nest/inner/member the diagnostic reads
+    // `member/src/lib.rs`, relative to the INNER workspace.
+    name: "NEAREST workspace wins when workspaces stack, and the outer one owns a colliding path",
+    crateRoot: "/outer/inner/member", fileName: "member/src/lib.rs",
+    existing: [
+      "/outer/Cargo.toml",
+      "/outer/member/src/lib.rs",
+      "/outer/inner/Cargo.toml",
+      "/outer/inner/member/Cargo.toml",
+      "/outer/inner/member/src/lib.rs",
+    ],
+    workspaces: ["/outer/Cargo.toml", "/outer/inner/Cargo.toml"],
     want: "/outer/inner/member/src/lib.rs",
   },
 ];
-for (const { name, crateRoot, fileName, existing, want } of resolveCases) {
+// Q6: the anchor rule reads manifest CONTENT now, so a fixture that models a
+// layout as a bare path list is under-specified - "a Cargo.toml exists" was
+// enough to mean "workspace root" only while the rule was wrong. Each case
+// names its workspace manifests; every other manifest reads as a plain
+// [package], which is what a nested crate's own manifest really is.
+const manifestReader = (workspaces = []) => (p) =>
+  workspaces.includes(p) ? "[workspace]\nmembers = []\n" : '[package]\nname = "x"\n';
+for (const { name, crateRoot, fileName, existing, want, workspaces } of resolveCases) {
   test(`resolveDiagnosticPath: ${name}`, () => {
-    assert.strictEqual(resolveDiagnosticPath(crateRoot, fileName, pvfs(existing)), want);
+    assert.strictEqual(
+      resolveDiagnosticPath(crateRoot, fileName, pvfs(existing), manifestReader(workspaces)),
+      want,
+    );
   });
 }

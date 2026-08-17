@@ -145,7 +145,12 @@ export interface CompilerOracle {
   checkSuccess(stdout: string, exitCode: number): boolean;
   /** Absolute path for a span's possibly-relative fileName, resolved the way
    *  THIS language's toolchain reports paths. */
-  resolveDiagnosticPath(crateRoot: string, fileName: string, fileExists?: (p: string) => boolean): string;
+  resolveDiagnosticPath(
+    crateRoot: string,
+    fileName: string,
+    fileExists?: (p: string) => boolean,
+    readManifest?: (p: string) => string | undefined,
+  ): string;
   /** Bar 4's refuse-assertion classifier over this language's diagnostic
    *  text. The kind tag is producer-assigned and refused upstream of this. */
   isAssertionShaped(diagnostic: Diagnostic): boolean;
@@ -185,6 +190,11 @@ export interface CompilerOracle {
  *  evidence; absent means silent skips (the parse result is identical). */
 export interface OracleDeps {
   fileExists?: (path: string) => boolean;
+  /** Manifest text for Rust's workspace anchor. Injected ALONGSIDE fileExists,
+   *  never instead of it: a caller with a virtual filesystem that supplies only
+   *  the predicate would have the anchor read a different world's manifests and
+   *  silently invert. */
+  readManifest?: (path: string) => string | undefined;
   log?: LogFn;
 }
 
@@ -228,10 +238,12 @@ export class RustOracle implements CompilerOracle {
   readonly checkLabel = "cargo check";
 
   private readonly fileExists: (p: string) => boolean;
+  private readonly readManifest: (p: string) => string | undefined;
   private readonly log?: LogFn;
 
   constructor(deps?: OracleDeps) {
     this.fileExists = deps?.fileExists ?? ((p) => fs.existsSync(p));
+    this.readManifest = deps?.readManifest ?? defaultReadManifest;
     this.log = deps?.log;
   }
 
@@ -300,8 +312,17 @@ export class RustOracle implements CompilerOracle {
     return buildFinishedSuccess(stdout) ?? exitCode === 0;
   }
 
-  resolveDiagnosticPath(crateRoot: string, fileName: string, fileExists?: (p: string) => boolean): string {
-    return resolveDiagnosticPath(crateRoot, fileName, fileExists ?? this.fileExists);
+  resolveDiagnosticPath(
+    crateRoot: string,
+    fileName: string,
+    fileExists?: (p: string) => boolean,
+    readManifest?: (p: string) => string | undefined,
+  ): string {
+    // Both seams or neither. Forwarding only `fileExists` let a caller with a
+    // virtual filesystem read manifests off the REAL disk, which silently
+    // inverts the anchor: the predicate says a workspace root is there and the
+    // reader, looking at a different world, says it is not.
+    return resolveDiagnosticPath(crateRoot, fileName, fileExists ?? this.fileExists, readManifest ?? this.readManifest);
   }
 
   isAssertionShaped(diagnostic: Diagnostic): boolean {
@@ -323,13 +344,98 @@ class MalformedSpanError extends Error {
   }
 }
 
+function defaultReadManifest(p: string): string | undefined {
+  try {
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Does this Cargo.toml declare a workspace? Read as TOML, not as text, because
+ * both cheap answers are wrong on real manifests.
+ *
+ * A bare `includes("[workspace]")` counts one sitting in a comment or inside a
+ * string. A line-anchored regex for `[workspace]` alone misses
+ * `[workspace.dependencies]` and `[workspace.package]`, which is how a real
+ * workspace root usually declares itself, and it is still fooled by a
+ * `[workspace]` at the start of a line INSIDE a multi-line string.
+ *
+ * So: track multi-line string state, drop comments outside strings, then match
+ * the table header.
+ */
+function declaresWorkspace(toml: string | undefined): boolean {
+  if (toml === undefined) {
+    // Callers only ask after `fileExists` said yes, so undefined means the
+    // manifest is there and could not be READ (permissions, a directory named
+    // Cargo.toml). Unknowable, and the two ways to be wrong are not equal: the
+    // pre-Q6 code stat'd only and anchored on any manifest, so answering false
+    // here would REGRESS a real workspace whose root manifest is unreadable
+    // back into the P4-F12 collision, where a foreign root error becomes
+    // eligible and a member's function goes to the model. Answering true keeps
+    // that case exactly as it shipped.
+    return true;
+  }
+  let inMultiline: string | undefined;
+  for (const raw of toml.split(/\r?\n/)) {
+    let line = raw;
+    if (inMultiline !== undefined) {
+      const close = line.indexOf(inMultiline);
+      if (close === -1) {
+        continue;
+      }
+      line = line.slice(close + 3);
+      inMultiline = undefined;
+    }
+    // One pass, tracking quotes, so a `#` inside a string is not a comment and
+    // a `[workspace]` inside one is not a table header.
+    let code = "";
+    let quote: string | undefined;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (quote === undefined && (line.startsWith('"""', i) || line.startsWith("'''", i))) {
+        const delim = line.startsWith('"""', i) ? '"""' : "'''";
+        const rest = line.slice(i + 3);
+        const close = rest.indexOf(delim);
+        if (close === -1) {
+          inMultiline = delim;
+          break;
+        }
+        i += 3 + close + 2;
+        continue;
+      }
+      if (quote === undefined && (ch === '"' || ch === "'")) {
+        quote = ch;
+        continue;
+      }
+      if (quote !== undefined) {
+        if (ch === "\\" && quote === '"') {
+          i++;
+        } else if (ch === quote) {
+          quote = undefined;
+        }
+        continue;
+      }
+      if (ch === "#") {
+        break;
+      }
+      code += ch;
+    }
+    if (/^\s*\[\s*["\u0027]?workspace["\u0027]?\s*(\]|\.)/.test(code)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Absolute path for a span's fileName. rustc reports paths relative to the
  * directory CARGO ran rustc from: the workspace root when the crate is a
  * member (even when the check command's cwd is the member dir), the crate
  * root when standalone. So: absolute passes through; otherwise resolve
- * against the ANCHOR — the outermost manifest-bearing ancestor of
- * crateRoot, or crateRoot itself when no ancestor carries a Cargo.toml.
+ * against the ANCHOR — the outermost ancestor whose Cargo.toml DECLARES A
+ * WORKSPACE, or crateRoot itself when no ancestor declares one.
  * The anchor rule kills a path collision: under a workspace, a
  * root-relative "src/lib.rs" belongs to the workspace root crate, never
  * to a member that happens to own the same relative path, because a
@@ -341,14 +447,32 @@ export function resolveDiagnosticPath(
   crateRoot: string,
   fileName: string,
   fileExists: (p: string) => boolean = (p) => fs.existsSync(p),
+  readManifest: (p: string) => string | undefined = defaultReadManifest,
 ): string {
   if (path.isAbsolute(fileName)) {
     return fileName;
   }
   let anchor = crateRoot;
   for (let dir = path.dirname(crateRoot); ; dir = path.dirname(dir)) {
-    if (fileExists(path.join(dir, "Cargo.toml"))) {
-      anchor = dir; // keep walking: the OUTERMOST manifest wins
+    const manifest = path.join(dir, "Cargo.toml");
+    // A manifest is not a workspace. Queue Q6: this used to keep the outermost
+    // manifest of ANY kind, so a crate nested under an unrelated `[package]`
+    // anchored there. Measured against cargo 1.96 that is not a miss - the
+    // ancestor owns `src/lib.rs` too, `fileExists` says yes, and the diagnostic
+    // is attributed to a DIFFERENT REAL FILE that repair can then rewrite. A
+    // miss would have been the safe outcome.
+    //
+    // NEAREST workspace, not outermost, and that is measured too. With nested
+    // workspaces cargo runs relative to the INNER one:
+    //
+    //   $ cd nest/inner/member && cargo check --message-format=short
+    //   member/src/lib.rs:1:21: error[E0308]     <- relative to nest/inner
+    //
+    // An outermost rule lands on nest/member/src/lib.rs, a real file the crate
+    // does not own, which is the same class of wrongness this entry fixed.
+    if (fileExists(manifest) && declaresWorkspace(readManifest(manifest))) {
+      anchor = dir;
+      break;
     }
     if (path.dirname(dir) === dir) {
       break;
