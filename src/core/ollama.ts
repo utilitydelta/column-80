@@ -51,6 +51,44 @@ interface StreamEvent {
 // model load.
 const KEEP_ALIVE_S = 1800;
 
+/**
+ * A bound on SILENCE, not on duration. Queue Q5: a FIM request that never
+ * yields pins single-flight forever, because the in-flight entry is only
+ * displaced by a call with a DIFFERENT key and a same-key caller joins the dead
+ * promise. So a server that accepts the connection and then goes quiet takes
+ * FIM down until the user edits enough to re-key.
+ *
+ * The queue proposed "one AbortSignal.timeout", which is a TOTAL cap measured
+ * from the request. Refuted before it was built: a local model on a cold cache
+ * legitimately takes seconds, so a total cap turns a slow-but-working setup
+ * into a broken one, which is worse than a rare hang. The watchdog is re-armed
+ * on every line instead.
+ */
+interface SilenceBound {
+  /** Nothing at all on the stream yet: no line, empty or otherwise. Generous on
+   *  purpose, because this covers a model load and FIM shares the server with
+   *  fn-gen, so a request can queue behind a generation. */
+  firstDataMs: number;
+  /** A gap between LINES once the stream is talking. Tight by comparison,
+   *  because a server that has started answering and then goes quiet for this
+   *  long is a dead connection, not a thinking model. */
+  stallMs: number;
+}
+
+/**
+ * 60s to the first line, 20s between lines. Both deliberately generous: this
+ * bound exists to un-wedge single-flight, not to enforce latency. The latency
+ * story is elsewhere and already built - the debounce, `stopWhen`, and a caller
+ * that discards a stale ghost.
+ *
+ * The stall number has an arm the first-data number does not. Swapping between
+ * a small FIM model and a big instruct model measured 2 to 4.6 second reloads
+ * (docs/user-manual.md), and 20s is over 4x the worst of those - which is the
+ * scenario worth surviving, a FIM request queued behind an fn-gen generation.
+ * 60s is a judgement call and is recorded as one in docs/constants.md.
+ */
+const FIM_SILENCE: SilenceBound = { firstDataMs: 60_000, stallMs: 20_000 };
+
 export async function generateFim(params: FimGenerateParams): Promise<FimGenerateResult> {
   const body = {
     model: params.model,
@@ -69,6 +107,11 @@ export async function generateFim(params: FimGenerateParams): Promise<FimGenerat
     params.signal,
     undefined,
     params.stopWhen,
+    // FIM only. The same hang can wedge the generate path, but fn-gen wraps
+    // every generation in a cancellable progress affordance with a human
+    // watching a deliberate gesture, so the failure reads completely
+    // differently there. Filed separately rather than folded in.
+    FIM_SILENCE,
   );
   // done_reason is not surfaced for FIM: a suggestion cut at num_predict is
   // still a usable infill prefix, unlike a truncated function body.
@@ -184,118 +227,202 @@ async function streamGenerate(
   signal: AbortSignal,
   onChunk?: (text: string) => void,
   stopWhen?: (textSoFar: string) => boolean,
+  silence?: SilenceBound,
 ): Promise<{ text: string; ttftMs: number; totalMs: number; doneReason?: string; stopped?: boolean }> {
-  const url = new URL("api/generate", withTrailingSlash(apiBase));
-
-  const started = Date.now();
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!res.ok) {
-    throw new Error(`Ollama ${res.status} ${res.statusText}: ${await safeText(res)}`);
-  }
-  if (!res.body) {
-    throw new Error("Ollama: response has no body");
-  }
-
-  let text = "";
-  let ttftMs: number | undefined;
-  let totalMs: number | undefined;
-  let doneReason: string | undefined;
-  let stopped = false;
-
-  const handleLine = (line: string): void => {
-    if (signal.aborted) {
-      throw abortError();
-    }
-    if (!line.trim()) {
-      return;
-    }
-    const evt = JSON.parse(line) as StreamEvent;
-    if (evt.error) {
-      throw new Error(`Ollama error: ${evt.error}`);
-    }
-    if (evt.response) {
-      if (ttftMs === undefined) {
-        ttftMs = Date.now() - started;
-      }
-      text += evt.response;
-      onChunk?.(evt.response);
-    }
-    if (evt.done) {
-      totalMs = Date.now() - started;
-      doneReason = evt.done_reason;
-      return;
-    }
-    // Consulted after the done check so a model that finished on the same
-    // line it delivered its last chunk is never reported as cut short: the
-    // caller reads `stopped` as "the bound ended this, not the model".
-    if (evt.response && stopWhen?.(text)) {
-      stopped = true;
-      // The wall clock where the read ENDED, so a bounded request reports what
-      // the user actually waited rather than what the generation would have
-      // cost had it run out.
-      totalMs = Date.now() - started;
+  // The silence watchdog owns the signal handed to fetch, so a bound that fires
+  // cuts the socket. The caller's own signal is forwarded into it rather than
+  // replaced: cancellation still means cancellation, and a bound firing is a
+  // DIFFERENT outcome the caller can name.
+  const watchdog = silence === undefined ? undefined : new AbortController();
+  let cutBy: string | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const disarm = (): void => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
     }
   };
+  const arm = (ms: number, why: string): void => {
+    if (watchdog === undefined) {
+      return;
+    }
+    disarm();
+    timer = setTimeout(() => {
+      cutBy = why;
+      watchdog.abort();
+    }, ms);
+    (timer as { unref?: () => void }).unref?.();
+  };
+  const forwardCallerAbort = (): void => watchdog?.abort(signal.reason);
+  if (watchdog !== undefined) {
+    if (signal.aborted) {
+      watchdog.abort(signal.reason);
+    } else {
+      signal.addEventListener("abort", forwardCallerAbort, { once: true });
+    }
+  }
+  const effectiveSignal = watchdog?.signal ?? signal;
+  // Armed BEFORE the fetch: a server that accepts the connection and then never
+  // answers is the hang this exists for, and it hangs before any line arrives.
+  if (silence !== undefined) {
+    arm(silence.firstDataMs, `silent for ${silence.firstDataMs}ms before any data`);
+  }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
+    return await streamGenerateInner();
+  } catch (err) {
+    // A bound that fired reads as an AbortError from fetch, indistinguishable
+    // from the user cancelling. Name it, or a dead server gets reported as the
+    // editor's doing - the same wrong-cause failure item 55 was about, one
+    // layer down.
+    //
+    // `!signal.aborted` matters: the timer can fire while the caller is
+    // cancelling, inside the transport's abort-to-error latency, and whichever
+    // error arrives would otherwise be relabelled a stream cut. Disarming in
+    // the forwarder instead would remove the backstop for a transport that
+    // ignores its signal, so the gate goes here.
+    if (cutBy !== undefined && !signal.aborted) {
+      throw new Error(`Ollama stream cut: ${cutBy} (${apiBase})`);
+    }
+    throw err;
+  } finally {
+    disarm();
+    signal.removeEventListener("abort", forwardCallerAbort);
+  }
+
+  async function streamGenerateInner(): Promise<{
+    text: string;
+    ttftMs: number;
+    totalMs: number;
+    doneReason?: string;
+    stopped?: boolean;
+  }> {
+    const url = new URL("api/generate", withTrailingSlash(apiBase));
+
+    const started = Date.now();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: effectiveSignal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Ollama ${res.status} ${res.statusText}: ${await safeText(res)}`);
+    }
+    if (!res.body) {
+      throw new Error("Ollama: response has no body");
+    }
+
+    let text = "";
+    let ttftMs: number | undefined;
+    let totalMs: number | undefined;
+    let doneReason: string | undefined;
+    let stopped = false;
+
+    const handleLine = (line: string): void => {
+      if (signal.aborted) {
+        throw abortError();
       }
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        handleLine(line);
+      // Re-armed on ANY line, before the blank-line return, because the bound is
+      // on SILENCE and a line is not silence. Re-arming only on a non-empty
+      // `response` token cut demonstrably-live streams: `{"response":""}` is a
+      // real shape here (the terminal line carries one, and a think-enabled model
+      // emits them), and any proxy in front of ollama may keepalive. `apiBase` is
+      // a free-form setting, so a proxy is a supported deployment.
+      //
+      // The residual, stated rather than hidden: a server that emits lines
+      // forever and never finishes is never cut. That is a live connection rather
+      // than a hang, the user can cancel it, and cutting it is the failure this
+      // bound is not allowed to cause.
+      if (silence !== undefined) {
+        arm(silence.stallMs, `silent for ${silence.stallMs}ms after ${text.length} chars`);
+      }
+      if (!line.trim()) {
+        return;
+      }
+      const evt = JSON.parse(line) as StreamEvent;
+      if (evt.error) {
+        throw new Error(`Ollama error: ${evt.error}`);
+      }
+      if (evt.response) {
+        if (ttftMs === undefined) {
+          ttftMs = Date.now() - started;
+        }
+        text += evt.response;
+        onChunk?.(evt.response);
+      }
+      if (evt.done) {
+        totalMs = Date.now() - started;
+        doneReason = evt.done_reason;
+        return;
+      }
+      // Consulted after the done check so a model that finished on the same
+      // line it delivered its last chunk is never reported as cut short: the
+      // caller reads `stopped` as "the bound ended this, not the model".
+      if (evt.response && stopWhen?.(text)) {
+        stopped = true;
+        // The wall clock where the read ENDED, so a bounded request reports what
+        // the user actually waited rather than what the generation would have
+        // cost had it run out.
+        totalMs = Date.now() - started;
+      }
+    };
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          handleLine(line);
+          if (stopped) {
+            break;
+          }
+        }
         if (stopped) {
           break;
         }
       }
-      if (stopped) {
-        break;
+      // The trailing partial line is only ever completed by more reading, and
+      // there is none once the bound is satisfied.
+      if (!stopped) {
+        handleLine(buffer);
       }
+    } catch (err) {
+      // A parse or ollama-error throw leaves the connection open; release it
+      // so the next request does not queue behind a dead stream.
+      void reader.cancel().catch(() => undefined);
+      throw err;
     }
-    // The trailing partial line is only ever completed by more reading, and
-    // there is none once the bound is satisfied.
-    if (!stopped) {
-      handleLine(buffer);
+    if (stopped) {
+      // Releasing the reader closes the connection, and closing the connection
+      // is what makes ollama abandon the rest of the generation. Without it the
+      // server keeps decoding tokens nobody will read and the next keystroke
+      // queues behind them, which is the whole latency win thrown away.
+      void reader.cancel().catch(() => undefined);
     }
-  } catch (err) {
-    // A parse or ollama-error throw leaves the connection open; release it
-    // so the next request does not queue behind a dead stream.
-    void reader.cancel().catch(() => undefined);
-    throw err;
-  }
-  if (stopped) {
-    // Releasing the reader closes the connection, and closing the connection
-    // is what makes ollama abandon the rest of the generation. Without it the
-    // server keeps decoding tokens nobody will read and the next keystroke
-    // queues behind them, which is the whole latency win thrown away.
-    void reader.cancel().catch(() => undefined);
-  }
 
-  // Fallbacks resolve total first so a chunkless stream can never report
-  // ttft later than total: ttft falls back to total, not to a timestamp
-  // taken after the done line was handled.
-  const end = Date.now() - started;
-  const total = totalMs ?? end;
-  return {
-    text,
-    ttftMs: ttftMs ?? total,
-    totalMs: total,
-    doneReason,
-    ...(stopped ? { stopped: true } : {}),
-  };
+    // Fallbacks resolve total first so a chunkless stream can never report
+    // ttft later than total: ttft falls back to total, not to a timestamp
+    // taken after the done line was handled.
+    const end = Date.now() - started;
+    const total = totalMs ?? end;
+    return {
+      text,
+      ttftMs: ttftMs ?? total,
+      totalMs: total,
+      doneReason,
+      ...(stopped ? { stopped: true } : {}),
+    };
+  }
 }
 
 function abortError(): Error {

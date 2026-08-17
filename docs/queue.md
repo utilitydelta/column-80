@@ -56,8 +56,16 @@ Falsify: two accepts spawn once; a touched manifest spawns again.
 
 A dead request pins single-flight until a different-key call arrives. This is the hang case, not
 v25's `stopWhen` healthy-stream case.
-Fix: one `AbortSignal.timeout` cap.
-Falsify: a stream that never yields releases single-flight at the cap.
+
+**SHIPPED session-v55, and the fix shape above was refuted before it was built.** "One
+`AbortSignal.timeout` cap" is a TOTAL cap measured from the request, and a local model on a cold
+cache legitimately takes seconds, so it turns a slow-but-working setup into a broken one. The blind
+oracle ran that literal shape as a mutation and four rows go red, including a healthy stream that
+produces steadily for 100 seconds.
+
+What shipped is a bound on SILENCE, re-armed on every line: 60s before any data, 20s between lines.
+Left open deliberately: a server that emits lines forever and never finishes is never cut, because
+that is a live connection rather than a hang and cutting it is the failure the bound may not cause.
 
 ### Q6. `compilerOracle.ts` anchors on any ancestor `Cargo.toml`
 

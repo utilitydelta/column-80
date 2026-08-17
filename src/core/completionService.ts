@@ -1115,9 +1115,16 @@ export class CompletionService {
         // cancelled - and reporting it as cancellation points a dogfood session
         // at the editor when the real cause was a dead server. Name the failure
         // when there is one.
-        return this.noGhost(
-          `cancelled mid-request${err instanceof Error && err.name !== "AbortError" ? ` after ${err.name}: ${err.message}` : ""}`,
-        );
+        //
+        // A real failure LEADS with the failure. Appending it to "cancelled
+        // mid-request" left the word a human scans for saying the wrong thing:
+        // the silence watchdog would cut a dead server and this line still
+        // opened with "cancelled". Cancellation is now only claimed when there
+        // is nothing else to report.
+        if (err instanceof Error && err.name !== "AbortError") {
+          return this.noGhost(`${err.name}: ${err.message} (the request was then aborted)`);
+        }
+        return this.noGhost("cancelled mid-request");
       } finally {
         signal?.removeEventListener("abort", forwardAbort);
         if (this.inflight?.controller === controller) {
