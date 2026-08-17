@@ -675,6 +675,132 @@ for (const [label, command] of [
 }
 
 // ===========================================================================
+// HOLE A (found by mutation testing): item 6 was only checked on GENERATE, so
+// three mutations survived - `refusalMessage` ignoring its per-gesture cursor
+// text entirely, and repair's or TDD-generate's text swapped for generate's.
+//
+// The four gestures do NOT share this message: only the human's-cursor cause is
+// gesture-specific (repair repairs, TDD targets a function to test), while the
+// three server-fault causes are the resolver's and must be identical everywhere.
+// Both halves of that are pinned below. Each gesture asserts a clause no other
+// gesture's text contains, so any swap in either direction fails.
+// ===========================================================================
+
+gtest("item 6 (repair): the cursor refusal says the function is wanted TO REPAIR, and is nobody else's wording", async () => {
+  const fx = FIXTURES.rust;
+  const r = await drive({ command: REPAIR, answer: "no-symbol-at-cursor", cursor: outsideCursor(fx) });
+  const msg = soleWarning(r, "repair/no-symbol-at-cursor");
+  assert.match(msg, /repair/i, `repair's cursor message must say what it would repair. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /cursor/i, `it still names the cursor. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /function/i, `it still names a function. Got ${JSON.stringify(msg)}`);
+  assert.ok(!/TDD/i.test(msg), `repair must not borrow a TDD gesture's wording. Got ${JSON.stringify(msg)}`);
+  assert.ok(
+    !/type header/i.test(msg),
+    `repair targets a function body, so generate's type-header clause must not leak in. Got ${JSON.stringify(msg)}`,
+  );
+  assertRefusalLine(r, "no-symbol-at-cursor", "repair/no-symbol-at-cursor");
+});
+
+gtest("item 6 (TDD generate): the cursor refusal is about generating TDD tests for a FUNCTION, never a type header", async () => {
+  const fx = FIXTURES.rust;
+  const r = await drive({ command: TDD_GEN, answer: "no-symbol-at-cursor", cursor: outsideCursor(fx) });
+  const msg = soleWarning(r, "tdd-generate/no-symbol-at-cursor");
+  assert.match(msg, /TDD/i, `TDD generate's cursor message must name the TDD gesture. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /generate/i, `it is the GENERATE half of TDD. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /cursor/i, `it still names the cursor. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /function/i, `it still names a function. Got ${JSON.stringify(msg)}`);
+  assert.ok(!/repair/i.test(msg), `TDD generate must not borrow repair's wording. Got ${JSON.stringify(msg)}`);
+  assert.ok(
+    !/type header/i.test(msg),
+    `TDD only targets functions, so offering a generatable TYPE HEADER would be a lie. Got ${JSON.stringify(msg)}`,
+  );
+  assertRefusalLine(r, "no-symbol-at-cursor", "tdd-generate/no-symbol-at-cursor");
+});
+
+gtest("item 6 (TDD run): the cursor refusal is about RUNNING a function's TDD tests, never generating or repairing", async () => {
+  const fx = FIXTURES.rust;
+  const r = await drive({ command: TDD_RUN, answer: "no-symbol-at-cursor", cursor: outsideCursor(fx) });
+  const msg = soleWarning(r, "tdd-run/no-symbol-at-cursor");
+  assert.match(msg, /TDD/i, `TDD run's cursor message must name the TDD gesture. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /run/i, `it is the RUN half of TDD. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /cursor/i, `it still names the cursor. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /function/i, `it still names a function. Got ${JSON.stringify(msg)}`);
+  assert.ok(!/repair/i.test(msg), `TDD run must not borrow repair's wording. Got ${JSON.stringify(msg)}`);
+  assert.ok(
+    !/type header/i.test(msg),
+    `TDD only targets functions, so offering a generatable TYPE HEADER would be a lie. Got ${JSON.stringify(msg)}`,
+  );
+  assertRefusalLine(r, "no-symbol-at-cursor", "tdd-run/no-symbol-at-cursor");
+});
+
+gtest("item 6 (anti-swap): the four gestures' cursor messages are PAIRWISE DISTINCT, under both admission states", async () => {
+  const fx = FIXTURES.rust;
+  for (const admit of [false, true]) {
+    const byGesture = {};
+    for (const [label, command] of [["generate", GEN], ["repair", REPAIR], ["TDD generate", TDD_GEN], ["TDD run", TDD_RUN]]) {
+      const r = await drive({
+        command,
+        answer: "no-symbol-at-cursor",
+        cursor: outsideCursor(fx),
+        config: { compilerDirectedInjection: admit },
+      });
+      byGesture[label] = soleWarning(r, `${label}/no-symbol-at-cursor/admit=${admit}`);
+    }
+    assert.strictEqual(
+      new Set(Object.values(byGesture)).size,
+      4,
+      `admitTypes=${admit}: each gesture states what IT wanted at the cursor, so no two may share a string. Got:\n` +
+        Object.entries(byGesture).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join("\n"),
+    );
+  }
+});
+
+gtest("item 8 (the other half): the three SERVER-fault causes are gesture-INVARIANT, because the fix is at the resolver", async () => {
+  for (const answer of ["no-provider", "empty-tree", "flat-symbols"]) {
+    const byGesture = {};
+    for (const [label, command] of [["generate", GEN], ["repair", REPAIR], ["TDD generate", TDD_GEN], ["TDD run", TDD_RUN]]) {
+      byGesture[label] = soleWarning(await drive({ command, answer }), `${label}/${answer}`);
+    }
+    assert.strictEqual(
+      new Set(Object.values(byGesture)).size,
+      1,
+      `${answer} is the language server's fault, not the gesture's, so all four gestures must say the SAME thing. Got:\n` +
+        Object.entries(byGesture).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join("\n"),
+    );
+  }
+});
+
+// ===========================================================================
+// HOLE B (found by mutation testing): item 7 was only enforced on generate for
+// all four causes and on the other three gestures for no-provider only, which
+// left 12 of the 16 (gesture, cause) pairs undriven - a gesture could log
+// nothing for a cause and the suite would not notice. This sweeps all 16.
+// ===========================================================================
+
+gtest("item 7 (full sweep): every one of the 16 (gesture, cause) pairs emits exactly ONE refusal line declaring that cause", async () => {
+  const fx = FIXTURES.rust;
+  const misses = [];
+  for (const [label, command] of [["generate", GEN], ["repair", REPAIR], ["TDD generate", TDD_GEN], ["TDD run", TDD_RUN]]) {
+    for (const answer of ["no-provider", "empty-tree", "flat-symbols", "no-symbol-at-cursor"]) {
+      const r = await drive({
+        command,
+        answer,
+        cursor: answer === "no-symbol-at-cursor" ? outsideCursor(fx) : undefined,
+      });
+      if (r.refusalLines.length !== 1) {
+        misses.push(`${label} x ${answer}: expected exactly 1 "${REFUSAL_PREFIX}" line, got ${r.refusalLines.length} ${JSON.stringify(r.refusalLines)}`);
+        continue;
+      }
+      const slug = slugOf(r.refusalLines[0]);
+      if (slug !== answer) {
+        misses.push(`${label} x ${answer}: line must declare cause=${answer}, got ${JSON.stringify(r.refusalLines[0])}`);
+      }
+    }
+  }
+  assert.deepStrictEqual(misses, [], `contract item 7 across all 16 pairs:\n${misses.join("\n")}`);
+});
+
+// ===========================================================================
 // Item 9: the success path is untouched. A refusal-path change that breaks a
 // resolution would pass every test above.
 // ===========================================================================
