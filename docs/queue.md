@@ -81,12 +81,22 @@ stopped being true when the VS Code tier landed, and it now names the tier as wh
 measurement belongs. The resolveCount value itself is unchanged and still untuned, which is a gap
 rather than a barrier and the comment says so.
 
-### Q8. `gesture.test.js` asserts `some` where the evidence supports `every`
+### Q8. NOT MECHANICAL. `gesture.test.js` asserts `some`, and the evidence for `every` is gone
 
-Rows at `:689` and `:711` (C336, blind-confirmed); the green-tier precondition happened
-(session-v26 run 2).
-Fix: `some` to `every`.
-Falsify: the row itself, green after tightening.
+Rows at `test-vscode/gesture.test.js:689` and `:711`. The edit is two characters; the precondition is
+the problem.
+
+**Session-v55 tried to take this and stopped.** These rows run on the VS CODE TIER, which rule of
+engagement 2 forbids reaching for, and the entry's justification ("the green-tier precondition
+happened, session-v26 run 2") has no surviving artifact: `session-v26/` keeps progress, scraps,
+reviews and journeys, and none of them records the arrow deltas or any tier output for these rows.
+So "the evidence supports `every`" is a recitation.
+
+Tightening a tier row on an unrecorded precondition is how a red row sits unseen for months.
+What settles it: one VS Code tier run, reading the `provider invocations after each of three arrows`
+line these rows already report, in both orders. If every delta is above zero, tighten AND keep the
+output this time.
+Falsify: the row itself, green after tightening, on a tier run whose output is recorded.
 
 ### Q9. Extract the shared vscode activation stub
 
