@@ -4,6 +4,7 @@ import {
   DEFAULT_FNGEN_CONFIG,
   FimConfig,
   FnGenConfig,
+  fimApiBase,
 } from "../core/config";
 import { CLOUD_PROVIDERS, OPENAI_COMPATIBLE } from "../core/cloudInstruct";
 import { CLAUDE_CODE } from "../core/claudeCodeInstruct";
@@ -48,7 +49,10 @@ export function readConfig(): ExtensionConfig {
       const v = c.get<unknown>("fimLanguages", []);
       return Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
     })(),
-    apiBase: str(c, "apiBase", d.apiBase),
+    // Goal amendment A: one setting, two consumers, and it no longer moves both.
+    // A base naming another machine belongs to fn-gen; FIM stays local. Every
+    // FIM consumer reads through here, so the carve lands once.
+    apiBase: fimApiBase(str(c, "apiBase", d.apiBase)),
     model: str(c, "fimModel", d.model),
     maxTokens: c.get<number>("maxTokens", d.maxTokens),
     temperature: c.get<number>("temperature", d.temperature),

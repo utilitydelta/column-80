@@ -51,7 +51,7 @@ Any other language: FIM only, and only if you add its language id to `column80.f
 
 ### Requirements
 
-- [Ollama](https://ollama.com) on `http://localhost:11434` (`column80.apiBase` moves it).
+- [Ollama](https://ollama.com) on `http://localhost:11434`. FIM always runs against this box, so you need it here even if the big model lives elsewhere. `column80.apiBase` re-points function generation: another port on this machine takes both halves with it, another machine takes function generation only.
 - VS Code 1.85 or newer to install. **1.130 or newer** if you want the scoped-ghost gesture in C# and TypeScript: 1.124 never re-requests inline completions when the suggest selection changes, so the gesture is silently dead there.
 - An NVIDIA GPU for function generation. No GPU still gets you FIM, labelled honestly.
 - Your language's own toolchain for the compiler check: `cargo`, `go`, a project-local `node_modules/typescript`, `dotnet`. Python needs no pyright install, it ships inside the extension, but it does want a `.venv` or `venv` beside your project root. Without one the check falls back to system python and you get a missing-imports storm.
@@ -558,7 +558,7 @@ Habits worth having: `promptBytes` and `blocks` tell you what a generation actua
 | Setting | Default | What it does |
 |---|---|---|
 | `column80.enabled` | `true` | FIM autocomplete on/off. |
-| `column80.apiBase` | `http://localhost:11434` | Ollama base URL. |
+| `column80.apiBase` | `http://localhost:11434` | Ollama base URL for function generation. FIM follows it only to a loopback address; a remote host leaves FIM on `http://localhost:11434`. |
 | `column80.fimModel` | `qwen2.5-coder:1.5b-base` | FIM model. Must be a FIM-capable **base** model, not `-instruct`. |
 | `column80.fimLanguages` | `[]` | Extra VS Code language ids to serve FIM in. Widens, never narrows. |
 | `column80.fimUsageExamples` | `true` | Show real call sites of a member under its signatures at member sites. |

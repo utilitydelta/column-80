@@ -167,6 +167,35 @@ export function isRemoteApiBase(apiBase: string): boolean {
 }
 
 /**
+ * Where FIM's model is served. Goal amendment A: FIM is a LOCAL model, always.
+ *
+ * `column80.apiBase` has two consumers, and until this call it moved both. FIM
+ * runs a 1.5b base model that runs on most machines; the big model is the one
+ * allowed to live on a cloud provider or an on-prem Ollama. So a base naming
+ * another machine moves fn-gen and leaves FIM here.
+ *
+ * Why this matters more than a config tidy: FIM fails SILENTLY. A failed
+ * request logs to the channel and returns no ghost, and a ghost that never
+ * appears reads as a model that chose not to offer one. Pointing FIM at a host
+ * the user configured for the big model means the whole tab-completion half
+ * goes dark with nothing on screen to say so - while the fn-gen refusal toast
+ * is busy promising that FIM still works.
+ *
+ * LOOPBACK ON ANY PORT STAYS. Somebody serving Ollama from a container on
+ * 11500 is running it on this box, and taking FIM off their port would break a
+ * working setup to fix one they do not have. `isRemoteApiBase` already draws
+ * that line, including the trailing slash, the empty-hostname parse and the
+ * unparseable-stays-local rule, so this asks it rather than deciding again.
+ *
+ * FIM served from a remote host is a real configuration and is deliberately
+ * NOT supported this cycle. The additive answer is a `column80.fimApiBase`
+ * setting defaulting to this rule; there is no hidden escape hatch here.
+ */
+export function fimApiBase(apiBase: string): string {
+  return isRemoteApiBase(apiBase) ? DEFAULT_FIM_CONFIG.apiBase : apiBase;
+}
+
+/**
  * The spike-proven 16GB reference carve: cap the 30b's GPU layers so the
  * co-resident FIM model stays 100% on GPU. The 16gb-large-ram tier row
  * (tiers.ts) carries this value, and the live suite asserts the computed

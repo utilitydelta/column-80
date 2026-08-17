@@ -130,7 +130,11 @@ export async function runFirstRunFlow(
   // no fn-gen model. The provider's key check lives in buildFnGenService.
   const cloud = readCloudConfig();
   if (cloud) {
-    output.appendLine(`[carve] fn-gen backend=cloud provider=${cloud.provider} (no local model pull)`);
+    // "no local fn-gen model pull", not "no local pull". The FIM model is still
+    // pulled on this arm and always was, so the shorter phrasing was never true
+    // literally. Both carve lines carry the same wording deliberately: that
+    // sameness is what keeps the reading stable.
+    output.appendLine(`[carve] fn-gen backend=cloud provider=${cloud.provider} (no local fn-gen model pull)`);
   }
 
   // A remote Ollama detaches fn-gen from local hardware the same way, and for a
@@ -141,7 +145,7 @@ export async function runFirstRunFlow(
   // sentence, and suppressing it here is most of the item.
   const remoteHost = isRemoteApiBase(readFnGenConfig().apiBase) ? readFnGenConfig().apiBase : undefined;
   if (remoteHost !== undefined) {
-    output.appendLine(`[carve] fn-gen backend=remote host=${remoteHost} (no local model pull)`);
+    output.appendLine(`[carve] fn-gen backend=remote host=${remoteHost} (no local fn-gen model pull)`);
   }
 
   if (!cloud && remoteHost === undefined && !selection.fnGenEnabled) {
@@ -152,9 +156,17 @@ export async function runFirstRunFlow(
   // Model availability. One listModels call answers both "is the server up"
   // and "what is pulled" (the donor's readiness-check shape). FIM is local on
   // every tier, so this readiness pass runs even when fn-gen is cloud.
+  //
+  // The list is aimed at the FIM host, and that is not the same host it used to
+  // read. Walk the arms: cloud pushes no fn-gen row, remote pushes no fn-gen
+  // row, and the arm that DOES push one is by definition the local one. So
+  // every model this flow can check or pull is local, in every arm, and reading
+  // the remote server's catalogue to decide whether a LOCAL model is installed
+  // was answering the question against the wrong machine.
+  const fimConfig = readConfig();
   const fnGenConfig = applyTier(readFnGenConfig(), selection, readTierConfig().explicitFnGenModel);
   const list = deps.listModels ?? listModels;
-  const models = await list(fnGenConfig.apiBase);
+  const models = await list(fimConfig.apiBase);
   if (models === undefined) {
     // No stranded flow: the branch that cannot finish names the
     // one-click way back in - the same gesture the decline path names - in
@@ -172,15 +184,20 @@ export async function runFirstRunFlow(
   }
 
   const needed: { model: string; why: string; fnGen: boolean }[] = [
-    { model: readConfig().model, why: "FIM tab-completion needs its model", fnGen: false },
+    { model: fimConfig.model, why: "FIM tab-completion needs its model", fnGen: false },
   ];
   // The cloud backend serves fn-gen from the provider, so no local fn-gen
   // model is ever pulled; FIM above is the only local model a cloud user needs.
   // A remote host is excluded for a different reason: `applyTier` would name
-  // the LOCAL VRAM row's model here, and `offerModelPull` targets apiBase, so
-  // this used to offer to download this box's tier model onto somebody else's
-  // server, citing this box's tier as the reason. FIM's entry above still runs
-  // and is still right, because FIM rides the same apiBase.
+  // the LOCAL VRAM row's model here, and `offerModelPull` targets the host it
+  // is given, so this used to offer to download this box's tier model onto
+  // somebody else's server, citing this box's tier as the reason.
+  //
+  // FIM's entry above still runs, and the reason it is right CHANGED under goal
+  // amendment A. It used to be right because FIM rode the same apiBase; now it
+  // is right because FIM does not, and its host is local whatever that setting
+  // says. On the remote arm the FIM entry is the only pull this flow makes, so
+  // aiming it correctly is the whole of the fix here.
   if (!cloud && remoteHost === undefined && selection.fnGenEnabled) {
     needed.push({
       model: fnGenConfig.model,
@@ -192,7 +209,11 @@ export async function runFirstRunFlow(
     if (hasModel(models, need.model)) {
       continue;
     }
-    const landed = await offerModelPull(fnGenConfig.apiBase, need.model, output, need.why, deps);
+    // Same host the catalogue above came from, and that coupling is the point:
+    // `hasModel` decided this model is absent FROM THAT LIST, so pulling it
+    // anywhere else answers a question nobody asked. On the local arm this is
+    // byte-identical to the fn-gen base; on the remote arm it is the fix.
+    const landed = await offerModelPull(fimConfig.apiBase, need.model, output, need.why, deps);
     if (!landed && need.fnGen) {
       // Declining leaves the extension honest: what is missing, what that
       // disables, and the one-click that fixes it.

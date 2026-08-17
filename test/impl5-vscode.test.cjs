@@ -763,7 +763,7 @@ test("remote apiBase: the flow does not tell a user with a GPU server that they 
     "and must not log the local disabled line either"
   );
   assert.ok(
-    out.lines.includes(`[carve] fn-gen backend=remote host=${REMOTE_HOST} (no local model pull)`),
+    out.lines.includes(`[carve] fn-gen backend=remote host=${REMOTE_HOST} (no local fn-gen model pull)`),
     `the channel names which backend suppressed it: ${JSON.stringify(out.lines)}`
   );
 });
@@ -799,7 +799,7 @@ test("remote apiBase: the LOCAL tier row's model is never offered to somebody el
   );
 });
 
-test("remote apiBase: FIM's own model IS still offered, because FIM rides the same apiBase", async () => {
+test("remote apiBase: FIM's own model IS still offered, and now it is offered on the LOCAL host", async () => {
   resetState();
   __state.config = { apiBase: REMOTE_HOST };
   __state.quickPickImpl = async (items) => items[0];
@@ -810,7 +810,7 @@ test("remote apiBase: FIM's own model IS still offered, because FIM rides the sa
   const offered = out.lines.filter((l) => l.startsWith("[carve] pull offered"));
   assert.ok(
     offered.some((l) => l.includes(FIM_MODEL)),
-    `FIM is not suppressed, it genuinely uses this host: ${JSON.stringify(out.lines)}`
+    `FIM is not suppressed, its model is still offered: ${JSON.stringify(out.lines)}`
   );
 });
 

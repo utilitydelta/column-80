@@ -354,7 +354,7 @@
         "column80.apiBase": {
           "type": "string",
           "default": "http://localhost:11434",
-          "description": "Base URL of the local Ollama server."
+          "description": "Base URL of the Ollama server that serves function generation. Point it at another machine to run the big model there. FIM tab-completion is always served locally and ignores this when it names a remote host."
         },
         "column80.fimModel": {
           "type": "string",
