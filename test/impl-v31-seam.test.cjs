@@ -370,9 +370,12 @@ test("Rust lists exactly one framework, libtest", () => {
 });
 
 test("libtest.buildCommand is BYTE-IDENTICAL to the shipped buildTestCommand", () => {
+  // Two names, and they sit past `--`. Before `--` cargo would take the first
+  // as its single [TESTNAME] and reject the second outright, so the separator
+  // is what makes a multi-test rung run instead of erroring.
   const names = ["tests::t_happy", "tests::t_zero"];
   const cmd = rust().frameworks[0].buildCommand(placementAt("/w"), names);
-  assert.deepStrictEqual(cmd, { command: "cargo", args: ["test", "--lib", "tests::t_happy", "tests::t_zero"], cwd: "/w" });
+  assert.deepStrictEqual(cmd, { command: "cargo", args: ["test", "--lib", "--", "tests::t_happy", "tests::t_zero"], cwd: "/w" });
   assert.deepStrictEqual(cmd, buildTestCommand("/w", names), "the seam adds nothing and drops nothing");
 });
 
@@ -604,7 +607,7 @@ test("runTestOracle keeps its shipped file-path signature and its shipped result
   const res = await runTestOracle(oracleWithRoot("/w"), "/w/src/lib.rs", ["tests::a", "tests::b"], {
     runCommand: runner(LIBTEST_MIXED, "", 101),
   });
-  assert.deepStrictEqual(runner.last, { command: "cargo", args: ["test", "--lib", "tests::a", "tests::b"], cwd: "/w" });
+  assert.deepStrictEqual(runner.last, { command: "cargo", args: ["test", "--lib", "--", "tests::a", "tests::b"], cwd: "/w" });
   assert.strictEqual(res.crateRoot, "/w");
   assert.strictEqual(res.ran, true);
   assert.strictEqual(res.success, false, "a failing test is a red, not a crash");
@@ -633,7 +636,7 @@ test("runTestOracleAt passes a packageArg to the builder, which cargo ignores an
   const res = await runTestOracleAt(oracleWithRoot("/w"), { runRoot: "/w", packageArg: "./internal/foo" }, ["t"], {
     runCommand: runner(LIBTEST_MIXED, "", 101),
   });
-  assert.deepStrictEqual(runner.last.args, ["test", "--lib", "t"], "cargo scopes by cwd, so the Rust command is untouched");
+  assert.deepStrictEqual(runner.last.args, ["test", "--lib", "--", "t"], "cargo scopes by cwd, so packageArg adds nothing to the Rust command");
   assert.strictEqual(res.crateRoot, "/w");
 });
 
@@ -662,7 +665,11 @@ test("the options object a strategy's buildTestCommand sees now carries packageA
   };
   await runTestOracle(oracle, "/w/src/lib.rs", ["tests::a"], { runCommand: runner(LIBTEST_MIXED, "", 101) });
   assert.deepStrictEqual(seen, [{ noRun: undefined, packageArg: undefined }]);
-  assert.deepStrictEqual(runner.last, { command: "cargo", args: ["test", "--lib", "tests::a"], cwd: "/w" }, "and the command is unchanged");
+  assert.deepStrictEqual(
+    runner.last,
+    { command: "cargo", args: ["test", "--lib", "--", "tests::a"], cwd: "/w" },
+    "and the extra opts key changes nothing about the command cargo is handed"
+  );
 });
 
 test("the executed>0 green guard survives the refactor on BOTH entry points", async () => {

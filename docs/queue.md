@@ -255,3 +255,30 @@ and not remote-specific: `below-12gb` behaves the same. The claude-code arm deli
 disabled service inert; every other disabled arm does not.
 Fix: decide whether a disabled service goes inert, then apply it to all arms.
 Falsify: the gesture on a disabled tier refuses instead of dialling.
+
+### Q3b. NEW 2026-08-17. The Rust test rung still filters by substring, and `--exact` is not the fix
+
+Session-v55 phase 6 fixed the half that was a hard error (multiple filters need the `--` separator)
+and deliberately left this half. `cargo test --lib -- add` still runs `add_more`, so a rung scoped to
+one function's generated tests can blame a neighbour's.
+
+**`--exact` looks like the answer and runs ZERO tests.** Measured against cargo 1.96: `--exact`
+matches libtest's FULL path (`tests::add_returns_sum`) and `generatedTestNames`
+(`src/core/testAssembly.ts:801`) returns bare `fn` names. The pair filters everything out, which
+turns a working red into silence. Prefixing `tests::` is not the fix either: `findCfgTestModule`
+(`:729`) matches any `mod <name>`, so extending an existing module inherits the developer's own name.
+Fix: resolve the enclosing `#[cfg(test)] mod` name, thread it to `buildTestCommand`, then `--exact`.
+Falsify: two tests, one name a strict prefix of the other, in a module NOT called `tests`; only the
+named one runs, and it does run.
+
+### Q3c. NEW 2026-08-17. C# has the identical substring over-run, and the identical trap
+
+Session-v55 phase 6, found while checking whether Q3 was language-specific. `buildCsCommand`
+(`src/core/tddCs.ts:1386`) emits `FullyQualifiedName~<name>` and `~` means CONTAINS, while
+`csGeneratedTestNames` (`:2113`) returns bare method names. Measured on dotnet 10.0.110 / VSTest
+18.0.2: `FullyQualifiedName~T.Tests.Add` passes 2 (Add and AddMore), `FullyQualifiedName=Add` matches
+nothing, `FullyQualifiedName=T.Tests.Add` passes 1. So switching `~` to `=` without resolving the
+fully-qualified name breaks it exactly the way `--exact` broke Rust.
+Go, Python and TypeScript are CLEAN: Go anchors `-run '^(a|b)$'` with `escapeRegex`
+(`tddGo.ts:805`), pytest uses exact node ids (`tddPy.ts:1034`), vitest/jest end-anchor.
+Falsify: as Q3b, in C#.

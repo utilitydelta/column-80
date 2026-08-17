@@ -330,10 +330,19 @@ gtest("frameworkFor: the FIRST framework whose detect fires wins, precedence ord
 
 // ===========================================================================
 // 5. libtest.buildCommand - THE SAFETY PIN.
-//    Rust's shipped behaviour is byte-frozen. These three assertions are what
-//    catch a refactor that moved a byte.
+//    Rust's shipped behaviour is byte-frozen: the seam must produce whatever
+//    the shipped buildTestCommand produces, adding nothing and dropping
+//    nothing. These three assertions are what catch a refactor that moved a
+//    byte at the SEAM.
 //    [goal.md 'Rust's shipped behaviour is byte-frozen'; contract-seam.md
 //     invariant 1 '`cargo test --lib` ... behave EXACTLY as today']
+//
+//    The filter literals below moved once, in the Q3 fix, and the seam is not
+//    what moved them. `cargo test` takes exactly ONE [TESTNAME] positional, so
+//    the multi-name shape these rows used to pin was a hard cargo error
+//    (`error: unexpected argument 'tests::adds_wrong' found`) and ran no tests
+//    at all. Filters now go after the `--` separator, which is the only place
+//    libtest sees more than one of them and OR-s them.
 // ===========================================================================
 
 gtest("BYTE-FROZEN buildCommand: no test names -> cargo test --lib, cwd = the crate root [contract-seam.md invariant 1]", () => {
@@ -343,20 +352,20 @@ gtest("BYTE-FROZEN buildCommand: no test names -> cargo test --lib, cwd = the cr
   assert.strictEqual(cmd.cwd, CRATE, "cwd is the run root, which for Rust is the crate root");
 });
 
-gtest("BYTE-FROZEN buildCommand: one test name -> it is the trailing positional filter [contract-seam.md invariant 1; goal.md 'wrapping the shipped buildTestCommand']", () => {
+gtest("BYTE-FROZEN buildCommand: one test name -> it is the trailing libtest filter, after the `--` separator [contract-seam.md invariant 1; goal.md 'wrapping the shipped buildTestCommand']", () => {
   const cmd = libtest().buildCommand(rustPlacement(), ["tests::adds"]);
   assert.strictEqual(cmd.command, "cargo");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "tests::adds"], "the name is appended as a positional, no flag, no quoting");
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "tests::adds"], "the name is handed to libtest past `--`, no flag, no quoting");
   assert.strictEqual(cmd.cwd, CRATE);
 });
 
-gtest("buildCommand: several test names ride as positional filters in the order given [contract-seam.md 'buildCommand(placement, testNames: string[])']", () => {
+gtest("buildCommand: several test names ride past `--` as libtest filters in the order given, which is the only encoding cargo accepts [contract-seam.md 'buildCommand(placement, testNames: string[])']", () => {
   const cmd = libtest().buildCommand(rustPlacement(), ["tests::adds", "tests::adds_wrong"]);
   assert.strictEqual(cmd.command, "cargo");
   assert.deepStrictEqual(
     cmd.args,
-    ["test", "--lib", "tests::adds", "tests::adds_wrong"],
-    "names are positional filters in the caller's order; the contract fixes the base args, this pins the multi-name encoding"
+    ["test", "--lib", "--", "tests::adds", "tests::adds_wrong"],
+    "names go past the separator in the caller's order; cargo itself takes ONE positional, so this is what makes a two-test rung run at all"
   );
   assert.strictEqual(cmd.cwd, CRATE);
 });
@@ -372,7 +381,7 @@ gtest("buildCommand wired end to end: a placementFor result feeds buildCommand a
   assert.strictEqual(res.ok, true);
   const cmd = lang.frameworks[0].buildCommand(res.placement, ["tests::adds"]);
   assert.strictEqual(cmd.command, "cargo");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "tests::adds"]);
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "tests::adds"]);
   assert.strictEqual(cmd.cwd, CRATE, "the resolved crate root reaches the command unchanged");
 });
 

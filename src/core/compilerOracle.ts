@@ -881,13 +881,33 @@ export interface TestCommandOptions {
 }
 
 /**
- * `cargo test --lib [--no-run] [filter…]` scoped to the library target (where the
- * in-file `#[cfg(test)] mod tests` lives). A non-empty filter is a positional
- * test-name match; an ARRAY of filters is OR-ed by libtest (the exact set of a
- * function's generated test fns, so the rung blames only that function's tests,
- * never the whole crate). noRun builds the test binary without running it (the
- * off-critical-path prewarm). Default human output — the parser reads stable
- * libtest text, never the nightly/experimental JSON.
+ * `cargo test --lib [--no-run] [-- --exact filter…]` scoped to the library
+ * target (where the in-file `#[cfg(test)] mod tests` lives). noRun builds the
+ * test binary without running it (the off-critical-path prewarm). Default human
+ * output: the parser reads stable libtest text, never the nightly/experimental
+ * JSON.
+ *
+ * Filters go AFTER the `--` separator. Measured against real cargo 1.96, not
+ * reasoned about (queue Q3).
+ *
+ * `cargo test` takes exactly ONE `[TESTNAME]` positional (`cargo test --help`
+ * gives the grammar as `cargo test [OPTIONS] [TESTNAME] [-- [ARGS]...]`). So
+ * the ARRAY path this function has always advertised never OR-ed anything: it
+ * produced `error: unexpected argument 'tests::other' found` and ran no tests
+ * at all. Production hits that on every function with two or more generated
+ * tests, and `reportNoRun` renders it as "the tests did not compile", which is
+ * a lie about code that compiles fine. Past `--`, libtest takes as many filters
+ * as it is given and OR-s them, which is what the doc always claimed.
+ *
+ * What this does NOT fix, deliberately: the filters are still SUBSTRING
+ * matches, so a rung scoped to `add` still runs `add_more`. `--exact` is the
+ * obvious answer and it is wrong here, which is worth writing down because it
+ * looks right: `--exact` matches libtest's FULL path (`tests::add`), and
+ * `generatedTestNames` returns bare `fn` names. Measured, the pair runs zero
+ * tests, which turns a working red into silence. Prefixing `tests::` is not the
+ * fix either: `findCfgTestModule` matches any `mod <name>`, so extending an
+ * existing module inherits the developer's own name. Exactness needs the
+ * enclosing module resolved and threaded to here, and that is queue Q3b.
  */
 export function buildTestCommand(
   crateRoot: string,
@@ -899,7 +919,9 @@ export function buildTestCommand(
     args.push("--no-run");
   }
   const filters = (Array.isArray(filter) ? filter : [filter]).filter((f) => f.length > 0);
-  args.push(...filters);
+  if (filters.length > 0) {
+    args.push("--", ...filters);
+  }
   return { command: "cargo", args, cwd: crateRoot };
 }
 

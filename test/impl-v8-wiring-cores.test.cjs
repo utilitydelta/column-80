@@ -1,7 +1,8 @@
 // Implementer tests for the P5b wiring's testable cores (the review fixes that
 // scope the cargo test rung to a function's OWN generated tests, killing the
 // false-blame the whole-crate `tests::` filter caused):
-//   - buildTestCommand accepts an ARRAY of test-name filters (OR-ed by libtest).
+//   - buildTestCommand accepts an ARRAY of test-name filters and puts them past
+//     the `--` separator, which is where libtest reads them and OR-s them.
 //   - generatedTestNames extracts a function's generated #[test] names from its
 //     marked region, so runTddTests can scope the rung to exactly those.
 //
@@ -21,17 +22,24 @@ test.after(cleanup);
 
 // ---- buildTestCommand: array of filters -----------------------------------
 
-test("buildTestCommand OR-s an array of test-name filters as positionals", () => {
+test("buildTestCommand puts an array of test-name filters PAST `--`, which is the only way libtest ever sees more than one", () => {
+  // This row used to pin the names as bare cargo positionals and called that
+  // "OR-ing". It was not: `cargo test` takes exactly ONE [TESTNAME], and a
+  // second one is `error: unexpected argument 'kth_largest_edge' found` with no
+  // test run at all — which the product then reported to the human as "the
+  // tests did not compile". Past `--` the args belong to libtest, which takes
+  // as many filters as it is given and OR-s them.
   const cmd = buildTestCommand("/w", ["kth_largest_happy", "kth_largest_edge"]);
   assert.strictEqual(cmd.command, "cargo");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "kth_largest_happy", "kth_largest_edge"]);
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "kth_largest_happy", "kth_largest_edge"]);
 });
 
-test("buildTestCommand string filter still works (unchanged); empties dropped", () => {
-  assert.deepStrictEqual(buildTestCommand("/w", "tests::").args, ["test", "--lib", "tests::"]);
-  assert.deepStrictEqual(buildTestCommand("/w", "").args, ["test", "--lib"]);
-  assert.deepStrictEqual(buildTestCommand("/w", ["", "x"]).args, ["test", "--lib", "x"]);
-  assert.deepStrictEqual(buildTestCommand("/w", ["a"], { noRun: true }).args, ["test", "--lib", "--no-run", "a"]);
+test("buildTestCommand string filter still works; empties dropped, and no separator when nothing survives", () => {
+  assert.deepStrictEqual(buildTestCommand("/w", "tests::").args, ["test", "--lib", "--", "tests::"]);
+  assert.deepStrictEqual(buildTestCommand("/w", "").args, ["test", "--lib"], "no filter, no dangling `--`");
+  assert.deepStrictEqual(buildTestCommand("/w", ["", "x"]).args, ["test", "--lib", "--", "x"]);
+  // --no-run is cargo's flag, so it stays on cargo's side of the separator.
+  assert.deepStrictEqual(buildTestCommand("/w", ["a"], { noRun: true }).args, ["test", "--lib", "--no-run", "--", "a"]);
 });
 
 // ---- generatedTestNames: scope to a function's own tests -------------------
@@ -50,6 +58,45 @@ mod tests {
   const fileText = "pub fn kth_largest() {}\n" + plan.text;
   const names = generatedTestNames(fileText, "kth_largest");
   assert.deepStrictEqual(names, ["kth_happy", "kth_edge"], "exactly this fn's generated test names");
+});
+
+// ---- the two halves joined, with REAL names --------------------------------
+
+test("FIXTURE FIDELITY: the names generatedTestNames really produces are bare `fn` names, and buildTestCommand must build a command libtest accepts from THOSE — a full-path fixture hides a real-world break", () => {
+  // Every other fixture in this repo hand-writes full paths (`tests::adds`,
+  // `tests::t_happy`). The product never produces one: generatedTestNames reads
+  // `\bfn\s+(\w+)` out of the marked region, so it yields `add_returns_sum`,
+  // never `tests::add_returns_sum`. That gap is not cosmetic — it is why an
+  // `--exact` attempt looked correct against every existing row and would have
+  // run ZERO tests in production, because --exact matches libtest's full path
+  // and the real names have no path on them. This row drives the REAL function
+  // so the fixture cannot drift back to a shape the product never emits.
+  const genModule = `#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn add_returns_sum() { assert_eq!(add(2, 3), 5); }
+    #[test]
+    fn add_handles_zero() { assert_eq!(add(0, 0), 0); }
+}`;
+  const src = "pub fn add(a: i32, b: i32) -> i32 { a + b }\n";
+  const plan = planTestInsertion(src, genModule, { markerId: "add" });
+  const names = generatedTestNames(src + plan.text, "add");
+
+  assert.deepStrictEqual(names, ["add_returns_sum", "add_handles_zero"], "bare fn names, no module path — this is the real shape");
+  assert.ok(names.every((n) => !n.includes("::")), "if this ever fails the product started emitting paths and --exact becomes reachable");
+
+  const cmd = buildTestCommand("/w", names);
+
+  // A command libtest accepts: cargo's own args first, then the separator, then
+  // the filters. Anything cargo has to parse itself is limited to ONE
+  // [TESTNAME], so a second name before `--` would be a hard error, not a run.
+  const sep = cmd.args.indexOf("--");
+  assert.notStrictEqual(sep, -1, "there is a separator");
+  assert.deepStrictEqual(cmd.args.slice(0, sep), ["test", "--lib"], "cargo sees only its own flags and no positional");
+  assert.deepStrictEqual(cmd.args.slice(sep + 1), names, "libtest sees the bare names, in order, as substring filters");
+  assert.ok(!cmd.args.includes("--exact"), "--exact against bare names selects nothing; exactness needs the module path resolved first (queue Q3b)");
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "add_returns_sum", "add_handles_zero"]);
 });
 
 test("planTestInsertion indents the FIRST #[test] like the rest — no ragged column-0 line", () => {

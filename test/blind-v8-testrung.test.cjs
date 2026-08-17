@@ -246,19 +246,27 @@ test("buildTestCommand base: `cargo test --lib` in cwd=crateRoot, no positional 
   assert.deepStrictEqual(cmd.args, ["test", "--lib"], "run-all: no positional filter");
 });
 
-test("buildTestCommand with a non-empty filter: appended as a positional test-name filter [P4 §2 'filter (non-empty) is appended as the positional']", () => {
+test("buildTestCommand with a non-empty filter: handed to libtest after the `--` separator [P4 §2 'filter (non-empty) is appended as the positional']", () => {
+  // P4 §2 wrote "positional" because one filter reads the same either way. It
+  // is not the same for two: `cargo test` takes exactly ONE [TESTNAME], so a
+  // second filter before `--` is `error: unexpected argument`. Everything from
+  // `--` onward goes to libtest, which takes as many filters as it is given.
   const cmd = buildTestCommand(CRATE, "tests::adds");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "tests::adds"], "filter is the trailing positional arg");
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "tests::adds"], "filter trails the separator, not cargo's own positional slot");
   assert.strictEqual(cmd.command, "cargo");
   assert.strictEqual(cmd.cwd, CRATE);
 });
 
-test("buildTestCommand noRun: includes --no-run (build, do not run) [P4 §2 'opts.noRun -> include --no-run']", () => {
+test("buildTestCommand noRun: includes --no-run (build, do not run), and it stays on cargo's side of the separator [P4 §2 'opts.noRun -> include --no-run']", () => {
   const bare = buildTestCommand(CRATE, "", { noRun: true });
-  assert.deepStrictEqual(bare.args, ["test", "--lib", "--no-run"], "--no-run with no filter (the prewarm shape)");
+  assert.deepStrictEqual(bare.args, ["test", "--lib", "--no-run"], "--no-run with no filter (the prewarm shape), and no bare separator");
 
   const filtered = buildTestCommand(CRATE, "tests::adds", { noRun: true });
-  assert.deepStrictEqual(filtered.args, ["test", "--lib", "--no-run", "tests::adds"], "--no-run precedes the positional filter, deterministic order");
+  assert.deepStrictEqual(
+    filtered.args,
+    ["test", "--lib", "--no-run", "--", "tests::adds"],
+    "--no-run is a cargo flag so it precedes `--`; the filter is libtest's so it follows. Deterministic order."
+  );
 });
 
 // ===========================================================================
