@@ -88,10 +88,32 @@ export interface DerivedType {
    *  renderDerivedDef then synthesizes from `fields`.
    *
    *  Verbatim except for ONE rewrite: a Rust enum's elided tuple-variant
-   *  payloads are restored from the definition source (`enumPayloadsFromSource`),
-   *  which refuses unless the source proves the answer. Nothing else edits it. */
+   *  payloads are restored from the definition source by `recoverElidedSurface`
+   *  (`rustHoverRecovery.ts`), which refuses unless the source proves the
+   *  answer. Nothing else edits it.
+   *
+   *  This cite named a symbol that has never existed anywhere in `src/`. The
+   *  phantom stood until session-v55 phase 12, the phase that had to follow it.
+   *  The dead name is not repeated here: a phantom spelled in a comment is what
+   *  a grep finds. */
   signature: string;
   fields: Array<{ name: string; typeName: string }>;
+  /** A Rust enum's VARIANT PAYLOAD types, one entry per (variant, payload text)
+   *  - `Paid(Receipt)` and `Refunded { amount: Money }` both land here, keyed by
+   *  the variant name so the edge can be anchored on the variant's own line.
+   *
+   *  SEPARATE FROM `fields`, deliberately and measurably. Roughly twenty sites
+   *  read `fields`, two of them the shape-path admission gates at
+   *  `fnGen.ts:1812` and `fnGen.ts:3654`; putting a payload there would move an
+   *  enum through a different door and shift the shed sets, the narrowing sets
+   *  and four renderers with it. Three places read THIS field instead: the
+   *  walk's enqueue loop, the `D_MAX` frontier loop, and `toResolveStruct`,
+   *  which is the one seam the data-shape render takes its walkable edges from.
+   *
+   *  Absent for every type that is not a Rust enum carrying payloads, which is
+   *  every type in the four hooked languages: they set their own `parseFields`
+   *  and never reach this parse. */
+  variantPayloads?: Array<{ name: string; typeName: string }>;
   methods: string[];
   methodsResolved: boolean;
   /** Members this type HAS that the signature fan-out's caps left bare, so the
@@ -341,6 +363,49 @@ export function parseStructHoverFields(signature: string | undefined): Array<{ n
     }
   }
   return fields;
+}
+
+/** A Rust enum's variant payloads, each as { name: variantName, typeName: the
+ *  payload text AS WRITTEN }. `Paid(Receipt)` yields one entry, and so does
+ *  `Refunded { amount: Money }` - the caller runs `candidateTypesOf` over the
+ *  text, which lifts every PascalCase name out of either shape, so this parser
+ *  does not need to know a tuple variant from a struct one.
+ *
+ *  Why this is not `parseStructHoverFields` widened: that parser answers "what
+ *  are this type's FIELDS", a question an enum has no answer to, and its result
+ *  feeds twenty consumers that would all start seeing enums differently. This
+ *  answers a different question for one consumer, the walk's edge list.
+ *
+ *  A payload-less variant (`Unpaid`) yields nothing. A non-enum signature yields
+ *  nothing, so a struct is untouched by construction rather than by a guard at
+ *  the call site. */
+export function parseEnumVariantPayloads(signature: string | undefined): Array<{ name: string; typeName: string }> {
+  if (!signature || !/\benum\s+[A-Za-z_]/.test(signature)) {
+    return [];
+  }
+  const open = signature.indexOf("{");
+  const close = signature.lastIndexOf("}");
+  if (open < 0 || close < 0 || close <= open) {
+    return [];
+  }
+  const out: Array<{ name: string; typeName: string }> = [];
+  for (const part of splitTopLevelCommas(signature.slice(open + 1, close))) {
+    const t = part.trim();
+    if (t.length === 0) {
+      continue;
+    }
+    // `Name(payload)` or `Name { payload }`. A discriminant (`Unpaid = 3`) and a
+    // bare variant both fall through with no payload to carry.
+    const m = /^([A-Za-z_]\w*)\s*(?:\(([\s\S]*)\)|\{([\s\S]*)\})\s*$/.exec(t);
+    if (!m) {
+      continue;
+    }
+    const payload = (m[2] ?? m[3] ?? "").trim();
+    if (payload.length > 0) {
+      out.push({ name: m[1], typeName: payload });
+    }
+  }
+  return out;
 }
 
 // The distinct PascalCase struct/enum type names named in ONE field's type, in
@@ -730,6 +795,69 @@ function fieldTypeCursor(
       return { line: i, character: searchFrom + cm.index };
     }
     return undefined; // field found but candidate not on its line — stop edge
+  }
+  return undefined;
+}
+
+// A VARIANT's payload type token, in the enum's own body. The field anchor
+// cannot do this job: it matches `name :` and a variant writes `Paid(Receipt),`
+// or `Refunded { amount: Money },`, neither of which has a colon after the name.
+// So the payload edge gets its own anchor or it never leaves `dropped`, and a
+// parse with no anchor is not a fix.
+//
+// Same contract as `fieldTypeCursor` otherwise: the variant's line is found by
+// its own name, the candidate is looked for AFTER the name, and the search stops
+// where the variant's own payload closes rather than widening - a payload spelled
+// under the NEXT variant is not this one's.
+//
+// THE SPAN, NOT THE LINE. rustfmt breaks a variant across lines whenever it does
+// not fit (`struct_variant_width`, default 35 - so a struct variant carrying two
+// fields is normally multi-line), and this anchor reads the RAW definition source
+// where `parseEnumVariantPayloads` reads the recovered signature, which is folded
+// to one line per variant. Anchoring on the declaration line alone therefore
+// dropped every wide payload: parsed, never anchored, which the contract's own
+// standard calls not a fix (session-v55 phase 12 triage, review claim 3).
+function variantPayloadCursor(
+  lines: string[],
+  range: { open: number; close: number },
+  variantName: string,
+  candType: string,
+): { line: number; character: number } | undefined {
+  const variantRe = new RegExp(`^\\s*${escapeRe(variantName)}\\s*([({])`);
+  const candRe = new RegExp(`\\b${escapeRe(candType)}\\b`);
+  for (let i = range.open; i <= range.close; i++) {
+    const vm = variantRe.exec(lines[i]);
+    if (!vm) {
+      continue;
+    }
+    const openCh = vm[1];
+    const closeCh = openCh === "(" ? ")" : "}";
+    let depth = 1; // the delimiter `variantRe` just matched
+    for (let j = i; j <= range.close; j++) {
+      const line = lines[j];
+      const from = j === i ? vm[0].length : 0;
+      // Where this variant's payload ENDS on this line, if it does.
+      let end = line.length;
+      for (let k = from; k < line.length; k++) {
+        if (line[k] === openCh) {
+          depth++;
+        } else if (line[k] === closeCh) {
+          depth--;
+          if (depth === 0) {
+            end = k;
+            break;
+          }
+        }
+      }
+      const cm = candRe.exec(line.slice(from, end));
+      if (cm) {
+        return { line: j, character: from + cm.index };
+      }
+      if (depth === 0) {
+        return undefined; // the variant closed without its payload type — stop edge
+      }
+    }
+    return undefined; // unbalanced source: stop edge, never a wider search
   }
   return undefined;
 }
@@ -1333,10 +1461,22 @@ export async function resolveCrossFileShape(
     //
     // Costs nothing where recovery refuses (the signature is then the raw hover,
     // byte for byte) and nothing in the four hooked languages (they never enter
-    // the recovery). An enum gains no fields either way: `parseStructHoverFields`
-    // needs name: Type at brace depth zero, and a variant's payload is inside
-    // its own braces.
+    // the recovery). An enum still gains no FIELDS either way -
+    // `parseStructHoverFields` needs name: Type at brace depth zero and a
+    // variant's payload is inside its own parentheses or braces - which is
+    // exactly why the line below reads its variants separately.
     const fields = parseFields(signature, resolvedMembers, defText === undefined ? [] : defText.split("\n"));
+    // AND THE ENUM'S OWN STRUCTURE, which the line above cannot see. `fields`
+    // wants `name: Type` at brace depth zero and no variant writes one, so
+    // before this every Rust enum contributed zero edges and its payload types
+    // were never resolved - the graph stopping at one hop in the place
+    // data-oriented Rust puts its structure (session-v55 phase 12, queue Q13).
+    //
+    // Read off the RECOVERED signature for the same reason `fields` is: the
+    // payloads restored by `recoverElidedSurface` are the only ones a hover with
+    // a `/* … */` marker carries. Hooked languages never reach here; each sets
+    // its own `parseFields` and none of them spells an enum this way.
+    const variantPayloads = hooks === undefined ? parseEnumVariantPayloads(signature) : [];
     if (!hover && !methodsResolved) {
       droppedSet.add(name); // could resolve nothing about this reference
       continue;
@@ -1347,6 +1487,11 @@ export async function resolveCrossFileShape(
       emittedChildren.set(parent, (emittedChildren.get(parent) ?? 0) + 1);
     }
     const emittedType: DerivedType = { name, signature, fields, methods, methodsResolved, defUri: defLoc.uri };
+    if (variantPayloads.length > 0) {
+      // Absent rather than empty on every other type, so nothing downstream can
+      // tell a struct apart from "an enum whose variants carry nothing".
+      emittedType.variantPayloads = variantPayloads;
+    }
     // Carried on the type rather than logged here: this function has no channel,
     // and the renderer that drops these members is the one that must say so.
     const cappedMembers = resolvedMembers
@@ -1373,7 +1518,7 @@ export async function resolveCrossFileShape(
       // not walked. Kept separate from `dropped`, because dropped means a cap
       // refused a type the walk was ready to resolve, and this means the walk
       // never asked.
-      for (const f of fields) {
+      for (const f of [...fields, ...variantPayloads]) {
         for (const cand of candidateTypesOf(f.typeName, stdNames)) {
           if (skipCandidate(cand, f.typeName) || visited.has(cand) || types.has(cand)) {
             continue;
@@ -1435,7 +1580,11 @@ export async function resolveCrossFileShape(
     }
     const bodyRange = (hooks?.bodyLineRange ?? structBodyLineRange)(defText, defCursor);
     const defLines = defText.split("\n");
-    for (const f of fields) {
+    // Field edges and VARIANT PAYLOAD edges walk the same loop, under the same
+    // bounds, with the same never-silent drop. They differ in one thing only,
+    // where the cursor comes from: a field is anchored by `name :` and a variant
+    // by `Name(` / `Name {`.
+    for (const f of [...fields.map((x) => ({ ...x, variant: false })), ...variantPayloads.map((x) => ({ ...x, variant: true }))]) {
       for (const cand of candidateTypesOf(f.typeName, stdNames)) {
         if (skipCandidate(cand, f.typeName)) {
           continue; // a generic-parameter name, not a concrete type to derive
@@ -1443,7 +1592,11 @@ export async function resolveCrossFileShape(
         if (visited.has(cand)) {
           continue; // already emitted (diamond) - not re-walked
         }
-        const cur = bodyRange ? anchorFieldType(defLines, bodyRange, f.name, cand) : undefined;
+        const cur = bodyRange
+          ? f.variant
+            ? variantPayloadCursor(defLines, bodyRange, f.name, cand)
+            : anchorFieldType(defLines, bodyRange, f.name, cand)
+          : undefined;
         if (cur) {
           queue.push({
             refSite: { uri: defLoc.uri, line: cur.line, character: cur.character },
@@ -1694,7 +1847,15 @@ export function toResolveStruct(
       return undefined;
     }
     const fields: StructResolution["fields"] = [];
-    for (const f of t.fields) {
+    // A Rust enum's variant payloads are edges here alongside the fields, and
+    // this is the seam that makes phase 12 worth anything: `walkDataShape` takes
+    // its walkable edges from exactly this list, so a payload resolved into
+    // `shape.types` and left out here would have bought extractor round trips
+    // and zero prompt bytes. The blind oracle measured that before the fix was
+    // written. They are carried on `variantPayloads` rather than merged into
+    // `t.fields` because twenty other consumers read `fields`, two of them
+    // shape-path admission gates.
+    for (const f of [...t.fields, ...(t.variantPayloads ?? [])]) {
       for (const cand of candidateTypesOf(f.typeName, stdNames)) {
         // isLocal == "the resolver derived this type", i.e. a walkable edge.
         fields.push({ name: f.name, typeName: cand, isLocal: shape.types.has(cand) });
