@@ -569,6 +569,7 @@ test("[RECORD] E: an independent walk through the product's own doc channel agre
   const ts = corpusOf("column-80");
   const real = new Set(ts.real);
   let heads = 0;
+  let docs = 0; // declaration heads that HAVE a doc comment: the ratio's denominator
   let extracted = 0;
   let hits = 0;
   for (const f of files) {
@@ -583,6 +584,7 @@ test("[RECORD] E: an independent walk through the product's own doc channel agre
       if (doc === undefined) {
         continue;
       }
+      docs += 1;
       for (const n of backtickedTypeNames(doc)) {
         if (stop.has(n)) {
           continue;
@@ -595,27 +597,35 @@ test("[RECORD] E: an independent walk through the product's own doc channel agre
     }
   }
   assert.ok(heads > 1000, `precondition: found ${heads} declaration heads, so the walk is alive`);
-  // WHAT THIS HALF ACTUALLY MEASURES, and it is not what its name suggests: the
-  // SIZE OF THIS REPO'S DOC COMMENTS, not the behaviour of the extractor. The
-  // house style asks for dense WHY comments that name identifiers in backticks
-  // and this counts exactly those, so it drifts upward with every documented
-  // module the product gains and will tip again. The durable fix is a RATIO
-  // (names per doc-comment line, or per KB of source), which is invariant to
-  // growth and still catches both failure directions; see session-v52/scraps.md
-  // S52-9, and it belongs to whoever next touches this row with a reason to.
+  // A RATIO NOW, session-v55 phase 16 (queue Q25), and this is the fix S52-9
+  // asked for by name.
   //
-  // RE-BASELINED 2026-08-12, ruled in session-v52 (S52-9). The band is unchanged
-  // at 20% and the population is the LIVE repo, so the number below is a
-  // snapshot and not a fixture. Measured: 820 when it was frozen, 941 with no
-  // session-v52 source present (already 14.8% over, so it was drifting before
-  // that session opened), 1000 now. Kept rather than deleted and kept
-  // two-sided rather than floor-only: the floor catches the extractor going
-  // dark and the ceiling catches it over-matching, which is live in this
-  // product - `commentTypes.ts` records 2.3% precision for the naive scan.
-  const LIVE_DOC_NAMES = 1000;
+  // WHAT THE RAW COUNT ACTUALLY MEASURED, and it was not what its name
+  // suggested: the SIZE OF THIS REPO'S DOC COMMENTS, not the behaviour of the
+  // extractor. The house style asks for dense WHY comments naming identifiers in
+  // backticks, so the count drifts upward with every documented module the
+  // product gains. Its own history is the evidence: frozen at 820, re-baselined
+  // to 941, re-baselined again to 1000 on 2026-08-12, and measured at 1049 six
+  // days later - a fourth re-baseline was already 4.9% into a 20% band with
+  // nothing wrong in the code.
+  //
+  // Names per DOC-COMMENT BLOCK is invariant to that growth: a repo that doubles
+  // its documented declarations doubles both halves. It still catches both
+  // failure directions, which is why this stayed two-sided rather than becoming
+  // a floor - the floor catches the extractor going dark and the ceiling catches
+  // it over-matching, which is live in this product (`commentTypes.ts` records
+  // 2.3% precision for the naive scan).
+  //
+  // The band is unchanged at 20%. Measured 2026-08-18: 1049 names over 2445
+  // documented heads of 7918, so 0.429. The row below asserts the invariance
+  // itself, so this ratio's claim to be growth-proof is tested and not just
+  // stated.
+  const LIVE_NAMES_PER_DOC = 0.429;
+  const perDoc = extracted / docs;
+  assert.ok(docs > 500, `precondition: found ${docs} documented heads of ${heads}, so the denominator is real`);
   assert.ok(
-    Math.abs(extracted - LIVE_DOC_NAMES) / LIVE_DOC_NAMES < 0.2,
-    `an independent walk extracts ${extracted} names where this repo measured ${LIVE_DOC_NAMES}. Below the floor the extractor has gone dark; above the ceiling it is over-matching - OR the repo has grown its doc comments again, which is what S52-9 says this row cannot tell apart`,
+    Math.abs(perDoc - LIVE_NAMES_PER_DOC) / LIVE_NAMES_PER_DOC < 0.2,
+    `an independent walk extracts ${perDoc.toFixed(3)} names per doc-comment block (${extracted} over ${docs}) where this repo measured ${LIVE_NAMES_PER_DOC}. Below the floor the extractor has gone dark; above the ceiling it is over-matching. Unlike the raw count this row replaced, growing the repo's doc comments does NOT move this number`,
   );
   const fixtureScore = scoreSpans(ts, backtickedTypeNames);
   // TOLERANCE WIDENED 2.0 -> 5.0 POINTS, ruled in session-v50 phase 0 (v49 S49-6).
@@ -631,6 +641,44 @@ test("[RECORD] E: an independent walk through the product's own doc channel agre
     Math.abs((hits / extracted) * 100 - fixtureScore.rate) < 5,
     `hit rates disagree: walk ${((hits / extracted) * 100).toFixed(1)}%, fixture ${fixtureScore.rate.toFixed(1)}%`,
   );
+});
+
+test("[RECORD] E: the ratio is invariant to doc-comment VOLUME, which is the whole reason it replaced a count", () => {
+  // Queue Q25's falsification, and it is the row that makes the ratio's claim
+  // testable rather than merely stated. The count this replaced could not tell
+  // "the extractor changed" from "the repo grew", and it was re-baselined three
+  // times on the second cause. Doubling the population must move the COUNT and
+  // leave the RATIO alone; only a change in what the extractor pulls out of one
+  // block may move the ratio.
+  const blocks = [
+    "/** Reads a `Widget` out of the `Cursor`. */",
+    "/** No backticked names here at all, just prose about the thing. */",
+    "/** The `LogSegment` header, see `ShardId` and `Receipt`. */",
+    "/** A `Vec` of them - a std name the stop set eats, so this block scores 0. */",
+  ];
+  const stop = stopNamesFor("typescript");
+  const score = (population) => {
+    let extracted = 0;
+    for (const b of population) {
+      for (const n of backtickedTypeNames(b)) {
+        if (!stop.has(n)) {
+          extracted += 1;
+        }
+      }
+    }
+    return { extracted, perDoc: extracted / population.length };
+  };
+  const one = score(blocks);
+  const two = score([...blocks, ...blocks]);
+  const ten = score(Array.from({ length: 10 }, () => blocks).flat());
+  assert.equal(two.extracted, one.extracted * 2, "precondition: doubling the population really does double the count");
+  assert.equal(ten.extracted, one.extracted * 10, "precondition: and ten times it multiplies by ten");
+  assert.equal(two.perDoc, one.perDoc, "a doubled corpus must not move names-per-block");
+  assert.equal(ten.perDoc, one.perDoc, "nor a ten-fold one");
+  // The other direction, so the row is not vacuous: a population whose BLOCKS
+  // carry more names does move it, which is the drift the ratio still catches.
+  const denser = score(blocks.map((b) => b.replace("*/", "Also `Manifest` and `Ledger`. */")));
+  assert.ok(denser.perDoc > one.perDoc, `denser blocks must raise the ratio: ${denser.perDoc} vs ${one.perDoc}`);
 });
 
 test("[RECORD] E: the rebuilt fixture's own numbers, pinned so a silent re-harvest is visible", () => {
