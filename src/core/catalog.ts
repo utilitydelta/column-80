@@ -8,6 +8,8 @@
  */
 
 import { spawn } from "child_process";
+import { statSync } from "fs";
+import { join } from "path";
 import { CheckCommand, RunCommandFn } from "./compilerOracle";
 
 export interface CatalogEntry {
@@ -228,22 +230,80 @@ export async function fetchMetadataJson(
   }
 }
 
+/** A crate root's `Cargo.toml` identity: its size and mtime, or undefined when
+ *  it cannot be read. Undefined is the honest degrade and it is load-bearing -
+ *  a manifest this cannot stat is one whose staleness cannot be known, so the
+ *  memo below refuses to cache rather than serving a catalog it cannot vouch
+ *  for. Injectable because the memo's whole contract is about WHEN this changes,
+ *  and a test that had to touch a real file to say so would be timing-coupled. */
+export type ManifestStampFn = (crateRoot: string) => string | undefined;
+
+const defaultManifestStamp: ManifestStampFn = (crateRoot) => {
+  try {
+    const st = statSync(join(crateRoot, "Cargo.toml"));
+    return `${st.size}:${st.mtimeMs}`;
+  } catch {
+    return undefined;
+  }
+};
+
 /** A catalog fetcher that resolves the host triple ONCE (memoized) and scopes
  *  every `cargo metadata` run to it with `--filter-platform`, so the enabled-
  *  optional set can never include a platform-pruned dep
  *  and offline resolution never reaches for uncached other-platform deps.
  *  This is what the product wires in; the raw `fetchCatalog(root)` seam without a
  *  triple is for tests. The triple resolution shares the
- *  injected runCommand so it is testable headless. */
+ *  injected runCommand so it is testable headless.
+ *
+ *  MEMOIZED PER CRATE ROOT since session-v55 phase 22 (queue Q4). Before it,
+ *  every unresolved-crate accept re-spawned `cargo metadata` for the same
+ *  unchanged project - the catalog is steering payload for a hallucinated crate
+ *  name, so a developer hitting that error twice in a row paid twice for an
+ *  answer that could not have moved.
+ *
+ *  Invalidated on the MANIFEST, not on time: a stamp of `Cargo.toml`'s size and
+ *  mtime is taken on every call, and a changed stamp re-spawns. That is the
+ *  event that can change the answer, and a clock could not tell the two apart.
+ *
+ *  Two things it deliberately does not do. It caches the PROMISE, so two accepts
+ *  racing the same cold root share one spawn rather than both starting one. And
+ *  it does not cache an EMPTY result: `fetchCatalog` answers `[]` both for a
+ *  project with no dependencies and for a `cargo metadata` that failed, and
+ *  caching the second until the manifest changes would strand a transient
+ *  failure for the rest of the session. A genuinely dependency-less project
+ *  re-spawns, which costs nothing it was going to use. */
 export function makeHostScopedCatalogFetcher(
   runCommand: RunCommandFn = spawnRun,
+  manifestStamp: ManifestStampFn = defaultManifestStamp,
 ): (crateRoot: string) => Promise<CatalogEntry[]> {
   let triplePromise: Promise<string | undefined> | undefined;
+  const memo = new Map<string, { stamp: string; entries: Promise<CatalogEntry[]> }>();
   return (crateRoot) => {
     if (triplePromise === undefined) {
       triplePromise = resolveHostTriple(runCommand);
     }
-    return triplePromise.then((triple) => fetchCatalog(crateRoot, runCommand, triple));
+    const stamp = manifestStamp(crateRoot);
+    const hit = stamp === undefined ? undefined : memo.get(crateRoot);
+    if (hit !== undefined && hit.stamp === stamp) {
+      return hit.entries;
+    }
+    const entries = triplePromise.then((triple) => fetchCatalog(crateRoot, runCommand, triple));
+    if (stamp !== undefined) {
+      memo.set(crateRoot, { stamp, entries });
+      void entries.then(
+        (list) => {
+          if (list.length === 0 && memo.get(crateRoot)?.entries === entries) {
+            memo.delete(crateRoot); // a failed or empty run is not an answer worth keeping
+          }
+        },
+        () => {
+          if (memo.get(crateRoot)?.entries === entries) {
+            memo.delete(crateRoot);
+          }
+        },
+      );
+    }
+    return entries;
   };
 }
 
