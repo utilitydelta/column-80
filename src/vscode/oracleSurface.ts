@@ -606,6 +606,9 @@ async function executeSession(
         docComment: resolved.docComment,
         code,
         diagnosticTypes,
+        // The target is never its own collaborator. Raw, as the symbol provider
+        // spells it: the reader reduces it per language.
+        excludeName: resolved.symbolName,
       });
       // The fifth source, session-v30 item 1: the types that OWN the member
       // calls the span makes. Everything the span NAMES is above; a call's
@@ -1039,6 +1042,7 @@ function roundCallTargets(
       docComment: resolved.docComment,
       max: REFINE_TARGET_CAP,
       anchor,
+      excludeName: resolved.symbolName,
     }),
   };
 }
@@ -1286,6 +1290,7 @@ async function runRefine(
     signature: resolved.signature,
     docComment: resolved.docComment,
     max: REFINE_TARGET_CAP,
+    excludeName: resolved.symbolName,
   });
   log(
     `[repair] refine targets: ${targets.length === 0 ? "none" : targets.map((t) => `${t.name}(${t.via})`).join(", ")}`,

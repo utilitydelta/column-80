@@ -163,6 +163,18 @@ export interface RefineTargetInput {
    *  it in three, and the character budget is spent in target order. Ordering by
    *  proximity is therefore a requirement rather than a preference. */
   anchor?: { line: number; character: number };
+  /** The declared symbol being refined, as the symbol provider spells it, passed
+   *  straight through to `spanTypesInPlay`. A refine and a repair of one span
+   *  must not disagree about what is in play, which is why this reader is shared
+   *  at all; a field on one side only would be exactly that disagreement.
+   *
+   *  Its effect here is smaller than it looks, and that is measured rather than
+   *  assumed: target positions come from comment- and string-MASKED text, so a
+   *  name reaching the type leg only through prose has no position to anchor at
+   *  and is already dropped before it can be returned. The shapes where it does
+   *  change the answer are the ones where masking degrades - an unterminated
+   *  block comment or docstring puts the position scan back on raw text. */
+  excludeName?: string;
 }
 
 // A member call: the name after a `.` or `::` that opens a parameter list. The
@@ -363,6 +375,7 @@ export function refineTargets(input: RefineTargetInput): RefineTarget[] {
     signature: input.signature,
     docComment: input.docComment,
     code,
+    excludeName: input.excludeName,
   };
   for (const name of spanTypesInPlay(typeInput)) {
     const at = firstWordOccurrence(masked, name);

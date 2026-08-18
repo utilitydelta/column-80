@@ -26,7 +26,7 @@ import {
   tsTypesInPlay,
   typesInPlay,
 } from "./fimWholeBlock";
-import { GO_STD_TYPE_NAMES, goImportedPackageNames } from "./goExtraction";
+import { GO_STD_TYPE_NAMES, goImportedPackageNames, parseGoReceiverSymbol } from "./goExtraction";
 import { TS_LANGUAGE_IDS, TS_STD_TYPE_NAMES } from "./tsExtraction";
 
 export interface SpanTypesInput {
@@ -40,6 +40,18 @@ export interface SpanTypesInput {
    *  receiver). Last in the order: the compiler named them, but the span is the
    *  question. */
   diagnosticTypes?: readonly string[];
+  /** The declared symbol being repaired, as the symbol provider spells it. The
+   *  target is never its own collaborator: a body comment or a doc comment that
+   *  backticks the name of the thing being repaired would otherwise resolve it
+   *  and spend a slot of a cap, which under a cap is an eviction of something
+   *  real (session-v36 `[RECORD] E6`, measured on C# and reproducing in all five
+   *  languages).
+   *
+   *  Raw, as `ResolvedFunction.symbolName` holds it - the reduction to a bare
+   *  name is this reader's job, because both callers have the symbol provider's
+   *  string and neither should have to know how a language spells one. Absent
+   *  keeps today's output byte for byte. */
+  excludeName?: string;
 }
 
 // The static entry points a body reaches through by name. They are not the
@@ -666,6 +678,26 @@ function bodyTypes(
  */
 export function spanTypesInPlay(input: SpanTypesInput): string[] {
   const stop = stopNamesFor(input.languageId);
+  // The target's own name, reduced to what a prose leg can match. Both legs
+  // below already take an `excludeName` and both were being handed `undefined`;
+  // this is the wire, not a new rule. `resolvePrefill` has had it since
+  // session-v29 (`fnGen.ts:2524` hands `resolved.symbolName` to
+  // `lang.candidates`), applied to these same two legs and no others.
+  //
+  // GO IS REDUCED HERE and the other four are not, because gopls names a method
+  // symbol `(*Stripe).Summarize`. The exclusion inside both legs is
+  // `excludeName?.match(/^[A-Za-z_][A-Za-z0-9_]*/)?.[0]`, which answers undefined
+  // on a leading `(` - measured on `(*Stripe).Summarize` and
+  // `(Tile).SubtendedChildren` - so an unreduced Go symbol name excludes
+  // NOTHING. The MEMBER is what is dropped, never the receiver:
+  // `goPrioritizedTypes` (`fnGen.ts:5012`) makes the same reduction for the same
+  // reason, and `Stripe` is a real collaborator the round wants disclosed.
+  const excludeName =
+    typeof input.excludeName === "string" && input.excludeName !== ""
+      ? input.languageId === "go"
+        ? (parseGoReceiverSymbol(input.excludeName)?.member ?? input.excludeName)
+        : input.excludeName
+      : undefined;
   const signature = typeof input.signature === "string" ? input.signature : "";
   const code = typeof input.code === "string" ? input.code : "";
   // Both legs are read BEFORE the filter, because the body's namespaces ban a
@@ -726,13 +758,13 @@ export function spanTypesInPlay(input: SpanTypesInput): string[] {
   // tiers are adjacent with nothing between them, so merging them reorders
   // nothing else. What the subtraction did cost was real: a type the developer
   // named in BOTH the doc and a body comment ranked below one they named once.
-  take(commentTypesIn(code, input.languageId, undefined, stop));
+  take(commentTypesIn(code, input.languageId, excludeName, stop));
   if (typeof input.docComment === "string" && input.docComment !== "") {
     // The doc leg only: the signature was already read by its own language's
     // leg above, and `typesNamedIn` would re-scan it under the Rust rules. The
     // stop set is this language's too, or a C# doc naming `Result` loses it to
     // Rust's prelude before the language's own filter ever runs.
-    take(typesNamedIn("", input.docComment, undefined, stop));
+    take(typesNamedIn("", input.docComment, excludeName, stop));
   }
   take(input.diagnosticTypes ?? []);
   return out;
