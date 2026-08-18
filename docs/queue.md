@@ -46,7 +46,7 @@ Verified live (C334, blind-confirmed): `buildTestCommand` pushes bare positional
 Fix: exact match.
 Falsify: two names, one a prefix of the other; only the named one runs.
 
-### Q4. `catalog.ts` re-spawns `cargo metadata` per unresolved-crate accept
+### Q4. SHIPPED session-v55 (9118297). `catalog.ts` re-spawns `cargo metadata` per unresolved-crate accept
 
 No memo in `fetchCatalog`.
 Fix: memo per crate root, invalidated on `Cargo.toml` change.
@@ -98,33 +98,33 @@ line these rows already report, in both orders. If every delta is above zero, ti
 output this time.
 Falsify: the row itself, green after tightening, on a tier run whose output is recorded.
 
-### Q9. Extract the shared vscode activation stub
+### Q9. PART-SHIPPED session-v55 (f7ab4e6). Extract the shared vscode activation stub
 
 v21 S11/S13; three findings want it, a fourth 400-line copy is otherwise the default outcome.
 Fix: extract, move existing copies onto it. Pure refactor.
 Falsify: the full unit suite, unchanged.
 
-### Q10. `fnGen.ts`: `T` reached the candidate list as a call owner
+### Q10. SHIPPED session-v55 (2b94dee). `fnGen.ts`: `T` reached the candidate list as a call owner
 
 The provenance rule catches it downstream; a generic parameter should be refused at the resolve.
 Fix: refuse at resolve, not at provenance.
 Falsify: a call on a generic-parameter receiver yields no candidate, and the provenance refusal is
 not what stops it.
 
-### Q11. Poisoned-GOENV fixtures
+### Q11. SHIPPED session-v55 (01d2642). Poisoned-GOENV fixtures
 
 v23 F3/F7 exist as scrap conditions, not tests.
 Fix: write the fixtures.
 Falsify: the fixtures are the falsification.
 
-### Q12. `repairTypes.ts` `spanTypesInPlay` has no `excludeName`
+### Q12. SHIPPED session-v55 (e3792fa). `repairTypes.ts` `spanTypesInPlay` has no `excludeName`
 
 A body comment naming the repair target spends a cap slot on the target itself; under a cap that
 is an eviction. The doc leg has the identical hole. Fix both or neither; threading is in
 `session-v36/scraps.md` S36-3.
 Falsify: a self-named target yields no self-candidate on either leg.
 
-### Q13. `crossFileShape.ts`: the field leg is dark on every Rust enum
+### Q13. SHIPPED session-v55 (6ee6e45). `crossFileShape.ts`: the field leg is dark on every Rust enum
 
 `parseStructHoverFields` wants `name: Type` and no enum variant writes one, so no payload type is
 ever ENQUEUED for the walk. One correction from verification (C346): the hover recovery already
@@ -146,12 +146,19 @@ Falsify: a block containing each fence length renders balanced.
 Fix: one EOL-normalization bundle at the vscode layer.
 Falsify: CRLF document + LF body gives uniform endings, one doc comment.
 
-### Q16. `csExtraction.ts`: nested `@"…"` inside an interpolation hole
+### Q16. SHIPPED session-v55 (b0c65d0), and its "15 of 300" figure is WITHDRAWN. `csExtraction.ts`: nested `@"…"` inside an interpolation hole
 
 PROVEN: 15 wrong values in 300 placed cases.
 Falsify: the 300-case fixture with the 15 known-wrong values as target.
 
-### Q17. `fimComment.ts`: a Rust `'"'` char literal opens a phantom string
+**THE "15 WRONG VALUES IN 300 PLACED CASES" FIGURE IS WITHDRAWN.** Session-v55's blind oracle built a
+300-case population, graded it by running the C#, and measured **84 wrong** (14 of 50 shapes, each
+wrong in all 6 placement contexts). It then looked for the original population and found none: the
+three session-v16 artifacts cited as "behind the dotnet run" contain no C# fixture, no case count and
+not the word `verbatim`. A wrong-case count is a property of a population, so 15 and 84 do not
+contradict - but 15 is unfalsifiable as written and nothing should cite it again.
+
+### Q17. SHIPPED session-v55 (5100cdb). `fimComment.ts`: a Rust `'"'` char literal opens a phantom string
 
 The cheap fix stands: treat a literal scan crossing a newline as a phantom inside
 `commentTypesIn`. **The 2026-08-14 correction here was itself wrong** (verdict C288): the defect
@@ -168,20 +175,28 @@ Falsify: the flipped :362 row, red before the fix, green after.
 entry would have sent a session to build live code. Nothing to do; the value-measurement question
 the roadmap raised remains unmeasured and is not queue work.
 
-### Q19. Item 51: the arm runner has no Python entry
+### Q19. BLOCKED session-v55: two of the three regression arms need banned corpora. Item 51: the arm runner has no Python entry
 
 `preparedDoc` is the one non-parameterised function; Python's docstring lives inside the body.
 Touches an instrument three languages' arms depend on: **their arms are the regression check and
 must be re-run, not assumed.**
 Falsify: three existing arms reproduce their rows; a Python row prepares a docstring in-body.
 
-### Q20. Item 46: two frozen v21 rows model a cold answer no server gives
+**BLOCKED at session-v55 phase 25, and the entry's own text authorised the ruling.** The regression
+check it requires - three committed arms reproducing their rows - cannot be run: verified by `git
+remote` alone, with no file in any corpus read, the `cs` arm's corpus is a clone of
+`redacted-client/data-processing` and the `rs` arm's is a clone of `celeriant/celeriant-db`, both banned. Only
+the `ts` arm (`utilitydelta-io/colorsquare`) is usable, so the check would cover one arm of three.
+Unblock: a human runs the two banned arms, or the corpora are replaced with non-client repositories
+and re-baselined. Full note and the scoped description of the change itself in `session-v55/scraps.md`.
+
+### Q20. SHIPPED session-v55 (inside 01d2642, see session-v55/progress.md). Item 46: two frozen v21 rows model a cold answer no server gives
 
 Re-cut `blind-v21-p3b` §1b and `impl-v21-p3b` F2 at the recorded shape (11 members, 1 signed,
 warming to 7 rendered), **by an agent that did not write v50's bound**.
 Falsify: re-cut rows red against v50's first bound, green against the shipped one.
 
-### Q21. Item 23: the expiry row's fake clock
+### Q21. SHIPPED session-v55 (62c1af0). Item 23: the expiry row's fake clock
 
 The one remaining wall-clock row, `blind-v21-p1-commands.test.cjs` test A near `:594` (line drifts;
 grep the title), skipped under `CI_SKIP`. Fail rate to zero: ~1 in 10 idle, 4 in 20 under
@@ -191,7 +206,7 @@ Fix: fake clock, then the skip comes off.
 half, and `ci.yml:56` gates every push (verdict C22).
 Falsify: unskipped, green across 20 consecutive contended runs.
 
-### Q22. Document the usage-leg split in `ARCHITECTURE.md`
+### Q22. SHIPPED session-v55 (c3be2a9). Document the usage-leg split in `ARCHITECTURE.md`
 
 Updated by verification (C307): the split is no longer purely structural -
 `column80.repairUsageWindows` (default false) runs the usage leg on repair rounds. The docs entry
@@ -250,7 +265,7 @@ Falsify: two separate hosts sharing one storage backend, activating together, ru
 A `KNOWN WRONG` row in `test/blind-v55-p3-firstrun-once.test.cjs` pins today's behaviour and goes red
 when a real fix lands.
 
-### Q25. NEW 2026-08-16. S52-9: `[RECORD] E` counts, and should ratio
+### Q25. SHIPPED session-v55 (7144bc0). S52-9: `[RECORD] E` counts, and should ratio
 
 `adversarial-v37-p1.test.cjs` `[RECORD] E` counts backticked type names in this repo's own doc
 comments, so it measures how big the codebase is. Re-baselined 820 to 1000 on the same 20% band and

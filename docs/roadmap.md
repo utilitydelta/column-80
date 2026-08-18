@@ -158,7 +158,7 @@ keeping out of `session-*/` and into a doc that ships, then repoint every cite a
 fallback, and only for a citation whose reasoning is not worth moving. Neither answer is "leave it";
 a comment that cites an unreachable folder is a comment that cannot be checked.
 
-### 23. A handful of rows measure wall clock, and CI is not their hardware
+### 23. SHIPPED session-v55 (62c1af0). A handful of rows measure wall clock, and CI is not their hardware
 
 Three rows failed on a GitHub runner and pass locally. None is a product defect; each measures
 something the dev box happens to satisfy. PROVEN 2026-07-28 across four CI runs. Line cites below
@@ -621,7 +621,7 @@ to re-diagnose. Anyone reading Go's red row should read this paragraph and stop.
 
 Probe: `session-v50/probe/latency-baseline.cjs` in the private working repo.
 
-### 46. Two frozen v21 rows model a cold answer no server gives, and a bound that killed their case passed them
+### 46. SHIPPED session-v55 (inside 01d2642). Two frozen v21 rows model a cold answer no server gives, and a bound that killed their case passed them
 
 Raised 2026-08-11 by session-v50, and it is the sharp end of item 45.
 
@@ -638,6 +638,12 @@ That difference is not academic and it has already cost a build. v50's first bou
 a re-poll returned the same member count and signed count. Both rows stayed GREEN while that bound
 deleted the exact case they exist to protect; an adversarial review caught it against the pre-bound code
 (3 calls and 10 rendered methods before, 2 calls and 0 after).
+
+**CORRECTION, session-v55 phase 18: that parenthesis mis-cites its own case.** Reproduced at the shape
+cited one paragraph above (`session-v21/spike-p3.md:232-256`, 11 members / 1 signed warming to 11 / 8),
+the numbers are **3 calls and SEVEN rendered methods** under the shipped bound against 2 calls and 0
+under v50's first one. The 10 belongs to some other fixture and the paragraph reads as though it were
+the same case.
 
 Re-cut both at the measured shape, by an agent that did not write the change. Small, and it makes a
 whole family of future bounds falsifiable.
@@ -722,7 +728,7 @@ The waste is structural rather than Go-shaped, so the prior should be that it is
 known is the size, and a bound shipped without measuring a language's own surface is how a render
 loses a type nobody was watching.
 
-### 51. The arm runner has no Python entry, and one function is why
+### 51. BLOCKED session-v55: two of three regression arms need banned corpora. The arm runner has no Python entry, and one function is why
 
 Raised 2026-08-11 by session-v51. Instrument, not product.
 
