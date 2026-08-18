@@ -22,7 +22,7 @@
  * in is an empty list.
  */
 
-const FENCE = "```";
+import { fenceFor } from "./instructPostprocess";
 
 /**
  * Spans the diff will offer, at most, from one comment.
@@ -48,20 +48,6 @@ export interface ProposedSpan {
   phrase: string;
   start: number;
   end: number;
-}
-
-/** The longest run of backticks in the text, so the fence below cannot be
- *  closed by the prose it wraps. A dictated comment that already carries a
- *  backticked name is the normal case, and a rendered one may carry a whole
- *  fenced block. */
-function longestBacktickRun(text: string): number {
-  let longest = 0;
-  let run = 0;
-  for (const c of text) {
-    run = c === "`" ? run + 1 : 0;
-    longest = Math.max(longest, run);
-  }
-  return longest;
 }
 
 /** What a reply says when the prose names no type. Any line the prose does not
@@ -109,7 +95,11 @@ const NO_TYPES = "NONE";
 export function assembleProposerPrompt(input: ProposerInput): string {
   const prose = typeof input?.prose === "string" ? input.prose : "";
   const languageId = typeof input?.languageId === "string" ? input.languageId : "";
-  const fence = FENCE.repeat(Math.max(3, longestBacktickRun(prose) + 1));
+  // The prose is a doc comment, so it can carry a whole fenced block of its
+  // own. This site adapted before the shared rule existed and adapted WRONG:
+  // it repeated the three-character fence rather than the character, so the
+  // floor was nine backticks and a run of three in the prose bought twelve.
+  const fence = fenceFor(prose);
   return [
     `You are labelling text. Answer in one reply and then stop. Do not ask a question, do not explain, do not read or search anything, do not write code.`,
     `Below is a doc comment a developer dictated for some ${languageId} code. It was transcribed by a microphone, so a type name arrives as separate spoken words with arbitrary capitalisation: "shard mem cache" is how a transcript spells \`ShardMemCache\`.`,

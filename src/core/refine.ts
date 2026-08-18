@@ -29,6 +29,7 @@
  */
 
 import { Diagnostic } from "./compilerOracle";
+import { fenceFor } from "./instructPostprocess";
 import { ContextBlock, GenKind, SECTION_SEPARATOR, renderContextBlock } from "./prompt";
 import { maskNonCode } from "./fimInject";
 import { dedentReplyCode } from "./placeReply";
@@ -457,8 +458,6 @@ export function usageSitesOutsideSpan(
   return out;
 }
 
-const FENCE = "```";
-
 /** The header the usage section carries into the prompt and onto the channel.
  *  Names the symbol, because a block of code with no stated relationship to the
  *  target is context the model has to guess the purpose of. */
@@ -535,7 +534,10 @@ export function assembleRefinePrompt(input: RefinePromptInput): string {
   const intro = input.bodyOnly
     ? `The body below (of a ${isType ? "type" : "function"} whose header and docstring are already written) compiles and is correct:`
     : `The ${what} below compiles and is correct:`;
-  const codeSection = `${intro}\n${FENCE}${input.languageId ?? ""}\n${doc}${code}${FENCE}`;
+  // Same content classes as the repair code section, same one rule.
+  const codeBody = `${doc}${code}`;
+  const codeFence = fenceFor(codeBody);
+  const codeSection = `${intro}\n${codeFence}${input.languageId ?? ""}\n${codeBody}${codeFence}`;
 
   const instruction = [
     `Rewrite the ${what} so it reads the way this repository already writes code: the same idioms, the same call shapes, the same helpers as the usage above.`,

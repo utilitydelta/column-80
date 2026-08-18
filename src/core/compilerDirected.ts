@@ -10,6 +10,7 @@
 
 import { Diagnostic } from "./compilerOracle";
 import { exampleNamesItsType } from "./extraction";
+import { fenceFor } from "./instructPostprocess";
 
 /** A position without a uri: the classifier knows WHERE in the buffer the
  *  offending identifier is, but not which uri the span resolves to. The
@@ -877,8 +878,6 @@ export function pyUnresolvedNameCursor(diagnostic: Diagnostic): CursorPosition |
   return undefined;
 }
 
-const FENCE = "```";
-
 /** Render the C# member-surface payload: the receiver's real members, fenced
  *  cs. Lines are signatures where completionItem/resolve delivered them and BARE
  *  NAMES where the tail could not resolve in the budget (the honest name-only
@@ -886,9 +885,14 @@ const FENCE = "```";
  *  byte pins; C# carries no worked example (metadata-as-source strips them), so
  *  the member surface is the only repair payload C# injects. */
 export function assembleCsMemberPayload(input: { type: string; members: string }): string {
+  // The member list is LSP text, and an extractor that fails to strip a hover's
+  // own fence leaks one straight in here (csExtraction's own comment records a
+  // leaked "```csharp" reaching a prompt). The other three payloads below take
+  // the same rule for the same reason.
+  const fence = fenceFor(input.members);
   return (
     `Members of \`${input.type}\` (real member names from the type; use only these, do not invent):\n` +
-    `${FENCE}cs\n${input.members}\n${FENCE}`
+    `${fence}cs\n${input.members}\n${fence}`
   );
 }
 
@@ -897,18 +901,20 @@ export function assembleCsMemberPayload(input: { type: string; members: string }
  *  and no struct-field def, so the member surface is the only repair payload it
  *  injects. */
 export function assemblePyMemberPayload(input: { type: string; members: string }): string {
+  const fence = fenceFor(input.members);
   return (
     `Members of \`${input.type}\` (real member names from the type; use only these, do not invent):\n` +
-    `${FENCE}python\n${input.members}\n${FENCE}`
+    `${fence}python\n${input.members}\n${fence}`
   );
 }
 
 /** Render the Go member-surface payload: the receiver's real members, fenced go
  *  (the tag gopls' own hovers use). Same contract as the Python one. */
 export function assembleGoMemberPayload(input: { type: string; members: string }): string {
+  const fence = fenceFor(input.members);
   return (
     `Members of \`${input.type}\` (real member names from the type; use only these, do not invent):\n` +
-    `${FENCE}go\n${input.members}\n${FENCE}`
+    `${fence}go\n${input.members}\n${fence}`
   );
 }
 
@@ -917,9 +923,10 @@ export function assembleGoMemberPayload(input: { type: string; members: string }
  *  NAMES where it did not (the honest name-only render - never an invented
  *  type). TS-owned constant text, free of the Rust byte pins. */
 export function assembleTsMemberPayload(input: { type: string; members: string }): string {
+  const fence = fenceFor(input.members);
   return (
     `Members of \`${input.type}\` (real member names from the type; use only these, do not invent):\n` +
-    `${FENCE}ts\n${input.members}\n${FENCE}`
+    `${fence}ts\n${input.members}\n${fence}`
   );
 }
 
@@ -968,15 +975,19 @@ export function assembleSurfacePayload(input: {
       ? input.example
       : undefined;
   if (example) {
+    // An example is doc text lifted out of a fenced block, and a doc example
+    // that nests one of its own arrives with the inner fence intact.
+    const fence = fenceFor(example);
     return (
       `Usage example for \`${input.typeOrCrate}\` (from its docs, this compiles):\n` +
-      `${FENCE}rust\n${example}\n${FENCE}${tail}`
+      `${fence}rust\n${example}\n${fence}${tail}`
     );
   }
   if (input.signatures) {
+    const fence = fenceFor(input.signatures);
     return (
       `API surface for \`${input.typeOrCrate}\` (real signatures, use these exact names, do not invent):\n` +
-      `${FENCE}\n${input.signatures}\n${FENCE}${tail}`
+      `${fence}\n${input.signatures}\n${fence}${tail}`
     );
   }
   return "";

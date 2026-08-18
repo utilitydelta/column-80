@@ -17,6 +17,7 @@
  */
 
 import { LogFn } from "./completionService";
+import { fenceFor } from "./instructPostprocess";
 import { Diagnostic, DiagnosticSpan, OracleCheckResult, resolveDiagnosticPath, rustcAssertionMessage } from "./compilerOracle";
 import { dedentReplyCode } from "./placeReply";
 import { dedentDocComment } from "./reindent";
@@ -293,8 +294,6 @@ export interface RepairPromptInput {
   contextBlocks?: ContextBlock[];
 }
 
-const FENCE = "```";
-
 // Trailing-whitespace strip plus exactly one newline: rustc's rendered text
 // arrives with a trailing blank line that would otherwise double-space the
 // diagnostics block.
@@ -338,13 +337,21 @@ export function assembleRepairPrompt(input: RepairPromptInput): string {
     : isType
       ? `The ${input.kind} definition below failed the compiler check:`
       : `The function below failed the compiler check:`;
-  const codeSection = `${intro}\n${FENCE}${input.languageId ?? ""}\n${doc}${code}${FENCE}`;
+  // The doc comment is repository prose and can hold a fenced example of its
+  // own; the span can be a docstring body. One rule, stated in
+  // instructPostprocess beside the reader that decides what closes a block.
+  const codeBody = `${doc}${code}`;
+  const codeFence = fenceFor(codeBody);
+  const codeSection = `${intro}\n${codeFence}${input.languageId ?? ""}\n${codeBody}${codeFence}`;
 
   // rendered carries spans, expected/found labels, and rustc's own help
   // lines (suggested_replacement content) in the exact form a human reads;
   // no second serialization.
   const body = input.diagnostics.map((d) => normalizeBlock(d.rendered ?? d.message)).join("");
-  const diagnosticsSection = `Compiler diagnostics:\n${FENCE}\n${body}${FENCE}`;
+  // rustc renders the offending source INTO the diagnostic, so a docstring
+  // line carrying a fence arrives here too.
+  const diagFence = fenceFor(body);
+  const diagnosticsSection = `Compiler diagnostics:\n${diagFence}\n${body}${diagFence}`;
 
   const instruction = input.bodyOnly
     ? `Fix the body below. Reply with one fenced code block containing ONLY the corrected body — do not repeat the signature, the header, or the docstring, and add no code before or after the body. Output nothing outside the code block.`

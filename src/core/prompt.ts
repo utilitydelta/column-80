@@ -88,10 +88,9 @@ export interface FnGenPromptInput {
   scaffoldComments?: string[];
 }
 
+import { fenceFor } from "./instructPostprocess";
 import { noPuntInstructionFor } from "./punt";
 import { dedentDocComment } from "./reindent";
-
-const FENCE = "```";
 
 /** Test-authoring pass input. The contract half (signature + doc) plus the
  *  resolved collaborator surface; never a reference implementation (blind). */
@@ -238,21 +237,24 @@ export function assembleTestGenPrompt(input: TestGenPromptInput): string {
   // real names. A visible, labelled section; absent (or empty) keeps the
   // prompt free of it, byte-for-byte.
   if (input.calleeSurface) {
+    const surfaceFence = fenceFor(input.calleeSurface);
     sections.push(
       `Collaborator API (real signatures you may construct and call - do NOT mock these):\n` +
-        `${FENCE}${languageId}\n${input.calleeSurface}\n${FENCE}`,
+        `${surfaceFence}${languageId}\n${input.calleeSurface}\n${surfaceFence}`,
     );
   }
 
   // The contract as the model reads it: doc comment then signature, fenced. Same
   // shape as assembleFnGenPrompt's target so the two passes render identically.
-  let target = `${FENCE}${input.languageId ?? ""}\n`;
+  let body = "";
   if (input.docComment !== undefined) {
-    target += dedentDocComment(input.docComment, input.spanIndent).replace(/\n+$/, "") + "\n";
+    body += dedentDocComment(input.docComment, input.spanIndent).replace(/\n+$/, "") + "\n";
   }
-  target += input.signature.endsWith("\n") ? input.signature : input.signature + "\n";
-  target += FENCE;
-  sections.push(target);
+  body += input.signature.endsWith("\n") ? input.signature : input.signature + "\n";
+  // A doc comment is prose the repository wrote, so it can hold a fenced
+  // example of its own (a Rust `///` block, a Python docstring).
+  const targetFence = fenceFor(body);
+  sections.push(`${targetFence}${input.languageId ?? ""}\n${body}${targetFence}`);
 
   return sections.join(SECTION_SEPARATOR);
 }
@@ -304,7 +306,11 @@ function typeInstruction(languageId: string | undefined, kind: TypeGenKind): str
  *  never drift. */
 export function renderContextBlock(block: ContextBlock): string {
   const text = block.text.endsWith("\n") ? block.text : block.text + "\n";
-  return `Context: ${block.uri}#L${block.range.startLine}-L${block.range.endLine}\n${FENCE}\n${text}${FENCE}`;
+  // A staged block is a live selection out of some document, so a human can
+  // stage a fence INTO it (session-v33 made the text live; the panel is not
+  // asked). Adapting here is the whole of queue entry Q14.
+  const fence = fenceFor(text);
+  return `Context: ${block.uri}#L${block.range.startLine}-L${block.range.endLine}\n${fence}\n${text}${fence}`;
 }
 
 /**
@@ -408,15 +414,15 @@ function fnGenSections(input: FnGenPromptInput): PromptSection[] {
     sections.push({ text: input.injectedSurface, part: "injected" });
   }
 
-  let target = `${FENCE}${input.languageId ?? ""}\n`;
+  let body = "";
   if (input.docComment !== undefined) {
     // Normalized to end with exactly one newline so the signature always
     // starts its own line, however the resolver sliced the comment.
-    target += dedentDocComment(input.docComment, input.spanIndent).replace(/\n+$/, "") + "\n";
+    body += dedentDocComment(input.docComment, input.spanIndent).replace(/\n+$/, "") + "\n";
   }
-  target += input.signature.endsWith("\n") ? input.signature : input.signature + "\n";
-  target += FENCE;
-  sections.push({ text: target, part: "fixed" });
+  body += input.signature.endsWith("\n") ? input.signature : input.signature + "\n";
+  const targetFence = fenceFor(body);
+  sections.push({ text: `${targetFence}${input.languageId ?? ""}\n${body}${targetFence}`, part: "fixed" });
 
   return sections;
 }

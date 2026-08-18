@@ -111,6 +111,7 @@ import { TddDeps, TestPlacement, blankExpectedValues, frameworkFor, tddLangFor, 
 import { TestOracleResult, oracleFor, runFrameworkTestsAt, runOracleCheck } from "../core/compilerOracle";
 import { baselineCheck, describeEnvironment, isMissingImportsStorm } from "../core/pyOracle";
 import {
+  fenceFor,
   fileImportBindings,
   fileLocalDefinitions,
   fileLocalDefinitionsFor,
@@ -1549,6 +1550,11 @@ function withVerifyStatus(p: Promise<void>): Promise<void> {
 // The type cap keeps the relevant few (prioritized below) inside a bounded
 // prompt; the member cap stops a wide struct/enum from flooding the surface.
 // Both truncations are LOGGED, never silent.
+//
+// THE ONE BLOCK IN THIS FILE whose content the product composes itself: the
+// import hint is `use path::Name;` lines built from resolved type names and
+// module paths, so no line of it can open a fence run. Every other block here
+// wraps LSP or repository text and takes `fenceFor` instead.
 const FENCE = "```";
 
 // THE 2-D BOUND for the generate-time recursive data-shape walk AT THE SHIPPED
@@ -3797,7 +3803,7 @@ function shapeBlock(
   let dataShape: string | undefined;
   const walk = walkDataShape(type, toResolveStruct(shape), profile.dataShape, sharedWalk);
   if (walk.block) {
-    dataShape = `Data shape of \`${type}\` (fields and types, nested):\n${FENCE}rust\n${walk.block}\n${FENCE}`;
+    dataShape = `Data shape of \`${type}\` (fields and types, nested):\n${fenceFor(walk.block)}rust\n${walk.block}\n${fenceFor(walk.block)}`;
   }
   // No silent truncation: name the field-types a cap dropped entirely. Outside
   // the block-produced branch on purpose — the walk returns an EMPTY block
@@ -3825,7 +3831,7 @@ function shapeBlock(
     const ctors = nestedConstructors(shape, type);
     if (ctors) {
       parts.push(
-        `Constructors for the nested types (build via these, NOT struct literals — some fields are private):\n${FENCE}rust\n${ctors}\n${FENCE}`,
+        `Constructors for the nested types (build via these, NOT struct literals — some fields are private):\n${fenceFor(ctors)}rust\n${ctors}\n${fenceFor(ctors)}`,
       );
     }
   }
@@ -4240,7 +4246,7 @@ function tsShapeBlock(
   const parts: string[] = [];
   const walk = walkDataShape(type, toResolveStruct(shape, tsShapeHooks), profile.dataShape, sharedWalk);
   if (walk.block) {
-    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}ts\n${walk.block}\n${FENCE}`);
+    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${fenceFor(walk.block)}ts\n${walk.block}\n${fenceFor(walk.block)}`);
   }
   // Hoisted out of the block-produced branch for the reason given in shapeBlock:
   // an empty block IS the total-loss case, and it is the one that must not be
@@ -4249,7 +4255,7 @@ function tsShapeBlock(
     log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${droppedNames(walk.droppedBy, profile.dataShape)}`);
   }
   if (methods.length > 0) {
-    parts.push(`${memberHeader}\n${FENCE}ts\n${methods.join("\n")}\n${FENCE}`);
+    parts.push(`${memberHeader}\n${fenceFor(methods.join("\n"))}ts\n${methods.join("\n")}\n${fenceFor(methods.join("\n"))}`);
   }
   return parts.length > 0 ? { text: parts.join("\n\n"), types: [type] } : undefined;
 }
@@ -4483,7 +4489,7 @@ function csPriceMemberBlocks(
   const charge = (i: number, names: readonly string[], shape: CrossFileShape): void => {
     const types = names.map((name) => ({ name, methods: shape.types.get(name)?.methods ?? [] }));
     const before = budget.remaining;
-    csShapeGraphBlock(types, { memberCap: profile.memberCap, fence: FENCE, visited, budget });
+    csShapeGraphBlock(types, { memberCap: profile.memberCap, visited, budget });
     priced[i] += before - budget.remaining;
   };
   candidates.forEach(({ type, shape }, i) => {
@@ -4609,7 +4615,7 @@ function csShapeBlock(
   // replay and not an estimate; only the cost is wanted, so the text is dropped.
   const priceMembers = (types: ReturnType<typeof memberTypesWith>): number => {
     const budget = { remaining: Number.MAX_SAFE_INTEGER };
-    csShapeGraphBlock(types, { memberCap: profile.memberCap, fence: FENCE, visited: new Set(memberSeed()), budget });
+    csShapeGraphBlock(types, { memberCap: profile.memberCap, visited: new Set(memberSeed()), budget });
     return Number.MAX_SAFE_INTEGER - budget.remaining;
   };
   const floor = sharedWalk.memberFloor;
@@ -4689,7 +4695,7 @@ function csShapeBlock(
     }
   }
   if (walk.block) {
-    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}cs\n${walk.block}\n${FENCE}`);
+    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${fenceFor(walk.block)}cs\n${walk.block}\n${fenceFor(walk.block)}`);
   }
   // Outside the block-produced branch on purpose: an empty block IS the total
   // loss case, and it is the one that must not be silent.
@@ -4730,7 +4736,6 @@ function csShapeBlock(
   const emitted: string[] = [];
   const out = csShapeGraphBlock(types, {
     memberCap: profile.memberCap,
-    fence: FENCE,
     visited: sharedWalk.memberBlocks ?? sharedWalk.visited,
     budget,
     onEmit: (name) => emitted.push(name),
@@ -4889,7 +4894,7 @@ function pyShapeBlock(
       ? walkDataShape(type, toResolveStruct(shape, pyShapeHooks), profile.dataShape, sharedWalk)
       : { block: "", defs: [] as Array<{ name: string; def: string }>, dropped: [] as string[], droppedBy: [] };
   if (walk.block) {
-    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}python\n${walk.block}\n${FENCE}`);
+    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${fenceFor(walk.block)}python\n${walk.block}\n${fenceFor(walk.block)}`);
   }
   if (walk.dropped.length > 0) {
     log(`[fngen] data-shape walk \`${type}\` dropped ${walk.dropped.length}: ${droppedNames(walk.droppedBy, profile.dataShape)}`);
@@ -4921,7 +4926,7 @@ function pyShapeBlock(
     header = `Members of \`${type}\` (a subset — the first ${profile.memberCap} of ${all.length}; real signatures, use these exact names, do not invent):`;
     log(`[fngen] pre-fill truncated \`${type}\` members: kept ${profile.memberCap} of ${all.length} (dropped ${dropped.join(", ")})`);
   }
-  parts.push(`${header}\n${FENCE}python\n${methods.join("\n")}\n${FENCE}`);
+  parts.push(`${header}\n${fenceFor(methods.join("\n"))}python\n${methods.join("\n")}\n${fenceFor(methods.join("\n"))}`);
   return { text: parts.join("\n\n"), types: [type] };
 }
 
@@ -5111,7 +5116,7 @@ function goShapeBlock(
   // the member list may shed anything.
   const ownDefComplete = ownDef !== undefined && !/\.\.\.\s+\d+\s+more fields/.test(ownDef.def);
   if (walk.block) {
-    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${FENCE}go\n${walk.block}\n${FENCE}`);
+    parts.push(`Data shape of \`${type}\` (fields and types, nested):\n${fenceFor(walk.block)}go\n${walk.block}\n${fenceFor(walk.block)}`);
   }
   // Hoisted out of the block-produced branch on purpose, exactly as tsShapeBlock
   // does it: an empty block IS the total-loss case, and it is the one that must
@@ -5133,7 +5138,7 @@ function goShapeBlock(
     log(`[fngen] pre-fill truncated \`${type}\` members: kept ${profile.memberCap} of ${all.length} (dropped ${dropped.join(", ")})`);
   }
   if (methods.length > 0) {
-    parts.push(`${header}\n${FENCE}go\n${methods.join("\n")}\n${FENCE}`);
+    parts.push(`${header}\n${fenceFor(methods.join("\n"))}go\n${methods.join("\n")}\n${fenceFor(methods.join("\n"))}`);
   }
   return parts.length > 0 ? { text: parts.join("\n\n"), types: [type] } : undefined;
 }

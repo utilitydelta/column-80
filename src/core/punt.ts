@@ -7,6 +7,8 @@
  * punts anyway, regenerating with the stub shown and a firm instruction.
  */
 
+import { fenceFor } from "./instructPostprocess";
+
 /** The firm directive appended to a prompt to discourage a stub. These are the
  *  original Rust bytes, pinned byte-exact by the blind punt suite's rust anchor;
  *  non-Rust languages go through noPuntInstructionFor so a Python prompt never
@@ -79,7 +81,6 @@ export function assembleAntiPuntReprompt(input: {
    *  prior minimal bytes. */
   originalPrompt?: string;
 }): string {
-  const fence = "```";
   const sections: string[] = [];
   if (input.originalPrompt) {
     sections.push(input.originalPrompt);
@@ -93,10 +94,14 @@ export function assembleAntiPuntReprompt(input: {
   if (input.injectedSurface && !input.originalPrompt) {
     sections.push(input.injectedSurface);
   }
-  sections.push(`Your previous stub:\n${fence}${input.languageId ?? ""}\n${input.punted}\n${fence}`);
+  // The stub is the MODEL's own text and the target is the repository's, so
+  // either can carry a fence line.
+  const stubFence = fenceFor(input.punted);
+  sections.push(`Your previous stub:\n${stubFence}${input.languageId ?? ""}\n${input.punted}\n${stubFence}`);
   const doc = input.docComment ? input.docComment.replace(/\n+$/, "") + "\n" : "";
   const sig = input.signature.endsWith("\n") ? input.signature : input.signature + "\n";
-  sections.push(`Now implement it fully:\n${fence}${input.languageId ?? ""}\n${doc}${sig}${fence}`);
+  const targetFence = fenceFor(`${doc}${sig}`);
+  sections.push(`Now implement it fully:\n${targetFence}${input.languageId ?? ""}\n${doc}${sig}${targetFence}`);
   return sections.join("\n\n");
 }
 

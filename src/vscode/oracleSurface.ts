@@ -58,7 +58,7 @@ import { collectUsageWindows, renderUsageSection } from "../core/usageWindows";
 import { spanTypesInPlay, stopNamesFor } from "../core/repairTypes";
 import { PY_STDLIB_MODULES, pyOwnedImportEdit } from "../core/pyExtraction";
 import { placeGeneratedReply } from "../core/placeReply";
-import { fileLocalDefinitions } from "../core/instructPostprocess";
+import { fenceFor, fileLocalDefinitions } from "../core/instructPostprocess";
 import { QualifyEdit, ReferenceLocation, SourceCursor, SurfaceExtractor, renderMemberSignatures, semanticMembers } from "../core/extraction";
 import { ContextStop, budgetProfileFor } from "../core/budgetProfile";
 import { DerivedType, isRustSysrootDef, parseStructHoverFields, renderDerivedDef } from "../core/crossFileShape";
@@ -2060,6 +2060,10 @@ export function isNoOpRepair(current: string, repaired: string): boolean {
 // side also uses, still 24 at identity) both come from `budgetProfileFor` at
 // the round's entry, so a moved class-language cell reaches every leg below;
 // a member list past the codegen knee is the failure both caps exist to stop.
+//
+// THE ONE BLOCK LEFT ON A FIXED FENCE: the derives block composes itself from `#[derive(...)]` attribute lines, so
+// no line of it can open a fence run. The two data-shape blocks wrap rendered
+// LSP text and take `fenceFor` instead.
 const FENCE = "```";
 
 // The DEPTH-1 struct def of the receiver type an invented
@@ -2163,7 +2167,9 @@ async function resolveFieldShape(
     log(`[repair] surface miss class=unresolved-field for=${type}: receiver shape unresolved`);
     return undefined;
   }
-  return `Data shape of \`${type}\` (fields and types):\n${FENCE}rust\n${renderDerivedDef(derived)}\n${FENCE}`;
+  const shape = renderDerivedDef(derived);
+  const fence = fenceFor(shape);
+  return `Data shape of \`${type}\` (fields and types):\n${fence}rust\n${shape}\n${fence}`;
 }
 
 /** The item-3 line for diagnostics the classifier had no rule for, on the paths
@@ -2628,7 +2634,8 @@ async function tsResolveFieldShape(
     log(`[repair] surface miss for=${type}: receiver shape unresolved`);
     return undefined;
   }
-  return `Data shape of \`${type}\`:\n${FENCE}ts\n${rendered}\n${FENCE}`;
+  const fence = fenceFor(rendered);
+  return `Data shape of \`${type}\`:\n${fence}ts\n${rendered}\n${fence}`;
 }
 
 // A bodyless hover header (`enum ColorMode`, `interface Order`) filled with

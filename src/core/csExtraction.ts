@@ -11,6 +11,7 @@
  */
 
 import { CompletionMember, HoverSurface, MemberKind, SourceCursor, SymbolRole, TypeNameHint } from "./extraction";
+import { fenceFor } from "./instructPostprocess";
 import { dedentToZeroBase, replyBaseIndent, withoutBase } from "./reindent";
 
 // The ```csharp fence that carries the signature in a Roslyn hover. The empty
@@ -1093,7 +1094,6 @@ export function csShapeGraphBlock(
   types: CsShapeType[],
   opts: {
     memberCap: number;
-    fence: string;
     visited: Set<string>;
     budget: { remaining: number };
     /** Each type that actually got a block, in render order. The caller cannot
@@ -1136,7 +1136,11 @@ export function csShapeGraphBlock(
       header = `Members of \`${t.name}\` (a subset — the first ${opts.memberCap} of ${total}; real signatures, use these exact names, do not invent):`;
       opts.onTruncate?.(t.name, total, dropped);
     }
-    const block = `${header}\n${opts.fence}cs\n${methods.join("\n")}\n${opts.fence}`;
+    // The fence is derived from the members, not handed in: a signature list a
+    // hover leaked a fence marker into would otherwise close its own block.
+    const body = methods.join("\n");
+    const fence = fenceFor(body);
+    const block = `${header}\n${fence}cs\n${body}\n${fence}`;
     if (block.length > opts.budget.remaining) {
       opts.onBudget?.(t.name);
       continue;
