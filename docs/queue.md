@@ -19,9 +19,13 @@ Unchanged from 2026-08-14, all re-verified:
   stop and write it down.
 - **Inference where wanted**: AgentWorks key (`AGENTWORKS_API_KEY`, `deepseek-v4-pro`) or local
   qwen; prefer local for anything grading product behaviour (roadmap item 41 is the argument).
-- **Commit per entry to a branch. Never push. Never read `redacted-client-dotnet` or `celeriant-db`** -
-  and when a claim's only evidence lives in a banned location, the answer is UNVERIFIABLE, not a
-  peek (session-v53 relearned this the hard way; scraps.md).
+- **Commit per entry to a branch. Never push.**
+- **The client corpora may be READ and measured against. What must never happen is a client NAME or
+  client CODE reaching anything shippable** - source, tests, docs, commit messages, or a published
+  artifact. Corpus identities live in the agent's memory, not in this repo. Corrected by the human
+  2026-08-19; the previous wording here was a blanket "never read", which cost session-v55 a
+  wrongly-blocked entry (Q19) before it was put right. When a claim's only evidence would require
+  putting client material into the repo, the answer is still UNVERIFIABLE rather than a paste.
 - One entry per phase; `session-state.md`, `progress.md`, `scraps.md` per the implementation-loop
   skill.
 
@@ -182,20 +186,35 @@ Falsify: the flipped :362 row, red before the fix, green after.
 entry would have sent a session to build live code. Nothing to do; the value-measurement question
 the roadmap raised remains unmeasured and is not queue work.
 
-### Q19. BLOCKED session-v55: two of the three regression arms need banned corpora. Item 51: the arm runner has no Python entry
+### Q19. SHIPPED session-v55. Item 51: the arm runner has no Python entry
 
 `preparedDoc` is the one non-parameterised function; Python's docstring lives inside the body.
 Touches an instrument three languages' arms depend on: **their arms are the regression check and
 must be re-run, not assumed.**
 Falsify: three existing arms reproduce their rows; a Python row prepares a docstring in-body.
 
-**BLOCKED at session-v55 phase 25, and the entry's own text authorised the ruling.** The regression
-check it requires - three committed arms reproducing their rows - cannot be run: verified by `git
-remote` alone, with no file in any corpus read, the `cs` arm's corpus is a clone of
-`redacted-client/data-processing` and the `rs` arm's is a clone of `celeriant/celeriant-db`, both banned. Only
-the `ts` arm (`utilitydelta-io/colorsquare`) is usable, so the check would cover one arm of three.
-Unblock: a human runs the two banned arms, or the corpora are replaced with non-client repositories
-and re-baselined. Full note and the scoped description of the change itself in `session-v55/scraps.md`.
+
+**SHIPPED session-v55.** `preparedDoc` now dispatches to a per-language `prepareDoc` hook; absent
+means the braced shape, so `cs`, `rs` and `ts` take the identical path. Python's hook is ported from
+`session-v51/run-row-py.cjs`, whose own header diagnosed this and called the port a named piece of
+debt. Python runs through the unified runner over its 379-row population.
+
+Regression check, full populations, against a reconstructed pre-change runner: `cs`/oracle (46 rows)
+and `ts`/oracle and `ts`/inject (39 rows each) BYTE-IDENTICAL. `cs`/inject differed in one row and was
+then shown to be the ARM's own non-determinism - the same code run twice differs, and the second run
+matched the pre-change baseline exactly.
+
+Three instrument defects found on the way, none of them this entry's:
+
+- The `rs` arm cannot load at all: its store module is missing from this box entirely, so the 403-row
+  Rust arm has been dead and unnoticed. S55-30.
+- The `ts` arm died before its first row because its extractor was never exported from the rig's core
+  bundle. Fixed here, one additive line.
+- The `cs` INJECT arm is non-deterministic (a live hover race), so for that leg "the arm reproduces
+  its rows" cannot tell a real change from a flap. The oracle legs are deterministic. S55-31.
+
+Python supports only the committed docstring until a doc-variants artifact exists for it; a
+`--doc D0|D1|D2` run fatals rather than silently substituting a stub. S55-29.
 
 ### Q20. SHIPPED session-v55 (inside 01d2642, see session-v55/progress.md). Item 46: two frozen v21 rows model a cold answer no server gives
 

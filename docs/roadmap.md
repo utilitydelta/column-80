@@ -728,7 +728,7 @@ The waste is structural rather than Go-shaped, so the prior should be that it is
 known is the size, and a bound shipped without measuring a language's own surface is how a render
 loses a type nobody was watching.
 
-### 51. BLOCKED session-v55: two of three regression arms need banned corpora. The arm runner has no Python entry, and one function is why
+### 51. SHIPPED session-v55. The arm runner has no Python entry, and one function is why
 
 Raised 2026-08-11 by session-v51. Instrument, not product.
 
