@@ -79,6 +79,34 @@ Four properties, all structural:
 
 **The hard bar and the ordering it forced.** goal.md asked for "a refine that introduces an error is refused with the reason, not proposed", which needs the candidate checked BEFORE the consent gate. Both ways to arrange that break a named invariant: putting the candidate on disk for the real compiler breaks consented document writes, and reading the language server's diagnostics back breaks one-way diagnostics. So the check stays where every other check on this page is - after the accept - and what is refused is the SILENCE: an introduced error is loud on the channel and in a warning naming the count, the first error, and that the editor's own undo is the way back. The refine does NOT then spend repair rounds cleaning up after itself. Full reasoning, and the measured introduced-error rate the decision hangs on, in the AMENDMENT at the end of `session-v29/goal.md` and in `session-v29/measure-p4.md`.
 
+## The usage leg: refine-always, repair opt-in and OFF
+
+The ratified shape was "always injected". What ships is a split, and the split is the measurement
+rather than a compromise.
+
+**Refine always runs it.** The leg above is the whole of a refine round: a refine with no usage has
+nothing to say, so there is no switch and no default to argue about.
+
+**Repair runs it only when asked.** `column80.repairUsageWindows` (`src/vscode/config.ts:128`)
+defaults to **false**, and `oracleSurface.ts:730-732` reads it live per round, after the surface legs
+and never on a terminal steer. Turned on, a repair round gets the same reference leg the refine round
+uses.
+
+It is off because it LOST ITS ARM. Session-v30 item 2 put the refine round's reference leg inside a
+repair round and measured it over 16 real cases: **24 of 48 against the control's 23**, and **3 of 27
+against 3 of 27 on the cases the session exists for** - so it did not move the outcome it was added
+for. It also cost the winning arm six passes and 2.6 seconds of median latency. A leg that spends a
+round's budget, adds latency the developer is watching, and does not change the answer is not a
+default.
+
+The switch stays rather than the leg being deleted, because the diagnosis is specific and fixable:
+**51% of the injected windows landed outside the workspace.** Window SELECTION is what lost, not the
+idea. Re-arm it after that is fixed, with an arm.
+
+**Do not "fix" the code to match the ratification.** The default preserving refine-only behaviour is
+the decision, not drift from it. A reader who finds this file saying "always injected" and the config
+saying `false` is looking at the ratification and its measurement, in that order.
+
 ## Concurrency
 
 Sessions run one at a time globally, with one pending slot per (language, project root) session key - two languages sharing a root never supersede each other; the newest accept replaces a parked one, with evidence for both. Sessions never overlap, so no accept can abort another session's in-flight model round through the shared service's newest-wins rule. A drained-but-invalid parked accept logs and drains the next parked session; the queue never strands.
