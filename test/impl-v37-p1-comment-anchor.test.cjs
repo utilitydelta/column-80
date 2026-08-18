@@ -365,21 +365,37 @@ test("D: a name in a STRING literal is still accepted, on purpose", () => {
   assert.equal(firstCodeOccurrence(code, "rust", "Widget"), code.indexOf("Widget"), "strings are out of scope");
 });
 
-test("D: S36-1 makes the refusal UNDER-reject in Rust, which is today's behaviour", () => {
-  // session-v36/scraps.md S36-1: the Rust row in `commentSyntaxFor` leaves `'`
-  // out of its quote set, so a `'"'` char literal opens a phantom string and the
-  // scanner walks past every comment after it. The comment is then accepted as
-  // an anchor. Known, not fixed here, and the safe direction: it falls back to
-  // what shipped rather than refusing a real position.
+test("D: S36-1's phantom string no longer hides the comment from EITHER half", () => {
+  // RE-CUT 2026-08-18, session-v55 phase 14 (queue Q17). This row used to assert
+  // the defect: the Rust row in `commentSyntaxFor` leaves `'` out of its quote
+  // set, so the bare `"` in a `'"'` char literal opened a phantom string, the
+  // scanner walked past every comment after it, and the comment position was
+  // accepted as an anchor while the extraction returned nothing.
+  //
+  // `commentTypesIn` now blanks a literal opener whose scan crosses a NEWLINE,
+  // and `firstCodeOccurrence` reads the SAME phantom-free copy. Both halves had
+  // to move together: extraction alone would have started pulling a name out of
+  // a comment the anchor still accepted as code, which is the dead anchor the
+  // module header calls worse than nothing. One defect, two symptoms, one fix.
   const code = "fn build() {\n    let q = '\"';\n    // needs `Sprocket`\n}\n";
   assert.equal(
     firstCodeOccurrence(code, "rust", "Sprocket"),
-    code.indexOf("Sprocket"),
-    "the phantom string hides the comment from the scanner, so the position is accepted",
+    undefined,
+    "the only occurrence is inside the comment, so there is no code position to anchor at",
   );
-  // The same span, same scanner, same silence on the extraction side. One
-  // defect, two symptoms.
-  assert.deepEqual(commentTypesIn(code, "rust"), [], "and the gesture extracts nothing from it either");
+  assert.deepEqual(commentTypesIn(code, "rust"), ["Sprocket"], "and the gesture now reads the name the developer backticked");
+  // The quote set itself is still wrong and still queued. CORRECTED at review:
+  // the shape this row first named as the residual is not one. `let q = '"';
+  // let s = "x";` with the comment on a later line WAS a hole before the fix and
+  // is closed by it, because the char literal's `"` pairs with the OPENER of
+  // `"x"` and leaves that string's closer to cross the newline and be blanked.
+  const sameLine = "fn build() {\n    let q = '\"'; let s = \"x\";\n    // needs `Sprocket`\n}\n";
+  assert.deepEqual(commentTypesIn(sameLine, "rust"), ["Sprocket"], "this shape WAS a hole and the rule closed it; the review measured the pre-fix build returning []");
+  // What actually survives is a comment on the phantom's own line, between the
+  // opener and the quote it wrongly pairs with. Nothing crosses a newline, so
+  // nothing is blanked. `A14-2` of the phase-14 adversarial file owns this.
+  const residual = "fn build() {\n    let q = '\"'; /" + "* needs `Sprocket` *" + "/ let s = \"x\";\n}\n";
+  assert.deepEqual(commentTypesIn(residual, "rust"), [], "the same-LINE comment is still swallowed; only the quote set closes it");
 });
 
 test("D: an unmapped language has no comment syntax to judge with and refuses nothing", () => {

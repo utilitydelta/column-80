@@ -353,13 +353,21 @@ test("[RECORD] B6: in fn-gen the comment tier outranks the doc-only-LOCAL-type t
 //
 // INVERTED 2026-08-10, because a test that must be red is not a test. The row
 // USED TO assert `["Sprocket"]` - the name the developer backticked, which is
-// what a working gesture would return - and was red every run. It now asserts
-// the empty list the shipped code actually returns, so the hole is pinned as a
-// fact. S36-1 is still open and `["Sprocket"]` is still the answer that closes
-// it; this row goes red the day the quote set is fixed, which is the right time
-// for it to demand attention. C2 below is the control: the same shape in C# and
-// Go returns `["Sprocket"]`, so this is a Rust-row fault and not a dead leg.
-test("KNOWN WRONG: a Rust `'\"'` char literal anywhere in the span makes the gesture silently dead", () => {
+// what a working gesture would return - and was red every run. It then asserted
+// the empty list the shipped code actually returned, so the hole was pinned as a
+// fact, and the row said it would go red the day the fix landed.
+//
+// FLIPPED BACK 2026-08-18, session-v55 phase 14 (queue Q17), which is that day.
+// It went red on the fix exactly as written, and the goal ratified this flip
+// rather than a fresh row: a new row would duplicate the coverage and leave this
+// one going red unexplained. The fix is NOT the quote set - that is still open,
+// still a v25 contract change, and still wants its own blind oracle over
+// lifetimes. It is a phantom rule local to `commentTypesIn`: a literal whose
+// scan crosses a NEWLINE is treated as a phantom opener and blanked, so the
+// comment after it is reachable again. C2 below is the control: the same shape
+// in C# and Go returns `["Sprocket"]`, so this was a Rust-row fault and not a
+// dead leg, and it now agrees with them.
+test("a Rust `'\"'` char literal no longer opens a phantom string that eats the gesture", () => {
   // Rust's row in `commentSyntaxFor` deliberately leaves `'` out of the quote
   // set, because in Rust a tick is a lifetime far more often than a char. The
   // cost was priced as "a missed comment inside a char literal". It is larger
@@ -370,7 +378,7 @@ test("KNOWN WRONG: a Rust `'\"'` char literal anywhere in the span makes the ges
   //
   // C# and Go carry `'` in their quote sets and are unaffected (see C2).
   const got = commentTypesIn("fn f() {\n    let q = '\"';\n    // `Sprocket`\n}", "rust", undefined, undefined);
-  assert.deepEqual(got, [], `WAS asserted as ["Sprocket"]: got ${show(got)}, the whole gesture swallowed by the phantom string`);
+  assert.deepEqual(got, ["Sprocket"], `the phantom string is back: got ${show(got)}, so the comment after the char literal was swallowed again`);
 });
 
 test("[RECORD] C2: the same shape is fine in C# and Go, so C1 is a Rust-row fault, not a leg fault", () => {
