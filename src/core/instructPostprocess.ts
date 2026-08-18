@@ -94,6 +94,68 @@ export function extractFirstCodeBlock(reply: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The fence to WRITE around `content` when the product assembles a prompt.
+ *
+ * IT LIVES BESIDE `fenceRun` ON PURPOSE. The writer's only job is to emit a
+ * fence the content cannot close, and "cannot close" is defined by the reader
+ * above, not by CommonMark. Two files would drift; one file means the rule the
+ * writer beats is the rule the reader applies.
+ *
+ * THE RULE. A run of at least three, strictly longer than the longest backtick
+ * run that OPENS a line inside the content (`fenceRun`'s own test: a run at the
+ * start of the trimmed line). A mid-line run is not a fence in any markdown
+ * dialect and must not inflate anything, or every backticked identifier in a
+ * doc comment would widen the fence around it. Content with no line-opening run
+ * gets the plain three back, byte for byte, which is the overwhelming majority
+ * and what keeps the frozen prompt-identity pins green.
+ *
+ * WHY IT SOMETIMES ANSWERS TILDES, which length alone cannot do. `extractFirst-
+ * CodeBlock` deliberately keeps a bare run of THREE as a closer for any opener
+ * (see its comment: three captured replies are open-4/close-3 and refusing them
+ * would lose them outright). So a bare ``` line inside the content closes the
+ * block whatever length is chosen, and no backtick fence can win. A tilde fence
+ * can: the reader requires the closer to be the SAME character. That case is
+ * the Rust doc example and the markdown selection - real content, not a corner.
+ * Content carrying a bare run of three of BOTH characters cannot be fenced at
+ * all under this reader; it takes the backtick answer, which is what the
+ * unadapted code already did.
+ */
+export function fenceFor(content: string): string {
+  const backtick = lineOpeningRuns(content, "`");
+  if (backtick.longest === 0) {
+    return "```";
+  }
+  if (!backtick.bareThree) {
+    return "`".repeat(backtick.longest + 1);
+  }
+  const tilde = lineOpeningRuns(content, "~");
+  if (!tilde.bareThree) {
+    return "~".repeat(Math.max(3, tilde.longest + 1));
+  }
+  return "`".repeat(backtick.longest + 1);
+}
+
+/** The two facts `fenceFor` needs about one fence character: the longest run
+ *  that opens a line, and whether any line is a BARE run of exactly three (the
+ *  closer the reader honours against every opener). */
+function lineOpeningRuns(content: string, char: "`" | "~"): { longest: number; bareThree: boolean } {
+  let longest = 0;
+  let bareThree = false;
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    const run = fenceRun(trimmed);
+    if (run === undefined || run.char !== char) {
+      continue;
+    }
+    longest = Math.max(longest, run.len);
+    if (run.len === 3 && trimmed.length === 3) {
+      bareThree = true;
+    }
+  }
+  return { longest, bareThree };
+}
+
 export interface RequestedFunctionExtraction {
   /** The reply cut down to the requested function. */
   text: string;
