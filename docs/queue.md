@@ -135,11 +135,18 @@ record. Also: a comment cites `enumPayloadsFromSource`, a symbol that exists now
 the same touch (batch I scraps).
 Falsify: the fixture.
 
-### Q14. `prompt.ts`: context blocks go into bare triple-backtick fences unescaped
+### Q14. SHIPPED session-v55 (7385b6f), and LENGTH ALONE WAS NOT ENOUGH. `prompt.ts`: context blocks go into bare triple-backtick fences unescaped
 
 Worth more since v33 (blocks are read live).
 Fix: length-adaptive fences; v38's fence-run work is the prior art.
 Falsify: a block containing each fence length renders balanced.
+
+**The title understates it and the fix shape was refuted.** It is 28 emit lines across 9 files, of
+which the context block is one. And "length-adaptive" cannot round-trip through this product's own
+reader: session-v38 keeps a bare run of THREE as a valid closer for ANY opener (it measured three
+captured replies that open with four and close with three), so a bare ``` line inside the content
+closes the block at every backtick length. `fenceFor` switches CHARACTER to `~~~` there. Content
+carrying bare threes of both characters cannot be fenced under this reader at all.
 
 ### Q15. SHIPPED session-v55 (3d85a82). Splice path: LF bodies into CRLF documents
 
