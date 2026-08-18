@@ -319,6 +319,57 @@ if (!bundleError && typeof mod.activate !== "function") {
 }
 const { activate, __state, Position, Selection, Uri } = mod;
 
+// ═════════════════════════════════════════════════════════════════════════════
+// THE FAKE CLOCK, session-v55 phase 17 (queue Q21 / roadmap item 23).
+//
+// Row A used to drive the product through a REAL PASSIVE_SCOPE_MS window, which
+// made it the only `CI_SKIP` in the suite and a measured ~2-in-5 failure under
+// full-suite contention (session-v55 recorded five samples: 3029ms, 3030ms and
+// 3031ms against a 1500ms window on the failures, 1519ms and 1526ms passing when
+// the file runs alone). Widening the budget was tried in v21 and changed
+// nothing, because the failure is not a late timer: under contention the gate
+// refuses the ghost, so no scope is recorded and there is no expiry to wait for.
+//
+// `ScopeHooks` already had the seam - `now` and `setTimer` are injectable and
+// `REAL_SCOPE_HOOKS` exists so the extension can spread it and override
+// `onExpired` alone. So the clock is replaced here rather than plumbed: the
+// extension spreads this object at ACTIVATION, so patching it before any
+// `activate()` call reaches every provider the file builds.
+//
+// What this does NOT weaken, and it is the trap the goal named: a fake clock
+// that quietly stops exercising the real window would pass while testing
+// nothing. Row A therefore asserts, in order, that a ghost was SERVED, that the
+// serve ARMED a timer, that the timer's delay IS `PASSIVE_SCOPE_MS`, and that
+// firing it produces hide-then-trigger. A drive that served nothing still reads
+// as that and never as a timeout.
+const fakeTimers = [];
+let fakeNow = 0;
+const scopeHooks = (mod.providerModule || {}).REAL_SCOPE_HOOKS;
+if (scopeHooks) {
+  scopeHooks.now = () => fakeNow;
+  scopeHooks.setTimer = (ms, fn) => {
+    const t = { at: fakeNow + ms, ms, fn, cancelled: false, fired: false };
+    fakeTimers.push(t);
+    return () => {
+      t.cancelled = true;
+    };
+  };
+}
+const armedTimers = () => fakeTimers.filter((t) => !t.cancelled && !t.fired);
+/** Move virtual time forward and run every timer that comes due, in order.
+ *  Returns how many fired, so a row can tell "nothing was armed" from "the
+ *  callback did nothing" - the two reds the real-timer version could not tell
+ *  apart. */
+const advanceClock = async (ms) => {
+  fakeNow += ms;
+  const due = fakeTimers.filter((t) => !t.cancelled && !t.fired && t.at <= fakeNow).sort((a, b) => a.at - b.at);
+  for (const t of due) {
+    t.fired = true;
+    await t.fn();
+  }
+  return due.length;
+};
+
 test.after(() => {
   fs.rmSync(entry, { force: true });
   fs.rmSync(outfile, { force: true });
@@ -585,13 +636,11 @@ test("harness: the drive leaves a sticky-scoped ghost on screen [harness guard -
 // dark-reason row proved that independently by growing a `gateWait=` segment -
 // and a ghost the gate refuses records no scope.
 //
-// Skipping is the honest form of what was already happening: the row could not
-// speak about the product on that hardware. It still runs everywhere else, on
-// every developer machine and in the pre-tag local run. The fix is to drive the
-// window with a fake clock so no wall time is involved; docs/roadmap.md item 23.
-const CI_SKIP = process.env.CI ? "excluded on CI: real-timer row, see docs/roadmap.md item 23" : false;
-
-test("A. the expiry re-render hides the inline suggestion BEFORE it triggers: a passive scope served, the real window elapsed, hide then trigger [surface item 3 'The expiry hook: hide, then trigger']", { skip: CI_SKIP }, async (ctx) => {
+// UNSKIPPED 2026-08-18, session-v55 phase 17: the window is virtual now, so
+// there is no wall time to lose a race against and nothing for CI to exclude.
+// The skip and its `CI_SKIP` constant are gone with it - this was the suite's
+// only one.
+test("A. the expiry re-render hides the inline suggestion BEFORE it triggers: a passive scope served, the window elapsed on a FAKE clock, hide then trigger [surface item 3 'The expiry hook: hide, then trigger']", async (ctx) => {
   if (bundleError) return ctx.skip("bundle failed to build; see the bundle test");
   const W = (mod.providerModule || {}).PASSIVE_SCOPE_MS;
   assert.strictEqual(typeof W, "number", `PASSIVE_SCOPE_MS must be a number for this row to know how long to wait, got ${JSON.stringify(W)}`);
@@ -604,18 +653,21 @@ test("A. the expiry re-render hides the inline suggestion BEFORE it triggers: a 
     `no scoped ghost was served, so no expiry was ever armed - this row's precondition failed, not its claim; output tail ${JSON.stringify(__state.outputLines.slice(-8))}`
   );
   clearCalls();
-  // The one real timer in this file. Everything else is driven directly.
-  //
-  // This row is not CI-safe and the budget is not why. Widening it from 3000ms
-  // to 13500ms was tried and changed nothing: the failing run reported NO
-  // commands at all after the serve, so the expiry was never armed, which means
-  // the drive above raced rather than the timer running late. Under contention
-  // the scoped ghost is not on screen by the time this waits for its expiry.
-  // Fixing it properly means driving the window with a fake clock instead of a
-  // real one. Until then CI carries it as noise; docs/roadmap.md item 23.
-  const saw = await waitFor(() => ids().includes(TRIGGER), "the expiry re-render", Math.ceil((W + 1500) / 25), true);
+  // THE WINDOW IS STILL THE PRODUCT'S. A fake clock that stopped exercising the
+  // real one would pass while testing nothing, so the arming is asserted before
+  // it is fired: a timer exists, and its delay is PASSIVE_SCOPE_MS itself rather
+  // than any number this row chose.
+  const armed = armedTimers();
+  assert.equal(
+    armed.length,
+    1,
+    `serving a passive scope must arm exactly one expiry timer, got ${armed.length}; commands after the serve were ${JSON.stringify(ids())}`
+  );
+  assert.equal(armed[0].ms, W, `the expiry must be armed for PASSIVE_SCOPE_MS (${W}ms), not ${armed[0].ms}ms`);
+  const fired = await advanceClock(W);
+  assert.equal(fired, 1, `advancing the clock by the full window must fire the expiry, fired ${fired}`);
   assert.ok(
-    saw,
+    ids().includes(TRIGGER),
     `the ${W}ms window must end in a re-render request; commands executed after the serve were ${JSON.stringify(ids())} - without a trigger the scoped ghost never comes off the screen at all`
   );
   const seq = ids();
