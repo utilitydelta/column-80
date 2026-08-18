@@ -3510,6 +3510,47 @@ export async function resolveCallOwners(
       log(`[repair] call owner unresolved for \`${target.name}\`: its definition sits inside no type (a free function, or a tree with no container)`);
       continue;
     }
+    // A generic PARAMETER is not a call owner. `T` passes both filters below -
+    // it sits in no stop set and it is capitalized - so it was pushed with a
+    // cursor and spent one of the two KEEP slots, which under a cap is an
+    // eviction of something real. NOTHING DOWNSTREAM REFUSED IT, and the
+    // contract this phase was written from said something else: session-v34's
+    // provenance rule tests `defUri` against the rust sysroot
+    // (`crossFileShape.ts:252`, wired at `fnGen.ts:4274`, applied at
+    // `fnGen.ts:2915`), and a parameter anchored at a workspace impl header has
+    // a workspace def. So the wrong owner reached the prompt, and the defect was
+    // worse than the entry claimed rather than covered by luck.
+    //
+    // Single letter, deliberately not "short", and the rule is not re-derived
+    // here. `crossFileShape.ts:1016-1024` carries the measurement - 621 files of
+    // the Rust corpus declare no single-letter struct, enum, trait or union, and
+    // all 17 single-letter field positions in it are parameters - and
+    // `compilerDirected.ts:491` applies the same test inline. `Ok`, `Vec`, `T1`
+    // and `Kind` are real names and over-correcting to them would cost far more
+    // than the noise does.
+    //
+    // GO IS THE EXCEPTION, at the same citation and for the reason written
+    // there: the Go standard library declares 186 single-letter structs,
+    // `testing.T`, `testing.B`, `testing.F` and `testing.M` among them. See
+    // `PrefillLang.singleLetterOwnerIsReal` for what the exception can and
+    // cannot reach today.
+    //
+    // THE ROUND TRIP IS NOT SAVED AND THE LEG SPENDS MORE OF THEM. Both halves
+    // stated, because the first one alone reads as "cost unchanged" and the cost
+    // went up. The parameter's name is only known AFTER `definition()` and the
+    // symbol walk have both run, since this leg resolves the call and then reads
+    // its enclosing container's name, so there is no earlier seam here to refuse
+    // at. And because the refusal frees the keep slot, the loop no longer breaks
+    // at `CALL_OWNER_CAP` and runs on against `CALL_OWNER_LOOKUP_CAP`. Measured
+    // on target order `T U K V E S`: 2 lookups before this line, 6 after,
+    // keeping nothing either way. On `T U Alpha Beta Gamma Delta`: 2 before, 4
+    // after, and the two extra round trips buy `Alpha` and `Beta`. That is the
+    // trade, and the lookup cap is what bounds it. What the refusal frees is the
+    // keep slot and the wrong owner in the prompt.
+    if (lang.singleLetterOwnerIsReal !== true && /^[A-Z]$/.test(typeName)) {
+      log(`[repair] call owner for \`${target.name}\` is \`${typeName}\`, a generic parameter and not a type; not disclosed`);
+      continue;
+    }
     // The std filter, and it is not a nicety. Measured over 61 real call sites
     // in `acme-db`, the route resolves an owner 92% of the time and 18 of
     // the 56 owners it found were Vec, `String`, `HashMap`, `Duration`,
@@ -3887,6 +3928,29 @@ interface PrefillLang {
    *  privates the target can already see. Undefined (Python) means it spells it
    *  nowhere and the surface does not change. */
   memberVisibility?: LanguageVisibility;
+  /** Is a SINGLE-LETTER enclosing container a real type in this language, or a
+   *  generic parameter? Absent means parameter, which is `resolveCallOwners`'s
+   *  refusal; `true` means the leg keeps it.
+   *
+   *  Go is the only language that sets it, and the measurement is
+   *  `crossFileShape.ts:1016-1024`, not a re-derivation: the Go standard library
+   *  declares 186 single-letter structs, `testing.T`, `testing.B`, `testing.F`
+   *  and `testing.M` among them, and a Go repair genuinely wants that receiver
+   *  disclosed. `goShapeHooks.skipCandidate` guards the same door on the field
+   *  leg with a qualifier-aware rule; it cannot be reused here, because a
+   *  container walk reports the declaring symbol's bare name and there is no
+   *  field type as written to read a `.` out of.
+   *
+   *  WHAT IT REACHES TODAY IS NOTHING, and the blind oracle of session-v55 phase
+   *  10 measured it rather than assuming it: `resolveCallOwners` resolves no
+   *  owner for Go at all, for any type. `GO_RULES.containerName` is `() =>
+   *  undefined` (`receiver.ts:332`) because a Go method is declared at package
+   *  scope with its receiver in the signature, so every Go call reaches the
+   *  free-function line before any name filter runs. This flag guards a shut
+   *  door, exactly as `goShapeHooks.skipCandidate` did before session-v49 lit
+   *  the field leg. It is here so that opening the door is a deliberate red row
+   *  rather than a silent regression on `testing.T`. */
+  singleLetterOwnerIsReal?: boolean;
   /** Is a ROOT candidate whose definition is at this URI one the model already
    *  knows, so the prefill must render nothing for it?
    *
@@ -5143,6 +5207,10 @@ const GO_PREFILL_LANG: PrefillLang = {
   exampleFallback: false,
   firmInstruction: GO_FIRM_INSTRUCTION,
   memberVisibility: visibilityFor("go"),
+  // `T` IS A TYPE IN THIS LANGUAGE. 186 single-letter structs in the standard
+  // library, `testing.T` first among them - the reason is written out once at
+  // `crossFileShape.ts:1016-1024` and is not repeated here.
+  singleLetterOwnerIsReal: true,
 };
 
 // Non-TS/C#/Python/Go ids fall to the Rust entry: only languages with a
