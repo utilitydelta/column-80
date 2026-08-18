@@ -337,3 +337,51 @@ fully-qualified name breaks it exactly the way `--exact` broke Rust.
 Go, Python and TypeScript are CLEAN: Go anchors `-run '^(a|b)$'` with `escapeRegex`
 (`tddGo.ts:805`), pytest uses exact node ids (`tddPy.ts:1034`), vitest/jest end-anchor.
 Falsify: as Q3b, in C#.
+
+### Q16b. NEW 2026-08-18. A raw interpolated string's hole makes `reindentCsBody` emit C# that does not compile
+
+Session-v55 phase 13, found by the adversarial review while checking what the stack fix did NOT
+cover. Pre-existing: the old and new scanners emit byte-identical output for this shape, so the
+phase neither caused it nor closed it.
+
+`CsStrCtx` gives a raw string no hole depth, so a hole inside a raw INTERPOLATED string is scanned
+as string text. When that hole holds a run of `>=` fence quotes, `csRawClose` finds the run and
+closes the string early. The content lines then stay frozen while the real closing-delimiter line is
+classified as code and takes the indent, and C# requires every line of a raw string literal to start
+with the closing line's whitespace.
+
+```
+var s = H.Fmt($"""
+    a{@"say ""hi"""}b
+    """);
+```
+Measured on dotnet 10.0.110: the input compiles, the re-indented output is rejected with **CS8999**.
+Every other known scanner defect moves a byte; this one breaks the build.
+Pinned live by `test/adversarial-v55-p13-scanner-stack.test.cjs` row A13-7 (the row asserts the
+uncompilable output AND the byte-identity with the pre-phase-13 scanner, so it goes red if either
+half changes).
+Fix shape: track hole depth inside a raw string, which is the widening phase 13 declared out of
+scope, so the stack gains a `holeDepth` that is no longer pinned at 0 for `kind: "raw"`.
+Falsify: that row, plus a dotnet compile of the output.
+
+### Q16c. NEW 2026-08-18. `$"…"`, a regular interpolated string, has no hole model at all
+
+Session-v55 phase 13, same review. Pre-existing and byte-identical before and after the phase.
+
+`advanceCsLineScan` has openers for `@"`, `$@"`, `@$"` and `"""`. It has none for `$"`, so a `$"…"`
+is scanned as a plain regular string and the scan stops at the first unescaped `"`. A `@"` opened
+inside that string's `{…}` hole therefore desynchronises the quote count, a phantom string opens, and
+a later line that is inside a real `$@"…"` string's TEXT gets shifted and loses its value. The
+adversarial review found it by generating legal C# and running it, and reported 1 wrong value in 1200
+generated bodies. That generator is not in the repo, so treat the rate as the review's and the SHAPE
+as proven: row A13-8 compiles and runs one such body and the value moves.
+
+Not a hole-specific defect, checked at triage rather than assumed: the identical desync happens with
+the `$"…"` at statement level, because `$"` is missing from the one shared opener list. The phase-13
+code comment was narrowed in the same commit to say so, since it had claimed hole-and-statement-level
+parity without naming what the shared list omits.
+Pinned live by `test/adversarial-v55-p13-scanner-stack.test.cjs` row A13-8.
+Fix shape: give `$"` an opener that pushes a context whose holes are tracked. It is a regular string,
+so it cannot span a line, which is why phase 13's blind oracle measured `$"` in a hole as CORRECT
+(row P13-7c, 18 cases) and this shape still slipped past: the damage is within one line.
+Falsify: the generated-body population, graded by running the C#, plus row A13-8.
