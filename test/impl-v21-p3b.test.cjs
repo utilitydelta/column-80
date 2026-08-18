@@ -264,57 +264,111 @@ test("F3: method lines still tail-drop individually when they overrun (the C# ov
 });
 
 // ---------------------------------------------------------------------------
-// The §1b settle: termination and no false re-poll.
+// The §1b settle: termination, no false re-poll, and the re-poll that pays.
+//
+// RE-CUT at the measured shape (session-v55 phase 18, roadmap item 46). These rows
+// used to script cold answers whose member COUNT changed as the server warmed —
+// one member becoming seven, two becoming one. No server does that.
+// `session-v21/spike-p3.md:232-256` recorded a live Pylance walk over `class
+// Stripe`: 11 members with 1 signed cold, the SAME 11 with 8 signed warm, and a
+// server still cold 40ms later repeats its cold answer verbatim. documentSymbol is
+// cheap, so the count is complete on the first answer; the SIGNATURES are what the
+// 50ms fan-out budget cuts.
+//
+// The counting fixtures were invisible to the no-progress stop session-v50 phase 1
+// built and then removed — the stop ended the loop when a re-poll returned the same
+// member count and the same signed count — and that stop is the one bound these
+// rows exist to catch. At the recorded shape they catch it.
+//
+// The wall-clock assertion these rows used to carry (`ms < 60` against
+// process.hrtime) is gone. What it was really measuring is the re-poll COUNT, so
+// the rows count `membersOfType` calls instead: same claim, no clock.
 // ---------------------------------------------------------------------------
 
-const DEF_LOC = { uri: "file:///t.py", range: { startLine: 0, startCharacter: 6, endLine: 0, endCharacter: 9 } };
+const DEF_LOC = { uri: "file:///stripe.py", range: { startLine: 0, startCharacter: 6, endLine: 0, endCharacter: 12 } };
 const ROOT = { uri: "file:///m.py", line: 0, character: 0 };
-const openFile = async (uri) => (uri === ROOT.uri ? "Foo" : "class Foo:\n    pass\n");
+const openFile = async (uri) => (uri === ROOT.uri ? "Stripe" : "class Stripe:\n    pass\n");
 const pyEx = (seq) => {
   let i = 0;
   return {
     definition: async () => DEF_LOC,
-    hoverSurface: async () => ({ signature: "class Foo" }),
+    hoverSurface: async () => ({ signature: "class Stripe" }),
     membersOfType: async () => seq[Math.min(i++, seq.length - 1)],
+    calls: () => i,
   };
 };
 
+// The recorded warm render, verbatim, and the eleven members behind it. Only
+// __init__'s own signature text is illustrative: the cold block never printed it.
+const WARM_RENDER = [
+  "enroll(morton_code: int) -> bool",
+  "enroll_tile(tile: Tile, lod: int | None = None) -> bool",
+  "enroll_batch(morton_codes: list[int], lod: int, force: bool) -> int",
+  "aggregate_fanout() -> int",
+  "partition_by_lod() -> dict[int, list[Tile]]",
+  "rehome_by_lod(by_lod: dict[int, list[Tile]]) -> int",
+  "tile_tally: int",
+];
+const STRIPE_MEMBERS = [
+  { name: "__init__", kind: "method", signature: "__init__(self, capacity: int) -> None" },
+  { name: "enroll", kind: "method", signature: WARM_RENDER[0] },
+  { name: "enroll_tile", kind: "method", signature: WARM_RENDER[1] },
+  { name: "enroll_batch", kind: "method", signature: WARM_RENDER[2] },
+  { name: "aggregate_fanout", kind: "method", signature: WARM_RENDER[3] },
+  { name: "partition_by_lod", kind: "method", signature: WARM_RENDER[4] },
+  { name: "rehome_by_lod", kind: "method", signature: WARM_RENDER[5] },
+  { name: "tile_tally", kind: "field", signature: WARM_RENDER[6] },
+  { name: "summarize", kind: "method", signature: undefined },
+  { name: "_tiles", kind: "field", signature: undefined },
+  { name: "_seen_codes", kind: "field", signature: undefined },
+];
+const answerWith = (signedCount) =>
+  STRIPE_MEMBERS.map((m, i) => (i < signedCount ? { ...m } : { ...m, signature: undefined }));
+const COLD = () => answerWith(1);
+const WARM = () => answerWith(8);
+
 test("§1b: a set that never warms terminates and stays method-less (no hang, no invention)", async () => {
-  const ctor = [{ name: "__init__", kind: "method", signature: "__init__(self) -> None" }];
-  const shape = await cross.resolveCrossFileShape(pyEx([ctor]), ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
-  const foo = shape.types.get("Foo");
-  assert.ok(foo, "Foo resolves via hover");
-  assert.strictEqual(foo.methods.length, 0, "a genuinely constructor-only type reads as method-less, not invented");
+  // 11/1 forever: the server never lands a second signature. The loop must run out
+  // and hand back what it has, not spin and not invent a member from a bare name.
+  const ex = pyEx([COLD()]);
+  const shape = await cross.resolveCrossFileShape(ex, ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
+  const stripe = shape.types.get("Stripe");
+  assert.ok(stripe, "Stripe resolves via hover");
+  assert.strictEqual(stripe.methods.length, 0, "ten unsigned members and a dropped ctor read as method-less, not invented");
+  assert.ok(ex.calls() <= 4, `the re-poll is bounded: 1 first touch + at most 3 re-polls, got ${ex.calls()} calls`);
 });
 
 // F2: a fully-settled field-only struct (fields carry no signature - the Rust data
 // struct shape) must NOT re-poll: renderMethods is empty but a re-poll cannot add a
-// method, so the 3x40ms settle delay must not fire. The cold Python shape (an
+// method, so the settle steps must not fire at all. The cold Python shape (an
 // unsigned callable still pending) MUST still re-poll and recover its methods.
-test("F2: a field-only (unsigned, non-callable) set does not re-poll - no 120ms burned recovering nothing", async () => {
+test("F2: a field-only (unsigned, non-callable) set does not re-poll - not one settle step burned recovering nothing", async () => {
   const fieldOnly = [
     { name: "alpha", kind: "field", signature: undefined },
     { name: "beta", kind: "field", signature: undefined },
   ];
-  const start = process.hrtime.bigint();
-  const shape = await cross.resolveCrossFileShape(pyEx([fieldOnly]), ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
-  const ms = Number(process.hrtime.bigint() - start) / 1e6;
-  assert.ok(shape.types.get("Foo"), "Foo resolves");
-  assert.ok(ms < 60, `a settled field-only set must not incur the 3x40ms re-poll; took ${ms.toFixed(1)}ms`);
+  const ex = pyEx([fieldOnly]);
+  const shape = await cross.resolveCrossFileShape(ex, ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
+  assert.ok(shape.types.get("Stripe"), "Stripe resolves");
+  assert.strictEqual(ex.calls(), 1, `a settled field-only set must not re-poll at all; it asked ${ex.calls()} times`);
 });
 
-test("F2: the cold shape - an unsigned callable still pending - DOES re-poll and recovers its methods", async () => {
-  const cold = [
-    { name: "__init__", kind: "method", signature: "__init__(self) -> None" }, // signed ctor, dropped
-    { name: "run", kind: "method", signature: undefined }, // unsigned callable, pending
-  ];
-  const warm = [{ name: "run", kind: "method", signature: "run(self) -> int" }];
-  const shape = await cross.resolveCrossFileShape(pyEx([cold, warm]), ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
-  assert.deepStrictEqual(shape.types.get("Foo").methods, ["run(self) -> int"], "the pending callable warms in on the re-poll");
+test("F2: the RECORDED cold shape - 11 members, 1 signed, repeating - DOES re-poll and recovers its 7", async () => {
+  // Cold, still cold 40ms later at the identical 11/1, then warm. Three calls. Any
+  // bound that reads the repeat as "settled" stops at two and ships zero methods.
+  const ex = pyEx([COLD(), COLD(), WARM()]);
+  const shape = await cross.resolveCrossFileShape(ex, ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
+  assert.deepStrictEqual(
+    shape.types.get("Stripe").methods,
+    WARM_RENDER,
+    `the warm answer must be reached and rendered; got it after ${ex.calls()} membersOfType calls`,
+  );
+  assert.strictEqual(ex.calls(), 3, `the repeated cold answer must not end the loop; expected 3 calls, got ${ex.calls()}`);
 });
 
 test("§1b: a first touch that already carries a real method is used as-is (no needless re-poll changes the answer)", async () => {
-  const warm = [{ name: "go", kind: "method", signature: "go(self) -> int" }];
-  const shape = await cross.resolveCrossFileShape(pyEx([warm, []]), ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
-  assert.deepStrictEqual(shape.types.get("Foo").methods, ["go(self) -> int"]);
+  const ex = pyEx([WARM(), []]);
+  const shape = await cross.resolveCrossFileShape(ex, ROOT, { D_MAX: 2, N_MAX: 8 }, openFile, cross.pyShapeHooks);
+  assert.deepStrictEqual(shape.types.get("Stripe").methods, WARM_RENDER);
+  assert.strictEqual(ex.calls(), 1, "a first answer that already renders is not re-polled away");
 });

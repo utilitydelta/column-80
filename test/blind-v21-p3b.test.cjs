@@ -168,67 +168,124 @@ test("§1a: even a fields-heavy type (12 fields, 4 methods) surfaces a callable,
 // §1(b) Python cold-zero — a cross-file type whose warm walk renders N methods
 //         must not resolve to ZERO methods on the touch that opens its def file,
 //         when the ONLY reason is the fan-out cut left the constructor as the sole
-//         survivor and renderMethods drops it. surface-p3b §1: "emit what a settle
-//         would have shown ... a type with seven renderable methods must not read
-//         as a type with none."
+//         signed survivor and renderMethods drops it. surface-p3b §1: "emit what a
+//         settle would have shown ... a type with seven renderable methods must not
+//         read as a type with none."
 //
-// The extractor answers COLD on the first membersOfType touch (only __init__
-// resolved) and WARM afterwards (the seven methods). Today the settle re-poll
-// fires only on an EMPTY member set (length 0), so a length-1 [__init__] never
-// re-polls; renderMethods then drops __init__ -> methods === []. A fix that
-// re-settles (or otherwise refuses to read a sole-constructor survivor as zero)
-// reaches the warm seven. INTERPRETATION: this pins the "emit what a settle would
-// have shown" branch of the two the contract allows.
+// RE-CUT at the MEASURED shape (session-v55 phase 18, roadmap item 46). This
+// section used to script the cold answer as a set of ONE member warming to seven,
+// so the member COUNT changed between the two answers. No server does that.
+// `session-v21/spike-p3.md:232-256` recorded the live Pylance walk this section
+// exists for, over `class Stripe` (11 members) in the python-scratch dogfood repo:
+//
+//   cold  membersOfType -> 11 members, 1 signed, 52ms  (the 50ms fan-out budget let
+//                                                       exactly one ask land, and it
+//                                                       was __init__)
+//   warm  membersOfType -> 11 members, 8 signed, 27ms  -> renderMethods -> 7
+//
+// The COUNT is complete from the first answer, because documentSymbol is cheap.
+// What is missing is SIGNATURES, and a server still cold 40ms later is cut by the
+// same wall clock and answers 11/1 again. So the cold answer REPEATS here before
+// the warm one lands, and a settle bound that stops because "the answer did not
+// change" deletes the case this section exists to hold. That is not hypothetical:
+// session-v50 phase 1 built exactly that stop, and the counting fixture kept these
+// rows green while it was in.
+//
+// The seven warm signature strings are the recorded render verbatim; only
+// __init__'s own text is illustrative, because the cold block never printed it.
+// INTERPRETATION: this pins the "emit what a settle would have shown" branch of the
+// two the contract allows.
 // ===========================================================================
 
 const PY_BOUND = { D_MAX: 2, N_MAX: 8 };
-const DEF_LOC = { uri: "file:///widget.py", range: { startLine: 0, startCharacter: 6, endLine: 0, endCharacter: 12 } };
+const DEF_LOC = { uri: "file:///stripe.py", range: { startLine: 0, startCharacter: 6, endLine: 0, endCharacter: 12 } };
 const ROOT_SITE = { uri: "file:///main.py", line: 0, character: 0 };
-const openFile = async (uri) => (uri === ROOT_SITE.uri ? "Widget" : "class Widget:\n    pass\n");
+const openFile = async (uri) => (uri === ROOT_SITE.uri ? "Stripe" : "class Stripe:\n    pass\n");
 
-const warmMethods = () =>
-  Array.from({ length: 7 }, (_, i) => ({ name: `render${i}`, kind: "method", signature: `render${i}(self) -> int` }));
-const soleConstructor = () => [{ name: "__init__", kind: "method", signature: "__init__(self, size: int) -> None" }];
+// The warm render, in order, from the recorded 380-char block. renderMethods drops
+// __init__, so these seven are what shipped.
+const WARM_RENDER = [
+  "enroll(morton_code: int) -> bool",
+  "enroll_tile(tile: Tile, lod: int | None = None) -> bool",
+  "enroll_batch(morton_codes: list[int], lod: int, force: bool) -> int",
+  "aggregate_fanout() -> int",
+  "partition_by_lod() -> dict[int, list[Tile]]",
+  "rehome_by_lod(by_lod: dict[int, list[Tile]]) -> int",
+  "tile_tally: int",
+];
+
+// The eleven members the server names on EVERY answer, cold or warm, in descent
+// order. `summarize`, `_tiles` and `_seen_codes` were still unsigned even warm.
+const STRIPE_MEMBERS = [
+  { name: "__init__", kind: "method", signature: "__init__(self, capacity: int) -> None" },
+  { name: "enroll", kind: "method", signature: WARM_RENDER[0] },
+  { name: "enroll_tile", kind: "method", signature: WARM_RENDER[1] },
+  { name: "enroll_batch", kind: "method", signature: WARM_RENDER[2] },
+  { name: "aggregate_fanout", kind: "method", signature: WARM_RENDER[3] },
+  { name: "partition_by_lod", kind: "method", signature: WARM_RENDER[4] },
+  { name: "rehome_by_lod", kind: "method", signature: WARM_RENDER[5] },
+  { name: "tile_tally", kind: "field", signature: WARM_RENDER[6] },
+  { name: "summarize", kind: "method", signature: undefined },
+  { name: "_tiles", kind: "field", signature: undefined },
+  { name: "_seen_codes", kind: "field", signature: undefined },
+];
+
+// One answer: all eleven named, the first `signedCount` of them carrying the
+// signature the hover fan-out landed before the budget cut it. The rest arrive
+// named and signature-less, which is what a documentSymbol tree with an
+// unfinished fan-out over it looks like.
+const answerWith = (signedCount) =>
+  STRIPE_MEMBERS.map((m, i) => (i < signedCount ? { ...m } : { ...m, signature: undefined }));
+
+const COLD = () => answerWith(1);
+const WARM = () => answerWith(8);
 
 function pyExtractor(memberSequence) {
   let call = 0;
   return {
     definition: async () => DEF_LOC,
-    hoverSurface: async () => ({ signature: "class Widget" }),
+    hoverSurface: async () => ({ signature: "class Stripe" }),
     membersOfType: async () => memberSequence[Math.min(call++, memberSequence.length - 1)],
+    calls: () => call,
   };
 }
 
-test("§1b control: a WARM cross-file Python type renders its 7 methods (fake + pipeline are sound)", async () => {
-  const shape = await resolveCrossFileShape(pyExtractor([warmMethods()]), ROOT_SITE, PY_BOUND, openFile, pyShapeHooks);
-  const widget = shape.types.get("Widget");
-  assert.ok(widget, "Widget resolves warm");
-  assert.strictEqual(widget.methods.length, 7, `warm walk renders all 7 methods; got ${JSON.stringify(widget.methods)}`);
+test("§1b fixture guard: the fake is the RECORDED shape — 11 members either way, 1 signed cold, 8 warm", () => {
+  const signedIn = (ms) => ms.filter((m) => m.signature !== undefined).length;
+  assert.strictEqual(COLD().length, 11, "the cold answer already names all eleven members");
+  assert.strictEqual(WARM().length, 11, "and the warm answer names the same eleven, not more");
+  assert.strictEqual(signedIn(COLD()), 1, "one signature landed inside the 50ms cold fan-out budget");
+  assert.strictEqual(signedIn(WARM()), 8, "eight landed warm");
+  assert.strictEqual(COLD()[0].name, "__init__", "and the one that landed cold is the member renderMethods drops");
 });
 
-test("§1b: a COLD touch whose sole survivor is __init__ must NOT resolve to zero methods (a 7-method type must not read as none)", async () => {
-  // Cold first (only __init__), warm on any re-touch (the seven a settle finds).
-  const shape = await resolveCrossFileShape(
-    pyExtractor([soleConstructor(), warmMethods()]),
-    ROOT_SITE,
-    PY_BOUND,
-    openFile,
-    pyShapeHooks,
-  );
-  const widget = shape.types.get("Widget");
-  assert.ok(widget, "Widget resolves (hover carried the type)");
+test("§1b control: a WARM cross-file Python type renders its 7 methods (fake + pipeline are sound)", async () => {
+  const shape = await resolveCrossFileShape(pyExtractor([WARM()]), ROOT_SITE, PY_BOUND, openFile, pyShapeHooks);
+  const stripe = shape.types.get("Stripe");
+  assert.ok(stripe, "Stripe resolves warm");
+  assert.deepStrictEqual(stripe.methods, WARM_RENDER, "the warm walk renders the recorded seven, __init__ dropped");
+});
+
+test("§1b: a COLD touch whose sole signed survivor is __init__ must NOT resolve to zero methods (a 7-method type must not read as none)", async () => {
+  // The recorded sequence: cold, still cold 40ms later (the same 11 members and the
+  // same 1 signature), then warm. A bound that stops because an answer repeated
+  // never reaches the third call.
+  const ex = pyExtractor([COLD(), COLD(), WARM()]);
+  const shape = await resolveCrossFileShape(ex, ROOT_SITE, PY_BOUND, openFile, pyShapeHooks);
+  const stripe = shape.types.get("Stripe");
+  assert.ok(stripe, "Stripe resolves (hover carried the type)");
   assert.ok(
-    widget.methods.length >= 1,
-    `the sole-constructor survivor must not read as a method-less type — a settle would show 7. ` +
-      `renderMethods dropped __init__ and left ${JSON.stringify(widget.methods)}`,
+    stripe.methods.length >= 1,
+    `the sole signed survivor must not read as a method-less type — a settle would show 7. ` +
+      `renderMethods dropped __init__ and left ${JSON.stringify(stripe.methods)} after ${ex.calls()} membersOfType calls`,
   );
 });
 
 test("§1b regression: isConstructionMember still recognizes the three construction spellings", () => {
-  assert.strictEqual(isConstructionMember("__init__", "Widget"), true, "python __init__");
-  assert.strictEqual(isConstructionMember("constructor", "Widget"), true, "ts/js constructor");
-  assert.strictEqual(isConstructionMember("Widget", "Widget"), true, "c# type-named ctor");
-  assert.strictEqual(isConstructionMember("render0", "Widget"), false, "an ordinary method is not a constructor");
+  assert.strictEqual(isConstructionMember("__init__", "Stripe"), true, "python __init__");
+  assert.strictEqual(isConstructionMember("constructor", "Stripe"), true, "ts/js constructor");
+  assert.strictEqual(isConstructionMember("Stripe", "Stripe"), true, "c# type-named ctor");
+  assert.strictEqual(isConstructionMember("enroll", "Stripe"), false, "an ordinary method is not a constructor");
 });
 
 // ===========================================================================
