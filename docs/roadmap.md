@@ -40,6 +40,8 @@ Proven broken, no design question left. Each is small and each is about the prod
 - **58.** Tighten Doc Comment fires rounds through a transport the build declared dead
 - **59.** the Rust and C# test rungs filter by substring, and the obvious flags are traps
 - **60.** two C# string constructs the re-indent scanner cannot see; one emits CS8999
+- **63.** the catch-all toasts render the service's internal reject strings verbatim
+- **64.** a FIM-sourced repair discard toasts a background race, then the queue drain contradicts it
 
 **2. Trust the instruments, before building on them**
 A number from the harness is a hypothesis until the instrument that produced it has been looked at. Mostly blocked on taking a measurement rather than on a design call.
@@ -324,6 +326,88 @@ is the review's - its generator is not in the repo - but the SHAPE is proven: ro
 runs one such body and the value moves. Fix shape: give `$"` an opener whose holes are tracked; it
 cannot span a line, which is how it slipped past the phase-13 oracle's hole rows (P13-7c, 18 cases,
 all correct within their line).
+
+### 63. The catch-all toasts render the service's internal reject strings verbatim
+
+Filed 2026-08-21 from a full sweep of all 90 toast call sites, after the human reported "weird
+technical internals" toasts. REASONED from source (read, not run); every string below is quoted
+verbatim from the code. Roughly 80% of the sites are healthy - crafted sentence, `Column 80:`
+prefix, cause plus next action - so this is a seam defect, not a culture defect.
+
+**The mechanism: one string serves two audiences.** The service layer's throw messages are written
+as channel lines (the same text is logged as `[fngen] request failed:`), and two catch-alls forward
+them to the user raw: `fnGen.ts:5744` (`Function generation failed: ${String(err)}`) and `:6249`
+(`Test generation failed: ...`). Only window refusals and server-unreachable are translated first.
+What reaches the screen, `Error: ` prefix included:
+
+- `generation truncated at num_predict=2048 (done_reason=length)`
+- `generation contains a code-fence line (unclosed or nested fence in the reply)`
+- `generation does not contain the requested function (declaration head not in the reply)`
+- `generation was empty after postprocess`
+- `Ollama stream cut: silent for 20000ms after 512 chars (http://localhost:11434)`
+- `Ollama 500 Internal Server Error: {raw body}` - and `safeText` (`ollama.ts:560`) puts the WHOLE
+  unbounded response body into that string, so a misbehaving server dumps JSON into a toast.
+
+Same class, narrower paths: `tightenDocComment.ts:1449` (`the tighten gesture failed
+(${String(err)})`), `firstRun.ts:313` (`the download failed - ${errorText(err)}`, which can carry
+the same raw body dumps), and the file-IO trio `fnGen.ts:6363/6646/6654` (raw Node `EACCES: ...`
+with full paths; informative at least, lowest priority).
+
+**Feeding the catch-alls: `isServerUnreachable` (`fnGen.ts:868`) is narrow.** ECONNREFUSED,
+ECONNRESET, ENOTFOUND, EAI_AGAIN and "fetch failed" TypeErrors only. ETIMEDOUT, EHOSTUNREACH and
+undici's `UND_ERR_*` codes fall through to the raw toast - and the remote-host arm (shipped v55)
+makes mid-connect timeouts a real path, not a corner.
+
+**The fix shape, and the repo already contains it twice.** `fnGen.ts:6538` and `:6719` do it right:
+`firstLine(String(err))` plus "the full message is in the channel". So: the vscode layer owns toast
+wording and the service keeps its channel wording; translate the five known reject reasons into
+human sentences (truncation becomes "the model's reply was cut off mid-function, so nothing was
+written - run the gesture again"; the channel keeps `done_reason=length`); every remaining
+catch-all gets the firstLine-plus-channel-pointer pattern; bound `safeText`; widen
+`isServerUnreachable` with the timeout codes. One rider: `fnGen.ts:5468` renders
+`Column 80: undefined` if a disabled tier arrives without a message - its sibling at `:6109`
+already guards this with a fallback.
+
+Known trap for the build session: many blind rows pin exact toast strings, so every rewording flips
+rows. That red is the falsification working; re-cut in the same phase.
+Falsify: drive each of the five service rejects through a gesture with a stubbed transport; the
+toast asserts the human sentence, the channel asserts the internal one, and no toast anywhere
+renders `String(err)` of a transport error unbounded.
+
+### 64. A FIM-sourced repair discard toasts a background race, then the queue drain contradicts it
+
+WITNESSED live by the human 2026-08-21, mechanism confirmed by reading the flow (read, not run).
+The report: on a FIM repair, "Column 80: generation discarded - the document changed during
+generation." followed by the repair diff opening anyway.
+
+The sequence, off the code: `column80.fimAccepted` (`fnGen.ts:5919`) runs the full post-accept
+oracle, so a FIM accept starts background repair rounds. The round captures
+`versionAtResolve` (`oracleSurface.ts:543`), spends seconds in a model call, and the user keeps
+typing - the NORMAL case after accepting a ghost - so `present()` loses the version race and toasts
+the discard at WARNING weight (`fnGen.ts:989`). Meanwhile a second FIM accept parked another
+session in the pending slot (`oracleSurface.ts:300-310`, newest wins). The discarded session ends,
+`drainPending()` fires the parked one, it re-checks the current file and opens a fresh
+"repair round 1 (preview)". Each half is behaving as designed; together they read "discarded, then
+done anyway", and the churn repeats as long as the user types.
+
+Two halves, one mechanical and one design:
+
+- **Mechanical: the discard toast is wrong-weight for a background session.** `present()`'s warn is
+  right for a gesture the user invoked (fn-gen, TDD, manual repair) and noise for an automatic
+  post-accept race the user's own typing wins. The session context already carries `source`; a
+  discard in a `source: "fim"` session goes to the channel (or the status bar, the surface
+  `surfaceEnvReason` already uses), and the toast survives on the explicit-gesture sources.
+- **Design, decide before building past the toast:** should a drained FIM-sourced session
+  auto-present a diff at all while the document is actively changing? Options include draining only
+  after the document has been quiet for a beat, or requiring the diagnostics surface (already
+  shown) to be the only automatic output and a diff to wait for a gesture. This is the
+  cancellation-is-a-primitive family this product has met before: background work racing a live
+  keystroke stream needs its interruption story designed, not patched. The toast fix above is worth shipping alone; this half
+  is not.
+
+Falsify: a FIM-accept repair round that loses the version race produces a channel line and NO
+toast; the fn-gen gesture's discard still toasts; and (if the design half ships) a drained
+FIM-sourced session against a document edited in the last N seconds does not open a diff.
 
 ## 2. Trust the instruments, before building on them
 
