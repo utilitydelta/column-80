@@ -1,5 +1,58 @@
 # Changelog
 
+## 2.2.0
+
+Function generation can now live on another machine. Point `column80.apiBase` at a GPU box or an
+on-prem Ollama and generation stops being gated on this laptop's VRAM: no local hardware probe, no
+model override, and when the host does not answer the message names the host instead of blaming a
+GPU the request never touched. FIM tab-completion stays on this machine in every configuration,
+because it runs a 1.5b model most machines can serve; before this release, pointing `apiBase` away
+silently took FIM with it and the ghost text just stopped. The first-run flow now pulls the FIM
+model onto the box that will serve it, and reads readiness off the right catalog.
+
+Generation refusals name their real cause. "No function at the cursor" used to cover three
+different failures, and the commonest was a missing language server: FIM kept working, the cursor
+was in the right place, and the message pointed at the one thing that was not broken. The resolver
+now splits the causes, names the language server it expected (rust-analyzer, gopls, Roslyn,
+Pylance, the TS server), says so when the tree is still indexing, and logs a `[fngen] refused:`
+line for each. The manual's requirements list now says a language server is required, which it
+always was.
+
+A hung generation no longer wedges tab-completion. A FIM stream that goes silent is cut, 60
+seconds before any data and 20 between lines, and the in-flight slot is released, so a dead
+request stops pinning single-flight until a different keystroke happened to free it. A healthy
+slow stream is untouched: the bound re-arms on every line, so only silence trips it.
+
+The injected surface is more honest in Rust. Enum variant payload types now join the cross-file
+walk, so the types data-oriented Rust keeps its structure in reach the prompt instead of stopping
+one hop away. And a standard-library type no longer gets a made-up import line: the path was
+derived from the sysroot's file layout, and measured against real `rustc` only 15 of 53 such lines
+compiled, 35 failing on private modules. A wrong `use` line under a header that says "these are
+already defined" is worse than none, so it is withheld and the channel says which types it
+withheld it from.
+
+Repair stops arguing with itself. A generic parameter is no longer resolved as a call owner, the
+repair prompt's prose legs no longer spend a disclosure slot on the very function being repaired,
+and a crate nested under a plain `[package]` ancestor gets repair back: the diagnostic anchor is
+now the nearest manifest declaring `[workspace]`, not whichever ancestor happened to carry a
+Cargo.toml. `cargo test` runs with more than one filter now pass them after `--`, where cargo
+wants them.
+
+What lands in your file survives the trip. On a CRLF document a generated body no longer arrives
+with mixed line endings or a doubled doc comment: replies are normalised once at the core, and the
+document's own ending goes back on at the write. In C#, a verbatim string nested inside an
+interpolation hole keeps its value through re-indentation - the scanner's string state is a stack
+now, and the defect was measured by compiling and running the result, 84 wrong values in a
+300-case population. In Rust, a `'"'` character literal no longer opens a phantom string that
+swallowed every comment after it, which had been silently disabling the backtick gesture for the
+rest of the span. And a context block whose text contains a code fence can no longer mangle the
+prompt: fences adapt to their content everywhere the product emits one.
+
+Small and worth having: `column80.debounceMs` now carries a schema minimum, because zero silently
+disabled the debounce and issued a full resolver call per keystroke; and repeated accepts in one
+crate no longer re-spawn `cargo metadata` - it is memoized per crate root and invalidated when
+Cargo.toml changes.
+
 ## 2.1.0
 
 You cannot say a backtick. Dictate a doc comment and the mic drops one long line into the buffer
