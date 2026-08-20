@@ -1200,7 +1200,7 @@ export function isCsAddImportAction(action: { title?: unknown; data?: unknown })
  *  string early, so the closing delimiter's line is classified as code and
  *  re-indented away from its content, and the C# that comes out DOES NOT
  *  COMPILE (CS8999). Pre-existing, byte-identical before and after phase 13,
- *  filed as queue Q16b and pinned live by row A13-7 of
+ *  filed as roadmap item 60 (formerly queue Q16b) and pinned live by row A13-7 of
  *  `test/adversarial-v55-p13-scanner-stack.test.cjs`. */
 type CsStrCtx =
   | { kind: "verbatim"; interp: boolean; holeDepth: number }
@@ -1358,8 +1358,9 @@ function advanceCsLineScan(line: string, s: CsLineScan): void {
     // regular interpolated string. Its `{...}` hole is modelled nowhere, so a
     // `@"` opened inside one desynchronises the quote count and a later
     // string's value can move. The parity above is real, but it is parity with
-    // a statement level that has the same hole; queue Q16c, pinned live by row
-    // A13-8 of `test/adversarial-v55-p13-scanner-stack.test.cjs`.
+    // a statement level that has the same hole; roadmap item 60 (formerly queue
+    // Q16c), pinned live by row A13-8 of
+    // `test/adversarial-v55-p13-scanner-stack.test.cjs`.
     const inHole = top !== undefined;
     const c = line[i];
     const c2 = line[i + 1];

@@ -1031,7 +1031,8 @@ export interface TestCommandOptions {
  * tests, which turns a working red into silence. Prefixing `tests::` is not the
  * fix either: `findCfgTestModule` matches any `mod <name>`, so extending an
  * existing module inherits the developer's own name. Exactness needs the
- * enclosing module resolved and threaded to here, and that is queue Q3b.
+ * enclosing module resolved and threaded to here, and that is roadmap item 59
+ * (formerly queue Q3b).
  */
 export function buildTestCommand(
   crateRoot: string,

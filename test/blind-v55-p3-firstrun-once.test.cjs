@@ -514,7 +514,7 @@ test("item 7: activation adds no unbounded await - registerFirstRun returns imme
   );
 });
 
-// ---- KNOWN WRONG: queue Q24, open and unfixed.
+// ---- KNOWN WRONG: queue Q24, ruled WONTFIX 2026-08-21 (roadmap: Rejected).
 //
 // These rows are GREEN BY ASSERTING THE DEFECT. Two windows are two extension
 // hosts, so nothing in process can coordinate them, and globalState reaches the
@@ -522,11 +522,12 @@ test("item 7: activation adds no unbounded await - registerFirstRun returns imme
 // wait on. Two windows launched together therefore both run the flow: two tier
 // pickers, and two concurrent pulls of the same model.
 //
-// WHEN A REAL FIX LANDS THESE GO RED, AND THAT RED IS SUCCESS. Rewrite them to
-// assert one flow at that point; do not delete them and do not weaken them
-// meanwhile. A fix has to be cross-host - a lock file under global storage with
-// stale-lock handling - because no module state and no globalState read can see
-// the other window in time.
+// The only honest fix is a cross-host lock file with stale-lock handling, and
+// the human ruled that machinery not worth a duplicate tier picker. Under the
+// ruling these rows stay green as the pinned record of the accepted behaviour;
+// do not delete them and do not weaken them. If the ruling is ever reversed and
+// a real fix lands, THESE GO RED AND THAT RED IS SUCCESS - rewrite them to
+// assert one flow at that point.
 
 test("KNOWN WRONG (Q24): two windows launched together BOTH run the first-run flow", async () => {
   const windowA = newHost();
