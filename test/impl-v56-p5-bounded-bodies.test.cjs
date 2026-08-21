@@ -162,6 +162,24 @@ function startServer(status, body, contentType) {
 
 const MODEL = "qwen3-coder:30b";
 
+/** Same as startServer, but the caller owns the HTTP reason phrase. Node puts
+ *  no ceiling on it, so it is a server-controlled half of the error string
+ *  exactly like the body is. */
+function startServerWithReason(status, reason, body) {
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(status, reason, { "content-type": "text/plain" });
+      res.end(body);
+    });
+  });
+  return new Promise((resolve) =>
+    server.listen(0, "127.0.0.1", () =>
+      resolve({ server, base: `http://127.0.0.1:${server.address().port}` }),
+    ),
+  );
+}
+
 async function messageFrom(drive, body, contentType) {
   const srv = await startServer(500, body, contentType);
   try {
@@ -366,9 +384,34 @@ const RECOGNISED = [
   "ETIMEDOUT",
   "EHOSTUNREACH",
   "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_HEADERS_TIMEOUT",
-  "UND_ERR_SOCKET",
 ];
+
+// RE-CUT (P5 review MED 3): UND_ERR_HEADERS_TIMEOUT and UND_ERR_SOCKET were in
+// this list while the classifier matched the whole UND_ERR_ prefix. They mean
+// the server WAS reached, so they moved to NOT_UNREACHABLE below.
+const NOT_UNREACHABLE = ["UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_ABORTED"];
+
+test("a mid-stream socket close is not the server being down", () => {
+  // The real shape: the server accepted the connection, streamed a token, then
+  // the socket died. Offering "Start ollama serve" for a server that answered
+  // sends the user to fix something that is not broken.
+  const midStream = Object.assign(new TypeError("terminated"), {
+    cause: { name: "SocketError", code: "UND_ERR_SOCKET", message: "other side closed" },
+  });
+  assert.strictEqual(isServerUnreachable(midStream), false);
+});
+
+test("only the connect-phase undici code classifies; the reached-the-server ones do not", () => {
+  for (const code of NOT_UNREACHABLE) {
+    assert.strictEqual(
+      isServerUnreachable(isolated({ code })),
+      false,
+      `${code} means the server was reached, so it must not read as unreachable`,
+    );
+    assert.strictEqual(isServerUnreachable(isolated({ cause: { code } })), false, `${code} under cause`);
+  }
+  assert.strictEqual(isServerUnreachable(isolated({ code: "UND_ERR_CONNECT_TIMEOUT" })), true);
+});
 
 test("every recognised code classifies unreachable at err.code, on the code leg alone", () => {
   for (const code of RECOGNISED) {
@@ -408,8 +451,8 @@ test("near misses stay unrecognised at both levels", () => {
     "EPIPE",
     "EPERM",
     "ERR_INVALID_ARG_TYPE",
-    "NOT_UND_ERR_CONNECT", // UND_ERR_ is a PREFIX, not a substring
-    "und_err_socket", // codes are upper case; a lower-case one is not undici's
+    "NOT_UND_ERR_CONNECT",
+    "und_err_connect_timeout", // codes are upper case; a lower-case one is not undici's
     "ETIMEDOUT_LOOKALIKE",
   ];
   for (const code of misses) {
@@ -454,3 +497,56 @@ test("the message leg is still there: a bare fetch-failed TypeError classifies w
     "the message leg is TypeError-only; widening it to any Error is not this contract's work",
   );
 });
+
+// ---------------------------------------------------------------------------
+// P5 review MED 1: the reason phrase is the OTHER server-controlled half. The
+// phase bounded the body and left this one open, so a 2-char body still made a
+// 6015-char one-line error string that firstLine cannot shorten.
+// ---------------------------------------------------------------------------
+
+async function messageWithReason(drive, reason, body) {
+  const srv = await startServerWithReason(500, reason, body);
+  try {
+    await drive(srv.base);
+    assert.fail("a 500 must reject; it resolved instead");
+  } catch (err) {
+    return String(err && err.message !== undefined ? err.message : err);
+  } finally {
+    srv.server.close();
+  }
+}
+
+const REASON_DRIVES = [
+  [
+    "generate path",
+    (base) =>
+      generateInstruct({
+        apiBase: base,
+        model: MODEL,
+        prompt: "write a function",
+        maxTokens: 64,
+        temperature: 0.2,
+        signal: new AbortController().signal,
+      }),
+  ],
+  ["pull path", (base) => pullModel(base, MODEL, new AbortController().signal, () => {})],
+];
+
+for (const [name, drive] of REASON_DRIVES) {
+  test(`[${name}] a 6000-char HTTP reason phrase does not escape the bound`, async () => {
+    const msg = await messageWithReason(drive, "R".repeat(6000), "no");
+    assert.ok(
+      msg.length < 900,
+      `the reason phrase escaped the bound: the whole error string is ${msg.length} chars`,
+    );
+    assert.ok(/500/.test(msg), "the status number survives the bound");
+    assert.ok(/\[\+\d+ chars elided\]/.test(msg), "the cut reason phrase states how much went");
+    assert.ok(msg.includes("no"), "the short body is still there, uncut");
+  });
+
+  test(`[${name}] an ordinary reason phrase is left alone`, async () => {
+    const msg = await messageWithReason(drive, "Internal Server Error", "no");
+    assert.ok(msg.includes("Internal Server Error"), `the reason phrase was mangled: ${msg}`);
+    assert.ok(!/chars elided/.test(msg), "nothing was cut, so no marker");
+  });
+}

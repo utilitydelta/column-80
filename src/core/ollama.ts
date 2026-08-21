@@ -312,7 +312,7 @@ async function streamGenerate(
     });
 
     if (!res.ok) {
-      throw new Error(`Ollama ${res.status} ${res.statusText}: ${await safeText(res)}`);
+      throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
     }
     if (!res.body) {
       throw new Error("Ollama: response has no body");
@@ -518,7 +518,7 @@ export async function pullModel(
     signal,
   });
   if (!res.ok) {
-    throw new Error(`Ollama ${res.status} ${res.statusText}: ${await safeText(res)}`);
+    throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
   }
   if (!res.body) {
     throw new Error("Ollama: pull response has no body");
@@ -573,10 +573,14 @@ function withTrailingSlash(base: string): string {
  *  and the channel line. */
 const ERROR_BODY_CHARS = 400;
 
-/** An HTTP error body, bounded. A body inside the budget passes through
- *  verbatim — the bound must not mangle the ordinary "model not found" error.
- *  Over it, the head is kept and the marker states how much was dropped, so a
- *  short body and a cut one cannot be confused. */
+/** An HTTP error string's server-controlled halves, bounded. A value inside the
+ *  budget passes through verbatim — the bound must not mangle the ordinary
+ *  "model not found" error. Over it, the head is kept and the marker states how
+ *  much was dropped, so a short value and a cut one cannot be confused.
+ *
+ *  Both halves need this. Node puts no ceiling on the HTTP reason phrase, so
+ *  bounding the body alone left the whole error string escapable through
+ *  statusText, on one line, where firstLine cannot shorten it. */
 function boundBody(body: string): string {
   if (body.length <= ERROR_BODY_CHARS) {
     return body;

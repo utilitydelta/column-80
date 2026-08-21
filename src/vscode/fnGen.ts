@@ -865,9 +865,13 @@ export function isBodylessMemberTarget(languageId: string, spanText: string): bo
 /** Connection-level codes that mean the server was not reached at all. The
  *  timeout and host-unreachable pair are the remote-host arm's failures: a
  *  LAN or tunnelled ollama that is down answers with silence, not a refusal.
- *  undici raises its own `UND_ERR_*` codes for the same class of failure
- *  (connect timeout, headers timeout, socket gone); our cancels are normalised
- *  to an AbortError with no string `code`, so the prefix cannot sweep one in. */
+ *
+ *  undici's connect timeout joins them by name, NOT by a `UND_ERR_` prefix.
+ *  The prefix was too wide: only a connect-phase failure proves the server was
+ *  never reached, and `UND_ERR_SOCKET` means the opposite - a real mid-stream
+ *  socket close arrives as one, and the server had already answered and
+ *  streamed a token. Offering "Start ollama serve" for a server that is
+ *  running is worse than falling through to the plain failure wording. */
 const UNREACHABLE_CODES = [
   "ECONNREFUSED",
   "ECONNRESET",
@@ -875,12 +879,11 @@ const UNREACHABLE_CODES = [
   "EAI_AGAIN",
   "ETIMEDOUT",
   "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
 ];
 
 function isUnreachableCode(code: unknown): boolean {
-  return (
-    typeof code === "string" && (UNREACHABLE_CODES.includes(code) || code.startsWith("UND_ERR_"))
-  );
+  return typeof code === "string" && UNREACHABLE_CODES.includes(code);
 }
 
 /** True when a generate error is the Ollama server being unreachable rather
