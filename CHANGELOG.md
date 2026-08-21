@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+A misbehaving server can no longer flood a notification on any backend. Session-v56 bounded the
+local path and left the Anthropic and cloud clients with byte-identical unbounded copies, so a 500
+with a 100KB body put the whole 100KB in a toast: measured at 102437 characters. The bound is one
+piece of code now and all three transports use it, on the body and on the HTTP reason phrase.
+
+The same is true of a failure that arrives inside a successful response. A model server can answer
+200 and put its error in the stream, which never passed through an error body and so was never
+bounded. Four such sites are bounded now, including the download progress line, which a server
+could make 100,000 characters wide.
+
+The silent server sounds the same whichever backend you run. A stream that ends mid-reply used to
+say "the model server went silent mid-reply, so nothing was written - check the server, then run the
+gesture again" on one backend and hand you `message_stop` or `response has no body` on the others.
+Those are API vocabulary, not instructions. One event, one sentence, on all of them.
+
+And the server cannot put words in that sentence's mouth. The failure message was matched on a
+substring found anywhere in it, so a server whose error text happened to contain another failure's
+wording drew that failure's sentence: a stream error reading "generation was empty after
+postprocess" told you the model produced nothing usable. A message that opens with a transport's own
+prefix is now treated as carrying the server's text, and nothing inside it is answered as one of
+ours.
+
+One message narrowed rather than widened. Anthropic's in-stream error frame is a generic envelope: a
+rate limit, an invalid API key and a malformed request all arrive through it. Calling it a silent
+server told you to check a server that was fine and took the real reason off the screen. It keeps
+the provider's own message, which is the half you can act on.
+
+A disabled Claude Code backend says one line. When it cannot create its working directory the
+notification interpolated the raw error object, `Error:` prefix included, with no cut. Every gesture
+that reports a disabled tier now shows one line and points at the output channel when there is more
+to see.
+
 Failure messages stop speaking to the wrong audience. `Error: generation truncated at
 num_predict=2048 (done_reason=length)` was a channel line wearing a notification's clothes, and it
 was one of six: a reply cut off mid-function, a stray code fence, a reply missing the function you

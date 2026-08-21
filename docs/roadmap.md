@@ -41,10 +41,8 @@ Proven broken, no design question left. Each is small and each is about the prod
 - **7.** Rust has injection and zero enforcement, the last such language
 - **59.** the Rust and C# test rungs filter by substring, and the obvious flags are traps
 - **60.** two C# string constructs the re-indent scanner cannot see; one emits CS8999
-- **63.** two unbounded interpolation sites the toast sweep did not reach, and one raw tier message
 - **64.** should a drained FIM session open a diff against a document still being typed in
 - **65.** the import hint names crates the target does not link, and mis-names a renamed one
-- **66.** item 63's translations stopped at the Ollama arm; two live backends throw the same failures unmarked
 
 **2. Trust the instruments, before building on them**
 A number from the harness is a hypothesis until the instrument that produced it has been looked at. Mostly blocked on taking a measurement rather than on a design call.
@@ -270,41 +268,6 @@ runs one such body and the value moves. Fix shape: give `$"` an opener whose hol
 cannot span a line, which is how it slipped past the phase-13 oracle's hole rows (P13-7c, 18 cases,
 all correct within their line).
 
-### 63. Two unbounded interpolation sites the toast sweep did not reach, and one raw tier message
-
-The translation half shipped in session-v56. Six service rejects become human sentences at the
-vscode layer, every catch-all is one line plus a channel pointer, `safeText` and the status reason
-phrase are bounded, and `isServerUnreachable` recognises the connect-phase timeouts. What is left
-is three strings that phase's contract did not enumerate, all found by its own adversarial review.
-The first two are PROVEN, each measured to a character count by the review that found it. The third
-is REASONED.
-
-**The NDJSON `error` field, which is not an HTTP error body and so was never in scope.** A
-200-status Ollama stream can carry its failure inside the JSON: `ollama.ts:350` throws
-`Ollama error: ${evt.error}` and `ollama.ts:534` throws `evt.error` raw. Neither goes through
-`safeText`, so the bound never sees them, and both are ONE line, so `firstLine` cannot shorten them
-either. Measured: a 102477-char toast out of `firstRun.ts:313`, whose own comment two lines up
-cites this item as the reason that toast is bounded. It is bounded, to one line, and the line is
-100KB. Same shape at `ollama.ts:536`, which hands the server's `evt.status` to `onProgress` for
-`firstRun.ts:294` to render as a progress message with no bound. Fix: the same `boundBody` call at
-all three.
-
-**The two sibling transports still carry the pre-fix `safeText`.** `anthropicInstruct.ts:158` and
-`cloudInstruct.ts:245` are byte-identical copies of the unbounded version, feeding the same
-`${res.status} ${res.statusText}: ${body}` template at `anthropicInstruct.ts:322` and
-`cloudInstruct.ts:275`. The review measured a 102437-char Anthropic error string. Both are live
-fn-gen backends, so a cloud 500 with a big body puts it in front of the user exactly the way Ollama
-used to. Lift `boundBody` and `safeText` out of `ollama.ts` into a module all three transports
-import. Item 66 wants those same two files, so do them in one pass.
-
-**The claude-code `cwd-unusable` message.** `fnGen.ts:1522-1524` builds it with a raw `String(err)`
-and the tier gate at `:5628-5630` renders it as `Column 80: ${why}` with no `firstLine` and no
-channel pointer. A real `mkdirSync` failure is one line, so this is an `Error:` prefix blemish
-rather than a dump, and it is the smallest of the three.
-
-Falsify: a 100KB `error` field in a 200-status stream produces a bounded toast on both the generate
-and the pull path; an Anthropic and a Cloud 500 with a 100KB body do the same.
-
 ### 64. Should a drained FIM session open a diff against a document still being typed in
 
 The mechanical half shipped in session-v56: a repair discard in a `source: "fim"` session goes to
@@ -352,28 +315,6 @@ and nothing has measured which way that trade falls.
 Falsify: a cross-crate type whose manifest does not list the crate contributes no hint; a renamed
 dependency renders the dependency key rather than the package name; every hint that compiled before
 still compiles.
-
-### 66. Item 63's translations stopped at the Ollama arm, and two live backends throw the same failures unmarked
-
-Filed 2026-08-21 out of session-v56's phase 4 review, which deferred it as outside that contract's
-enumerated list. REASONED from source, and the source is three transports writing one failure three
-ways.
-
-The stream-cut class carries a translator marker on the Ollama arm only. The same user-visible
-failure, the server going silent mid-reply, is thrown unmarked by `anthropicInstruct.ts:257` ("the
-stream ended before message_stop"), `anthropicInstruct.ts:197` (the stream's own error event),
-`cloudInstruct.ts:140` and `ollama.ts:318` ("response has no body"). Those users get the catch-all
-with API jargon in it instead of the crafted sentence, and all three arms are live fn-gen backends
-(`fnGen.ts:30-33`).
-Item 63 as written only bought the Ollama string.
-
-Fix shape: a per-class marker set, or one shared "the model server went silent mid-reply" row per
-transport. The same two files carry item 63's unbounded `safeText` twins, which is filed there
-because the bound is that item's; the two are named across so nobody ships one arm and leaves the
-other.
-
-Falsify: drive a silent stream through each of the three backends; all three toast the same crafted
-sentence and none of them carries `message_stop` to the screen.
 
 ## 2. Trust the instruments, before building on them
 

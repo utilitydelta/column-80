@@ -4,6 +4,9 @@ What `docs/roadmap.md` used to carry and no longer does. That file is pending wo
 everything here is a record: the shipped-item gap list, the consolidation notes, a question settled
 without a human, and the disposition of the old session scraps.
 
+Caught up again on 2026-08-21 by session-v57: items **63** and **66** struck, both closed in one
+pass the way their entries asked for. See the gaps below.
+
 Split out of the roadmap on 2026-08-21 by session-v56. Nothing here is an instruction. If a line
 here reads like work, it belongs back in the roadmap as a numbered item, not here.
 
@@ -213,6 +216,44 @@ is not followed, only the file chain, so the second hop is not in evidence, and 
 covers it. Residue is item 65). Items 63 and 64 shrank rather than closed: 63's six translations,
 bounded catch-alls, bounded body and reason phrase, and widened unreachable check all shipped while
 its two remaining interpolation sites did not; 64's toast half shipped and its design half did not.
+
+**63** (three strings the session-v56 toast sweep did not reach, all closed by session-v57 on
+2026-08-21. The two sibling transports carried byte-identical unbounded copies of `safeText`: a
+500 with a 100KB body measured 102437 characters of notification on the Anthropic arm and 102433 on
+Cloud, on one line, where the toast's own first-line rule cannot shorten it. The bound now lives
+once in `src/core/errorBound.ts`, a leaf that imports nothing, and all three transports take it from
+there along with the HTTP reason phrase, which Node puts no ceiling on. `cloudInstruct` reads its own
+400 unbounded on purpose, because `adaptDialect` JSON-parses that body to learn the provider's token
+parameter and a bound at the read hands the parse a truncated document; the bound goes on at the
+throw, and a row goes red if that is swapped back. The failures that arrive inside a 200 never
+touched `safeText` at all and are bounded at four sites now, three in `ollama.ts` and one in
+`anthropicInstruct.ts` that the entry did not enumerate; every one coerces with `String()` first,
+because the error field is typed string and a server may still send an object, and without the
+coercion three of four hostile shapes throw out of the stream reader and an array reaches 200015
+characters. The claude-code `cwd-unusable` message reads `err.message` rather than `String(err)`, so
+the `Error:` envelope is gone, and `tierDisabledToast` in `src/vscode/toastText.ts` renders every
+disabled tier as one line with a channel pointer appended only when the cut actually dropped
+something. Four gestures render a tier message and all four were swept, not the one the entry named.
+Residue is in the session scraps: the toast still points at a channel whose copy is the same bounded
+string, the cloud reader drops an in-200 error frame entirely, and two repair toasts in
+`oracleSurface.ts` still render a multi-line compiler diagnostic whole), **66** (one sentence for the
+silent server on every transport, session-v57, 2026-08-21. The table now carries marker SETS rather
+than markers, which is this entry's own first option, so it stays at seven rows. Matching changed
+twice and both changes are behaviour: anchored rows match at index 0, because otherwise a server can
+put another row's words in a payload and draw a different subsystem's sentence, which was live at
+`ollama.ts`'s in-200 error field. Anchoring alone does not close that. A transport throw carrying
+server text and no crafted sentence never reaches the anchored pass at all, so a message opening with
+a known transport head is treated as a payload carrier and no service row may match inside it; that
+also closed the same forgery on the three HTTP-status throws, which nobody had tested. One of the
+entry's five throws turned out not to be a silent server: Anthropic's error frame is a generic
+envelope, and a rate limit, an invalid key and a malformed request were all being told to check a
+healthy server. It keeps the provider's own message, loses the phrase "stream error", and gets no
+crafted sentence. Two things this entry claimed are not true and should not be re-quoted: the
+`Ollama stream cut:` sentence it named as the reference is unreachable from the fn-gen toast, because
+the only silence bound in the product is `FIM_SILENCE` and `generateInstruct` passes none, so no
+fn-gen backend can detect a hung server at all. That is filed as a fresh item's worth of work in the
+session scraps, along with the cloud arm having no mid-reply cut detection and the claude-code
+backend having no rows)
 
 ## Settled without a human: S22 (2026-08-08)
 

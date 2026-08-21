@@ -785,3 +785,40 @@ symmetry row now goes red on a future half-wiring.
 **Pinned by.** `test/blind-v56-p5-bounded-bodies.test.cjs`, untouched through the narrowing, and
 `test/impl-v56-p5-bounded-bodies.test.cjs`, which carries the real mid-stream shape and the
 connect-timeout-yes / socket-and-headers-no pair.
+
+## S20. Anthropic's in-stream error frame is not a silent server
+
+**NOT YET RATIFIED. Narrowed 2026-08-21 in the session-v57 phase 4 review loop-back (finding HIGH 1,
+triaged DO). Flagged here because it narrows the written contract's own wording, and because the
+wording it narrows came from a roadmap entry rather than from a phase.**
+
+**What changed.** `session-v57/contract-phase4.md` clause 1 lists five throws that must all produce
+one sentence, and roadmap item 66 named the same five. Four of them ship that way. The fifth,
+`anthropicInstruct.ts`'s SSE `error` frame, does not, and it was removed from the class.
+
+**Why, measured.** That frame is Anthropic's generic in-stream error envelope. A rate limit, an
+invalid API key and a malformed request all arrive through it, and all three came out as:
+
+```
+thrown: "Anthropic stream error: invalid x-api-key"
+toast : "Column 80: the model server went silent mid-reply, so nothing was written -
+         check the server, then run the gesture again."
+```
+
+Wrong cause and wrong remedy, with the real reason taken off the screen. Before the phase, that user
+was told their key was invalid, in jargon. After it, they were told to check a server that is fine.
+
+**What ships instead.** The throw is reworded to `Anthropic reported an error mid-reply: ${...}`. It
+keeps the provider's own message, which is the actionable half and the same reasoning the
+HTTP-status throw on that arm already uses, and it drops `stream error`, which was the only API
+vocabulary it carried. The site gets no crafted sentence, because it is not one failure.
+
+**The classification error was in the item, not the build.** Item 66 was REASONED from source, and
+reading a throw site tells you a stream carried an error, not which errors a provider puts there.
+This is what `goal.md`'s own falsification-gap section predicted: nothing in the session watched a
+real Anthropic failure, and the phase's review is what drove one.
+
+**Pinned by.** `test/blind-v57-p4-one-voice.test.cjs`, whose rows for this arm were re-cut to pin the
+opposite (a generic provider error is NOT called a silent server, and it still puts no API vocabulary
+on the screen), and `test/impl-v57-p4-one-voice.test.cjs`, which carries the coupling on the new
+wording. The measurement and the ruling are at the end of `session-v57/goal.md`.
