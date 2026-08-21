@@ -862,14 +862,38 @@ export function isBodylessMemberTarget(languageId: string, spanText: string): bo
   return false;
 }
 
+/** Connection-level codes that mean the server was not reached at all. The
+ *  timeout and host-unreachable pair are the remote-host arm's failures: a
+ *  LAN or tunnelled ollama that is down answers with silence, not a refusal.
+ *  undici raises its own `UND_ERR_*` codes for the same class of failure
+ *  (connect timeout, headers timeout, socket gone); our cancels are normalised
+ *  to an AbortError with no string `code`, so the prefix cannot sweep one in. */
+const UNREACHABLE_CODES = [
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+];
+
+function isUnreachableCode(code: unknown): boolean {
+  return (
+    typeof code === "string" && (UNREACHABLE_CODES.includes(code) || code.startsWith("UND_ERR_"))
+  );
+}
+
 /** True when a generate error is the Ollama server being unreachable rather
  *  than a real generation fault. Node's fetch reports a refused/reset
  *  connection as a TypeError "fetch failed" carrying a cause with the errno
- *  code, so both the message and the nested cause are checked. */
+ *  code, so the message, the nested cause and the error's own code are all
+ *  checked. Top-level and nested are matched against the SAME list on purpose:
+ *  a code that means "unreachable" under `cause` means it at the top too, and
+ *  a raw `err.code` is what a non-fetch caller (or a wrapper that flattens the
+ *  cause) hands over. */
 export function isServerUnreachable(err: unknown): boolean {
-  const codes = ["ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN"];
-  const cause = (err as { cause?: { code?: string } })?.cause;
-  if (cause?.code !== undefined && codes.includes(cause.code)) {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | undefined;
+  if (isUnreachableCode(e?.code) || isUnreachableCode(e?.cause?.code)) {
     return true;
   }
   return err instanceof TypeError && /fetch failed/i.test(err.message);
