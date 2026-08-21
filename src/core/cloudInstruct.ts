@@ -21,6 +21,8 @@
 
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
+import { boundBody, rawText } from "./errorBound";
+
 export interface CloudProvider {
   id: string;
   /** Human-facing name for settings and evidence. */
@@ -237,12 +239,15 @@ async function postChat(
       return { res, started };
     }
 
-    const detail = await safeText(res);
+    // UNBOUNDED on purpose: adaptDialect parses this document, and a bound
+    // applied here would hand its parse a truncated body with an elision
+    // marker on the end. The bound goes on at the throw, three lines down.
+    const detail = await rawText(res);
     const next = adaptDialect(res.status, detail, dialect);
     if (!next) {
       // Surface the provider's own message (invalid key, unknown model, quota):
       // it is the actionable half. The key is never in the body we send back.
-      throw new Error(`Cloud ${res.status} ${res.statusText}: ${detail}`);
+      throw new Error(`Cloud ${res.status} ${boundBody(res.statusText)}: ${boundBody(detail)}`);
     }
     learnedDialects.set(key, next);
     dialect = next;
@@ -270,12 +275,4 @@ function abortError(): Error {
 
 function withTrailingSlash(base: string): string {
   return base.endsWith("/") ? base : base + "/";
-}
-
-async function safeText(res: Response): Promise<string> {
-  try {
-    return await res.text();
-  } catch {
-    return "<no body>";
-  }
 }

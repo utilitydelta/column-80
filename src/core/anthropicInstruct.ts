@@ -26,6 +26,8 @@
 import { usageEvidence } from "./cacheEvidence";
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
+import { boundBody, safeText } from "./errorBound";
+
 export interface AnthropicInstructConfig {
   /** Resolved endpoint root: the `anthropic` preset's baseUrl or the user's
    *  override. `/messages` hangs off it. */
@@ -155,7 +157,7 @@ async function streamMessages(
     // The provider's own message is the actionable half (invalid key, unknown
     // model, quota). What we sent back is never in it, so the key cannot leak
     // into a notification or the evidence channel.
-    throw new Error(`Anthropic ${res.status} ${res.statusText}: ${await safeText(res)}`);
+    throw new Error(`Anthropic ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
   }
   if (!res.body) {
     throw new Error("Anthropic: response has no body");
@@ -317,12 +319,4 @@ function abortError(): Error {
 
 function withTrailingSlash(base: string): string {
   return base.endsWith("/") ? base : base + "/";
-}
-
-async function safeText(res: Response): Promise<string> {
-  try {
-    return await res.text();
-  } catch {
-    return "<no body>";
-  }
 }

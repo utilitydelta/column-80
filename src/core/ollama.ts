@@ -11,6 +11,8 @@
  * TTFT is measurable per request — the warm-latency oracle depends on it.
  */
 
+import { boundBody, safeText } from "./errorBound";
+
 export interface FimGenerateParams {
   apiBase: string;
   model: string;
@@ -566,39 +568,3 @@ function withTrailingSlash(base: string): string {
   return base.endsWith("/") ? base : base + "/";
 }
 
-/** How much of an HTTP error body survives into an error string. The string
- *  reaches a toast, and a misbehaving server can answer a 500 with a megabyte
- *  of HTML or JSON; a few hundred chars is more than the `{"error":"..."}`
- *  shape ollama actually sends needs. One bounded string serves both the toast
- *  and the channel line. */
-const ERROR_BODY_CHARS = 400;
-
-/** An HTTP error string's server-controlled halves, bounded. A value inside the
- *  budget passes through verbatim — the bound must not mangle the ordinary
- *  "model not found" error. Over it, the head is kept and the marker states how
- *  much was dropped, so a short value and a cut one cannot be confused.
- *
- *  Both halves need this. Node puts no ceiling on the HTTP reason phrase, so
- *  bounding the body alone left the whole error string escapable through
- *  statusText, on one line, where firstLine cannot shorten it. */
-function boundBody(body: string): string {
-  if (body.length <= ERROR_BODY_CHARS) {
-    return body;
-  }
-  let kept = body.slice(0, ERROR_BODY_CHARS);
-  // Cutting by code unit can split a surrogate pair; drop the orphaned half
-  // rather than render a replacement character in the error string.
-  const last = kept.charCodeAt(kept.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) {
-    kept = kept.slice(0, -1);
-  }
-  return `${kept} [+${body.length - kept.length} chars elided]`;
-}
-
-async function safeText(res: Response): Promise<string> {
-  try {
-    return boundBody(await res.text());
-  } catch {
-    return "<no body>";
-  }
-}
