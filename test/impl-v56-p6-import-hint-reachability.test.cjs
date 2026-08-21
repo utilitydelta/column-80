@@ -324,6 +324,63 @@ test("[ambiguity] a DEEPER glob (`seg::inner::*`) does not prove the name is car
   );
 });
 
+test("[ambiguity] a glob ABOVE the def's own module does not carry the name", () => {
+  // The real shape, from fraction-0.15.3: `pub use fraction::*;` at the root
+  // over a def in `fraction/display.rs`. A glob re-exports one module's items,
+  // not its children's, so the old accept rendered `use crate::Format;` and
+  // rustc answered E0432. A glob counts only at the def's OWN module.
+  const deps = fsOf({
+    [`${PG}/Cargo.toml`]: manifest("playground"),
+    [`${PG}/src/lib.rs`]: `mod fraction;\npub use fraction::*;\n`,
+    [`${PG}/src/fraction/mod.rs`]: `pub mod display;\n`,
+    [`${PG}/src/fraction/display.rs`]: `pub struct Format;\n`,
+  });
+  assert.equal(hintPath("Format", `${PG}/src/fraction/display.rs`, deps), undefined);
+  assert.equal(ratifyPath("Format", `${PG}/src/fraction/display.rs`, deps), undefined);
+});
+
+test("[ambiguity] a same-named SIBLING re-export does not publish this def", () => {
+  // The worst failure mode this walk can have: accepting the sibling rendered
+  // `use crate::Error;`, which COMPILES and binds codec::json::Error while the
+  // def is codec::bin::Error. A hint that fails loudly beats one that is wrong
+  // and silent, under a header telling the model the import is already defined.
+  const deps = fsOf({
+    [`${PG}/Cargo.toml`]: manifest("playground"),
+    [`${PG}/src/lib.rs`]: `mod codec;\npub use codec::json::Error;\n`,
+    [`${PG}/src/codec/mod.rs`]: `pub mod json;\npub mod bin;\n`,
+    [`${PG}/src/codec/json.rs`]: `pub struct Error { pub json_only: u8 }\n`,
+    [`${PG}/src/codec/bin.rs`]: `pub struct Error { pub bin_only: u16 }\n`,
+  });
+  assert.equal(hintPath("Error", `${PG}/src/codec/bin.rs`, deps), undefined);
+  assert.equal(ratifyPath("Error", `${PG}/src/codec/bin.rs`, deps), undefined);
+});
+
+test("[policy] `#[cfg_attr(...)]` applies an attribute, it does not gate existence", () => {
+  // cfg_attr with the feature off leaves the item present, so rustc accepts the
+  // import. Reading it as a gate withheld the hint from the serde optional
+  // derive and the docs.rs badge. `test/impl-v3-cfgscan.test.cjs` pins the same
+  // ruling for the module scanner - the two must not drift apart.
+  const withAttr = (attr) =>
+    fsOf({
+      [`${PG}/Cargo.toml`]: manifest("playground"),
+      [`${PG}/src/lib.rs`]: `pub mod store;\n`,
+      [`${PG}/src/store.rs`]: `${attr}\npub struct Order;\n`,
+    });
+  assert.equal(
+    hintPath("Order", `${PG}/src/store.rs`, withAttr(`#[cfg_attr(feature = "serde", derive(Serialize))]`)),
+    "crate::store::Order",
+  );
+  assert.equal(
+    hintPath("Order", `${PG}/src/store.rs`, withAttr(`#[cfg_attr(docsrs, doc(cfg(feature = "x")))]`)),
+    "crate::store::Order",
+  );
+  // The control: a real cfg still gates, so the refusal is not simply gone.
+  assert.equal(
+    hintPath("Order", `${PG}/src/store.rs`, withAttr(`#[cfg(feature = "x")]`)),
+    undefined,
+  );
+});
+
 test("[ambiguity] a renamed re-export (`pub use store::Order as Item;`) does not publish `Order`", () => {
   const deps = fsOf({
     [`${PG}/Cargo.toml`]: manifest("playground"),

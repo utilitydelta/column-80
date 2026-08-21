@@ -108,6 +108,12 @@ function moduleFileFor(srcRoot: string, segs: readonly string[], d: RustReachDep
  * wrong rows in the corpus. The walk back crosses other attributes, doc
  * comments and blank lines, because the cfg is rarely the attribute nearest the
  * item.
+ *
+ * `#[cfg_attr(...)]` is NOT a gate and must not be read as one: it applies an
+ * attribute conditionally to an item that always exists. Reading it as a gate
+ * withheld a hint from the serde optional-derive and the docs.rs badge, two of
+ * the commonest attributes in the ecosystem. `test/impl-v3-cfgscan.test.cjs`
+ * pins the same ruling for the module scanner; the two must not drift.
  */
 function precededByCfg(text: string, index: number): boolean {
   const before = text.slice(0, index).split("\n");
@@ -116,7 +122,7 @@ function precededByCfg(text: string, index: number): boolean {
     if (line === "" || line.startsWith("///") || line.startsWith("//!") || line.startsWith("//")) {
       continue;
     }
-    if (line.startsWith("#[cfg(") || line.startsWith("#[cfg_attr(")) {
+    if (line.startsWith("#[cfg(")) {
       return true;
     }
     if (line.startsWith("#[") || line.startsWith("#![")) {
@@ -259,13 +265,40 @@ function pubUsePaths(text: string, sameCrate: boolean): string[] {
  * private modules at once through a grouped, multi-line
  * `pub use crate::{ byte_slice_ext::{ByteSliceExt, ByteSliceMutExt}, … };`.
  *
- * A whole-module glob (`seg::*`) counts, and so does a named export at any
- * depth under `seg`. A DEEPER glob (`seg::inner::*`) does not: it would only
- * carry the name if the name is in that particular inner module, and this
- * cannot see that, so it refuses instead of guessing.
+ * The re-export has to be about THIS def, and the test is a PREFIX one. A named
+ * export counts when its module part is a prefix of the def's own remaining
+ * chain: `pub use self::buffered::BufReader;` publishes a def in
+ * `io/buffered/bufreader.rs`, because `buffered` is where the chain to the def
+ * begins. Two shapes are refused instead of guessed at:
+ *
+ * A glob ABOVE the def's own module. `pub use fraction::*;` does not carry a
+ * name that lives in `fraction/display.rs`, because a glob re-exports one
+ * module's items and not its children's - the real `fraction` crate renders
+ * `use fraction::Format;` under the old rule and rustc answers E0432. A glob
+ * counts only at the def's OWN module, where the name really is.
+ *
+ * A SIBLING of the same name. `pub use codec::json::Error;` says nothing about
+ * a different `Error` in `codec/bin.rs`; accepting it named the wrong struct
+ * and, worse, named it in a line that COMPILES. That is the one failure mode
+ * worth more than a missing hint, so the module part must be on the def's path.
+ *
+ * Known cost, and it is clause 2 working as intended: a transitive glob chain
+ * (a root `pub use a::*` over a `pub use b::*` inside `a`) now refuses. The
+ * glob GRAPH is not followed, only the file chain, so the second hop is not in
+ * evidence.
  */
-function reExports(text: string, seg: string, name: string, sameCrate: boolean, here: readonly string[]): boolean {
+function reExports(
+  text: string,
+  seg: string,
+  name: string,
+  sameCrate: boolean,
+  here: readonly string[],
+  rest: readonly string[],
+): boolean {
   const ownPath = ["crate", ...here].join("::");
+  const chain = [seg, ...rest];
+  const named = new Set(chain.map((_, k) => [...chain.slice(0, k + 1), name].join("::")));
+  const glob = `${chain.join("::")}::*`;
   for (const raw of pubUsePaths(text, sameCrate)) {
     let p = raw;
     if (p.startsWith("self::")) {
@@ -273,7 +306,7 @@ function reExports(text: string, seg: string, name: string, sameCrate: boolean, 
     } else if (p.startsWith(`${ownPath}::`)) {
       p = p.slice(ownPath.length + 2);
     }
-    if (p === `${seg}::*` || (p.startsWith(`${seg}::`) && p.endsWith(`::${name}`))) {
+    if (p === glob || named.has(p)) {
       return true;
     }
   }
@@ -322,7 +355,17 @@ export function reachableSegments(q: RustReachQuery, deps: RustReachDeps): reado
       visible.push(q.segments[i]);
       continue;
     }
-    if (vis !== undefined && reExports(parentText, q.segments[i], q.typeName, q.sameCrate, q.segments.slice(0, i))) {
+    if (
+      vis !== undefined &&
+      reExports(
+        parentText,
+        q.segments[i],
+        q.typeName,
+        q.sameCrate,
+        q.segments.slice(0, i),
+        q.segments.slice(i + 1),
+      )
+    ) {
       return visible; // published HERE; the rest of the file chain is not a module path
     }
     if (vis === undefined) {
