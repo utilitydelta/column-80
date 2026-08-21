@@ -447,6 +447,11 @@ export async function listModels(apiBase: string, signal?: AbortSignal): Promise
   }
 }
 
+/** Whether a listModels answer carries the model. Ollama catalogues an untagged
+ *  pull as `name:latest`, so a bare configured name matches its `:latest` row. */
+export const hasModel = (models: string[], model: string): boolean =>
+  models.includes(model) || models.includes(`${model}:latest`);
+
 // Model pull, ported from the human-replay-vscode-extension's src/ollama.ts
 // (same author). Same module as the generate clients: one ollama client, no
 // fork. The caller owns consent - pullModel is only ever reached from an

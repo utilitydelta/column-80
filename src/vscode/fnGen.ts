@@ -27,7 +27,7 @@ import {
   walkTokMaxFor,
 } from "../core/budgetProfile";
 import { resolveTier, startOllamaTerminal } from "./firstRun";
-import { listModels } from "../core/ollama";
+import { hasModel, listModels } from "../core/ollama";
 import { makeCloudInstruct } from "../core/cloudInstruct";
 import { makeAnthropicInstruct } from "../core/anthropicInstruct";
 import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/claudeCodeInstruct";
@@ -1261,6 +1261,23 @@ async function buildRemoteFnGenService(
         fnGenEnabled: false,
         provisional: false,
         message: `Function generation is disabled: the Ollama server at ${host} did not answer. FIM tab-completion still works.`,
+      },
+      config,
+    };
+  }
+  // Reachable is only half of ready: the one listModels call already says what
+  // is pulled, and a host that lacks the configured model would take the user's
+  // first generate to an opaque model-not-found. Fail CLOSED here too, naming
+  // the MODEL (roadmap item 57).
+  if (!hasModel(models, config.model)) {
+    log(`[carve] tier=remote host=${host} model=${config.model} fnGen=disabled reason=model-missing`);
+    return {
+      service,
+      tier: {
+        id: "remote",
+        fnGenEnabled: false,
+        provisional: false,
+        message: `Function generation is disabled: the Ollama server at ${host} does not have ${config.model} pulled. FIM tab-completion still works.`,
       },
       config,
     };

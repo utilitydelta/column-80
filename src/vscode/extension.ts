@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { CompletionService } from "../core/completionService";
 import { ContextBlockStore } from "../core/contextBlocks";
-import { generateFim, listModels } from "../core/ollama";
+import { generateFim, hasModel, listModels } from "../core/ollama";
 import { DEFAULT_PROBE_TIMEOUT_MS, ProbeCommandFn, probeCommandRunner } from "../core/hardware";
 import { sessionSuppressions } from "../core/suppressionLedger";
 import { readConfig, readOracleConfig } from "./config";
@@ -362,8 +362,7 @@ async function fimReadiness(list: typeof listModels): Promise<FimIssue | null> {
   if (models === undefined) {
     return { kind: "server-down" };
   }
-  const hasModel = models.includes(cfg.model) || models.includes(`${cfg.model}:latest`);
-  return hasModel ? null : { kind: "model-missing", model: cfg.model };
+  return hasModel(models, cfg.model) ? null : { kind: "model-missing", model: cfg.model };
 }
 
 /** After FIM autocomplete is enabled from off, verify the pieces that make

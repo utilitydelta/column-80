@@ -183,7 +183,11 @@ function reachabilityProbe(answer) {
   return { fn, calls, spread: () => Object.fromEntries(REACHABILITY_KEYS.map((k) => [k, fn])) };
 }
 
-const REACHABLE = ["qwen3-coder:30b", "qwen2.5-coder:1.5b-base"];
+// SUPERSEDED in one respect by session-v56 phase 1 (roadmap item 57): the
+// remote arm now also requires the configured model in the list, so the
+// reachable stub must CARRY it for "reachable enables" to stay what these
+// rows pin. The model-gate half lives in blind-v56-p1-remote-model-gate.
+const REACHABLE = ["qwen3-coder:30b", REMOTE_MODEL, "qwen2.5-coder:1.5b-base"];
 const UNREACHABLE = undefined;
 
 // ASSUMPTION 2 (item 8, "it is bounded"): the contract states boundedness but

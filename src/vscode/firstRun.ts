@@ -8,7 +8,7 @@ import {
   probeCommandRunner,
   probeHardware,
 } from "../core/hardware";
-import { listModels, pullModel } from "../core/ollama";
+import { hasModel, listModels, pullModel } from "../core/ollama";
 import { TIER_TABLE, TierId, TierRow, TierSelection, applyTier, computeTier, tierLogLine } from "../core/tiers";
 import { isRemoteApiBase } from "../core/config";
 import { readCloudConfig, readConfig, readFnGenConfig, readTierConfig } from "./config";
@@ -250,9 +250,6 @@ async function pickTier(computed: TierSelection): Promise<TierId | "auto" | unde
   });
   return pick?.value;
 }
-
-const hasModel = (models: string[], model: string): boolean =>
-  models.includes(model) || models.includes(`${model}:latest`);
 
 /** One-click ratified download. The Download click logs
  *  `[carve] pull ratified` BEFORE the request starts; decline logs
