@@ -889,12 +889,17 @@ export interface ProposalRequest {
   text: string;
   /** Evidence sink for accept/reject/discarded outcomes. */
   service: FnGenService;
-  /** Surface for SYSTEM discards (version race, closed document — the
-   *  product's own doing, never a human verdict). Absent = today's warning
-   *  toast, right for a gesture the user invoked. A background FIM-sourced
-   *  repair session passes its channel logger here: the race it loses is the
-   *  user's own typing, and a toast for that is noise (roadmap item 64,
-   *  mechanical half). The outcome log records "discarded" either way. */
+  /** Surface for PRE-CONSENT system discards ONLY: the document closed or
+   *  changed during generation — the product's own doing, never a human
+   *  verdict. Absent = today's warning toast, right for a gesture the user
+   *  invoked. A background FIM-sourced repair session passes its channel
+   *  logger here: the race it loses is the user's own typing, and a toast
+   *  for that is noise (roadmap item 64, mechanical half; narrowed by its
+   *  post-review amendment). No other cause reaches this callback: every
+   *  post-Accept discard (closed/changed while previewing, editor refused
+   *  the edit) and a preview that could not open toast in EVERY session,
+   *  because an accepted edit failing to land is not a background race the
+   *  user never watched. The outcome log records "discarded" either way. */
   onSystemDiscard?: (why: string) => void;
 }
 
@@ -992,10 +997,13 @@ export class ProposalPresenter {
     const text = withDocumentEol(request.text, document);
     // System discard: log outcome=discarded (distinct from a human reject so
     // accept/reject stats stay honest), never touch the document. The surface
-    // depends on who asked: an explicit gesture gets the warning toast, a
-    // background session's caller routes the why to its own channel instead.
-    const discard = (why: string): ProposalOutcome => {
-      if (request.onSystemDiscard !== undefined) {
+    // depends on who asked AND on when (item 64 amendment): only a pre-consent
+    // race — the document moved or closed during generation, a race the user's
+    // own typing won without them watching — goes to a background caller's
+    // channel. Everything after the human clicked Accept is news about an edit
+    // they approved, so it toasts in every session, callback or not.
+    const discard = (why: string, surface: "channel-if-wired" | "toast"): ProposalOutcome => {
+      if (surface === "channel-if-wired" && request.onSystemDiscard !== undefined) {
         request.onSystemDiscard(why);
       } else {
         void vscode.window.showWarningMessage(`Column 80: generation discarded — ${why}.`);
@@ -1005,10 +1013,10 @@ export class ProposalPresenter {
     };
 
     if (document.isClosed) {
-      return discard("the document was closed during generation");
+      return discard("the document was closed during generation", "channel-if-wired");
     }
     if (document.version !== versionAtResolve) {
-      return discard("the document changed during generation");
+      return discard("the document changed during generation", "channel-if-wired");
     }
 
     const previewUri = vscode.Uri.from({
@@ -1026,7 +1034,10 @@ export class ProposalPresenter {
       await vscode.commands.executeCommand("vscode.diff", document.uri, previewUri, request.title);
     } catch (err) {
       this.previews.delete(previewKey);
-      return discard(`the preview could not be opened (${String(err)})`);
+      // Not one of the two racing causes: an editor that cannot open the diff
+      // is broken machinery, not the user typing over background work, and a
+      // background session's channel is the wrong place to bury that.
+      return discard(`the preview could not be opened (${String(err)})`, "toast");
     } finally {
       // The tab now exists (or never will): the pruner may own the entry.
       this.pendingPreviews.delete(previewKey);
@@ -1057,10 +1068,10 @@ export class ProposalPresenter {
     // mis-apply if a change lands inside it (public WorkspaceEdit text
     // edits carry no versionId, nothing refuses stale edits); see surface.
     if (document.isClosed) {
-      return discard("the document was closed while previewing");
+      return discard("the document was closed while previewing", "toast");
     }
     if (document.version !== versionAtResolve) {
-      return discard("the document changed while previewing");
+      return discard("the document changed while previewing", "toast");
     }
     const edit = new vscode.WorkspaceEdit();
     edit.replace(
@@ -1070,7 +1081,7 @@ export class ProposalPresenter {
     );
     const applied = await vscode.workspace.applyEdit(edit);
     if (!applied) {
-      return discard("the editor refused the edit");
+      return discard("the editor refused the edit", "toast");
     }
     service.logOutcome("accept");
     return "accept";

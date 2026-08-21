@@ -1540,6 +1540,16 @@ async function runRefine(
     text: result.text,
     service: ctx.service,
   });
+  if (proposal === "discarded") {
+    // present() already told the human (refine is a manual gesture, so the
+    // system discard keeps its toast) and logged outcome=discarded; the
+    // evidence line must agree with that log instead of calling the
+    // product's own discard a human verdict (item 64 triage, same split
+    // the repair round got). No why reaches this path: the presenter's
+    // return value carries the verdict alone.
+    outcome("discarded");
+    return;
+  }
   if (proposal !== "accept") {
     outcome("rejected");
     return;

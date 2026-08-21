@@ -3,11 +3,15 @@
 //
 // The blind file proves the surface end to end (fim discard -> channel line,
 // no toast; fngen discard -> today's toast). What it cannot see:
-//   * present()'s SECOND version guard (changed while previewing) routes
-//     through the same onSystemDiscard seam, not just the pre-preview guard;
+//   * the seam is PRE-CONSENT only (the contract's post-review amendment):
+//     the two during-generation causes route to onSystemDiscard, while every
+//     post-Accept discard (changed/closed while previewing, editor refused
+//     the edit) toasts in EVERY session, seam wired or not;
 //   * a closed document discards through the seam too;
 //   * a HUMAN reject never touches the seam - onSystemDiscard is a
 //     system-discard surface only, and reject stats stay honest;
+//   * the refine evidence line: a system discard of the refine proposal is
+//     result=discarded, a human reject stays result=rejected;
 //   * the call-site wiring: the fim session passes the callback, the fngen
 //     session passes undefined (so toast ownership stays in present()), and
 //     the routing is per session - a fngen session drained behind a fim one
@@ -39,7 +43,7 @@ const STUB = path.join(__dirname, ".impl-v56-p3-stub.cjs");
 fs.writeFileSync(
   STUB,
   `
-const state = { config: {}, messages: [], statusBar: [], commands: {}, appliedEdits: [], decide: "accept", beforeDecide: undefined };
+const state = { config: {}, messages: [], statusBar: [], commands: {}, appliedEdits: [], decide: "accept", beforeDecide: undefined, applyEditResult: true };
 class Position {
   constructor(line, character) { this.line = line; this.character = character; }
   translate(l = 0, c = 0) { return new Position(this.line + l, this.character + c); }
@@ -68,7 +72,10 @@ class TabInputTextDiff { constructor(original, modified) { this.original = origi
 const Uri = {
   file: (p) => ({ fsPath: p, path: p, scheme: "file", toString: () => "file://" + p, with() { return this; } }),
   from: (parts) => ({ ...parts, fsPath: parts.path, toString: () => parts.scheme + "://" + parts.path + "?" + (parts.query || "") }),
-  parse: (s) => ({ raw: s, fsPath: String(s), path: String(s), scheme: "file", toString: () => String(s), with() { return this; } }),
+  // fsPath strips the scheme, as the real Uri.parse does: the refine window
+  // reader trusts fsPath, and a stub handing back "file:///x" as a disk path
+  // makes every window read ENOENT.
+  parse: (s) => { const p = String(s).replace(/^file:\\/\\//, ""); return { raw: s, fsPath: p, path: p, scheme: "file", toString: () => String(s), with() { return this; } }; },
   joinPath: (base, ...segs) => Uri.file([base.fsPath, ...segs].join("/")),
 };
 module.exports = {
@@ -90,7 +97,7 @@ module.exports = {
     onDidChangeTextDocument: () => ({ dispose() {} }),
     registerTextDocumentContentProvider: () => ({ dispose() {} }),
     textDocuments: [],
-    applyEdit: async (edit) => { state.appliedEdits.push(edit); return true; },
+    applyEdit: async (edit) => { state.appliedEdits.push(edit); return state.applyEditResult; },
   },
   languages: {
     createDiagnosticCollection: (name) => ({ name, set() {}, delete() {}, clear() {}, dispose() {} }),
@@ -154,6 +161,7 @@ const resetState = () => {
   __state.appliedEdits = [];
   __state.decide = "accept";
   __state.beforeDecide = undefined;
+  __state.applyEditResult = true;
 };
 
 // In-memory document with a real, mutable version - all present() reads.
@@ -224,19 +232,38 @@ test("control: with no race the same rig accepts, so the discards below are the 
   assert.strictEqual(__state.appliedEdits.length, 1);
 });
 
-test("second guard: a version race inside the preview window routes through the same seam", async () => {
+test("second guard re-pinned (amendment): a race inside the preview window is post-Accept, so it TOASTS even in a fim session", async () => {
   resetState();
   let bump;
   // The version moves between the diff opening and the accept landing: the
-  // human typed while the preview sat open.
+  // human typed while the preview sat open. They clicked Accept on that diff,
+  // so the edit failing to land is news they are owed, not background noise -
+  // the seam stays silent and the toast fires despite being wired.
   __state.beforeDecide = () => bump();
   const { outcome, outcomes, discards } = await presentWith((doc) => {
     bump = () => doc.__bump();
     return {};
   });
   assert.strictEqual(outcome, "discarded");
-  assert.deepStrictEqual(discards, ["the document changed while previewing"]);
-  assert.deepStrictEqual(__state.messages, [], "no toast at the second guard either");
+  assert.deepStrictEqual(discards, [], "post-Accept causes never reach onSystemDiscard");
+  assert.deepStrictEqual(
+    __state.messages.map((m) => `${m.kind}: ${m.message}`),
+    ["warn: Column 80: generation discarded — the document changed while previewing."],
+    "the toast fires with today's wording, seam or no seam",
+  );
+  assert.deepStrictEqual(outcomes, [{ o: "discarded", extra: undefined }], "the record is unchanged by the surface split");
+});
+
+test("editor refused the edit: post-Accept, toasts in every session, outcome log still discarded", async () => {
+  resetState();
+  __state.applyEditResult = false; // applyEdit round trip fails after consent
+  const { outcome, outcomes, discards } = await presentWith(() => ({}));
+  assert.strictEqual(outcome, "discarded");
+  assert.deepStrictEqual(discards, [], "a refused applyEdit is not a background race");
+  assert.deepStrictEqual(
+    __state.messages.map((m) => `${m.kind}: ${m.message}`),
+    ["warn: Column 80: generation discarded — the editor refused the edit."],
+  );
   assert.deepStrictEqual(outcomes, [{ o: "discarded", extra: undefined }]);
 });
 
@@ -303,7 +330,9 @@ const fileDocument = (file) => ({
   },
   positionAt(offset) {
     const t = fs.readFileSync(file, "utf8");
-    return { offset, line: t.slice(0, offset).split("\n").length - 1 };
+    const before = t.slice(0, offset);
+    const nl = before.lastIndexOf("\n");
+    return { offset, line: before.split("\n").length - 1, character: offset - nl - 1 };
   },
   lineAt(line) {
     const t = fs.readFileSync(file, "utf8").split("\n")[line] ?? "";
@@ -426,6 +455,72 @@ test("a human reject still ends the round with result=rejected", async () => {
     const out = output();
     await runPostAcceptOracle(sessionCtx(file, "fngen", { present: async () => "reject" }, out));
     assert.ok(out.lines.includes("[repair] outcome round=1 result=rejected"), `got ${JSON.stringify(out.lines)}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- refine evidence line: system discard vs human reject ------------------
+// The refine proposal's outcome line read result=rejected for BOTH verdicts
+// (`if (proposal !== "accept")`), calling the product's own discard a human
+// reject - the same defect the repair round shed in this phase. Refine is only
+// reachable as a manual gesture, so no why threads through: the presenter's
+// return value alone carries the split, and the clean crate + manualRefine +
+// reference-answering extractor below is the minimum rig that reaches it.
+
+const cleanCopy = (tag) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `impl-v56-p3-${tag}-`));
+  fs.cpSync(REPAIRBENCH, dir, { recursive: true });
+  return { dir, file: path.join(dir, "src", "task1.rs") };
+};
+
+const refineCtx = (dir, file, presenter, out) => ({
+  document: fileDocument(file),
+  landedSpan: { start: 0, end: 10 },
+  source: "fngen",
+  service: scriptedService().service,
+  output: out,
+  presenter,
+  resolveFunction: async (document) => {
+    const base = await fnResolver("parse_duration")(document);
+    return base === undefined ? undefined : { ...base, kind: "function", bodyOnly: false, headerIndent: "", bodyIndent: "" };
+  },
+  repairTierGate: { allowed: true },
+  manualRefine: true,
+  extractor: {
+    completeMembers: async () => [],
+    example: async () => undefined,
+    membersOfType: async () => [],
+    references: async () => [
+      { uri: "file://" + path.join(dir, "src", "lib.rs"), line: 2, character: 4, endLine: 2, endCharacter: 8 },
+    ],
+  },
+});
+
+test("refine: a system discard of the proposal logs result=discarded, never result=rejected", async () => {
+  resetState();
+  const { dir, file } = cleanCopy("refdisc");
+  try {
+    const out = output();
+    await runPostAcceptOracle(refineCtx(dir, file, { present: async () => "discarded" }, out));
+    assert.ok(
+      out.lines.includes("[repair] refine outcome round=1 result=discarded"),
+      `the evidence line agrees with the outcome log, got ${JSON.stringify(out.lines)}`,
+    );
+    assert.ok(!out.lines.some((l) => l.includes("result=rejected")), "a discard is not a rejection on the refine line either");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("refine control: a human reject keeps result=rejected", async () => {
+  resetState();
+  const { dir, file } = cleanCopy("refrej");
+  try {
+    const out = output();
+    await runPostAcceptOracle(refineCtx(dir, file, { present: async () => "reject" }, out));
+    assert.ok(out.lines.includes("[repair] refine outcome round=1 result=rejected"), `got ${JSON.stringify(out.lines)}`);
+    assert.ok(!out.lines.some((l) => l.includes("result=discarded")), "a human verdict must not be repainted as the product's");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
