@@ -5374,12 +5374,21 @@ export function translateServiceReject(err: unknown): string | undefined {
 /** What a gesture catch-all toasts: a known reject gets its crafted sentence;
  *  an unknown error gets its first line plus the channel pointer, never the
  *  raw multi-line dump. The channel keeps the full message either way (the
- *  service logs every reject and transport failure verbatim). */
+ *  service logs every reject and transport failure verbatim).
+ *
+ *  The unknown branch reads err.message for the same reason translateServiceReject
+ *  does: String(err) prepends "Error: ", which is the internal jargon this whole
+ *  table exists to keep out of a toast. An error whose message is empty gets the
+ *  bare sentence rather than a dangling "failed - Error." */
 export function generationFailedToast(err: unknown, gesture: string): string {
-  return (
-    translateServiceReject(err) ??
-    `Column 80: ${gesture} failed - ${firstLine(String(err))}. The full message is in the output channel.`
-  );
+  const translated = translateServiceReject(err);
+  if (translated !== undefined) return translated;
+  const detail = firstLine(err instanceof Error ? err.message : String(err))
+    .replace(/\.$/, "")
+    .trim();
+  return detail === ""
+    ? `Column 80: ${gesture} failed. The full message is in the output channel.`
+    : `Column 80: ${gesture} failed - ${detail}. The full message is in the output channel.`;
 }
 
 /**

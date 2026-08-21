@@ -220,11 +220,58 @@ test("translator table: an unknown error is NOT translated and falls to the catc
   const err = new Error("the flux capacitor failed\n    at internalFrame (deep.ts:12:3)");
   assert.strictEqual(B.translateServiceReject(err), undefined);
   const toast = B.generationFailedToast(err, "function generation");
+  // RE-CUT (P4 review MED 1): this row pinned "- Error: the flux capacitor
+  // failed" - the catch-all's own fallback put back the prefix the six
+  // translations exist to remove. The unknown branch now reads err.message.
   assert.strictEqual(
     toast,
-    "Column 80: function generation failed - Error: the flux capacitor failed. The full message is in the output channel.",
+    "Column 80: function generation failed - the flux capacitor failed. The full message is in the output channel.",
   );
   assert.ok(!toast.includes("\n"), "the catch-all toast is one line");
+});
+
+test("catch-all fallback: no untranslated error carries the Error: prefix to a toast", () => {
+  // The four arms' real transport failures, none of which the table matches.
+  const untranslated = [
+    new Error('Ollama 500 Internal Server Error: {"error":"llama runner process has terminated"}'),
+    new Error("Claude Code exited 1 despite a well-formed reply."),
+    new Error("Anthropic: the stream ended before message_stop, so the reply is incomplete"),
+    "a bare string throw",
+  ];
+  for (const err of untranslated) {
+    const toast = B.generationFailedToast(err, "function generation");
+    assert.strictEqual(B.translateServiceReject(err), undefined, `${err} should not translate`);
+    // The prefix is what matters and only at the detail position: a server's
+    // own "500 Internal Server Error:" status text is legitimate content.
+    assert.ok(
+      !toast.includes("failed - Error: "),
+      `no Error: prefix at the detail position in ${toast}`,
+    );
+    assert.ok(!toast.includes("\n"), "one line");
+    assert.ok(toast.includes("The full message is in the output channel."), "channel pointer kept");
+  }
+});
+
+test("catch-all fallback: a message-less error gets the bare sentence, never 'failed - Error.'", () => {
+  const toast = B.generationFailedToast(new Error(""), "function generation");
+  assert.strictEqual(
+    toast,
+    "Column 80: function generation failed. The full message is in the output channel.",
+  );
+  assert.ok(!toast.includes("Error"), "no bare Error word");
+  assert.ok(!toast.includes(" - "), "no dangling detail separator");
+});
+
+test("catch-all fallback: a message already ending in a period does not render '..'", () => {
+  const toast = B.generationFailedToast(
+    new Error("Claude Code exited 1 despite a well-formed reply."),
+    "function generation",
+  );
+  assert.ok(!toast.includes(".."), `no doubled period in ${toast}`);
+  assert.strictEqual(
+    toast,
+    "Column 80: function generation failed - Claude Code exited 1 despite a well-formed reply. The full message is in the output channel.",
+  );
 });
 
 test("translator table: a known reject through the catch-all helper gets its sentence, not the firstLine shape", () => {
