@@ -196,7 +196,14 @@ async function streamMessages(
     }
     const evt = JSON.parse(trimmed.slice("data:".length).trim()) as AnthropicEvent;
     if (evt.type === "error") {
-      throw new Error(`Anthropic stream error: ${evt.error?.message ?? evt.error?.type ?? "unknown"}`);
+      // The SSE sibling of ollama's in-200 error field: a 200 whose stream
+      // carries the failure. Bounded here rather than left to the translator
+      // that phase 4 gives this site, because a translation is not a bound. A
+      // marker that is reworded and stops matching would put the whole payload
+      // back on the screen.
+      throw new Error(
+        `Anthropic stream error: ${boundBody(String(evt.error?.message ?? evt.error?.type ?? "unknown"))}`,
+      );
     }
     if (evt.type === "message_start") {
       mergeUsage(evt.message?.usage);

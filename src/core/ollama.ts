@@ -349,7 +349,13 @@ async function streamGenerate(
       }
       const evt = JSON.parse(line) as StreamEvent;
       if (evt.error) {
-        throw new Error(`Ollama error: ${evt.error}`);
+        // A 200 whose stream carries its failure inside the JSON. This never
+        // passed through an HTTP error body, so the bound never saw it, and the
+        // string is ONE line, which is how a toast correctly bounded to one line
+        // came to be 100KB wide (roadmap item 63). String() because the wire is
+        // untrusted: the field is typed string and a server may still send an
+        // object, and boundBody takes a string.
+        throw new Error(`Ollama error: ${boundBody(String(evt.error))}`);
       }
       if (evt.response) {
         if (ttftMs === undefined) {
@@ -533,9 +539,13 @@ export async function pullModel(
     }
     const evt = JSON.parse(line) as PullEvent;
     if (evt.error) {
-      throw new Error(evt.error);
+      // Same shape as the generate path above: a failure inside a 200, on one
+      // line, straight into a toast.
+      throw new Error(boundBody(String(evt.error)));
     }
-    onProgress(progress.note(evt), evt.status ?? "");
+    // The status phrase is server-controlled too, and it goes to a progress
+    // notification rather than an error, so no catch-all shortens it either.
+    onProgress(progress.note(evt), boundBody(String(evt.status ?? "")));
   };
 
   const reader = res.body.getReader();
