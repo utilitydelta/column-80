@@ -719,3 +719,69 @@ It does not bind on an ordinary gesture. The phase-2 blind oracle
 
 **Pinned by.** `test/review-v48-p2-loopback.test.cjs` (the D6 rows) and
 `test/impl-v48-p2-arbitration.test.cjs` A1/A2/A3/A6/A7/A8.
+
+## S18. Only a PRE-CONSENT discard reaches the FIM channel
+
+**NOT YET RATIFIED. Amended 2026-08-21 in the session-v56 phase 3 review loop-back (finding MED,
+triaged DO, commit `e0bc0f1`). Flagged here because it narrows the written contract's own wording.**
+
+**What changed.** `session-v56/contract-phase3.md` says a discard in a `source: "fim"` session goes
+to the channel instead of a toast. `present()` has SIX discard causes and the first cut routed all
+of them. Only the two PRE-CONSENT causes route now: the document closed, or the document changed,
+DURING generation. The three post-Accept causes (closed or changed while previewing, the editor
+refusing the edit) and a failed preview open toast in every session, seam wired or not.
+
+**Why the old behaviour was wrong.** The item's whole argument is that a background race the user's
+own typing wins is not the user's business. A post-Accept failure is not that race. The user pressed
+Accept, consented to a write, and the write did not happen. Silencing that is how a product loses a
+change without saying so. The two halves are one function apart in the code and opposite in meaning.
+
+**What did NOT change.** `logOutcome("discarded")` still fires on all six causes, so the channel
+record is what it was. Every explicit-gesture source keeps today's toast wording byte for byte, on
+all six.
+
+**A second, smaller narrowing rode with it.** The refine gesture's evidence line called a system
+discard `result=rejected`, contradicting the outcome log two lines away. A system discard now logs
+`result=discarded` and a human reject keeps `result=rejected`. Refine is manual-only, so no surface
+seam threads through it and the return value carries the split on its own.
+
+**Pinned by.** `test/impl-v56-p3-fim-discard-surface.test.cjs`. Its second-guard row now asserts a
+TOAST inside a fim session, which is the row that pinned the over-broad routing before, and it
+gained rows for editor-refused-toasts-everywhere and for both refine evidence lines.
+
+## S19. `UND_ERR_*` narrows to `UND_ERR_CONNECT_TIMEOUT` alone
+
+**NOT YET RATIFIED. Narrowed 2026-08-21 in the session-v56 phase 5 review loop-back (finding MED 3,
+triaged DO, commit `37d0440`). Flagged here because it narrows the written contract's own wording.**
+
+**What changed.** `session-v56/contract-phase5.md` clause 2 says `isServerUnreachable` recognises
+undici's `UND_ERR_*` codes, and the implementation matched the whole prefix. `UNREACHABLE_CODES`
+(`src/vscode/fnGen.ts:875`) now carries `UND_ERR_CONNECT_TIMEOUT` by name and nothing else from that
+family.
+
+**Why the old behaviour was wrong.** The prefix sweeps in the case where the server WAS reached. A
+real mid-stream socket close arrives as `TypeError("terminated")` with `cause.code = UND_ERR_SOCKET`,
+after the server accepted the connection and streamed a token. That classified false before the
+phase and true after it, so the toast flipped from "function generation failed - terminated" to "the
+Ollama server isn't running" plus a **Start ollama serve** button, for a server that is running and
+had already answered. Item 63 exists to stop the product asserting false things about its own state.
+A fix that manufactures one is not the fix.
+
+**Only a connect-phase failure proves the server was never reached.** That is the whole test, and
+`UND_ERR_CONNECT_TIMEOUT` is the only member of the family that passes it. The contract's own
+falsification line names that code and no other, which is why the blind oracle stayed green through
+the narrowing rather than catching it.
+
+**One word away from a different answer, and it is yours.** `UND_ERR_HEADERS_TIMEOUT` (TCP accepted,
+no headers ever came) is excluded by the same test that convicts `UND_ERR_SOCKET`, but a wedged
+tunnel arguably reads better as unreachable than as a generic failure. It sits in the impl file's
+`NOT_UNREACHABLE` list beside `UND_ERR_SOCKET`, so flipping it is one edit and one row.
+
+**What widened rather than narrowed, in the same phase.** `ETIMEDOUT` and `EHOSTUNREACH` joined the
+list, and the WHOLE list is matched at `err.code` as well as at `err.cause.code`. A top-level
+`ECONNREFUSED` classified FALSE until this session, a pre-existing asymmetry nobody had noticed; a
+symmetry row now goes red on a future half-wiring.
+
+**Pinned by.** `test/blind-v56-p5-bounded-bodies.test.cjs`, untouched through the narrowing, and
+`test/impl-v56-p5-bounded-bodies.test.cjs`, which carries the real mid-stream shape and the
+connect-timeout-yes / socket-and-headers-no pair.

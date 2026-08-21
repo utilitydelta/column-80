@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+Failure messages stop speaking to the wrong audience. `Error: generation truncated at
+num_predict=2048 (done_reason=length)` was a channel line wearing a notification's clothes, and it
+was one of six: a reply cut off mid-function, a stray code fence, a reply missing the function you
+asked for, an empty reply, a stream that went silent, and a test module the extractor could not
+find. Each now says what happened and what to do about it, in a sentence you can act on. The
+channel keeps every internal string byte for byte, because that is the half a bug report needs.
+
+Anything still unrecognised gets one line and a pointer. The catch-alls behind function generation,
+test generation, Tighten Doc Comment and the first-run download used to forward the whole error
+object, `Error:` prefix and all. They now show the first line and say the full message is in the
+output channel.
+
+A misbehaving server can no longer flood a notification. An HTTP error body went into the error
+string whole, so 100KB of server JSON landed in a toast; the body and the status reason phrase are
+both bounded now. And a connection that times out on the way to a remote host is recognised as the
+server being unreachable, which is the message with the fix in it, instead of falling through to
+the raw error text.
+
+A disabled hardware tier that arrived without a message rendered `Column 80: undefined`. It names
+the reason now.
+
+Repair stops interrupting you about work you never asked to watch. Accepting a FIM completion
+starts background repair rounds; keep typing and a round loses the version race, which is the
+normal case rather than the exception. That discard was a warning notification, followed moments
+later by the queued round opening its diff anyway, so the product contradicted itself inside two
+seconds. It is a channel line now. A discard on a gesture you invoked still tells you.
+
+Two disabled backends stop pretending. A remote Ollama that answers but has nothing pulled is no
+longer treated as ready: the model is checked at the same moment the host is, so a missing model
+fails at setup naming the model and the host instead of arriving as an opaque model-not-found on
+your first generation. And Tighten Doc Comment consults the hardware tier like every other gesture,
+so it can no longer fire rounds through a transport the build had already declared dead.
+
+Rust import hints derive paths `rustc` accepts. The hint walked the file tree while Rust resolves
+the module tree, so it named private modules under a header saying those types are already defined.
+It now reads the `mod` declarations down the chain, rewrites a private segment to its `pub use`
+re-export, and withholds the line when readable source proves the path wrong. A withheld import is
+better than one the compiler refuses, and worlds better than one that compiles against the wrong
+type of the same name.
+
 ## 2.2.0
 
 Function generation can now live on another machine. Point `column80.apiBase` at a GPU box or an

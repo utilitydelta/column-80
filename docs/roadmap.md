@@ -35,13 +35,12 @@ Proven broken, no design question left. Each is small and each is about the prod
 - **2.** a frozen live test is red and nobody runs it
 - **21.** the cross-file argument-type leg, unbuilt since v14 - and its rows are GREEN today by asserting the defect
 - **7.** Rust has injection and zero enforcement, the last such language
-- **56.** the import hint derives paths Rust refuses; lift the reachability rewrite it already owns. RATIFIED 2026-08-21
-- **57.** the remote arm treats a reachable server with zero models as ready
-- **58.** Tighten Doc Comment fires rounds through a transport the build declared dead
 - **59.** the Rust and C# test rungs filter by substring, and the obvious flags are traps
 - **60.** two C# string constructs the re-indent scanner cannot see; one emits CS8999
-- **63.** the catch-all toasts render the service's internal reject strings verbatim
-- **64.** a FIM-sourced repair discard toasts a background race, then the queue drain contradicts it
+- **63.** two unbounded interpolation sites the toast sweep did not reach, and one raw tier message
+- **64.** should a drained FIM session open a diff against a document still being typed in
+- **65.** the import hint names crates the target does not link, and mis-names a renamed one
+- **66.** item 63's translations stopped at the Ollama arm; two live backends throw the same failures unmarked
 
 **2. Trust the instruments, before building on them**
 A number from the harness is a hypothesis until the instrument that produced it has been looked at. Mostly blocked on taking a measurement rather than on a design call.
@@ -103,6 +102,12 @@ Caught up 2026-08-21 after session-v55's drain of `docs/queue.md`: **55**, **23*
 **51** shipped and moved to the gap list; **56** through **62** arrived, carrying the queue's live
 leftovers and the ratified phase-9 design call; the queue file itself is retired to a tombstone, so
 this file is again the one backlog.
+
+Caught up again the same day by session-v56, whose one theme was the product's words telling the
+truth about its own state. **56**, **57** and **58** shipped and are in the gap list. **63** and
+**64** shrank rather than closed, each to the half its session did not buy, and **65** and **66**
+arrived as residue of what did ship. Two contract narrowings from that session's review loops are
+recorded in `docs/supersessions.md` as S18 and S19 and are waiting on a human.
 
 ## 1. Fix now
 
@@ -218,60 +223,6 @@ Two traps from the scout, both still live:
 - The motivating capture had no dot typed yet, so the gate as designed would not have caught that
   exact case. The goal must say so rather than claim the capture as its falsification.
 
-### 56. The import hint derives paths Rust refuses; lift the reachability rewrite it already owns
-
-RATIFIED 2026-08-21 by the human, out of session-v55's phase 9 residue (queue Q23). PROVEN twice,
-once per corpus.
-
-`deriveUsePath` walks the FILE tree and Rust resolves the MODULE tree. Measured against the real
-rustup sysroot with real `rustc`, one `use` line per file so no failure masks another: **15 of 53
-derived stdlib lines compile, 35 of the 38 failures E0603 module-is-private**
-(`use std::io::buffered::bufreader::BufReader;` where the real path is `std::io::BufReader`).
-Measured on glommio at `tightenRatify.ts:611-616`: 110 of 249 compiled, 136 failures E0603. Same
-mechanism, so roughly half of what the hint emits outside a crate-root file names a module Rust will
-refuse - and it emits it under a header that says "they are already defined".
-
-The fix exists and serves one gesture. `rustImport` (`tightenRatify.ts:621`) reads each `mod`
-declaration down the chain, rewrites a private segment to its `pub use` re-export, and refuses when
-nothing can be proven. It was built for Tighten Doc Comment's import ship gate and deliberately not
-shared, because standing rule 6 forbade a behaviour change on the fn-gen use-path leg. This item IS
-that change, now ratified: lift the rewrite behind `renderImportHint`, so the hint derives paths
-that compile, and phase 9's sysroot carve-out (`fnGen.ts:2859`) turns redundant instead of
-load-bearing.
-
-Two consumers, one leg. Today the hint renders on TEST-GEN only (`fnGen.ts:3121-3130`); item 48's
-build - an import payload on the fn-gen pre-fill in every language - meets the identical derivation
-the day it lands, so it builds on this or re-manufactures the defect at five times the surface.
-
-A `KNOWN WRONG` row already waits: `test/adversarial-v55-p9.test.cjs` pins today's E0603 output for
-a private-module re-export and goes red when the rewrite lands. That red is success; flip the row in
-the same phase.
-
-### 57. The remote arm treats a reachable server with zero models as ready
-
-From session-v55 phase 2 (queue Q26b). `listModels` answers both "is the server up" and "what is
-pulled" (`src/core/ollama.ts:307-309`), and the remote arm uses only the first half: `[]` from a
-fresh remote Ollama with nothing pulled enables fn-gen on a model the server provably lacks, and the
-first generate arrives as an opaque model-not-found. `firstRun.ts` already uses the second half via
-`hasModel`.
-
-Fix: fold `hasModel` into the enable decision so a missing model is NAMED.
-Falsify: a reachable host with an empty model list disables fn-gen and names the missing model; a
-host carrying the model still enables.
-
-### 58. Tighten Doc Comment fires rounds through a transport the build declared dead
-
-From session-v55 phase 2 (queue Q26c). `registerTightenDocComment` is handed
-`transport: () => service.transport` and consults NO tier gate, so it runs against a host
-`buildFnGenService` has just disabled. Pre-existing and not remote-specific: `below-12gb` behaves
-the same. The claude-code arm deliberately makes its disabled service inert; every other disabled
-arm does not.
-
-One design sentence sits inside it - does a disabled service go inert everywhere - and the
-claude-code arm is the precedent to follow or overrule. Decide that first, then apply it to all
-arms.
-Falsify: the gesture on a disabled tier refuses instead of dialling.
-
 ### 59. The Rust and C# test rungs still filter by substring, and the obvious flags are traps
 
 Two halves of one defect, found by session-v55 phase 6 while shipping the separator half (queue
@@ -327,87 +278,109 @@ runs one such body and the value moves. Fix shape: give `$"` an opener whose hol
 cannot span a line, which is how it slipped past the phase-13 oracle's hole rows (P13-7c, 18 cases,
 all correct within their line).
 
-### 63. The catch-all toasts render the service's internal reject strings verbatim
+### 63. Two unbounded interpolation sites the toast sweep did not reach, and one raw tier message
 
-Filed 2026-08-21 from a full sweep of all 90 toast call sites, after the human reported "weird
-technical internals" toasts. REASONED from source (read, not run); every string below is quoted
-verbatim from the code. Roughly 80% of the sites are healthy - crafted sentence, `Column 80:`
-prefix, cause plus next action - so this is a seam defect, not a culture defect.
+The translation half shipped in session-v56. Six service rejects become human sentences at the
+vscode layer, every catch-all is one line plus a channel pointer, `safeText` and the status reason
+phrase are bounded, and `isServerUnreachable` recognises the connect-phase timeouts. What is left
+is three strings that phase's contract did not enumerate, all found by its own adversarial review.
+The first two are PROVEN, each measured to a character count by the review that found it. The third
+is REASONED.
 
-**The mechanism: one string serves two audiences.** The service layer's throw messages are written
-as channel lines (the same text is logged as `[fngen] request failed:`), and two catch-alls forward
-them to the user raw: `fnGen.ts:5744` (`Function generation failed: ${String(err)}`) and `:6249`
-(`Test generation failed: ...`). Only window refusals and server-unreachable are translated first.
-What reaches the screen, `Error: ` prefix included:
+**The NDJSON `error` field, which is not an HTTP error body and so was never in scope.** A
+200-status Ollama stream can carry its failure inside the JSON: `ollama.ts:350` throws
+`Ollama error: ${evt.error}` and `ollama.ts:534` throws `evt.error` raw. Neither goes through
+`safeText`, so the bound never sees them, and both are ONE line, so `firstLine` cannot shorten them
+either. Measured: a 102477-char toast out of `firstRun.ts:313`, whose own comment two lines up
+cites this item as the reason that toast is bounded. It is bounded, to one line, and the line is
+100KB. Same shape at `ollama.ts:536`, which hands the server's `evt.status` to `onProgress` for
+`firstRun.ts:294` to render as a progress message with no bound. Fix: the same `boundBody` call at
+all three.
 
-- `generation truncated at num_predict=2048 (done_reason=length)`
-- `generation contains a code-fence line (unclosed or nested fence in the reply)`
-- `generation does not contain the requested function (declaration head not in the reply)`
-- `generation was empty after postprocess`
-- `Ollama stream cut: silent for 20000ms after 512 chars (http://localhost:11434)`
-- `Ollama 500 Internal Server Error: {raw body}` - and `safeText` (`ollama.ts:560`) puts the WHOLE
-  unbounded response body into that string, so a misbehaving server dumps JSON into a toast.
+**The two sibling transports still carry the pre-fix `safeText`.** `anthropicInstruct.ts:158` and
+`cloudInstruct.ts:245` are byte-identical copies of the unbounded version, feeding the same
+`${res.status} ${res.statusText}: ${body}` template at `anthropicInstruct.ts:322` and
+`cloudInstruct.ts:275`. The review measured a 102437-char Anthropic error string. Both are live
+fn-gen backends, so a cloud 500 with a big body puts it in front of the user exactly the way Ollama
+used to. Lift `boundBody` and `safeText` out of `ollama.ts` into a module all three transports
+import. Item 66 wants those same two files, so do them in one pass.
 
-Same class, narrower paths: `tightenDocComment.ts:1449` (`the tighten gesture failed
-(${String(err)})`), `firstRun.ts:313` (`the download failed - ${errorText(err)}`, which can carry
-the same raw body dumps), and the file-IO trio `fnGen.ts:6363/6646/6654` (raw Node `EACCES: ...`
-with full paths; informative at least, lowest priority).
+**The claude-code `cwd-unusable` message.** `fnGen.ts:1522-1524` builds it with a raw `String(err)`
+and the tier gate at `:5628-5630` renders it as `Column 80: ${why}` with no `firstLine` and no
+channel pointer. A real `mkdirSync` failure is one line, so this is an `Error:` prefix blemish
+rather than a dump, and it is the smallest of the three.
 
-**Feeding the catch-alls: `isServerUnreachable` (`fnGen.ts:868`) is narrow.** ECONNREFUSED,
-ECONNRESET, ENOTFOUND, EAI_AGAIN and "fetch failed" TypeErrors only. ETIMEDOUT, EHOSTUNREACH and
-undici's `UND_ERR_*` codes fall through to the raw toast - and the remote-host arm (shipped v55)
-makes mid-connect timeouts a real path, not a corner.
+Falsify: a 100KB `error` field in a 200-status stream produces a bounded toast on both the generate
+and the pull path; an Anthropic and a Cloud 500 with a 100KB body do the same.
 
-**The fix shape, and the repo already contains it twice.** `fnGen.ts:6538` and `:6719` do it right:
-`firstLine(String(err))` plus "the full message is in the channel". So: the vscode layer owns toast
-wording and the service keeps its channel wording; translate the five known reject reasons into
-human sentences (truncation becomes "the model's reply was cut off mid-function, so nothing was
-written - run the gesture again"; the channel keeps `done_reason=length`); every remaining
-catch-all gets the firstLine-plus-channel-pointer pattern; bound `safeText`; widen
-`isServerUnreachable` with the timeout codes. One rider: `fnGen.ts:5468` renders
-`Column 80: undefined` if a disabled tier arrives without a message - its sibling at `:6109`
-already guards this with a fallback.
+### 64. Should a drained FIM session open a diff against a document still being typed in
 
-Known trap for the build session: many blind rows pin exact toast strings, so every rewording flips
-rows. That red is the falsification working; re-cut in the same phase.
-Falsify: drive each of the five service rejects through a gesture with a stubbed transport; the
-toast asserts the human sentence, the channel asserts the internal one, and no toast anywhere
-renders `String(err)` of a transport error unbounded.
+The mechanical half shipped in session-v56: a repair discard in a `source: "fim"` session goes to
+the channel instead of a toast, and only the two PRE-CONSENT causes route there
+(`docs/supersessions.md` S18). A post-Accept failure still toasts everywhere, because that is a
+consented write failing rather than a background race. What is left is the design question the
+toast fix was deliberately built around, which makes this the one entry in a tier that says "no
+design question left" that is nothing but one. Move it to tier 4 or answer it; do not leave it
+reading as a small fix.
 
-### 64. A FIM-sourced repair discard toasts a background race, then the queue drain contradicts it
+`column80.fimAccepted` (`fnGen.ts:6082`) runs the full post-accept oracle, so accepting a ghost
+starts background repair rounds. A round captures `versionAtResolve`
+(`src/vscode/oracleSurface.ts:543`) and then spends seconds in a model call while the user keeps
+typing, which is the NORMAL case after accepting a ghost. Meanwhile a second accept parks another
+session in the pending slot (`:299-310`, newest wins). The discarded session ends, `drainPending()`
+(`:325`) fires the parked one, it re-checks the current file, and a fresh "repair round 1
+(preview)" opens against a document that has moved on. The discard is quiet now. The diff still
+arrives.
 
-WITNESSED live by the human 2026-08-21, mechanism confirmed by reading the flow (read, not run).
-The report: on a FIM repair, "Column 80: generation discarded - the document changed during
-generation." followed by the repair diff opening anyway.
+So: should a drained FIM-sourced session auto-present at all while the document is actively
+changing? Options include draining only after the document has been quiet for a beat, or making the
+diagnostics surface (already shown) the only automatic output and requiring a gesture before a diff
+opens. This is the cancellation-is-a-primitive family this product has met before: background work
+racing a live keystroke stream needs its interruption story designed, not patched.
 
-The sequence, off the code: `column80.fimAccepted` (`fnGen.ts:5919`) runs the full post-accept
-oracle, so a FIM accept starts background repair rounds. The round captures
-`versionAtResolve` (`oracleSurface.ts:543`), spends seconds in a model call, and the user keeps
-typing - the NORMAL case after accepting a ghost - so `present()` loses the version race and toasts
-the discard at WARNING weight (`fnGen.ts:989`). Meanwhile a second FIM accept parked another
-session in the pending slot (`oracleSurface.ts:300-310`, newest wins). The discarded session ends,
-`drainPending()` fires the parked one, it re-checks the current file and opens a fresh
-"repair round 1 (preview)". Each half is behaving as designed; together they read "discarded, then
-done anyway", and the churn repeats as long as the user types.
+Falsify: a drained FIM-sourced session against a document edited in the last N seconds does not open
+a diff, and the same session against a quiet document still does.
 
-Two halves, one mechanical and one design:
+### 65. The import hint names crates the target does not link, and mis-names a renamed one
 
-- **Mechanical: the discard toast is wrong-weight for a background session.** `present()`'s warn is
-  right for a gesture the user invoked (fn-gen, TDD, manual repair) and noise for an automatic
-  post-accept race the user's own typing wins. The session context already carries `source`; a
-  discard in a `source: "fim"` session goes to the channel (or the status bar, the surface
-  `surfaceEnvReason` already uses), and the toast survives on the explicit-gesture sources.
-- **Design, decide before building past the toast:** should a drained FIM-sourced session
-  auto-present a diff at all while the document is actively changing? Options include draining only
-  after the document has been quiet for a beat, or requiring the diagnostics surface (already
-  shown) to be the only automatic output and a diff to wait for a gesture. This is the
-  cancellation-is-a-primitive family this product has met before: background work racing a live
-  keystroke stream needs its interruption story designed, not patched. The toast fix above is worth shipping alone; this half
-  is not.
+Residue of item 56, filed 2026-08-21 from that build's own not-done list. Session-v56 lifted the
+module-tree walk into `src/core/rustReach.ts` and did NOT lift `tightenRatify`'s `externCrateName`
+(`tightenRatify.ts:364`, applied at `:454`), so `renderImportHint` still emits
+`use other_crate::Thing;` for a crate the target does not link, and rustc refuses it with E0433. It
+also names the PACKAGE name (`usePath.ts:100`) where Cargo links the DEPENDENCY KEY, so a renamed
+dependency (`renamed = { package = "real-name" }`) gets the wrong prefix.
 
-Falsify: a FIM-accept repair round that loses the version race produces a channel line and NO
-toast; the fn-gen gesture's discard still toasts; and (if the design half ships) a drained
-FIM-sourced session against a document edited in the last N seconds does not open a diff.
+PROVEN on the gesture side, where the check already lives: 43 of 435 derived lines compiled
+workspace-wide, and 43 of 50 once restricted to crates the target actually links. The fix is item
+56's shape again, one mechanism and one copy with two callers, but it DELETES coverage, so it wants
+its own measurement first: how many pre-fill collaborator types are cross-crate at all? Withholding
+a hint on a type the model then invents is not obviously better than a `use` line that fails loudly,
+and nothing has measured which way that trade falls.
+
+Falsify: a cross-crate type whose manifest does not list the crate contributes no hint; a renamed
+dependency renders the dependency key rather than the package name; every hint that compiled before
+still compiles.
+
+### 66. Item 63's translations stopped at the Ollama arm, and two live backends throw the same failures unmarked
+
+Filed 2026-08-21 out of session-v56's phase 4 review, which deferred it as outside that contract's
+enumerated list. REASONED from source, and the source is three transports writing one failure three
+ways.
+
+The stream-cut class carries a translator marker on the Ollama arm only. The same user-visible
+failure, the server going silent mid-reply, is thrown unmarked by `anthropicInstruct.ts:196` ("the
+stream ended before message_stop"), `anthropicInstruct.ts:257`, `cloudInstruct.ts:140` and
+`ollama.ts:318` ("response has no body"). Those users get the catch-all with API jargon in it
+instead of the crafted sentence, and all three arms are live fn-gen backends (`fnGen.ts:30-33`).
+Item 63 as written only bought the Ollama string.
+
+Fix shape: a per-class marker set, or one shared "the model server went silent mid-reply" row per
+transport. The same two files carry item 63's unbounded `safeText` twins, which is filed there
+because the bound is that item's; the two are named across so nobody ships one arm and leaves the
+other.
+
+Falsify: drive a silent stream through each of the three backends; all three toast the same crafted
+sentence and none of them carries `message_stop` to the screen.
 
 ## 2. Trust the instruments, before building on them
 
@@ -722,15 +695,18 @@ The surface names types and members. It does not say where they come from, and t
 an import it was never shown.
 
 **And the hole is wider than this item first claimed.** The Rust masking is not real on this surface:
-the use-path leg (`src/core/usePath.ts:116-141`, `renderImportHint`) is TEST-GEN only - it fires just
-when `opts.importTargetPath` is set (`fnGen.ts:2881-2890`, "The import hint (test-gen only)"). So the
-fn-gen pre-fill carries no import payload in ANY language, Rust included (`fnGen.ts:2230-2233`,
-"fn-gen omits it"). What masks it in Rust is something else and weaker: a generated body usually lands
+the use-path leg (`src/core/usePath.ts:143`, `renderImportHint`) is TEST-GEN only - it fires just
+when `opts.importTargetPath` is set (`fnGen.ts:3201-3210`, "The import hint (test-gen only)"). So the
+fn-gen pre-fill carries no import payload in ANY language, Rust included (`fnGen.ts:2503`,
+"fn-gen omits it"). Cites re-walked 2026-08-21; the `fnGen.ts:2881-2890` this entry used to give was
+a stale duplicate before item 56 moved the block again. What masks it in Rust is something else and weaker: a generated body usually lands
 in a file whose imports already exist, which is the code's own stated reason. Python is where it was
 MEASURED, not where it is.
 
 Not a cap and not a budget. It is a missing payload, and it is measurable the day someone builds it:
-the same 40 rows, one arm, and the same span-scoped verdict.
+the same 40 rows, one arm, and the same span-scoped verdict. The Rust derivation itself was fixed in
+session-v56 (item 56, now in the gap list) and its remaining hole is item 65, so this build meets
+both the day it lands rather than re-manufacturing them at five times the surface.
 
 ### 49. The count cap's server justification is measured false on Python and untested on TypeScript
 
@@ -2127,6 +2103,19 @@ named file - not for a slice of its own.
   TOK_MAX. So the "harmless while fnGen is the only caller" reasoning has already expired; the second
   caller arrived and inherited the unbounded fan-out. Either fold the bound into the signature or say
   so where the parameter is declared.
+- Four one-line wording jobs from session-v56, each too small for an item and each lost with its
+  session folder otherwise. `firstRun.ts:220`'s decline message is the pattern for all of them.
+  (a) The remote model-missing disable names the model and the host and not the way back: after
+  pulling the model on the remote box, re-enabling needs a settings touch or a window reload and
+  nothing says so. (b) `fnGen.ts` around `:1040`, the preview-open discard toast
+  (`the preview could not be opened (${String(err)})`), can still render multi-line; it was outside
+  the file-IO trio item 63 bounded and takes the same `firstLine` fix. (c) `rustReach.ts` returns on
+  an unreadable `.rs` def file before the module chain is walked, so a readable `lib.rs` that
+  DISPROVES the path is never consulted; walk the chain first and let the def read be a later
+  disproof rather than an early exit. (d) Three copies of a Rust `use`-tree expander now exist, and
+  `instructPostprocess.ts:395` is the exported one that also handles `{self}` - fold
+  `rustReach.ts:191` into it on the next touch of either. No behavioural divergence found today,
+  but the phase-6 commit's own thesis was one mechanism, one copy.
 
 ## Dogfood ledgers - questions only real use answers
 
@@ -2571,3 +2560,44 @@ arm runner's per-language `prepareDoc` hook, Python ported from the v51 one-row 
 through the unified runner, three languages' arms re-run as the regression check. The check's own
 defects became items 61 and 62). The deferred-fixes section dropped its shipped and struck bullets
 in the same pass; their text survives in git at `e14d6cf` and earlier.
+
+Caught up again 2026-08-21 by session-v56, six phases on an unpushed branch. Three gaps added.
+**57** (a reachable server with zero models was treated as ready: `listModels` answers both "is the
+host up" and "what is pulled", and the remote arm's enable decision read only the first half, so an
+empty array from a fresh remote enabled fn-gen on a model the server provably lacked and the user's
+first generate arrived as an opaque model-not-found. `hasModel` is folded into the decision and
+lifted to `src/core/ollama.ts` beside `listModels`, with `firstRun.ts` and `extension.ts` dropping
+their two copies of it. A stocked host enables exactly as before; a missing model fails CLOSED at
+enable time with a tier message naming the model and the host, and a `reason=model-missing` carve
+line). **58** (Tighten Doc Comment fired rounds through a transport the build had just declared
+dead. The human ratified the design sentence at scoping - a disabled service goes inert EVERYWHERE,
+the claude-code arm is the precedent to follow rather than overrule - and the survey found the hole
+was wider than the one gesture: the remote and local arms handed their disabled service a live
+transport too. Tighten now consults the tier gate before any work and refuses with the tier's
+recorded reason; repair reads the gate BEFORE its `listModels` pre-flight, so a refused gesture
+issues zero network requests; and the remote, local and cloud arms build their disabled service with
+the claude-code arm's reject transport. Config and logging stay the live build's, so a settings
+change still re-enables). **56** (the import hint derived `use` paths Rust refuses. The reachability
+walk is lifted out of `tightenRatify` into `src/core/rustReach.ts`, one copy with two callers, and
+the POLICY is the only thing that differs between them: the ratification gesture refuses a path it
+cannot prove, the hint keeps today's render when nothing about the module tree is readable and
+refuses when readable source DISPROVES the path. That split is the only reading under which
+"prove it or refuse it" and "already-correct paths render unchanged" both hold, because the shipped
+suite derives `use crate::orders::Order;` from an EMPTY contents map and a literal reading would
+kill every same-crate hint the product emits. The adversarial review then found two defects with
+live `rustc` 1.96.0 witnesses, both fixed on triage and both in one function: a shallow
+`pub use seg::*` was accepted for a name living BELOW `seg`, so `fraction` rendered
+`use fraction::Format;` against a real path of `fraction::display::Format`, and 15 of the 996
+registry crates carrying a `lib.rs` have that shape at the crate root alone, a lower bound; and a
+same-named sibling re-export HIJACKED the hint, turning a loud E0603 into a silently wrong import
+that COMPILES and binds the wrong struct, which is the worst outcome available under a header
+saying these types are already defined. The rule that works is PREFIX, not equality: triage
+implemented the reviewer's own stated equality fix, ran it, and watched it red the flagship
+`std::io::BufReader` case. A third defect rode out with them, `precededByCfg` treating `#[cfg_attr(`
+as a gate when this repo had already ratified the opposite at `test/impl-v3-cfgscan.test.cjs:20`.
+KNOWN COST, recorded rather than fixed: a TRANSITIVE glob chain, a root `pub use a::*` over a
+`pub use b::*` inside `a`, now REFUSES where it used to render a path that compiled. The glob graph
+is not followed, only the file chain, so the second hop is not in evidence, and no shipped row
+covers it. Residue is item 65). Items 63 and 64 shrank rather than closed: 63's six translations,
+bounded catch-alls, bounded body and reason phrase, and widened unreachable check all shipped while
+its two remaining interpolation sites did not; 64's toast half shipped and its design half did not.
