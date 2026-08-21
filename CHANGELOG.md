@@ -2,20 +2,26 @@
 
 ## Unreleased
 
-A misbehaving server can no longer flood a notification on any backend. Session-v56 bounded the
+A misbehaving server can no longer flood a notification on any backend. The last release bounded the
 local path and left the Anthropic and cloud clients with byte-identical unbounded copies, so a 500
 with a 100KB body put the whole 100KB in a toast: measured at 102437 characters. The bound is one
-piece of code now and all three transports use it, on the body and on the HTTP reason phrase.
+piece of code now and all three clients use it, on the body and on the HTTP reason phrase.
 
-The same is true of a failure that arrives inside a successful response. A model server can answer
-200 and put its error in the stream, which never passed through an error body and so was never
-bounded. Four such sites are bounded now, including the download progress line, which a server
-could make 100,000 characters wide.
+The same is true of text that arrives inside a successful response. A model server can answer 200 and
+put its error in the stream, which never passed through an error body and so was never bounded.
+Three such sites are bounded now, and so is the model download's progress line, which is not an
+error at all and which a server could still make 100,000 characters wide.
 
-The silent server sounds the same whichever backend you run. A stream that ends mid-reply used to
-say "the model server went silent mid-reply, so nothing was written - check the server, then run the
-gesture again" on one backend and hand you `message_stop` or `response has no body` on the others.
-Those are API vocabulary, not instructions. One event, one sentence, on all of them.
+One failure, one sentence, instead of three. A stream that ends without its terminal marker, and a
+response that arrives with no body at all, used to hand you `message_stop` or `response has no body`
+depending on which backend you had configured. Those are API vocabulary, not instructions. All of
+them now say the model server went silent mid-reply and tell you to check the server before running
+the gesture again.
+
+Read that as what the message SAYS, not as coverage. Only the Anthropic client can currently notice
+that a stream ended early: the local and cloud clients return whatever text arrived, so a reply cut
+in half is still offered to you as a generation. And no function-generation backend has a timeout on
+a server that accepts the connection and then goes quiet. Both of those are open.
 
 And the server cannot put words in that sentence's mouth. The failure message was matched on a
 substring found anywhere in it, so a server whose error text happened to contain another failure's

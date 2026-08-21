@@ -792,8 +792,9 @@ connect-timeout-yes / socket-and-headers-no pair.
 triaged DO). Flagged here because it narrows the written contract's own wording, and because the
 wording it narrows came from a roadmap entry rather than from a phase.**
 
-**What changed.** `session-v57/contract-phase4.md` clause 1 lists five throws that must all produce
-one sentence, and roadmap item 66 named the same five. Four of them ship that way. The fifth,
+**What changed.** `session-v57/contract-phase4.md` clause 1 listed five throws that must all produce
+one sentence, and roadmap item 66 named the same five. Reading that clause today finds four and a
+struck-through fifth: the file was amended in place, which is why the cite does not match the count. Four of them ship that way. The fifth,
 `anthropicInstruct.ts`'s SSE `error` frame, does not, and it was removed from the class.
 
 **Why, measured.** That frame is Anthropic's generic in-stream error envelope. A rate limit, an

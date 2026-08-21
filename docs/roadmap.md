@@ -43,6 +43,7 @@ Proven broken, no design question left. Each is small and each is about the prod
 - **60.** two C# string constructs the re-indent scanner cannot see; one emits CS8999
 - **64.** should a drained FIM session open a diff against a document still being typed in
 - **65.** the import hint names crates the target does not link, and mis-names a renamed one
+- **69.** three toasts still promise or print something they should not
 
 **2. Trust the instruments, before building on them**
 A number from the harness is a hypothesis until the instrument that produced it has been looked at. Mostly blocked on taking a measurement rather than on a design call.
@@ -62,6 +63,8 @@ A number from the harness is a hypothesis until the instrument that produced it 
 **3. The big builds**
 Each needs its own goal and scout. The order is inherited from the evidence each was filed on, and a third of that evidence no longer has an artifact - read it as a prior, not a ranking.
 
+- **67.** no fn-gen backend can tell a stream died mid-reply, and two of three cannot tell at all
+- **68.** the claude-code backend has no translated failures, and neither does the HTTP-status class
 - **36.** resolution is the hole, not the budget: 69 real failures per run against the budget's 22
 - **34.** C# and Go have a supply problem, not a cap problem
 - **28.** three of five languages cannot anchor an imported type at all
@@ -315,6 +318,49 @@ and nothing has measured which way that trade falls.
 Falsify: a cross-crate type whose manifest does not list the crate contributes no hint; a renamed
 dependency renders the dependency key rather than the package name; every hint that compiled before
 still compiles.
+
+### 69. Three toasts still promise or print something they should not
+
+Filed 2026-08-21 from session-v57's phase-1 and phase-3 reviews. The first is a human call, the
+second is PROVEN, the third is a contract disagreement nobody can currently trip.
+
+**The channel pointer is now a promise with nothing behind it, on three arms.**
+`generationFailedToast` (`src/vscode/fnGen.ts`) ends every unknown-error toast with "The full message
+is in the output channel", and the channel's copy is `String(err)` at `src/core/fnGenService.ts:525`,
+the same string the toast shortened. Once session-v57 moved the bound into `errorBound.ts` and all
+three HTTP clients took it, that string is bounded at 400 characters before either surface sees it.
+Measured, a 500 with a 102400-character body: the Anthropic channel line is 467 characters and the
+cloud one 463. Before that change the channel genuinely held the whole body on those two arms.
+`src/vscode/firstRun.ts:309-310` still carries a comment asserting the opposite.
+
+Two shapes, and they are different products. Log the RAW body to the channel at the transport before
+the bound, which restores the diagnostic a support case wants and is arguably the "channel line that
+is missing entirely" exception rather than a rewording; or stop claiming the channel has it, which is
+cheap to type but is one sentence shared by every unknown-error toast, the pull-failure toast, and
+the blind rows that pin all of them. The choice is a product call about who the channel is for.
+
+**Two repair toasts render a compiler diagnostic whole.** `src/vscode/oracleSurface.ts:975` (repair
+give-up) and `:1613` (refine introduced errors) interpolate a `Diagnostic.message` with no
+`firstLine`, and `src/core/tsOracle.ts:371` builds that message with `current.message += "\n" + line`
+for every tsc elaboration line, so every non-trivial assignability error produces a multi-line
+notification. The tell that it is an oversight: `:1608` already slices the same message to 70
+characters for the CHANNEL line. `src/vscode/toastText.ts` is a leaf and `oracleSurface.ts` does not
+import it, so the same move session-v57 made at the tier gates works here with no cycle risk. The
+give-up case has no channel line carrying the full message, so one has to be added.
+
+**The one-line rule recognises only `\n`.** `firstLine` splits on `"\n"` alone, so a bare CR,
+U+2028, U+2029 and NEL all survive it and render as two visual lines with no pointer, which is the
+defect item 63 closed for `\n`. `\r\n` works by accident, because `trim()` eats the `\r`.
+Reachability through any message the product actually produces is near-zero, which is why it was
+left. It is here because the contract and the implementation disagree and no row would notice:
+`test/blind-v57-p3-tier-message.test.cjs` asserts `!t.includes("\r")` and calls it the same clause
+under a different encoding, while every failure it injects uses `\n`. `firstLine` is the product's
+universal toast bound and it also cuts server-authored text, so widening it moves the cut point for
+every toast in the product and needs a gate run and a re-cut list. Either widen it, or narrow the
+oracle to what the product claims. Do not leave them disagreeing.
+
+Falsify: the pointer appears only where the channel has more than the toast; a multi-line tsc
+diagnostic toasts one line; the split rule and its oracle name the same set of line breaks.
 
 ## 2. Trust the instruments, before building on them
 
@@ -727,6 +773,91 @@ Each needs its own goal and scout. This tier used to claim it was ordered by mea
 not, and cannot be: a third of the measurements behind these six no longer have an artifact on this
 box. The order is the one the evidence justified when each was filed. Re-rank it the day somebody
 re-runs the arms.
+
+### 67. No fn-gen backend can tell that a stream died mid-reply, and two of three cannot tell at all
+
+Filed 2026-08-21 from session-v57's phase-4 review, which went looking for the failure item 66's
+sentence describes and found that almost nothing produces it. PROVEN by reading the call graph and
+by driving two transports; the third is REASONED.
+
+Session-v57 gave one crafted sentence to the stream-cut class on every transport that throws it.
+What it could not give them is the throw. Three holes, and they compound:
+
+**No silence bound on any fn-gen path.** `silence` is a parameter of `streamGenerate`
+(`src/core/ollama.ts:232`) and the only bound in the product is `FIM_SILENCE` (`:92`), passed at one
+call site, `:116`, inside `generateFim`. `generateInstruct` passes none, and `FnGenService` generates
+through `generateInstruct`. So `Ollama stream cut:` is unreachable from `generationFailedToast`, and
+a server that accepts the connection and then goes quiet gives every fn-gen arm an indefinite spinner
+and no toast, ever. The Anthropic and Cloud clients never had a watchdog at all.
+
+**No terminal-event check on the local or cloud client.** `anthropicInstruct` tracks `sawStop` and
+throws when the stream ended without it. `generateInstruct` (`src/core/ollama.ts:425-440`) breaks its
+reader loop and returns whatever text arrived with `doneReason` undefined, and `cloudInstruct`'s
+`streamChat` does the same, treating `[DONE]` as a timing marker only. `fnGenService.ts` then rejects
+neither, because the truncation guard needs a `doneReason` and the empty guard needs empty text. A
+half function is proposed to the user as a generation. Driven live on the cloud arm:
+
+```
+CLOUD mid-reply cut     -> RESOLVED {"text":"fn add(a: i32, b: i32) -> i32 {\n    a + b", ...}
+ANTHROPIC mid-reply cut -> threw "Anthropic: the stream ended before message_stop..."
+```
+
+**A cloud 200 carrying an error frame is dropped.** `StreamDelta` (`src/core/cloudInstruct.ts:60`)
+declares only `choices` and `handleLine` has no error branch, so
+`data: {"error":{"message":"upstream overloaded"}}` inside a 200 is parsed, matches nothing and
+vanishes. The call resolves empty, the service throws "generation was empty after postprocess", and
+the user is told the model produced nothing usable when the provider said it was overloaded.
+
+The watchdog half is the one with a design question in it, and it is why this is one item rather than
+three. FIM's bound exists to un-wedge single-flight (`src/core/ollama.ts:80-91`); fn-gen is a
+deliberate gesture with a visible spinner and a cancel, so the argument is weaker and firing early
+kills a generation the user asked for. FIM's 60s/20s were reasoned from local model reload times and
+`docs/constants.md` records the 60s as a judgement call. Neither number was chosen for a hosted
+endpoint, where a reasoning model can legitimately send nothing for a long time before its first
+token. That is the inherited-constants trap again.
+
+The terminal-event half wants a real endpoint first: `handleLine` already tolerates providers that
+omit `[DONE]`, and a hard requirement would turn a working provider red.
+
+Falsify: kill a local server mid-generation and a toast arrives rather than a half function; the same
+against a cloud endpoint; a cloud 200 carrying an error frame names the provider's own reason.
+
+### 68. The claude-code backend has no translated failures, and the HTTP-status class has none either
+
+Filed 2026-08-21 from session-v57's phase-4 review. PROVEN by driving both throws through
+`generationFailedToast`.
+
+Claude Code is a live fn-gen backend (`src/vscode/fnGen.ts:33`) and item 66 gave it nothing. Two of
+its throws interpolate CLI text straight into the detail position:
+
+```
+"Claude Code exited 1: Error: connection closed"
+  -> "Column 80: function generation failed - Claude Code exited 1: Error: connection closed.
+      The full message is in the output channel."
+```
+
+The `Error:` token every other message now keeps out reaches the screen, and `subtype=` in the
+sibling throw is API vocabulary by the same test item 66 applied to `message_stop`. Neither breaks a
+row that ships, because the catch-all row bans `Error:` only at the detail position and the CLI text
+sits after the backend's own prefix.
+
+Same class on the other three: the HTTP-status throws put a raw provider JSON body where a sentence
+belongs. Session-v57 bounded their width, so they are no longer 100KB, but
+`Ollama 503 Service Unavailable: {"error":...}` is still what the user reads.
+
+**This is the natural first case for the structural signal session-v57's ruling deferred**, which is
+why it is one item and not two rows. Claude Code already throws `ClaudeCodeError` with a `kind` field
+(`exit`, `cli-error`, `serving-failure`, `logged-out`, `bad-json`) set at the throw site. Matching a
+substring of a message that leads with CLI text would be the weaker mechanism when the stronger one
+is sitting there. And the HTTP class needs a decision before it needs rows: a 429, a 503 and a 529
+are not one failure, they want different next actions, and the status code is the signal rather than
+the body.
+
+Doing both as marker rows would take the table well past the roughly ten rows session-v57 set as the
+trigger for reconsidering the mechanism. Do the mechanism first.
+
+Falsify: a claude-code exit and a 429 each produce a sentence naming what happened and what to do,
+with no `Error:`, no `subtype=` and no raw JSON on screen.
 
 ### 36. The budget was never the big hole. Resolution is: 69 real failures per run against the budget's 22
 
@@ -2043,7 +2174,9 @@ named file - not for a slice of its own.
   pulling the model on the remote box, re-enabling needs a settings touch or a window reload and
   nothing says so. (b) `fnGen.ts` around `:1040`, the preview-open discard toast
   (`the preview could not be opened (${String(err)})`), can still render multi-line; it was outside
-  the file-IO trio item 63 bounded and takes the same `firstLine` fix. (c) `rustReach.ts` returns on
+  the three strings item 63 enumerated and takes the same `firstLine` fix item 63's third string got.
+  Item 63 is struck; its record is in `docs/roadmap-history.md`, and it never named a "file-IO trio",
+  which is what this line used to cite. (c) `rustReach.ts` returns on
   an unreadable `.rs` def file before the module chain is walked, so a readable `lib.rs` that
   DISPROVES the path is never consulted; walk the chain first and let the def read be a later
   disproof rather than an early exit. (d) Three copies of a Rust `use`-tree expander now exist, and

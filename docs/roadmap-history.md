@@ -217,7 +217,7 @@ covers it. Residue is item 65). Items 63 and 64 shrank rather than closed: 63's 
 bounded catch-alls, bounded body and reason phrase, and widened unreachable check all shipped while
 its two remaining interpolation sites did not; 64's toast half shipped and its design half did not.
 
-**63** (three strings the session-v56 toast sweep did not reach, all closed by session-v57 on
+Caught up on 2026-08-21 by session-v57, second block of that date. **63** (three strings the session-v56 toast sweep did not reach, all closed by session-v57 on
 2026-08-21. The two sibling transports carried byte-identical unbounded copies of `safeText`: a
 500 with a 100KB body measured 102437 characters of notification on the Anthropic arm and 102433 on
 Cloud, on one line, where the toast's own first-line rule cannot shorten it. The bound now lives
@@ -231,14 +231,17 @@ touched `safeText` at all and are bounded at four sites now, three in `ollama.ts
 because the error field is typed string and a server may still send an object, and without the
 coercion three of four hostile shapes throw out of the stream reader and an array reaches 200015
 characters. The claude-code `cwd-unusable` message reads `err.message` rather than `String(err)`, so
-the `Error:` envelope is gone, and `tierDisabledToast` in `src/vscode/toastText.ts` renders every
+the `Error:` envelope is gone, and `tierDisabledToast` in `src/vscode/toastText.ts` renders a
 disabled tier as one line with a channel pointer appended only when the cut actually dropped
-something. Four gestures render a tier message and all four were swept, not the one the entry named.
-Residue is in the session scraps: the toast still points at a channel whose copy is the same bounded
-string, the cloud reader drops an in-200 error frame entirely, and two repair toasts in
-`oracleSurface.ts` still render a multi-line compiler diagnostic whole), **66** (one sentence for the
+something; three of the four gates call it and the repair gate, which embeds the message
+mid-sentence, carries the same rule inline. Four gestures render a tier message and all four were swept, not the one the entry named.
+Residue became items 67, 68 and 69 rather than being left in a gitignored session folder, which is
+this file's own rule: the toast still points at a channel whose copy is the same bounded string, and
+two repair toasts in `oracleSurface.ts` still render a multi-line compiler diagnostic whole), **66** (one sentence for the
 silent server on every transport, session-v57, 2026-08-21. The table now carries marker SETS rather
-than markers, which is this entry's own first option, so it stays at seven rows. Matching changed
+than markers, which is this entry's own first option, so the table went from seven rows to six
+rather than to twelve: the two test-refusal wordings that already shared a sentence collapsed into
+one set. Matching changed
 twice and both changes are behaviour: anchored rows match at index 0, because otherwise a server can
 put another row's words in a payload and draw a different subsystem's sentence, which was live at
 `ollama.ts`'s in-200 error field. Anchoring alone does not close that. A transport throw carrying
@@ -251,9 +254,10 @@ healthy server. It keeps the provider's own message, loses the phrase "stream er
 crafted sentence. Two things this entry claimed are not true and should not be re-quoted: the
 `Ollama stream cut:` sentence it named as the reference is unreachable from the fn-gen toast, because
 the only silence bound in the product is `FIM_SILENCE` and `generateInstruct` passes none, so no
-fn-gen backend can detect a hung server at all. That is filed as a fresh item's worth of work in the
-session scraps, along with the cloud arm having no mid-reply cut detection and the claude-code
-backend having no rows)
+fn-gen backend can detect a hung server at all. And the sentence is about wording, not coverage: only
+the Anthropic client tracks a terminal event, so a stream cut in half resolves as a successful short
+generation on the local and cloud clients and reaches no sentence at all. Those two holes plus the
+claude-code backend having no rows became items 67 and 68)
 
 ## Settled without a human: S22 (2026-08-08)
 
