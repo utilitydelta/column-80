@@ -360,10 +360,11 @@ enumerated list. REASONED from source, and the source is three transports writin
 ways.
 
 The stream-cut class carries a translator marker on the Ollama arm only. The same user-visible
-failure, the server going silent mid-reply, is thrown unmarked by `anthropicInstruct.ts:196` ("the
-stream ended before message_stop"), `anthropicInstruct.ts:257`, `cloudInstruct.ts:140` and
-`ollama.ts:318` ("response has no body"). Those users get the catch-all with API jargon in it
-instead of the crafted sentence, and all three arms are live fn-gen backends (`fnGen.ts:30-33`).
+failure, the server going silent mid-reply, is thrown unmarked by `anthropicInstruct.ts:257` ("the
+stream ended before message_stop"), `anthropicInstruct.ts:197` (the stream's own error event),
+`cloudInstruct.ts:140` and `ollama.ts:318` ("response has no body"). Those users get the catch-all
+with API jargon in it instead of the crafted sentence, and all three arms are live fn-gen backends
+(`fnGen.ts:30-33`).
 Item 63 as written only bought the Ollama string.
 
 Fix shape: a per-class marker set, or one shared "the model server went silent mid-reply" row per
