@@ -10,6 +10,7 @@
  */
 
 import * as path from "path";
+import { reachableSegments } from "./rustReach";
 
 export interface UsePathDeps {
   /** True when a file exists at `p` (used to find the nearest Cargo.toml). */
@@ -60,19 +61,18 @@ function crateName(cargoTomlPath: string, readFile: (p: string) => string | unde
   return undefined;
 }
 
-/**
- * The Rust `use` path for a type defined in `defFilePath`, as referenced from
- * `targetFilePath`. Same crate → `crate::a::b`; another crate → `crate_name::a::b`.
- * `lib.rs`/`main.rs` → the crate root (`crate` / `crate_name`); `foo/mod.rs` →
- * `…::foo`. undefined is the honest degrade — no import hint beats a wrong one —
- * when a crate root is missing, the def file is not under `src/`, or a cross-crate
- * name cannot be read.
- */
-export function deriveUsePath(
-  defFilePath: string,
-  targetFilePath: string,
-  deps: UsePathDeps,
-): string | undefined {
+/** A derived path before it is joined: the crate prefix, the module chain under
+ *  it, and the two facts the reachability walk needs about the def crate. */
+interface DerivedPath {
+  prefix: string;
+  segs: string[];
+  defRoot: string;
+  sameCrate: boolean;
+}
+
+// The file-tree derivation. `deriveUsePath` joins it; `renderImportHint` runs
+// the module-tree walk over it first.
+function derive(defFilePath: string, targetFilePath: string, deps: UsePathDeps): DerivedPath | undefined {
   const defRoot = crateRootOf(defFilePath, deps.fileExists);
   const targetRoot = crateRootOf(targetFilePath, deps.fileExists);
   if (!defRoot || !targetRoot) {
@@ -93,17 +93,37 @@ export function deriveUsePath(
     segs = segs.slice(0, -1); // foo/mod.rs is module `foo`, not `foo::mod`
   }
 
-  let prefix: string;
-  if (path.resolve(defRoot) === path.resolve(targetRoot)) {
-    prefix = "crate";
-  } else {
-    const name = crateName(path.join(defRoot, "Cargo.toml"), deps.readFile);
-    if (!name) {
-      return undefined;
-    }
-    prefix = name;
+  const sameCrate = path.resolve(defRoot) === path.resolve(targetRoot);
+  if (sameCrate) {
+    return { prefix: "crate", segs, defRoot, sameCrate };
   }
-  return [prefix, ...segs].join("::");
+  const name = crateName(path.join(defRoot, "Cargo.toml"), deps.readFile);
+  if (!name) {
+    return undefined;
+  }
+  return { prefix: name, segs, defRoot, sameCrate };
+}
+
+/**
+ * The Rust `use` path for a type defined in `defFilePath`, as referenced from
+ * `targetFilePath`. Same crate → `crate::a::b`; another crate → `crate_name::a::b`.
+ * `lib.rs`/`main.rs` → the crate root (`crate` / `crate_name`); `foo/mod.rs` →
+ * `…::foo`. undefined is the honest degrade — no import hint beats a wrong one —
+ * when a crate root is missing, the def file is not under `src/`, or a cross-crate
+ * name cannot be read.
+ *
+ * This is the FILE-TREE path and stays that way: it takes no type name, so it
+ * cannot ask a re-export question, and `tightenRatify`'s import row depends on
+ * its shape. The module-tree correction lives one level up, in
+ * `renderImportHint`.
+ */
+export function deriveUsePath(
+  defFilePath: string,
+  targetFilePath: string,
+  deps: UsePathDeps,
+): string | undefined {
+  const d = derive(defFilePath, targetFilePath, deps);
+  return d === undefined ? undefined : [d.prefix, ...d.segs].join("::");
 }
 
 /**
@@ -112,6 +132,13 @@ export function deriveUsePath(
  * sorted for a deterministic prompt. A type whose path cannot be derived is
  * skipped — the honest degrade, never a guessed import. undefined when nothing
  * resolvable remains.
+ *
+ * The file-tree path is corrected by `rustReach.reachableSegments` before it is
+ * rendered (session-v56 phase 6, item 56): measured against real `rustc`, 35 of
+ * the 38 failing derived stdlib lines were E0603 module-is-private, printed
+ * under a header that says the imports are already defined. The walk is the SAME
+ * one the Tighten gesture's import row uses, asked with a different policy for
+ * the unproven case — see `UnprovenPolicy`, and the note at the call below.
  */
 export function renderImportHint(
   types: Array<{ name: string; defPath: string }>,
@@ -120,10 +147,34 @@ export function renderImportHint(
 ): string | undefined {
   const byPath = new Map<string, Set<string>>();
   for (const t of types) {
-    const usePath = deriveUsePath(t.defPath, targetFilePath, deps);
-    if (!usePath) {
+    const d = derive(t.defPath, targetFilePath, deps);
+    if (d === undefined) {
       continue;
     }
+    // THE REFUSAL DECISION, and the subtle part of it is what "cannot be proven"
+    // means. It means DISPROVEN OR AMBIGUOUS — a private `mod` read out of real
+    // source with no re-export for this name, or a re-export naming a different
+    // type — and NOT "no evidence was read". Absence of evidence keeps today's
+    // render, which is why the policy is `keep`: the ordinary same-crate hint
+    // (`use crate::orders::Order;`) is derived from a `Cargo.toml` and a file
+    // path with no crate source read at all, and a literal prove-it-or-refuse-it
+    // reading would withhold every one of them. The ratification row, which is
+    // allowed to say nothing, asks the same walk with `refuse`.
+    const segs = reachableSegments(
+      {
+        typeName: t.name,
+        defPath: t.defPath,
+        defCrateRoot: d.defRoot,
+        sameCrate: d.sameCrate,
+        segments: d.segs,
+        unproven: "keep",
+      },
+      deps,
+    );
+    if (segs === undefined) {
+      continue;
+    }
+    const usePath = [d.prefix, ...segs].join("::");
     let names = byPath.get(usePath);
     if (!names) {
       names = new Set<string>();

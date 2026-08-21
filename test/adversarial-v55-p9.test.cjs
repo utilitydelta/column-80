@@ -496,14 +496,21 @@ btest("[B] a nested sysroot type whose hint the fix withholds is named on the ch
 });
 
 // ===========================================================================
-// FINDING C. The registry carve-out is a deferral, not a correctness claim.
-// `deriveUsePath` (core/usePath.ts:71) derives the FILE LAYOUT path. It never
-// reads a `mod` declaration's visibility and never follows a `pub use`. The repo
-// already carries the measurement: tightenRatify.ts:611 records 110 of 249
-// derived `use` lines compiling on glommio, with 136 of the failures E0603.
+// FINDING C. The registry carve-out was a deferral, not a correctness claim.
+// `deriveUsePath` derives the FILE LAYOUT path. It never reads a `mod`
+// declaration's visibility and never follows a `pub use`. The repo already
+// carried the measurement: 110 of 249 derived `use` lines compiling on glommio,
+// with 136 of the failures E0603.
+//
+// FLIPPED by session-v56 phase 6 (item 56). The row below pinned that wrong
+// behaviour on purpose and said so: "THIS ROW GOES RED WHEN THAT LANDS, and that
+// red is success". It landed - `renderImportHint` now runs the same reachability
+// walk the Tighten gesture's import row uses (`rustReach.reachableSegments`) -
+// so the assertion is now the RE-EXPORTED path the crate actually publishes.
+// The fixture is untouched: same private `mod ser;`, same `pub use`.
 // ===========================================================================
 
-btest("[C] a crates.io type declared in a PRIVATE module gets a hint naming that private module - the same 'plausible rather than correct' defect the contract attributes to stdlib alone", async () => {
+btest("[C] a crates.io type declared in a PRIVATE module gets a hint naming the crate's `pub use` re-export, not the private module", async () => {
   write(REG_LIB, `mod ser;\npub use ser::Serialize;\n`);
   const src = `pub trait Serialize {
     fn serialize(&self) -> u32;
@@ -565,8 +572,8 @@ pub fn build_store(seed: u32, cfg: Serialize) -> KeyStore {
   const hints = usePathsFor(r.text, "Serialize");
   assert.ok(hints.length > 0, `fixture precondition: the registry type must carry a hint at all.${dump(r)}`);
   assert.ok(
-    hints.some((l) => /serde::ser::/.test(l)),
-    `KNOWN WRONG, and this row pins TODAY'S behaviour on purpose. The crate's lib.rs declares \`mod ser;\` PRIVATE and re-exports at \`serde::Serialize\`, so the derived hint names the private module and is E0603 - the exact harm the contract cites for stdlib alone. It is NOT fixed by widening \`isRustSysrootDef\` to the registry: a crates.io API is the one thing the model cannot know, and withholding it is contract item 2's regression. The real fix is the reachability rewrite \`rustImport\` (\`tightenRatify.ts:620\`) already does for repair, and lifting it is the design call in \`session-v55/scraps.md\`. THIS ROW GOES RED WHEN THAT LANDS, and that red is success.\n  HINTS: ${JSON.stringify(hints)}${dump(r)}`,
+    hints.every((l) => !/serde::ser::/.test(l)) && hints.some((l) => /use serde::Serialize;/.test(l)),
+    `The crate's lib.rs declares \`mod ser;\` PRIVATE and re-exports at \`serde::Serialize\`, so \`serde::ser::Serialize\` is E0603 and the only compiling hint is the re-export. Withholding it instead (widening \`isRustSysrootDef\` to the registry) was never the answer: a crates.io API is the one thing the model cannot know. FLIPPED in session-v56 phase 6 from the old KNOWN-WRONG pin, which asserted \`serde::ser::\` and said its own red would be success.\n  HINTS: ${JSON.stringify(hints)}${dump(r)}`,
   );
 });
 

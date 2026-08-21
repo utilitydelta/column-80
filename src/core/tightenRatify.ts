@@ -51,6 +51,7 @@
 import * as path from "path";
 import { foldName } from "./spokenName";
 import { TS_LANGUAGE_IDS } from "./tsExtraction";
+import { reachableSegments } from "./rustReach";
 import { deriveUsePath } from "./usePath";
 
 /**
@@ -398,212 +399,6 @@ function externCrateName(
   return undefined;
 }
 
-/** The module file that DECLARES the children of a module: `src/lib.rs` for the
- *  crate root, then `<dir>/<seg>.rs` or `<dir>/<seg>/mod.rs` going down. */
-function moduleFileFor(srcRoot: string, segs: readonly string[], d: SafeDeps): string | undefined {
-  let dir = srcRoot;
-  let file = [path.posix.join(srcRoot, "lib.rs"), path.posix.join(srcRoot, "main.rs")].find((f) => d.exists(f));
-  for (const seg of segs) {
-    if (file === undefined) {
-      return undefined;
-    }
-    const flat = path.posix.join(dir, `${seg}.rs`);
-    const folded = path.posix.join(dir, seg, "mod.rs");
-    if (d.exists(folded)) {
-      dir = path.posix.join(dir, seg);
-      file = folded;
-    } else if (d.exists(flat)) {
-      dir = path.posix.join(dir, seg);
-      file = flat;
-    } else {
-      return undefined;
-    }
-  }
-  return file;
-}
-
-/**
- * Is the item at `index` behind a `#[cfg(...)]`.
- *
- * A conditional item may not exist in the build the developer is compiling, and
- * nothing here can evaluate a feature flag. glommio declares
- * `#[cfg(feature = "bench")] pub mod nop;`, and the derived
- * `use crate::nop::NopSubmitter;` is E0432 with the feature off - the last two
- * wrong rows in the corpus. The walk back crosses other attributes, doc
- * comments and blank lines, because the cfg is rarely the attribute nearest the
- * item.
- */
-function precededByCfg(text: string, index: number): boolean {
-  const before = text.slice(0, index).split("\n");
-  for (let i = before.length - 2; i >= 0; i--) {
-    const line = before[i].trim();
-    if (line === "" || line.startsWith("///") || line.startsWith("//!") || line.startsWith("//")) {
-      continue;
-    }
-    if (line.startsWith("#[cfg(") || line.startsWith("#[cfg_attr(")) {
-      return true;
-    }
-    if (line.startsWith("#[") || line.startsWith("#![")) {
-      continue;
-    }
-    return false;
-  }
-  return false;
-}
-
-/** The visibility of `mod <seg>` as declared in `text`, or undefined when the
- *  declaration is not there at all (a `#[path]` attribute, a `mod` nested in a
- *  block, a cfg-gated tree this cannot see). */
-function modVisibility(text: string, seg: string): "public" | "crate" | "private" | undefined {
-  const m = new RegExp(`^[ \\t]*(pub(?:\\(([^)]*)\\))?[ \\t]+)?mod[ \\t]+${seg}[ \\t]*[;{]`, "m").exec(text);
-  if (!m || precededByCfg(text, m.index)) {
-    return undefined;
-  }
-  if (!m[1]) {
-    return "private";
-  }
-  if (m[2] === undefined) {
-    return "public";
-  }
-  return m[2].trim() === "crate" ? "crate" : "private";
-}
-
-/** The visibility of the type declaration itself. A `pub use` cannot rescue a
- *  private type, so this is checked before the module chain. */
-function typeVisibility(text: string, name: string): "public" | "crate" | "private" | "conditional" | undefined {
-  const m = new RegExp(
-    `^[ \\t]*(pub(?:\\(([^)]*)\\))?[ \\t]+)?(?:struct|enum|trait|union|type)[ \\t]+${name}\\b`,
-    "m",
-  ).exec(text);
-  if (!m) {
-    return undefined; // not found is not a refusal: a macro can declare a type
-  }
-  if (precededByCfg(text, m.index)) {
-    return "conditional";
-  }
-  if (!m[1]) {
-    return "private";
-  }
-  if (m[2] === undefined) {
-    return "public";
-  }
-  return m[2].trim() === "crate" ? "crate" : "private";
-}
-
-/** Top-level commas of a `use` group body, braces respected. */
-function splitTopLevel(s: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === "{") {
-      depth++;
-    } else if (c === "}") {
-      depth--;
-    } else if (c === "," && depth === 0) {
-      out.push(s.slice(start, i));
-      start = i + 1;
-    }
-  }
-  out.push(s.slice(start));
-  return out.filter((p) => p !== "");
-}
-
-/** One `use` body into the flat paths it names: `a::{b::{C, D}, E}` becomes
- *  `a::b::C`, `a::b::D`, `a::E`. */
-function expandUse(s: string): string[] {
-  const open = s.indexOf("{");
-  if (open < 0) {
-    return [s];
-  }
-  let depth = 0;
-  let close = -1;
-  for (let i = open; i < s.length; i++) {
-    if (s[i] === "{") {
-      depth++;
-    } else if (s[i] === "}") {
-      depth--;
-      if (depth === 0) {
-        close = i;
-        break;
-      }
-    }
-  }
-  if (close < 0) {
-    return [s];
-  }
-  const prefix = s.slice(0, open);
-  const tail = s.slice(close + 1);
-  return splitTopLevel(s.slice(open + 1, close)).flatMap((part) => expandUse(prefix + part + tail));
-}
-
-/** Every path a `pub use` in `text` re-exports, flattened. Whitespace goes
- *  first, so the multi-line grouped form is one item; an `as` rename is marked
- *  and dropped, because the reachable name is then the alias and not the one
- *  the provider gave us. */
-function pubUsePaths(text: string, sameCrate: boolean): string[] {
-  const marked = text.replace(/\s+as\s+/g, "#as#");
-  const re = /(?:^|\n)[ \t]*pub(?:\(([^)]*)\))?[ \t]+use[ \t]+/g;
-  const out: string[] = [];
-  for (let m = re.exec(marked); m; m = re.exec(marked)) {
-    const scope = m[1];
-    if (scope !== undefined && !(sameCrate && scope.trim() === "crate")) {
-      continue;
-    }
-    let depth = 0;
-    let body = "";
-    for (let i = re.lastIndex; i < marked.length; i++) {
-      const c = marked[i];
-      if (c === "{") {
-        depth++;
-      } else if (c === "}") {
-        depth--;
-      } else if (c === ";" && depth === 0) {
-        break;
-      }
-      body += c;
-    }
-    for (const p of expandUse(body.replace(/\s+/g, ""))) {
-      if (!p.includes("#as#")) {
-        out.push(p);
-      }
-    }
-  }
-  return out;
-}
-
-/**
- * Does the module file `text` re-export `name` from its private child `seg`,
- * and is the type therefore nameable at THIS module's path.
- *
- * This is the shape the corpus actually uses, and it is why 136 of glommio's
- * 249 rows were E0603 before: `mod deadline_queue;` is private with
- * `pub use self::deadline_queue::*;` beside it, and lib.rs re-exports a dozen
- * private modules at once through a grouped, multi-line
- * `pub use crate::{ byte_slice_ext::{ByteSliceExt, ByteSliceMutExt}, … };`.
- *
- * A whole-module glob (`seg::*`) counts, and so does a named export at any
- * depth under `seg`. A DEEPER glob (`seg::inner::*`) does not: it would only
- * carry the name if the name is in that particular inner module, and this
- * cannot see that, so it refuses instead of guessing.
- */
-function reExports(text: string, seg: string, name: string, sameCrate: boolean, here: readonly string[]): boolean {
-  const ownPath = ["crate", ...here].join("::");
-  for (const raw of pubUsePaths(text, sameCrate)) {
-    let p = raw;
-    if (p.startsWith("self::")) {
-      p = p.slice("self::".length);
-    } else if (p.startsWith(`${ownPath}::`)) {
-      p = p.slice(ownPath.length + 2);
-    }
-    if (p === `${seg}::*` || (p.startsWith(`${seg}::`) && p.endsWith(`::${name}`))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /**
  * Rust: `deriveUsePath` derives the FILE path; this decides whether that path is
  * REACHABLE, and rewrites it to the re-export when it is not.
@@ -615,8 +410,12 @@ function reExports(text: string, seg: string, name: string, sameCrate: boolean, 
  * a `pub use`. So the chain is walked, each `mod` declaration is read, and a
  * private segment sends this looking for the re-export before it refuses.
  *
- * `deriveUsePath` itself is deliberately NOT changed: it is the fn-gen prompt's
- * use-path leg, and standing rule 6 forbids a behaviour change there.
+ * The walk itself is `reachableSegments` in `rustReach.ts`. It moved there in
+ * session-v56 phase 6 so the fn-gen pre-fill's import hint could use the SAME
+ * mechanism rather than a second copy of it; this row asks with
+ * `unproven: "refuse"`, which is the v55-ratified behaviour of this gesture,
+ * unchanged. `deriveUsePath` still derives the FILE path and is still not
+ * changed here.
  */
 function rustImport(hit: WorkspaceSymbolHit, defPath: string, targetPath: string, d: SafeDeps): ImportRow | undefined {
   const usePath = deriveUsePath(defPath, targetPath, {
@@ -633,36 +432,20 @@ function rustImport(hit: WorkspaceSymbolHit, defPath: string, targetPath: string
   }
   const sameCrate = defCrate === targetCrate;
 
-  const defText = d.read(defPath);
-  if (defText === undefined) {
-    return undefined;
-  }
-  const typeVis = typeVisibility(defText, hit.name);
-  if (typeVis === "private" || typeVis === "conditional" || (typeVis === "crate" && !sameCrate)) {
-    return undefined;
-  }
-
-  const segs = usePath.split("::").slice(1);
-  const srcRoot = path.posix.join(defCrate, "src");
-  const visible: string[] = [];
-  for (let i = 0; i < segs.length; i++) {
-    const parent = moduleFileFor(srcRoot, segs.slice(0, i), d);
-    const parentText = parent === undefined ? undefined : d.read(parent);
-    if (parentText === undefined) {
-      return undefined; // cannot verify the chain, so cannot claim it compiles
-    }
-    const vis = modVisibility(parentText, segs[i]);
-    if (vis === "public" || (vis === "crate" && sameCrate)) {
-      visible.push(segs[i]);
-      continue;
-    }
-    // Private (or undeclared) from here down. The re-export is the corpus's
-    // answer: when this module publishes the name, the type is nameable HERE,
-    // at the path built so far, and the rest of the file chain is not part of
-    // its module path at all.
-    if (vis !== undefined && reExports(parentText, segs[i], hit.name, sameCrate, segs.slice(0, i))) {
-      break;
-    }
+  // "cannot verify the chain" is a refusal here: this row's ship condition is
+  // precision, and an import line that does not compile manufactures item 48.
+  const visible = reachableSegments(
+    {
+      typeName: hit.name,
+      defPath,
+      defCrateRoot: defCrate,
+      sameCrate,
+      segments: usePath.split("::").slice(1),
+      unproven: "refuse",
+    },
+    { fileExists: (p) => d.exists(p), readFile: (p) => d.read(p) },
+  );
+  if (visible === undefined) {
     return undefined;
   }
 
