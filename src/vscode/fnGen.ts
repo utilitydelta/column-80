@@ -1322,18 +1322,6 @@ function buildCloudFnGenService(
   // inherited-constant hazard the budget profile exists to end.
   delete config.numCtx;
   // `anthropic` alone takes the native Messages transport, because
-  // `cache_control` does not exist on the OpenAI-compatible surface the other
-  // four ride. That is the ADR amendment written up in
-  // docs/architecture/fn-generation.md: the compat surface still serves every
-  // provider whose caching is implicit, and the one provider whose caching is
-  // explicit gets the client that can reach it. A per-token Anthropic user must
-  // not silently fail to cache.
-  const generateFn =
-    cloud.provider === "anthropic"
-      ? makeAnthropicInstruct({ baseUrl: cloud.baseUrl, apiKey: cloud.apiKey, log })
-      : makeCloudInstruct({ baseUrl: cloud.baseUrl, apiKey: cloud.apiKey });
-  const service = new FnGenService(config, generateFn, log);
-
   const missing =
     cloud.baseUrl === "" ? "endpoint (column80.cloudApiBase)" : cloud.apiKey === "" ? "API key (column80.cloudApiKey)" : undefined;
   if (missing !== undefined) {
@@ -1345,11 +1333,25 @@ function buildCloudFnGenService(
       config,
     };
   }
+  // `cache_control` does not exist on the OpenAI-compatible surface the other
+  // four ride. That is the ADR amendment written up in
+  // docs/architecture/fn-generation.md: the compat surface still serves every
+  // provider whose caching is implicit, and the one provider whose caching is
+  // explicit gets the client that can reach it. A per-token Anthropic user must
+  // not silently fail to cache.
+  const generateFn =
+    cloud.provider === "anthropic"
+      ? makeAnthropicInstruct({ baseUrl: cloud.baseUrl, apiKey: cloud.apiKey, log })
+      : makeCloudInstruct({ baseUrl: cloud.baseUrl, apiKey: cloud.apiKey });
   // model is the user's fnGenModel verbatim - a cloud id like the provider
   // documents. An id left at the local default surfaces as the provider's own
   // "unknown model" error on first request, not a guess masked here.
   log(`[carve] tier=cloud provider=${cloud.provider} model=${config.model} fnGen=enabled`);
-  return { service, tier: { id: "cloud", fnGenEnabled: true, provisional: false }, config };
+  return {
+    service: new FnGenService(config, generateFn, log),
+    tier: { id: "cloud", fnGenEnabled: true, provisional: false },
+    config,
+  };
 }
 
 /** What the Claude Code arm needs from the host, injectable so its oracles run
@@ -5322,12 +5324,16 @@ export function registerFnGen(
   deps: FnGenDeps = {},
 ): void {
   const log = (line: string) => output.appendLine(line);
-  // Pre-tier placeholder so dispose paths always have a service. It is NOT
-  // unreachable by construction - what protects it is that every model-call
-  // entry point below (generateFunction, the fn-gen accept hook, the
-  // fimAccepted hook) consults tierGate() first and fails CLOSED on an
-  // unresolved or disabled tier; the impl5 fnGen oracles pin exactly that.
-  let service = new FnGenService(readFnGenConfig(), undefined, log);
+  // Pre-tier placeholder so dispose paths always have a service. Every
+  // model-call entry point below consults tierGate() first and fails CLOSED on
+  // an unresolved tier (the impl5 fnGen oracles pin that), and the transport is
+  // inert on top: a gate missed anywhere dials nothing before the first
+  // rebuild resolves a real tier (roadmap item 58).
+  let service = inertFnGenService(
+    readFnGenConfig(),
+    "the hardware tier has not been resolved yet",
+    log,
+  );
   let tier: TierSelection | undefined;
   const rebuild = async (): Promise<void> => {
     // The global storage path is the ONLY place the neutral cwd can come from,
