@@ -160,6 +160,10 @@ async function streamMessages(
     throw new Error(`Anthropic ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
   }
   if (!res.body) {
+    // COUPLING: this message's HEAD is a marker in fnGen.ts
+    // SERVICE_REJECT_TOASTS, which matches the transport class with
+    // startsWith. Rewording past the marker silently demotes the toast to
+    // the catch-all, which puts API vocabulary in front of the user.
     throw new Error("Anthropic: response has no body");
   }
 
@@ -197,12 +201,20 @@ async function streamMessages(
     const evt = JSON.parse(trimmed.slice("data:".length).trim()) as AnthropicEvent;
     if (evt.type === "error") {
       // The SSE sibling of ollama's in-200 error field: a 200 whose stream
-      // carries the failure. Bounded here rather than left to the translator
-      // that phase 4 gives this site, because a translation is not a bound. A
-      // marker that is reworded and stops matching would put the whole payload
-      // back on the screen.
+      // carries the failure. Bounded here because the payload is the server's.
+      //
+      // NOT a stream cut, and roadmap item 66 said it was. This frame is
+      // Anthropic's GENERIC in-stream error envelope: a rate limit, an invalid
+      // key and a malformed request all arrive through it. Session-v57's phase-4
+      // review drove all three and found them being told "the model server went
+      // silent mid-reply - check the server", which is the wrong cause and the
+      // wrong remedy, with the real reason taken off the screen. So this site
+      // gets no crafted sentence and keeps the provider's own message, which is
+      // the actionable half; what it loses is the API vocabulary, which is what
+      // "stream error" was. The wording is deliberately plain so the catch-all
+      // renders a sentence rather than jargon.
       throw new Error(
-        `Anthropic stream error: ${boundBody(String(evt.error?.message ?? evt.error?.type ?? "unknown"))}`,
+        `Anthropic reported an error mid-reply: ${boundBody(String(evt.error?.message ?? evt.error?.type ?? "unknown"))}`,
       );
     }
     if (evt.type === "message_start") {
@@ -263,6 +275,10 @@ async function streamMessages(
   }
 
   if (!sawStop) {
+    // COUPLING: this message's HEAD is a marker in fnGen.ts
+    // SERVICE_REJECT_TOASTS, which matches the transport class with
+    // startsWith. Rewording past the marker silently demotes the toast to
+    // the catch-all, which puts API vocabulary in front of the user.
     throw new Error("Anthropic: the stream ended before message_stop, so the reply is incomplete");
   }
 

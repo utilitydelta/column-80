@@ -5358,49 +5358,134 @@ export const prefillLangFor = (languageId: string): PrefillLang =>
  * Each entry matches a DISTINCTIVE SUBSTRING of one throw message, never the
  * full string: a full-string match would silently fall through to the
  * catch-all the moment the service wording grows a detail. COUPLING: every
- * marker is pinned at its throw site (src/core/fnGenService.ts for the first
- * six rows, src/core/ollama.ts for the stream cut), each of which carries a
- * comment naming its marker, and test/impl-v56-p4-toast-translation.test.cjs
- * goes red if a throw moves off its marker without this table following.
+ * marker is pinned at its throw site (src/core/fnGenService.ts for the service
+ * rejects, src/core/ollama.ts, anthropicInstruct.ts and cloudInstruct.ts for
+ * the transport class), each of which carries a comment naming its marker, and
+ * test/impl-v56-p4-toast-translation.test.cjs and
+ * test/impl-v57-p4-one-voice.test.cjs go red if a throw moves off its marker
+ * without this table following.
+ *
+ * A row carries a marker SET, not a marker, because one user-visible failure is
+ * thrown in different words by each transport it can happen on. The set is what
+ * keeps the table one row per THING THAT HAPPENED rather than one row per
+ * wording (roadmap item 66).
+ *
+ * `anchored` rows match with startsWith rather than includes. A throw that
+ * interpolates server text can otherwise be made to contain another row's
+ * marker by the server, and the first matching row wins. Every transport marker
+ * sits at index 0 of its throw, so anchoring them costs nothing. The service
+ * rows stay on `includes`; two of them do not begin their message and anchoring
+ * those needs a reworded throw, which is a change to the service's throw
+ * contract rather than a row (session scraps S57-5).
+ *
+ * Anchoring alone does NOT close the forgery, which is what PAYLOAD_CARRIERS is
+ * for. A transport message that carries server text and gets no crafted sentence
+ * still reaches the unanchored pass, and a service marker found INSIDE that
+ * payload is the server talking, not the service: an ollama stream whose error
+ * field reads "generation was empty after postprocess" drew the empty-code
+ * sentence. A message that opens with one of these heads is a payload carrier,
+ * and no service row may match inside it.
  */
 const TEST_REFUSAL_TOAST =
   "Column 80: the model's reply contained no usable tests, so nothing was written - run the gesture again.";
 
-const SERVICE_REJECT_TOASTS: ReadonlyArray<{ marker: string; toast: string }> = [
+interface RejectToast {
+  /** Distinctive substrings, any one of which identifies this failure. */
+  readonly markers: readonly string[];
+  /** Match with startsWith rather than includes. See the note above. */
+  readonly anchored?: true;
+  readonly toast: string;
+}
+
+const SERVICE_REJECT_TOASTS: ReadonlyArray<RejectToast> = [
   {
-    marker: "generation truncated at num_predict",
+    markers: ["generation truncated at num_predict"],
     toast: "Column 80: the model's reply was cut off mid-function, so nothing was written - run the gesture again.",
   },
   // The test-module refusal has a Rust and a non-Rust throw; one sentence
   // covers both.
-  { marker: "does not contain a test module", toast: TEST_REFUSAL_TOAST },
-  { marker: "test functions (no fenced block", toast: TEST_REFUSAL_TOAST },
+  { markers: ["does not contain a test module", "test functions (no fenced block"], toast: TEST_REFUSAL_TOAST },
   {
-    marker: "generation contains a code-fence line",
+    markers: ["generation contains a code-fence line"],
     toast:
       "Column 80: the model wrapped its reply in markdown that cannot land in source code, so nothing was written - run the gesture again.",
   },
   {
-    marker: "generation does not contain the requested function",
+    markers: ["generation does not contain the requested function"],
     toast:
       "Column 80: the model answered with something other than the requested function, so nothing was written - run the gesture again.",
   },
   {
-    marker: "generation was empty after postprocess",
+    markers: ["generation was empty after postprocess"],
     toast: "Column 80: the model's reply contained no usable code, so nothing was written - run the gesture again.",
   },
   {
-    marker: "Ollama stream cut:",
+    // THE SILENT SERVER, on every transport that can have one. Item 63 bought
+    // this sentence for the ollama arm only, so the same event reached the user
+    // in three voices: two of them handed over `message_stop` and
+    // `response has no body`, which are API vocabulary rather than
+    // instructions. One event, one sentence (roadmap item 66).
+    //
+    // Every marker here is the HEAD of its throw string, which is what lets the
+    // row be anchored. A new one must be too: a marker that sits after an
+    // interpolation can be moved by a format change, or forged by a server.
+    markers: [
+      "Ollama stream cut:",
+      "Ollama: response has no body",
+      "Anthropic: the stream ended before message_stop",
+      "Anthropic: response has no body",
+      "Cloud: response has no body",
+    ],
+    anchored: true,
     toast:
       "Column 80: the model server went silent mid-reply, so nothing was written - check the server, then run the gesture again.",
   },
+];
+
+/** Message heads that mean "the rest of this string came from the server."
+ *
+ *  Every one of these interpolates text the model server chose, so a service
+ *  reject's marker appearing later in the message is the server's words and not
+ *  the service's. See the note on the table above. */
+const PAYLOAD_CARRIERS: readonly string[] = [
+  "Ollama error:",
+  "Ollama stream cut:",
+  "Ollama ",
+  "Anthropic reported an error mid-reply:",
+  "Anthropic ",
+  "Cloud ",
 ];
 
 /** The crafted sentence for a known service reject, or undefined for anything
  *  else. Matches on the error MESSAGE (String(err) would prepend "Error: "). */
 export function translateServiceReject(err: unknown): string | undefined {
   const text = err instanceof Error ? err.message : String(err);
-  return SERVICE_REJECT_TOASTS.find((row) => text.includes(row.marker))?.toast;
+  // ANCHORED ROWS FIRST, and the order is the point rather than an optimisation.
+  // "this message BEGINS with the marker" is a stronger claim than "this message
+  // contains it somewhere", and the weaker one is satisfiable by text a server
+  // chose. Without this pass a transport failure whose payload happened to carry
+  // a service reject's words drew the service reject's sentence: the first
+  // matching row wins, and the service rows are declared first.
+  const anchored = SERVICE_REJECT_TOASTS.find(
+    (row) => row.anchored === true && row.markers.some((m) => text.startsWith(m)),
+  );
+  if (anchored !== undefined) {
+    return anchored.toast;
+  }
+  // ANCHORED FIRST, then the payload guard, then the substring rows. "This
+  // message BEGINS with the marker" is a stronger claim than "it contains the
+  // marker somewhere", and only the weaker one is satisfiable by text a server
+  // chose, so the strong pass runs first and a payload carrier never reaches the
+  // weak one at all.
+  if (PAYLOAD_CARRIERS.some((head) => text.startsWith(head))) {
+    return undefined;
+  }
+  // `row.anchored !== true` is not decoration. Without it an anchored row is
+  // reachable by substring here, which is the exact matching this pass exists to
+  // keep it out of.
+  return SERVICE_REJECT_TOASTS.find(
+    (row) => row.anchored !== true && row.markers.some((m) => text.includes(m)),
+  )?.toast;
 }
 
 /** What a gesture catch-all toasts: a known reject gets its crafted sentence;

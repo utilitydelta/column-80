@@ -317,6 +317,10 @@ async function streamGenerate(
       throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
     }
     if (!res.body) {
+      // COUPLING: this message's HEAD is a marker in fnGen.ts
+      // SERVICE_REJECT_TOASTS, which matches the transport class with
+      // startsWith. Rewording past the marker silently demotes the toast to
+      // the catch-all, which puts API vocabulary in front of the user.
       throw new Error("Ollama: response has no body");
     }
 

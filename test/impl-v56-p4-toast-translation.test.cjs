@@ -231,11 +231,25 @@ test("translator table: an unknown error is NOT translated and falls to the catc
 });
 
 test("catch-all fallback: no untranslated error carries the Error: prefix to a toast", () => {
-  // The four arms' real transport failures, none of which the table matches.
+  // RE-CUT by session-v57 phase 4 (roadmap item 66). This row's third entry was
+  // the Anthropic message_stop failure, chosen here as an example of a real
+  // transport failure the table did not match. It is matched now: item 66 gave
+  // the silent server one sentence on every transport, so message_stop, both
+  // "response has no body" throws and the Anthropic stream error frame all
+  // translate. That red was the fix landing, not a regression.
+  //
+  // The row's SUBJECT is unchanged and still has real entries: a failure the
+  // table does not match must not put an Error: envelope at the detail position.
+  // The claude-code and bare-string entries are untouched, and the ollama 500 is
+  // still untranslated because the table has no HTTP-status row at all.
   const untranslated = [
     new Error('Ollama 500 Internal Server Error: {"error":"llama runner process has terminated"}'),
     new Error("Claude Code exited 1 despite a well-formed reply."),
-    new Error("Anthropic: the stream ended before message_stop, so the reply is incomplete"),
+    // A real throw, chosen over an invented string so the entry can go red when
+    // the product moves: ollama.ts interpolates the server's in-stream error
+    // field here, and session-v57 phase 4's payload guard is what keeps the
+    // service marker inside it from being answered as a service reject.
+    new Error("Ollama error: generation was empty after postprocess"),
     "a bare string throw",
   ];
   for (const err of untranslated) {

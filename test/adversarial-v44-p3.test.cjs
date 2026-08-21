@@ -273,7 +273,12 @@ test("KNOWN WRONG: a round that dies mid-stream loses the cache accounting it ha
   );
   assert.deepStrictEqual(
     lines,
-    ["[anthropic] model=m round=failed reason=Anthropic stream error: fell over"],
+    // RE-CUT by session-v57 phase 4. The throw was reworded from
+    // "Anthropic stream error:" to "Anthropic reported an error mid-reply:"
+    // because the first wording was API vocabulary reaching a notification, and
+    // because roadmap item 66 had mis-classified this frame as a stream cut. The
+    // defect this row records is unchanged: the cache write is still lost.
+    ["[anthropic] model=m round=failed reason=Anthropic reported an error mid-reply: fell over"],
     "the failed round leaves exactly one line, and it carries the reason and no accounting",
   );
 });
