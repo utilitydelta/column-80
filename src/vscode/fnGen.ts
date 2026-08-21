@@ -889,6 +889,13 @@ export interface ProposalRequest {
   text: string;
   /** Evidence sink for accept/reject/discarded outcomes. */
   service: FnGenService;
+  /** Surface for SYSTEM discards (version race, closed document — the
+   *  product's own doing, never a human verdict). Absent = today's warning
+   *  toast, right for a gesture the user invoked. A background FIM-sourced
+   *  repair session passes its channel logger here: the race it loses is the
+   *  user's own typing, and a toast for that is noise (roadmap item 64,
+   *  mechanical half). The outcome log records "discarded" either way. */
+  onSystemDiscard?: (why: string) => void;
 }
 
 export type ProposalOutcome = "accept" | "reject" | "discarded";
@@ -983,10 +990,16 @@ export class ProposalPresenter {
     // Before the preview, not between the preview and the write: the human must
     // review the bytes that land.
     const text = withDocumentEol(request.text, document);
-    // System discard: warn, log outcome=discarded (distinct from a human
-    // reject so accept/reject stats stay honest), never touch the document.
+    // System discard: log outcome=discarded (distinct from a human reject so
+    // accept/reject stats stay honest), never touch the document. The surface
+    // depends on who asked: an explicit gesture gets the warning toast, a
+    // background session's caller routes the why to its own channel instead.
     const discard = (why: string): ProposalOutcome => {
-      void vscode.window.showWarningMessage(`Column 80: generation discarded — ${why}.`);
+      if (request.onSystemDiscard !== undefined) {
+        request.onSystemDiscard(why);
+      } else {
+        void vscode.window.showWarningMessage(`Column 80: generation discarded — ${why}.`);
+      }
       service.logOutcome("discarded");
       return "discarded";
     };

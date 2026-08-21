@@ -870,14 +870,33 @@ async function executeSession(
       continue;
     }
 
+    // A FIM-sourced session is background work the user never invoked: its
+    // system discard (the version race lost to the user's own typing) goes to
+    // the channel, not a toast. Explicit-gesture sessions keep the presenter's
+    // warning toast. Roadmap item 64, mechanical half.
+    const fnName = resolved.symbolName;
+    let discardWhy: string | undefined;
     const proposal = await ctx.presenter.present({
       document: ctx.document,
       span: resolved.span,
       versionAtResolve,
-      title: `${resolved.symbolName}: repair round ${round} (preview)`,
+      title: `${fnName}: repair round ${round} (preview)`,
       text: result.text,
       service: ctx.service,
+      onSystemDiscard:
+        ctx.source === "fim"
+          ? (why) => {
+              discardWhy = why;
+              log(`[repair] round ${round} proposal for ${fnName} discarded — ${why} (background fim session: no toast)`);
+            }
+          : undefined,
     });
+    if (proposal === "discarded") {
+      // The outcome log says "discarded"; result=rejected here contradicted
+      // it (witnessed live, item 64). A human reject stays "rejected" below.
+      outcome(discardWhy === undefined ? "discarded" : `discarded (${discardWhy})`);
+      return;
+    }
     if (proposal !== "accept") {
       outcome("rejected");
       return;
@@ -1785,6 +1804,12 @@ async function runQualifyPass(
       title: `${resolved.symbolName}: qualify import (preview)`,
       text: qualifiedText,
       service: ctx.service,
+      // Same rule as the repair round: a background fim session's system
+      // discard is a channel line, never a toast (item 64, mechanical half).
+      onSystemDiscard:
+        ctx.source === "fim"
+          ? (why) => log(`[repair] qualify proposal discarded — ${why} (background fim session: no toast)`)
+          : undefined,
     });
     if (proposal !== "accept") {
       break;
@@ -1833,6 +1858,12 @@ function offerOutOfSpanImport(
       title: `${resolved.symbolName}: add import (preview)`,
       text: edit.newText,
       service: ctx.service,
+      // Same rule as the repair round: a background fim session's system
+      // discard is a channel line, never a toast (item 64, mechanical half).
+      onSystemDiscard:
+        ctx.source === "fim"
+          ? (why) => log(`[repair] qualify import discarded — ${why} (background fim session: no toast)`)
+          : undefined,
     })
     .then((outcome) => log(`[repair] qualify import outcome=${outcome}`))
     .catch((err) => log(`[repair] qualify import failed: ${String(err)}`));
@@ -1895,6 +1926,12 @@ async function presentOwnedImportAndRecheck(
     title: `${resolved.symbolName}: add import (preview)`,
     text: edit.newText,
     service: ctx.service,
+    // Same rule as the repair round: a background fim session's system
+    // discard is a channel line, never a toast (item 64, mechanical half).
+    onSystemDiscard:
+      ctx.source === "fim"
+        ? (why) => log(`[repair] qualify import discarded — ${why} (background fim session: no toast)`)
+        : undefined,
   });
   if (proposal !== "accept") {
     return undefined;
