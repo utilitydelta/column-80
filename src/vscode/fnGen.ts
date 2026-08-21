@@ -1218,7 +1218,29 @@ export async function buildFnGenService(
   }
   const { selection } = await resolveTier(output, probeOpts);
   const config = applyTier(readFnGenConfig(), selection, readTierConfig().explicitFnGenModel);
+  if (!selection.fnGenEnabled) {
+    return {
+      service: inertFnGenService(
+        config,
+        selection.message ?? "Function generation is disabled on this hardware tier. FIM tab-completion still works.",
+        log,
+      ),
+      tier: selection,
+      config,
+    };
+  }
   return { service: new FnGenService(config, undefined, log), tier: selection, config };
+}
+
+/** The service a DISABLED arm returns: same config and logging as the live one,
+ *  so a settings change still rebuilds and re-enables exactly as before, but
+ *  the transport rejects with the tier's recorded reason instead of carrying a
+ *  dialable default. The claude-code arm's rule, ratified for every arm
+ *  (roadmap item 58): the closed tier gate is what stops a gesture, and the
+ *  inert transport is what stops a gate missed anywhere from dialling a
+ *  backend the build itself declared dead. */
+function inertFnGenService(config: FnGenConfig, message: string, log: (line: string) => void): FnGenService {
+  return new FnGenService(config, () => Promise.reject(new Error(message)), log);
 }
 
 /** How long activation will wait to learn whether a remote host is up. The
@@ -1241,7 +1263,6 @@ async function buildRemoteFnGenService(
   // numGpu is a local serving carve, tuned against a VRAM row on this box. It
   // means nothing about somebody else's machine.
   delete config.numGpu;
-  const service = new FnGenService(config, undefined, log);
   // Raced, not just signalled: an injected seam that ignores the signal still
   // must not hold activation open.
   const bounded = new Promise<undefined>((resolve) => {
@@ -1254,14 +1275,10 @@ async function buildRemoteFnGenService(
   ]);
   if (models === undefined) {
     log(`[carve] tier=remote host=${host} fnGen=disabled reason=unreachable`);
+    const message = `Function generation is disabled: the Ollama server at ${host} did not answer. FIM tab-completion still works.`;
     return {
-      service,
-      tier: {
-        id: "remote",
-        fnGenEnabled: false,
-        provisional: false,
-        message: `Function generation is disabled: the Ollama server at ${host} did not answer. FIM tab-completion still works.`,
-      },
+      service: inertFnGenService(config, message, log),
+      tier: { id: "remote", fnGenEnabled: false, provisional: false, message },
       config,
     };
   }
@@ -1271,21 +1288,17 @@ async function buildRemoteFnGenService(
   // the MODEL (roadmap item 57).
   if (!hasModel(models, config.model)) {
     log(`[carve] tier=remote host=${host} model=${config.model} fnGen=disabled reason=model-missing`);
+    const message = `Function generation is disabled: the Ollama server at ${host} does not have ${config.model} pulled. FIM tab-completion still works.`;
     return {
-      service,
-      tier: {
-        id: "remote",
-        fnGenEnabled: false,
-        provisional: false,
-        message: `Function generation is disabled: the Ollama server at ${host} does not have ${config.model} pulled. FIM tab-completion still works.`,
-      },
+      service: inertFnGenService(config, message, log),
+      tier: { id: "remote", fnGenEnabled: false, provisional: false, message },
       config,
     };
   }
   // model is the user's verbatim, explicit or not. The tier table's row model is
   // a fact about local VRAM and this is not a local model.
   log(`[carve] tier=remote host=${host} model=${config.model} fnGen=enabled`);
-  return { service, tier: { id: "remote", fnGenEnabled: true, provisional: false }, config };
+  return { service: new FnGenService(config, undefined, log), tier: { id: "remote", fnGenEnabled: true, provisional: false }, config };
 }
 
 /** The cloud arm of buildFnGenService: a synthetic "cloud" tier (no VRAM to
@@ -1325,14 +1338,10 @@ function buildCloudFnGenService(
     cloud.baseUrl === "" ? "endpoint (column80.cloudApiBase)" : cloud.apiKey === "" ? "API key (column80.cloudApiKey)" : undefined;
   if (missing !== undefined) {
     log(`[carve] tier=cloud provider=${cloud.provider} fnGen=disabled reason=missing-${cloud.baseUrl === "" ? "endpoint" : "key"}`);
+    const message = `Function generation is disabled: the ${cloud.label} cloud backend needs an ${missing}. FIM tab-completion still works.`;
     return {
-      service,
-      tier: {
-        id: "cloud",
-        fnGenEnabled: false,
-        provisional: false,
-        message: `Function generation is disabled: the ${cloud.label} cloud backend needs an ${missing}. FIM tab-completion still works.`,
-      },
+      service: inertFnGenService(config, message, log),
+      tier: { id: "cloud", fnGenEnabled: false, provisional: false, message },
       config,
     };
   }
@@ -1409,7 +1418,7 @@ async function buildClaudeCodeFnGenService(
       // host's, which for `code .` is the user's workspace. That is precisely
       // the leak this backend exists to prevent, armed and waiting on a gate
       // one call away.
-      service: new FnGenService(config, () => Promise.reject(new Error(message)), log),
+      service: inertFnGenService(config, message, log),
       tier: { id: "claude-code" as const, fnGenEnabled: false, provisional: false, message },
       config,
     };
@@ -5431,6 +5440,10 @@ export function registerFnGen(
     // settings change that rebuilds the service is followed here too.
     transport: () => service.transport,
     modelTag: () => service.modelTag,
+    // The one tier decision every model-call gesture consults, and the
+    // recorded reason its refusal names (item 58).
+    tierGate,
+    tierMessage: () => tier?.message,
   });
 
   context.subscriptions.push(
@@ -6018,14 +6031,26 @@ export function registerFnGen(
         return;
       }
       const resolved = resolution.fn;
-      // Repair rounds need the model server. Pre-flight it and offer the same
-      // start gesture generate and FIM use, so a down daemon surfaces HERE
-      // instead of as a silently-failed round buried in the oracle. One
-      // listModels call answers "is the server up". The cloud backend has no
-      // local daemon to start, so skip the probe: its reachability surfaces as
-      // a normal round error against the provider.
+      // Fail-closed gate, read at invoke time like the accept paths, and read
+      // BEFORE the server pre-flight: the pre-flight's listModels is a network
+      // request, and a refused gesture must issue none (item 58). A closed
+      // tier still checks-and-surfaces through the oracle; it only bars the
+      // repair rounds, with the reason on the record. Tell the user so a
+      // no-repair outcome on a closed tier is never a silent mystery.
+      const repairTierGate = await tierGate();
+      // Repair rounds need the model server. Pre-flight it - only when the
+      // gate allows rounds at all - and offer the same start gesture generate
+      // and FIM use, so a down daemon surfaces HERE instead of as a
+      // silently-failed round buried in the oracle. One listModels call
+      // answers "is the server up". The cloud backend has no local daemon to
+      // start, so skip the probe: its reachability surfaces as a normal round
+      // error against the provider.
       const probe = deps.listModels ?? listModels;
-      if (readCloudConfig() === undefined && (await probe(readFnGenConfig().apiBase)) === undefined) {
+      if (
+        repairTierGate.allowed &&
+        readCloudConfig() === undefined &&
+        (await probe(readFnGenConfig().apiBase)) === undefined
+      ) {
         output.appendLine("[repair] manual repair: server unreachable; offering start");
         const choice = await vscode.window.showWarningMessage(
           "Column 80: the Ollama server isn't running, so the function can't be repaired.",
@@ -6036,11 +6061,6 @@ export function registerFnGen(
         }
         return;
       }
-      // Fail-closed gate, read at invoke time like the accept paths. A closed
-      // tier still checks-and-surfaces through the oracle; it only bars the
-      // repair rounds, with the reason on the record. Tell the user so a
-      // no-repair outcome on a closed tier is never a silent mystery.
-      const repairTierGate = await tierGate();
       if (!repairTierGate.allowed) {
         const why =
           repairTierGate.reason === "tier-unresolved"

@@ -136,6 +136,13 @@ export interface TightenWiring {
   transport: () => InstructGenerateFn;
   /** What the evidence should call the model, from the same service. */
   modelTag: () => string;
+  /** The SAME fail-closed tier gate every other model-call gesture consults,
+   *  read at invoke time. A disabled or unresolved tier refuses before any
+   *  work - the transport is never touched (roadmap item 58: a disabled
+   *  service is inert everywhere). */
+  tierGate: () => Promise<{ allowed: boolean; reason?: string }>;
+  /** The disabled tier's recorded reason, for the refusal to name. */
+  tierMessage: () => string | undefined;
 }
 
 /** Seams the suite replaces. Every one defaults to the real host. */
@@ -1437,6 +1444,19 @@ export function registerTightenDocComment(
       const editor = vscode.window.activeTextEditor;
       if (editor === undefined) {
         void vscode.window.showWarningMessage("Column 80: no active editor.");
+        return;
+      }
+      // Tier gate, fail closed, before any other work - the same consult
+      // generate/repair/TDD make. A disabled tier refuses with the tier's own
+      // recorded reason and the transport is never touched (item 58).
+      const gate = await wiring.tierGate();
+      if (!gate.allowed) {
+        log(`[tighten] refused: tier ${gate.reason}`);
+        void vscode.window.showWarningMessage(
+          gate.reason === "tier-unresolved"
+            ? 'Column 80: the tighten gesture is unavailable - the hardware tier could not be resolved. Re-run "Column 80: Select Hardware Tier" (details in the output channel).'
+            : `Column 80: ${wiring.tierMessage() ?? "the hardware tier disables function generation"}`,
+        );
         return;
       }
       try {
