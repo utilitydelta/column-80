@@ -40,7 +40,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { withDocumentEol } from "./eol";
-import { firstLine } from "./toastText";
+import { firstLine, tierDisabledToast } from "./toastText";
 
 import { InstructGenerateFn } from "../core/ollama";
 import { FnGenConfig } from "../core/config";
@@ -1452,12 +1452,22 @@ export function registerTightenDocComment(
       // recorded reason and the transport is never touched (item 58).
       const gate = await wiring.tierGate();
       if (!gate.allowed) {
-        log(`[tighten] refused: tier ${gate.reason}`);
-        void vscode.window.showWarningMessage(
-          gate.reason === "tier-unresolved"
-            ? 'Column 80: the tighten gesture is unavailable - the hardware tier could not be resolved. Re-run "Column 80: Select Hardware Tier" (details in the output channel).'
-            : `Column 80: ${wiring.tierMessage() ?? "the hardware tier disables function generation"}`,
-        );
+        if (gate.reason === "tier-unresolved") {
+          // No tier means no tier MESSAGE. Appending the disabled-tier fallback
+          // here would have the channel name a cause the toast on this same
+          // branch correctly denies.
+          log(`[tighten] refused: tier ${gate.reason}`);
+          void vscode.window.showWarningMessage(
+            'Column 80: the tighten gesture is unavailable - the hardware tier could not be resolved. Re-run "Column 80: Select Hardware Tier" (details in the output channel).',
+          );
+          return;
+        }
+        const why = wiring.tierMessage() ?? "the hardware tier disables function generation";
+        // The channel line carried the reason CODE and not the message. A tier
+        // message can interpolate a thrown error, so the channel is where the
+        // whole of it goes and the toast takes one line (roadmap item 63).
+        log(`[tighten] refused: tier ${gate.reason}: ${why}`);
+        void vscode.window.showWarningMessage(`Column 80: ${tierDisabledToast(why)}`);
         return;
       }
       try {

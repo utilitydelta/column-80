@@ -34,7 +34,7 @@ import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/c
 import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
-import { firstLine } from "./toastText";
+import { firstLine, tierDisabledToast } from "./toastText";
 import {
   DocumentSymbolLite,
   MEMBER_CAP,
@@ -1519,9 +1519,14 @@ async function buildClaudeCodeFnGenService(
   try {
     (deps.ensureDir ?? ((dir: string) => fs.mkdirSync(dir, { recursive: true })))(cwd);
   } catch (err) {
+    // `String(err)` put an `Error:` envelope at the detail position, which is
+    // the internal jargon every sibling message in the product now keeps out
+    // (roadmap item 63, third string). The message stays WHOLE here: the tier
+    // message is what the channel gets, and `tierDisabledToast` is what shortens
+    // it for the notification.
     return disabled(
       "cwd-unusable",
-      `Function generation is disabled: the Claude Code backend could not create its working directory ${cwd} (${String(err)}). FIM tab-completion still works.`,
+      `Function generation is disabled: the Claude Code backend could not create its working directory ${cwd} (${err instanceof Error ? err.message : String(err)}). FIM tab-completion still works.`,
     );
   }
 
@@ -5626,8 +5631,9 @@ export function registerFnGen(
           // arrives without a message must not render "Column 80: undefined"
           // on either surface.
           const why = tier?.message ?? "the hardware tier is unavailable for generation";
+          // The channel takes the message whole, the toast takes one line of it.
           output.appendLine(`[carve] fn-gen disabled: ${why}`);
-          void vscode.window.showWarningMessage(`Column 80: ${why}`);
+          void vscode.window.showWarningMessage(`Column 80: ${tierDisabledToast(why)}`);
         }
         return;
       }
@@ -6198,9 +6204,12 @@ export function registerFnGen(
           repairTierGate.reason === "tier-unresolved"
             ? 'the hardware tier could not be resolved. Re-run "Column 80: Select Hardware Tier"'
             : (tier?.message ?? "the current hardware tier disables function generation");
-        output.appendLine(`[repair] manual repair: gate closed reason=${repairTierGate.reason}; check-and-surface only`);
+        output.appendLine(
+          `[repair] manual repair: gate closed reason=${repairTierGate.reason}; check-and-surface only: ${why}`,
+        );
         void vscode.window.showWarningMessage(
-          `Column 80: repair is unavailable - ${why}. Errors are still checked and surfaced.`,
+          `Column 80: repair is unavailable - ${firstLine(why)}. Errors are still checked and surfaced.` +
+            (firstLine(why) === why.trim() ? "" : " The full message is in the output channel."),
         );
       }
       // One announcer for the whole invocation. The oracle runs the reader once
@@ -6274,10 +6283,12 @@ export function registerFnGen(
       }
       const gate = await tierGate();
       if (!gate.allowed) {
-        output.appendLine(`[tdd] tests skipped: tier ${gate.reason}`);
-        void vscode.window.showWarningMessage(
-          `Column 80: ${tier?.message ?? "the hardware tier is unavailable for generation"}.`,
-        );
+        const why = tier?.message ?? "the hardware tier is unavailable for generation";
+        output.appendLine(`[tdd] tests skipped: tier ${gate.reason}: ${why}`);
+        // The period goes on the CUT clause, never into the text being cut: a
+        // sentence built first and shortened after loses its own punctuation to
+        // the cut and glues the channel pointer onto a half-sentence.
+        void vscode.window.showWarningMessage(`Column 80: ${tierDisabledToast(why, ".")}`);
         return;
       }
       const document = editor.document;
