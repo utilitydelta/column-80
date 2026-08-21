@@ -282,6 +282,10 @@ async function streamGenerate(
     // the forwarder instead would remove the backstop for a transport that
     // ignores its signal, so the gate goes here.
     if (cutBy !== undefined && !signal.aborted) {
+      // COUPLING: the vscode toast translation (fnGen.ts,
+      // SERVICE_REJECT_TOASTS) matches this reject on the substring
+      // "Ollama stream cut:". Rewording past that marker silently demotes
+      // the toast to the catch-all.
       throw new Error(`Ollama stream cut: ${cutBy} (${apiBase})`);
     }
     throw err;

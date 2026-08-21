@@ -544,6 +544,10 @@ export class FnGenService {
       // body cut at num_predict looks like code but is not a complete
       // function, and the arithmetic boundary oracle cannot see that.
       if (raw.doneReason === "length") {
+        // COUPLING: the vscode toast translation (fnGen.ts,
+        // SERVICE_REJECT_TOASTS) matches this reject on the substring
+        // "generation truncated at num_predict". Rewording past that marker
+        // silently demotes the toast to the catch-all.
         const msg = `generation truncated at num_predict=${maxTokens} (done_reason=length)`;
         this.log?.(`[fngen] request failed: ${msg}`);
         throw new Error(msg);
@@ -565,6 +569,11 @@ export class FnGenService {
             ? extractTestModule(stripLeadingThink(raw.text))
             : extractTestFunctions(stripLeadingThink(raw.text), languageId);
         if (extraction === undefined) {
+          // COUPLING: the vscode toast translation (fnGen.ts,
+          // SERVICE_REJECT_TOASTS) matches these two variants on the
+          // substrings "does not contain a test module" and "test functions
+          // (no fenced block". Rewording past a marker silently demotes that
+          // variant's toast to the catch-all.
           const msg =
             languageId === "rust"
               ? "generation does not contain a test module (no `#[cfg(test)] mod tests` block with a `#[test]` fn)"
@@ -608,6 +617,9 @@ export class FnGenService {
         // Trade accepted: a legitimate function body containing a fence line
         // is un-generatable.
         if (text.split("\n").some((line) => /^(```|~~~)/.test(line.trim()))) {
+          // COUPLING: the vscode toast translation (fnGen.ts,
+          // SERVICE_REJECT_TOASTS) matches this reject on the substring
+          // "generation contains a code-fence line".
           const msg = "generation contains a code-fence line (unclosed or nested fence in the reply)";
           this.log?.(`[fngen] request failed: ${msg}`);
           throw new Error(msg);
@@ -630,6 +642,9 @@ export class FnGenService {
         if (request.signature !== undefined && text.length > 0 && !request.bodyOnly) {
           const extraction = extractRequestedFunction(text, request.signature);
           if (extraction === undefined) {
+            // COUPLING: the vscode toast translation (fnGen.ts,
+            // SERVICE_REJECT_TOASTS) matches this reject on the substring
+            // "generation does not contain the requested function".
             const msg = "generation does not contain the requested function (declaration head not in the reply)";
             this.log?.(`[fngen] request failed: ${msg}`);
             throw new Error(msg);
@@ -650,7 +665,15 @@ export class FnGenService {
           (text.length === 0 ? " (dropped: empty after postprocess)" : ""),
       );
       if (text.length === 0) {
-        throw new Error("generation was empty after postprocess");
+        // The len=0 evidence line above says only "(dropped: ...)"; the
+        // channel keeps every reject's throw string verbatim, this one
+        // included (roadmap item 63).
+        // COUPLING: the vscode toast translation (fnGen.ts,
+        // SERVICE_REJECT_TOASTS) matches this reject on the substring
+        // "generation was empty after postprocess".
+        const msg = "generation was empty after postprocess";
+        this.log?.(`[fngen] request failed: ${msg}`);
+        throw new Error(msg);
       }
 
       return { text, model: this.modelTag, ttftMs: raw.ttftMs, totalMs: raw.totalMs };

@@ -40,6 +40,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { withDocumentEol } from "./eol";
+import { firstLine } from "./toastText";
 
 import { InstructGenerateFn } from "../core/ollama";
 import { FnGenConfig } from "../core/config";
@@ -1466,7 +1467,11 @@ export function registerTightenDocComment(
         // human's words, so an unexpected throw must still leave the buffer
         // untouched and say so.
         log(`[tighten] failed: ${String(err)}`);
-        void vscode.window.showWarningMessage(`Column 80: the tighten gesture failed (${String(err)}); nothing was changed.`);
+        // The channel line above keeps the whole error; the toast is bounded
+        // to one line (roadmap item 63).
+        void vscode.window.showWarningMessage(
+          `Column 80: the tighten gesture failed (${firstLine(String(err))}); nothing was changed. The full message is in the output channel.`,
+        );
       }
     }),
   );

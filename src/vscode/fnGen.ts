@@ -34,6 +34,7 @@ import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/c
 import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
+import { firstLine } from "./toastText";
 import {
   DocumentSymbolLite,
   MEMBER_CAP,
@@ -5315,9 +5316,70 @@ export const prefillLangFor = (languageId: string): PrefillLang =>
           ? GO_PREFILL_LANG
           : RUST_PREFILL_LANG;
 
-/** The first non-blank line of a multi-line message, for a one-line toast. */
-function firstLine(s: string | undefined): string {
-  return (s ?? "").split("\n").find((l) => l.trim().length > 0)?.trim() ?? "";
+/** Toast sentences for the service's known rejects (roadmap item 63).
+ *
+ * One string used to serve two audiences: the service throws channel-grade
+ * messages and the gesture catch-alls forwarded them raw, `Error:` prefix
+ * included. Now the service keeps its channel wording byte for byte and this
+ * table owns what the user sees.
+ *
+ * Each entry matches a DISTINCTIVE SUBSTRING of one throw message, never the
+ * full string: a full-string match would silently fall through to the
+ * catch-all the moment the service wording grows a detail. COUPLING: every
+ * marker is pinned at its throw site (src/core/fnGenService.ts for the first
+ * six rows, src/core/ollama.ts for the stream cut), each of which carries a
+ * comment naming its marker, and test/impl-v56-p4-toast-translation.test.cjs
+ * goes red if a throw moves off its marker without this table following.
+ */
+const TEST_REFUSAL_TOAST =
+  "Column 80: the model's reply contained no usable tests, so nothing was written - run the gesture again.";
+
+const SERVICE_REJECT_TOASTS: ReadonlyArray<{ marker: string; toast: string }> = [
+  {
+    marker: "generation truncated at num_predict",
+    toast: "Column 80: the model's reply was cut off mid-function, so nothing was written - run the gesture again.",
+  },
+  // The test-module refusal has a Rust and a non-Rust throw; one sentence
+  // covers both.
+  { marker: "does not contain a test module", toast: TEST_REFUSAL_TOAST },
+  { marker: "test functions (no fenced block", toast: TEST_REFUSAL_TOAST },
+  {
+    marker: "generation contains a code-fence line",
+    toast:
+      "Column 80: the model wrapped its reply in markdown that cannot land in source code, so nothing was written - run the gesture again.",
+  },
+  {
+    marker: "generation does not contain the requested function",
+    toast:
+      "Column 80: the model answered with something other than the requested function, so nothing was written - run the gesture again.",
+  },
+  {
+    marker: "generation was empty after postprocess",
+    toast: "Column 80: the model's reply contained no usable code, so nothing was written - run the gesture again.",
+  },
+  {
+    marker: "Ollama stream cut:",
+    toast:
+      "Column 80: the model server went silent mid-reply, so nothing was written - check the server, then run the gesture again.",
+  },
+];
+
+/** The crafted sentence for a known service reject, or undefined for anything
+ *  else. Matches on the error MESSAGE (String(err) would prepend "Error: "). */
+export function translateServiceReject(err: unknown): string | undefined {
+  const text = err instanceof Error ? err.message : String(err);
+  return SERVICE_REJECT_TOASTS.find((row) => text.includes(row.marker))?.toast;
+}
+
+/** What a gesture catch-all toasts: a known reject gets its crafted sentence;
+ *  an unknown error gets its first line plus the channel pointer, never the
+ *  raw multi-line dump. The channel keeps the full message either way (the
+ *  service logs every reject and transport failure verbatim). */
+export function generationFailedToast(err: unknown, gesture: string): string {
+  return (
+    translateServiceReject(err) ??
+    `Column 80: ${gesture} failed - ${firstLine(String(err))}. The full message is in the output channel.`
+  );
 }
 
 /**
@@ -5524,8 +5586,12 @@ export function registerFnGen(
             'Column 80: function generation is unavailable - the hardware tier could not be resolved. Re-run "Column 80: Select Hardware Tier" (details in the output channel).',
           );
         } else {
-          output.appendLine(`[carve] fn-gen disabled: ${tier?.message}`);
-          void vscode.window.showWarningMessage(`Column 80: ${tier?.message}`);
+          // Same fallback the TDD gate below uses: a disabled tier that
+          // arrives without a message must not render "Column 80: undefined"
+          // on either surface.
+          const why = tier?.message ?? "the hardware tier is unavailable for generation";
+          output.appendLine(`[carve] fn-gen disabled: ${why}`);
+          void vscode.window.showWarningMessage(`Column 80: ${why}`);
         }
         return;
       }
@@ -5801,7 +5867,7 @@ export function registerFnGen(
           }
           return;
         }
-        void vscode.window.showErrorMessage(`Function generation failed: ${String(err)}`);
+        void vscode.window.showErrorMessage(generationFailedToast(err, "function generation"));
         return;
       }
       if (!result) {
@@ -6313,7 +6379,7 @@ export function registerFnGen(
           }
           return;
         }
-        void vscode.window.showErrorMessage(`Test generation failed: ${String(err)}`);
+        void vscode.window.showErrorMessage(generationFailedToast(err, "test generation"));
         return;
       }
       if (!result) {
@@ -6428,7 +6494,7 @@ export function registerFnGen(
           targetEditor = await vscode.window.showTextDocument(targetDocument, editor.viewColumn);
         } catch (err) {
           void vscode.window.showWarningMessage(
-            `Column 80: TDD tests discarded — ${placement.targetPath} could not be opened (${String(err)}).`,
+            `Column 80: TDD tests discarded — ${placement.targetPath} could not be opened (${firstLine(String(err))}).`,
           );
           return;
         }
@@ -6710,7 +6776,7 @@ async function createTestFileWithSnippet(args: {
     await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetPath)));
     await vscode.workspace.fs.writeFile(targetUri, new Uint8Array());
   } catch (err) {
-    void vscode.window.showWarningMessage(`Column 80: ${targetPath} could not be created (${String(err)}).`);
+    void vscode.window.showWarningMessage(`Column 80: ${targetPath} could not be created (${firstLine(String(err))}).`);
     return false;
   }
   let editor: vscode.TextEditor;
@@ -6718,7 +6784,9 @@ async function createTestFileWithSnippet(args: {
     const created = await vscode.workspace.openTextDocument(targetUri);
     editor = await vscode.window.showTextDocument(created);
   } catch (err) {
-    void vscode.window.showWarningMessage(`Column 80: ${targetPath} was created but could not be opened (${String(err)}).`);
+    void vscode.window.showWarningMessage(
+      `Column 80: ${targetPath} was created but could not be opened (${firstLine(String(err))}).`,
+    );
     return false;
   }
   const inserted = await editor.insertSnippet(new vscode.SnippetString(snippet));

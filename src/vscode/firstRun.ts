@@ -12,6 +12,7 @@ import { hasModel, listModels, pullModel } from "../core/ollama";
 import { TIER_TABLE, TierId, TierRow, TierSelection, applyTier, computeTier, tierLogLine } from "../core/tiers";
 import { isRemoteApiBase } from "../core/config";
 import { readCloudConfig, readConfig, readFnGenConfig, readTierConfig } from "./config";
+import { firstLine } from "./toastText";
 
 // First-run tier flow, the modelPull pattern ported from the
 // human-replay-vscode-extension's src/modelPull.ts (same author): detect
@@ -307,7 +308,11 @@ export async function offerModelPull(
       return false;
     }
     output.appendLine(`[carve] pull failed model=${model}: ${errorText(err)}`);
-    void vscode.window.showWarningMessage(`Column 80: the download failed - ${errorText(err)}`);
+    // The channel line above keeps the whole error (a pull failure can carry a
+    // raw response body); the toast is bounded to one line (roadmap item 63).
+    void vscode.window.showWarningMessage(
+      `Column 80: the download failed - ${firstLine(errorText(err))}. The full message is in the output channel.`,
+    );
     return false;
   }
 }
