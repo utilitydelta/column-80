@@ -1200,3 +1200,115 @@ in every language, bodies carrying the original demand with the per-language bra
 leg landed and before they were re-cut; that red is recorded in the phase report. Each of the six
 guards above was mutated and killed exactly the row that names it.
 
+## S29. The anthropic round line stops taking "the first line" and takes the whole message, escaped
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 2, which closes S58-1, S58-2, S58-3,
+S58-6 and S58-9. Flagged here because it changes a SHIPPED channel format, not because anything
+narrowed.
+
+**What changed.** `src/core/anthropicInstruct.ts`'s local `firstLine` is gone. The per-round
+failure line used to render `reason=${firstLine(err)}`, which split on `"\n"` alone and kept the
+head. It now renders `reason=${channelReason(err)}`, which escapes the five-character break set
+first and caps at 200 second. A single-line reason is byte-identical. A multi-line one used to lose
+everything past the first LF and now keeps as much as the cap allows, with the breaks visible.
+
+**Why the cut had to go rather than be widened.** Widening the split to the render break set would
+also have closed the forgery, and it was the smaller edit. It was refused because the cut was never
+buying anything: the 200-char cap is what keeps the row short, and the cut only decided WHICH 200
+characters - the first line's, whether or not the rest said more. A channel line is a diagnostic,
+and discarding the tail of a reason on a surface whose whole job is to hold the provider's words is
+the failure roadmap item 69 exists to stop.
+
+**The order is load bearing and is S21's, one file over.** Escape first, cap second. A cap applied
+before the escape bounds the wrong string, and U+2028 costs six characters per escape, so the
+rendered row can exceed the cap several times over. That was measured in session-v58 phase 1 and it
+governs here for the same reason.
+
+**What else moved with it, in one sentence each.** `escapeBreaks` is exported from
+`src/core/errorBound.ts` and now runs at `[fngen] request failed`, both `[fim] request failed`
+sites, `[fim] no ghost:` and `[carve] pull failed`, so S21's rule holds on every channel surface
+that interpolates server text rather than on `channelBodyLine` alone. `FimGenerateParams` gained the
+`log` sink the instruct path always had, so an ollama 500 during FIM leaves a raw-body line instead
+of nothing. `StreamEvent.error` and `PullEvent.error` widened from `string` to `unknown` and both
+in-200 readers coerce with `providerReason`. `cutStreamLine` is new: both instruct arms log the
+partial reply before the cut-stream throw.
+
+**The site nobody had named, and it is the transferable part.** The work listed two
+`[fim] request failed` sites. Driven through a real socket, an ollama 500 reaches NEITHER of the
+pair: the per-run catch logs and aborts its own controller, so the outer catch reads the signal as
+aborted and falls through to `noGhost`, which interpolated the same thrown message under a third
+head. That is where the forged row came out. Reading the two named lines would have shipped with
+the hole open. The escape now lives inside `noGhost` rather than at that one caller, because
+`noGhost` is the choke point its "one shape" comment names.
+
+**The residual, which is a DECISION FOR THE HUMAN and was deliberately not taken.** The elision
+marker is still forgeable in the other direction: a body ending in the literal text
+` [+123 chars elided]` produces a line indistinguishable from one the product truncated. S58-2 asks
+whether product channel rows get an unforgeable frame (a nonce in the marker) or whether the
+forgeability is accepted and written down as accepted. A begin/end frame is not an answer, because
+the server can emit the end marker too. Nothing here decides it.
+
+**Pinned by.** `test/impl-v59-p2-channel-escape.test.cjs` (18 rows: three surfaces by six breaks,
+each asserting `log()` calls equal rendered rows, plus one row pinning a product-authored reject
+line as untouched), `test/impl-v59-p2-stream-evidence.test.cjs` (13 rows), the un-skipped D4 row in
+`test/adversarial-v58-p2.test.cjs`, the un-skipped `[ollama-fim]` row in
+`test/adversarial-v58-p1.test.cjs`, and `test/adversarial-v58-p7.test.cjs`'s X1, re-cut from a
+finding into a guard that drives the branch-point worktree beside the working tree so the old
+behaviour is asserted as a precondition of the new one.
+
+**The accepted cost, recorded rather than discovered later.** Wiring the FIM sink puts the
+per-keystroke path on the raw-body line, so a server failing every keystroke can write up to
+`CHANNEL_BODY_CHARS` per failure instead of the 400-char bounded copy, and a manual call writes one
+such line per alternate run. That is the same trade item 69 already ruled for the instruct arms:
+the channel is the only diagnostic a no-telemetry product has, and a FIM path failing every
+keystroke is a broken server the user needs to see.
+
+## S30. A Rust keyword or postfix item is dropped from the RENDER, not from the answer
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 8, closing roadmap item 7. The ruling
+this implements was ratified 2026-08-16; what needs a call is that a transport contract row, frozen
+since v27, moves with it.
+
+**What changed.** `RaCommandExtractor.completeMembers` and `RaLspExtractor.mapCompletion` used to
+`continue` past every Keyword and Snippet item. They now map those labels to a member of the new
+`MemberKind` `"keyword"` and append them behind the semantic surface, and `semanticMembers` drops
+that kind alongside `"text"`. The prompt, the render, the tier stamp and every member count are
+byte-identical either way. What changed is that the answer still HOLDS the labels the server
+served, so the output gate can read a complete legal list from it: `memberSiteLegalNames`
+(`fimInject.ts`) builds it, and Rust joins TS, C#, Python and Go in the gate.
+
+**Why the old behaviour was wrong.** It made the gate's legal list and the prompt's rendered list
+the same list, and rust-analyzer's rendered list is incomplete BY CONSTRUCTION: it serves keyword
+and postfix completions at a `.` site by design. Gating Rust on it ate `.await`, so Rust was carved
+out and spent five sessions as the one language with injection and no enforcement. The model wrote
+`s.add_tile_by_morton(...)` with a clean member list in front of it and nothing checked.
+
+**Measured live, on a real rust-analyzer, not reasoned.** A plain struct receiver answers with 25
+items: 6 members and 19 postfix SNIPPETS (`ref`, `dbg`, `match`, ...), no `await` at all. A Future
+receiver answers with 28: every member relabelled `await.<member>` and demoted to the 8-family,
+plus `await` as a lone KEYWORD item - the one item the old drop removed, which is exactly how a
+gated Rust used to eat `.await`. Both captures are the fixtures in
+`test/impl-v59-p8-rust-gate.test.cjs`, labels, kinds, details and sortText verbatim.
+
+**The arming rule did not move.** A keyword/postfix-only answer arms nothing: the legal-only tail
+rides ONLY behind a non-empty semantic surface, on both transports. Without that a receiver the
+server bound nothing on would gate against 20 postfix names and reject every real member, and the
+dark-site reason line would name the wrong cause.
+
+**The contract row that moves.** `review-v27-tier.test.cjs`'s "keyword and snippet items carrying
+sortText are dropped by KIND, never tiered in" asserted the DROP by asserting the returned name
+list. Its actual demand - a 7fffffff keyword must never sit in the own tier of an empty-partial
+block - is unchanged and now asserted directly: the keyword members carry no tier and no signature,
+and never reach the rendered surface. `blind6-command-adapter.test.cjs`'s keyword-only row is
+untouched and still green, because a keyword-only answer still returns no members.
+
+**What this does NOT claim.** The gate reads the leading identifier and every later
+`receiver.NAME`, so a ghost that awaits first and invents second (`await.add_tile_by_morton(...)`)
+is judged on `await` alone and survives. That is the gate's shape in all five languages, it is not
+something the legal list widened, and it is pinned as a KNOWN REACH LIMIT row rather than left
+implicit.
+
+**Pinned by.** `test/impl-v59-p8-rust-gate.test.cjs`, 15 rows through the real provider, the real
+service and the real transport mapping. Both directions were red before the fix and neither was red
+at the same time: with Rust ungated the invented-name rows fail; with Rust naively gated and one
+list, `.await` and postfix `match` fail. The phase report carries both failure texts.
