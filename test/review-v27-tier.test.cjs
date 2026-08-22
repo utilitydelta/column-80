@@ -45,7 +45,8 @@ fs.writeFileSync(
 export { toCsCompletionMember } from "../src/core/csExtraction";
 export { toPyCompletionMember, toPySymbolMember } from "../src/core/pyExtraction";
 export { renderFimCandidates, ghostNamesMember } from "../src/core/fimInject";
-export { FnGenService } from "../src/core/fnGenService";\n`,
+export { FnGenService } from "../src/core/fnGenService";
+export { semanticMembers } from "../src/core/extraction";\n`,
 );
 esbuild.buildSync({
   entryPoints: [entry],
@@ -63,6 +64,7 @@ const {
   renderFimCandidates,
   ghostNamesMember,
   FnGenService,
+  semanticMembers,
 } = require(outfile);
 test.after(() => {
   fs.rmSync(entry, { force: true });
@@ -120,10 +122,14 @@ test("degenerate sortText shapes fail OPEN to tier 0 (only positive penalty demo
   }
 });
 
-test("keyword and snippet items carrying sortText are dropped by KIND, never tiered in", async () => {
+test("keyword and snippet items carrying sortText are never tiered in (S30: kept as legal-only, still never rendered)", async () => {
   // The harvest holds keyword items at 7fffffff and 500 postfix snippets at
   // 80000004. If the kind filter ever let them through, a 7fffffff keyword
   // would sit in the OWN tier of an empty-partial block.
+  //
+  // S30 kept the labels in the ANSWER so the output gate's legal list is
+  // complete. The demand above did not move an inch: they carry no tier, no
+  // signature, and never reach the surface anything renders from.
   const items = [
     { label: "await", kind: VS.Keyword, sortText: "7fffffff" },
     { label: "match", kind: VS.Snippet, sortText: "80000004", detail: "match expr {}" },
@@ -132,10 +138,14 @@ test("keyword and snippet items carrying sortText are dropped by KIND, never tie
   const extractor = new RaCommandExtractor(async () => ({ items }));
   const members = await extractor.completeMembers(CURSOR);
   assert.deepStrictEqual(
-    members.map((m) => m.name),
+    semanticMembers(members).map((m) => m.name),
     ["real_method"],
-    "keyword/snippet never become members regardless of sortText",
+    "keyword/snippet never become part of the rendered surface regardless of sortText",
   );
+  for (const m of members.filter((x) => x.kind === "keyword")) {
+    assert.strictEqual(m.tier, undefined, `${m.name}: a legal-only member must carry no tier`);
+    assert.strictEqual(m.signature, undefined, `${m.name}: a legal-only member must carry nothing to render`);
+  }
 });
 
 test("a blanket-impl 8-family item stays DROPPED (tier does not resurrect the impl filter)", async () => {

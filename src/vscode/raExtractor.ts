@@ -115,6 +115,10 @@ const MEMBER_KIND_BY_VSCODE = new Map<number, MemberKind>([
   [4, "field"],
 ]);
 const NON_MEMBER_KINDS = new Set<number>([0, 13, 14]); // Text, Keyword, Snippet
+// Keyword and Snippet. Not API members, but they ARE the site's other legal
+// spellings, so they ride back as `keyword` members: never rendered, never
+// counted as a member surface, only ever widening the output gate's legal list.
+const LEGAL_ONLY_KINDS = new Set<number>([13, 14]);
 
 /** Map a vscode CompletionItemKind to a MemberKind, or undefined for a kind that
  *  is not an API member (keyword/snippet/text) and must be dropped. Unknown
@@ -175,6 +179,7 @@ export class RaCommandExtractor implements SurfaceExtractor {
       ? result
       : ((result as { items?: unknown[] })?.items ?? []);
     const members: CompletionMember[] = [];
+    const legalOnly: CompletionMember[] = [];
     const fallback: CompletionMember[] = [];
     for (const raw of items) {
       const item = raw as { label?: unknown; detail?: unknown; labelDetails?: unknown; kind?: unknown; sortText?: unknown };
@@ -182,6 +187,8 @@ export class RaCommandExtractor implements SurfaceExtractor {
       if (kind === undefined) {
         if (item.kind === VSCODE_TEXT_KIND) {
           fallback.push({ name: labelText(item.label), kind: "text" });
+        } else if (typeof item.kind === "number" && LEGAL_ONLY_KINDS.has(item.kind)) {
+          legalOnly.push({ name: parseMemberLabel(labelText(item.label)).name, kind: "keyword" });
         }
         continue; // keyword/snippet/text: not an API member
       }
@@ -200,7 +207,13 @@ export class RaCommandExtractor implements SurfaceExtractor {
     // An answer made ENTIRELY of the editor's word-based fallback is not an
     // empty answer: it is the server having bound nothing at all. Carried as
     // evidence (no signature, dropped by semanticMembers), never as surface.
-    return members.length > 0 ? members : fallback;
+    //
+    // The keyword/postfix tail rides ONLY behind a real member surface. Alone
+    // it would say a receiver that bound nothing had bound something, and the
+    // dark-site reason line would then name the wrong cause; and nothing wants
+    // it there, because the gate it exists for never arms on an empty surface.
+    // Appended, so the semantic members keep their order for every consumer.
+    return members.length > 0 ? [...members, ...legalOnly] : fallback;
   }
 
   async hoverSurface(cursor: SourceCursor): Promise<HoverSurface | undefined> {

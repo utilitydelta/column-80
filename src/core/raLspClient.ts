@@ -47,6 +47,11 @@ const MEMBER_KIND_BY_LSP = new Map<number, MemberKind>([
   [5, "field"],
 ]);
 const NON_MEMBER_LSP_KINDS = new Set<number>([1, 14, 15]); // Text, Keyword, Snippet
+// Keyword and Snippet, the site's other legal spellings. Kept as `keyword`
+// members for the same reason the product transport keeps them: never
+// rendered, never a member surface, only ever widening the output gate's legal
+// list. Both transports or neither, or the two gate differently.
+const LEGAL_ONLY_LSP_KINDS = new Set<number>([14, 15]);
 
 // LSP wire CompletionItemKind.Constructor: the builder/ctor entry whose docs carry
 // the construction example. Ranking hygiene (std/blanket-trait filtering, the
@@ -494,10 +499,15 @@ export class RaLspExtractor implements SurfaceExtractor {
       ? result
       : ((result as { items?: unknown[] })?.items ?? []);
     const members: CompletionMember[] = [];
+    const legalOnly: CompletionMember[] = [];
     for (const raw of items) {
       const item = raw as { label?: unknown; detail?: unknown; labelDetails?: unknown; kind?: unknown; sortText?: unknown };
       const kind = lspMemberKind(item.kind);
       if (kind === undefined) {
+        if (typeof item.kind === "number" && LEGAL_ONLY_LSP_KINDS.has(item.kind)) {
+          const raw = typeof item.label === "string" ? item.label : "";
+          legalOnly.push({ name: parseMemberLabel(raw).name, kind: "keyword" });
+        }
         continue;
       }
       const label = typeof item.label === "string" ? item.label : "";
@@ -519,7 +529,10 @@ export class RaLspExtractor implements SurfaceExtractor {
       }
       members.push(member);
     }
-    return members;
+    // The keyword/postfix tail rides only behind a real member surface, as it
+    // does on the product transport: alone it would claim a receiver that
+    // bound nothing had bound something.
+    return members.length > 0 ? [...members, ...legalOnly] : members;
   }
 
   // ---- LSP transport ----

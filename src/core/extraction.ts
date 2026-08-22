@@ -14,8 +14,14 @@ import { dedentToZeroBase, replyBaseIndent, withoutBase } from "./reindent";
  *  bound the receiver. A transport carries those ONLY when the answer held
  *  nothing else, as evidence that the server said something and none of it was
  *  semantic; every consumer that treats the set as the receiver's legal surface
- *  drops them through `semanticMembers`. */
-export type MemberKind = "method" | "function" | "field" | "other" | "text";
+ *  drops them through `semanticMembers`.
+ *
+ *  `keyword` is not an API member either, but it IS something the caller may
+ *  legally write at the site: the keyword and postfix completions a server
+ *  serves at a `.` (rust-analyzer's `await`, and its 19 postfix snippets -
+ *  `ref`, `dbg`, `match` - measured live at every Rust receiver). It renders
+ *  nothing, ever, and only ever widens the output gate's legal list. */
+export type MemberKind = "method" | "function" | "field" | "other" | "text" | "keyword";
 
 /** A cursor in a source buffer, LSP coordinates (0-based line, UTF-16 column). */
 export interface SourceCursor {
@@ -576,10 +582,13 @@ export function stripRustGenericDefaults(detail: string): string {
 export const VSCODE_TEXT_KIND = 0;
 
 /** The members that are the receiver's real API surface: everything except the
- *  editor's own word-based fallback items. Empty after this filter means the
- *  server bound nothing, which is what every gate and renderer must key on. */
+ *  editor's own word-based fallback items and the server's keyword/postfix
+ *  completions. Empty after this filter means the server bound nothing, which
+ *  is what every gate and renderer must key on - a receiver whose whole answer
+ *  is `await` plus 19 postfix snippets bound nothing, and arming a gate on
+ *  that list would reject every real member name. */
 export function semanticMembers(members: readonly CompletionMember[]): CompletionMember[] {
-  return members.filter((m) => m.kind !== "text");
+  return members.filter((m) => m.kind !== "text" && m.kind !== "keyword");
 }
 
 /** The CALLABLE render: splice a member name onto its rust-analyzer detail type,

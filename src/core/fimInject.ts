@@ -509,6 +509,56 @@ export interface FimInjection {
   memberNames?: readonly string[];
 }
 
+/** The gate's LEGAL list, which is deliberately NOT the prompt's rendered list.
+ *
+ *  The prompt shows what the model can CALL: members with a signature, blanket
+ *  noise dropped, tier-1 dropped at an empty partial. The gate must judge what
+ *  the caller can WRITE, and that is a strictly wider set, because a server
+ *  answers a `.` with more than API members. rust-analyzer serves 19 postfix
+ *  snippets at every receiver (`ref`, `dbg`, `match`) and `await` at a Future
+ *  one - measured live, 25 and 28 items at the two captured sites. Judging a
+ *  ghost against the rendered list suppressed `.await`, and that is why Rust
+ *  spent five sessions as the one language with injection and no enforcement.
+ *
+ *  `rendered` leads the result in order, so the two lists never disagree about
+ *  a real member; `serverAnswer` contributes its keyword/postfix tail.
+ *
+ *  A qualified name contributes its head and its tail as well. That is the
+ *  Future receiver: rust-analyzer relabels EVERY member as `await.<member>`,
+ *  so `await`, `await.insert` and `insert` are all spellings a caller can
+ *  reach from that receiver, and a gate holding only the middle one rejects
+ *  the ghost the server itself proposed. Splitting only ever widens, so it
+ *  costs a missed catch at worst and never a false suppression. */
+export function memberSiteLegalNames(
+  rendered: readonly CompletionMember[],
+  serverAnswer: readonly CompletionMember[],
+): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const add = (name: string): void => {
+    if (name !== "" && !seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  };
+  for (const m of rendered) {
+    add(m.name);
+  }
+  for (const m of serverAnswer) {
+    if (m.kind === "keyword") {
+      add(m.name);
+    }
+  }
+  for (const name of [...names]) {
+    const dot = name.indexOf(".");
+    if (dot > 0) {
+      add(name.slice(0, dot));
+      add(name.slice(dot + 1));
+    }
+  }
+  return names;
+}
+
 // How many characters of whitespace and comment a ghost opens with, on its
 // first line. Comments come from the pipeline's own masking, not a second
 // parser, and the run stops at a newline.

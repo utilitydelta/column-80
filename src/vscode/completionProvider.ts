@@ -15,6 +15,7 @@ import {
   separatorRunTolerant,
   memberReceiverName,
   memberSiteFor,
+  memberSiteLegalNames,
   narrowToPartial,
   recordDarkSite,
   renderEnumVariants,
@@ -565,8 +566,8 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
         //
         // This is a LOG, not evidence. What an empty member set PROVES stays as
         // narrow as it was: the enforcement gate below still refuses to arm on
-        // an empty set, still refuses Rust entirely, and nothing here widens
-        // any claim about index signatures or structurally incomplete lists.
+        // an empty set, and nothing here widens any claim about index
+        // signatures.
         const darkKey = `${document.uri.toString()}:${position.line}:${position.character}`;
         const reportDark = (reason: string): void => {
           const { firstSeen, sessionCount } = recordDarkSite(this.darkSites, darkKey, reason);
@@ -702,21 +703,24 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
         // conflates any/untyped receivers (where plain FIM keeps working) and
         // index-signature types (Record, process.env) whose legal keys no
         // list can enumerate - suppressing on absence of evidence was the
-        // footgun. Rust stays ungated: rust-analyzer serves keyword/postfix
-        // completions (`.await`, postfix `match`) at a `.` site BY DESIGN and
-        // the render filter drops those kinds, so a Rust memberNames is
-        // structurally incomplete - gating on it suppressed `.await` (dogfood
-        // capture). The block still carries only the TOP-N resolved
+        // footgun. Rust joins the same five since v59: rust-analyzer serves
+        // keyword and postfix completions (`await`, postfix `match`) at a `.`
+        // site BY DESIGN, which is why gating on the RENDERED list ate
+        // `.await` and switched Rust off. The answer is two lists, not one -
+        // memberSiteLegalNames carries the keyword/postfix surface the render
+        // filter drops, so the legal list is complete while the prompt stays
+        // callable-only. The block still carries only the TOP-N resolved
         // SIGNATURES (completionItem/resolve caps at MEMBER_RESOLVE_CAP=32,
         // ~10ms each - the tail degrades to name+kind and is dropped from the
         // signature block); the enforcement set travels on NAMES alone, which
         // every member always carries. column80.fimMemberGate is the shared
-        // kill switch.
+        // kill switch: Rust joins it, it does not get a second one.
         const gateOn =
           (TS_LANGUAGE_IDS.has(document.languageId) ||
             document.languageId === "csharp" ||
             document.languageId === "python" ||
-            document.languageId === "go") &&
+            document.languageId === "go" ||
+            document.languageId === "rust") &&
           members.length > 0 &&
           vscode.workspace.getConfiguration("column80").get<boolean>("fimMemberGate", true);
         // The receiver's members and the enforcement set are in hand HERE, and
@@ -724,7 +728,7 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
         // them to a slow parameter-type resolve silently switches the gate off,
         // which shows the user a hallucination injection was meant to catch.
         const resolved = (block?: string): FimInjection =>
-          gateOn ? { block, memberNames: members.map((m) => m.name) } : { block };
+          gateOn ? { block, memberNames: memberSiteLegalNames(members, resolvedMembers) } : { block };
 
         const lineComment = lineCommentFor(document.languageId);
         // Render BEFORE resolving argument types. A receiver set that renders
@@ -748,10 +752,10 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
         // A block rendered, so the receiver is not dark: it is late. Late still
         // buys the site something wherever the enforcement gate is armed, since
         // the gate waits past the block's deadline for exactly this answer - so
-        // that site is never reported. Where nothing can arm (Rust is ungated by
-        // design, rust-analyzer's `.` surface is structurally incomplete) a late
-        // answer buys this keystroke nothing at all, and past a grace of one
-        // more deadline the site says so, once.
+        // that site is never reported. Where nothing can arm (a language
+        // outside the gated five, or the kill switch off) a late answer buys
+        // this keystroke nothing at all, and past a grace of one more deadline
+        // the site says so, once.
         if (!gateOn && lateBy(INJECTION_DEADLINE_MS)) {
           reportDark(DEADLINE_REASON);
         }
