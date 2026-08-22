@@ -11,7 +11,7 @@
  * TTFT is measurable per request — the warm-latency oracle depends on it.
  */
 
-import { boundBody, channelBodyLine, channelUnreadLine, readBody } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, HttpStatusError, readBody } from "./errorBound";
 
 export interface FimGenerateParams {
   apiBase: string;
@@ -401,7 +401,11 @@ async function streamGenerate(
           : channelUnreadLine("ollama", res.status),
       );
       const raw = body.read ? body.text : "<no body>";
-      throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`);
+      throw new HttpStatusError(
+      "ollama",
+      res.status,
+      `Ollama ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`,
+    );
     }
     if (!res.body) {
       // COUPLING: this message's HEAD is a marker in fnGen.ts
@@ -656,7 +660,11 @@ export async function pullModel(
         : channelUnreadLine("ollama-pull", res.status),
     );
     const raw = body.read ? body.text : "<no body>";
-    throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`);
+    throw new HttpStatusError(
+      "ollama",
+      res.status,
+      `Ollama ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`,
+    );
   }
   if (!res.body) {
     throw new Error("Ollama: pull response has no body");

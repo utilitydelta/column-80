@@ -38,6 +38,9 @@ import { firstLine, hasMoreThanOneLine, oneLineWithPointer, tierDisabledToast } 
 // A leaf: it imports vscode and nothing of ours, so both this file and
 // extension.ts can hold it without a cycle.
 import { CANCEL_COMMAND, InFlightRegistry, isCancellation } from "./inFlight";
+// The typed HTTP-status failure, from the same leaf the transports throw it
+// out of. A leaf, so `instanceof` costs no cycle.
+import { HttpStatusError } from "../core/errorBound";
 import {
   DocumentSymbolLite,
   MEMBER_CAP,
@@ -5553,6 +5556,79 @@ const CLI_FAILED_TOAST =
   "Column 80: the Claude Code CLI failed, so nothing was written - the full message is in the " +
   "output channel.";
 
+/** What an HTTP status means to the person who has to do something about it.
+ *
+ *  CLASSES, NOT CODES. A 401 and a 403 are one problem to a user - the key was
+ *  refused - and a 500, 502, 503 and 529 are one problem too. The class is the
+ *  actionable unit; the code is a support detail, and phase 1's `[http-body]`
+ *  channel line already carries it for that.
+ *
+ *  Which is why these sentences do NOT repeat the number and the fallback does:
+ *  where a class is known, the class IS the information; where none is, the
+ *  number is the only specific thing the product knows and withholding it would
+ *  leave the user nothing to search for.
+ *
+ *  The provider's own body never reaches here. It is in the channel twice - raw
+ *  under `[http-body]`, bounded under `[fngen] request failed:` - and putting a
+ *  JSON document where a sentence belongs is what this replaces. */
+function httpStatusSentence(transport: string, status: number): string | undefined {
+  if (status === 401 || status === 403) {
+    // TWO SENTENCES, because the next action genuinely differs by arm and this
+    // is the one class where it does. `column80.cloudApiKey` is the product's
+    // ONLY key setting and its own description says the local backend ignores
+    // it, so sending an ollama user there would be phase 6's defect again: a
+    // crafted remedy pointing at a control that cannot help them. The local
+    // variant names no setting at all, deliberately - a 401 from ollama means
+    // something in front of it wants auth, and that is the user's own
+    // deployment.
+    return transport === "ollama"
+      ? "Column 80: the local model server refused the request as unauthorised, so nothing was " +
+          "written - check the server's own authentication. The full message is in the output channel."
+      : "Column 80: the model provider refused the API key, so nothing was written - check " +
+          "`column80.cloudApiKey`, then run the gesture again. The full message is in the output channel.";
+  }
+  if (status === 429) {
+    // The pointer is not decoration here: the body separates a per-minute rate
+    // limit from an exhausted quota, and "wait, then run the gesture again"
+    // only clears the first. The class cannot say which; the channel can.
+    return (
+      // "this key" was wrong on one arm. 401/403 splits on transport because
+      // the remedy differs; this one does not need a split, it needed a word
+      // that is true everywhere - the local backend has no key to rate limit.
+      "Column 80: the model provider is rate limiting these requests, so nothing was written - " +
+      "wait, then run the gesture again. The full message is in the output channel."
+    );
+  }
+  // THE WHOLE 5xx RANGE, not four enumerated codes. The first cut listed 500,
+  // 502, 503 and 529 and dropped 504 - the commonest of the set after 503 - plus
+  // Cloudflare's 520 to 524, onto the path below. "Try again shortly" is true of
+  // every 5xx by HTTP semantics; there is none where waiting is the wrong next
+  // action. NaN fails both comparisons and Infinity fails the second, so neither
+  // reaches a sentence.
+  if (status >= 500 && status < 600) {
+    return (
+      "Column 80: the model provider is having trouble, so nothing was written - try again " +
+      "shortly. The full message is in the output channel."
+    );
+  }
+  // NO SENTENCE, and this is a ruling rather than a gap.
+  //
+  // The first cut answered an unclassified status with "the model provider
+  // answered with HTTP 404", which DELETED the only useful thing on screen. A
+  // 404 carries `model "x" not found, try pulling it first`; a 400 carries
+  // `prompt is too long: 250000 tokens > 200000 maximum`; a 413 carries
+  // `context_length_exceeded`. Those are exactly the statuses where the BODY is
+  // the next action, and exactly the ones with no class - so the crafted
+  // sentence replaced a remedy with a number.
+  //
+  // That is S20's ratified reasoning one layer out: no class means no crafted
+  // sentence, because the provider's own message is the actionable half. Falling
+  // through hands the message to the catch-all, which renders the status, the
+  // provider's reason AND the channel pointer - so the number reaches the screen
+  // anyway, just not inside a sentence this product invented.
+  return undefined;
+}
+
 /** A crafted sentence for a typed backend failure, or undefined for anything
  *  else.
  *
@@ -5586,6 +5662,17 @@ function translateStructural(err: unknown): string | undefined {
   return CLAUDE_CODE_SENTENCES[reason](err.message);
 }
 
+/** The second case of the same pass: an HTTP status, from the transport that
+ *  set it.
+ *
+ *  `instanceof`, not a name check, and not a text match. The status is a number
+ *  the transport read off a `Response`, so no server can forge a class by
+ *  putting `429` in its body - which is the whole reason this is a typed error
+ *  rather than three more marker rows. */
+function translateHttpStatus(err: unknown): string | undefined {
+  return err instanceof HttpStatusError ? httpStatusSentence(err.transport, err.status) : undefined;
+}
+
 /** Message heads that mean "the rest of this string came from the server."
  *
  *  Every one of these interpolates text the model server chose, so a service
@@ -5613,7 +5700,7 @@ export function translateServiceReject(err: unknown): string | undefined {
   // it is; every pass below is guessing from a string, and the backend this
   // serves leads its strings with text the CLI chose. Only ever narrows: an
   // unrecognised reason returns undefined and falls straight through.
-  const structural = translateStructural(err);
+  const structural = translateStructural(err) ?? translateHttpStatus(err);
   if (structural !== undefined) {
     return structural;
   }

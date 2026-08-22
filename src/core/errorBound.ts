@@ -77,6 +77,40 @@ function boundTo(body: string, budget: number): string {
   return `${kept} [+${body.length - kept.length} chars elided]`;
 }
 
+/**
+ * An HTTP status failure, carrying what the status WAS rather than only how it
+ * was worded.
+ *
+ * Every one of the four status sites throws a message that reads
+ * `<Transport> <status> <reason phrase>: <bounded body>`, and the translation
+ * layer had nothing to go on but that string - so a 429, a 503 and a 401, three
+ * problems wanting three different next actions, all arrived as one unknown
+ * error and the user read the provider's raw JSON (roadmap item 68).
+ *
+ * IT DOES NOT SET `name`, and that is the one thing about this class most
+ * likely to be got wrong. `String(err)` renders as `${name}: ${message}`, and
+ * `ClaudeCodeError` - the repo's only other typed failure, and the model this
+ * would otherwise copy - sets `this.name` so a caller can identify it without
+ * importing the class. Doing that here would rewrite `String(err)` at all four
+ * sites into `HttpStatusError: Ollama 503 ...`, which is the channel's copy,
+ * the log line and every blind row that pins those strings. This class is in a
+ * leaf that everything can import, so `instanceof` costs nothing and the
+ * message stays byte-identical.
+ */
+export class HttpStatusError extends Error {
+  constructor(
+    /** The arm that threw, for a reader of the channel. */
+    readonly transport: string,
+    /** The numeric status. What the translation switches on - a number the
+     *  TRANSPORT set, which is why no server can forge a class by putting a
+     *  number in its body. */
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 /** The provider's own reason, out of a field only WE typed.
  *
  *  Every in-stream error envelope on every arm is declared by this repo and

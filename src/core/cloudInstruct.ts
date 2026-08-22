@@ -21,7 +21,7 @@
 
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, channelBodyLine, channelUnreadLine, providerReason, readBody } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, HttpStatusError, providerReason, readBody } from "./errorBound";
 
 export interface CloudProvider {
   id: string;
@@ -347,7 +347,11 @@ async function postChat(
       );
       // Surface the provider's own message (invalid key, unknown model, quota):
       // it is the actionable half. The key is never in the body we send back.
-      throw new Error(`Cloud ${res.status} ${boundBody(res.statusText)}: ${boundBody(detail)}`);
+      throw new HttpStatusError(
+        "cloud",
+        res.status,
+        `Cloud ${res.status} ${boundBody(res.statusText)}: ${boundBody(detail)}`,
+      );
     }
     learnedDialects.set(key, next);
     dialect = next;

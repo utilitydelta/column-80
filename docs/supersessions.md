@@ -910,3 +910,63 @@ conditional and earned) is still true and is now stated rather than inferred.
 the break set, and the C6 regression corpus) and `test/adversarial-v58-p2.test.cjs`, whose
 `B2 [CLEAN]` row scans every toast surface for a surviving copy of the old comparison - with
 comments stripped first, because the fix's own coupling comment quotes the expression it replaced.
+
+## S23. An HTTP status gets a crafted sentence only where the product knows a class
+
+**NOT YET RATIFIED.** Ruled 2026-08-22 in the session-v58 phase-7 review loop-back, after the
+adversarial review found the first cut had made a toast WORSE than the string it replaced. Flagged
+here because it narrows clauses of that phase's own contract and one line of `goal.md`.
+
+**What changed.** `goal.md` and `contract-phase7.md` both say the HTTP-status class ends with a
+catch-all: "anything else - the generic failure sentence with the status number". There is no such
+sentence now. An unclassified status returns no crafted sentence at all and falls through to the
+catch-all that has always rendered these messages.
+
+**Why, driven.** The first cut answered every unlisted status with
+`Column 80: the model provider answered with HTTP 404, so nothing was written`. Measured at the
+branch point, that same failure had said:
+
+```
+model "test-model" not found, try pulling it first
+```
+
+and on the other two arms, `prompt is too long: 250000 tokens > 200000 maximum` (400) and
+`context_length_exceeded` (413). Those three are exactly the statuses where the BODY is the next
+action, and exactly the ones the product has no class for - so the crafted sentence replaced a
+remedy with a number. `errorBound.ts`'s own bound is documented as existing so that "the ordinary
+model not found error" is not mangled; the sentence deleted it from the toast entirely.
+
+**This is S20's ratified reasoning one layer out.** S20 says a generic provider envelope keeps the
+provider's own message and gets no crafted sentence, because that message is the actionable half.
+No class is the same condition: the product does not know what happened, so it must not assert a
+next action.
+
+**What the user still gets.** The catch-all renders the status number, the provider's reason and the
+channel pointer - so C5's clause ("the number reaches the screen") holds, through the message head
+rather than through a crafted sentence. What is given up is C6's "no JSON on screen", which is now
+true of the classified statuses only. That is the state 2.2.0 ships today, bounded and cut to one
+line; it is the absence of an improvement rather than a new exposure.
+
+**Three smaller narrowings ride with it.**
+
+- **The 5xx class is a RANGE**, `>= 500 && < 600`, where the contract's table enumerated 500, 502,
+  503 and 529. The enumeration dropped 504 - the commonest of the set after 503 - and Cloudflare's
+  520 to 524 onto the fallback path. "Try again shortly" is true of every 5xx.
+- **401/403 produces TWO sentences**, selected by the failing transport, where the clause said one
+  per class. `column80.cloudApiKey` is the product's only key setting and its own description says
+  the local backend ignores it, so a single sentence sent an ollama user to a control that cannot
+  help them. The local variant names no setting at all, deliberately.
+- **401/403 and 429 gained the channel pointer**, which the first cut gave only to the 5xx class.
+  The 401 body separates an invalid key from an exhausted credit balance and the 429 body separates
+  a rate limit from a dead quota - differences the class sentence cannot state.
+
+**The pattern this is the fifth instance of, and it is worth naming once here.** In one session,
+five crafted sentences were found to be worse than the raw text: S20's remedy pointed at a healthy
+server, phase 4's coercion turned a provider's reason into "unknown", phase 6 named two settings
+that do not exist, and this one deleted a remedy. Every one is the product asserting a next action
+it does not know. The rule that falls out: craft a sentence only where the product has established
+what happened, and hand over the provider's own words everywhere else.
+
+**Pinned by.** `test/blind-v58-p7-http-status-classes.test.cjs` and
+`test/adversarial-v58-p7.test.cjs`, whose unlisted-status rows were re-cut to pin that the
+provider's reason survives to the screen - the property whose absence was the defect.

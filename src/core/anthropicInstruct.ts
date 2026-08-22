@@ -26,7 +26,7 @@
 import { usageEvidence } from "./cacheEvidence";
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, channelBodyLine, channelUnreadLine, providerReason, readBody } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, HttpStatusError, providerReason, readBody } from "./errorBound";
 
 export interface AnthropicInstructConfig {
   /** Resolved endpoint root: the `anthropic` preset's baseUrl or the user's
@@ -169,7 +169,11 @@ async function streamMessages(
         : channelUnreadLine("anthropic", res.status),
     );
     const raw = body.read ? body.text : "<no body>";
-    throw new Error(`Anthropic ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`);
+    throw new HttpStatusError(
+      "anthropic",
+      res.status,
+      `Anthropic ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`,
+    );
   }
   if (!res.body) {
     // COUPLING: this message's HEAD is a marker in fnGen.ts
