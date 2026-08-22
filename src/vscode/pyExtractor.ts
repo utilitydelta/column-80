@@ -31,8 +31,12 @@ import {
   ReferenceQuery,
   SourceCursor,
   SurfaceExtractor,
+  TypeNameHint,
   VSCODE_TEXT_KIND,
   MemberSurfaceOptions,
+  WorkspaceSymbolCandidate,
+  selectSoleTypeCursor,
+  workspaceSymbolCandidates,
   membersWithHoverSignatures,
   hoverBackfillOptions,
   capReferences,
@@ -65,6 +69,12 @@ export type PyCommandRunner = (
  *  the caller (the gate proceeds, the code action is requested at the bare
  *  cursor). */
 export type PyTextReader = (uri: string) => string | undefined;
+
+/** Dispatches a workspace-symbol QUERY (not a cursor) and yields the raw
+ *  vscode-shaped SymbolInformation[]; the by-name resolution leg's transport,
+ *  the C#, Go and TS sibling. Optional on the extractor: an absent runner means
+ *  no by-name fallback (resolveTypeCursorByName then resolves nothing). */
+export type PySymbolRunner = (query: string) => Promise<unknown>;
 
 const COMPLETION_COMMAND = "vscode.executeCompletionItemProvider";
 const HOVER_COMMAND = "vscode.executeHoverProvider";
@@ -109,6 +119,7 @@ export class PyCommandExtractor implements SurfaceExtractor {
   constructor(
     private readonly run: PyCommandRunner,
     private readonly readText?: PyTextReader,
+    private readonly runSymbol?: PySymbolRunner,
   ) {}
 
   async completeMembers(cursor: SourceCursor): Promise<CompletionMember[]> {
@@ -315,6 +326,34 @@ export class PyCommandExtractor implements SurfaceExtractor {
       );
     } catch {
       return [];
+    }
+  }
+
+  // The by-name resolution leg: a bare type NAME -> the cursor at its
+  // definition's name token, via vscode.executeWorkspaceSymbolProvider. The C#,
+  // Go and TS sibling, and it closes the same gap: a class the server will not
+  // point a DEFINITION at is otherwise unreachable even when it is declared in
+  // this workspace.
+  //
+  // Pylance's workspace symbols carry the bare class NAME and a location whose
+  // range is that name token, so the cursor feeds membersOfType directly. The
+  // hit list is fuzzy, so selectSoleTypeCursor narrows to the exact-name CLASS.
+  // Two declaration sites for one name refuse rather than guess: Python has no
+  // partial class, so they are two different classes, and pyright reporting a
+  // stub beside its implementation is the one duplicate worth collapsing (the
+  // selection collapses identical positions before counting).
+  async resolveTypeCursorByName(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined> {
+    if (!this.runSymbol) {
+      return undefined;
+    }
+    try {
+      const candidates: WorkspaceSymbolCandidate[] = workspaceSymbolCandidates(
+        await this.runSymbol(name),
+        pyVscodeSymbolRole,
+      );
+      return selectSoleTypeCursor(candidates, name, hint);
+    } catch {
+      return undefined;
     }
   }
 }

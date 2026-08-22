@@ -44,10 +44,13 @@ import {
   ReferenceQuery,
   SourceCursor,
   SurfaceExtractor,
+  TypeNameHint,
   MemberSurfaceOptions,
   membersWithHoverSignatures,
   hoverBackfillOptions,
+  selectSoleTypeCursor,
   toReferenceLocations,
+  workspaceSymbolCandidates,
 } from "./extraction";
 import {
   isDunder,
@@ -576,6 +579,29 @@ export class PyLspExtractor implements SurfaceExtractor {
       async (at) => (await this.hoverSurface(at))?.signature,
       hoverBackfillOptions(budgetMs, opts),
     );
+  }
+
+  /** The by-name resolution leg: a bare type NAME -> the cursor at its
+   *  definition's name token. The product transport's headless sibling, over
+   *  pyright's `workspace/symbol`, whose SymbolInformation.location.range is
+   *  the NAME token - so the cursor feeds membersOfType directly.
+   *
+   *  The hit list is fuzzy, so `selectSoleTypeCursor` narrows to the exact-name
+   *  CLASS and refuses two distinct declaration sites rather than guessing.
+   *  Pyright answers a stub and its implementation at the same position often
+   *  enough that the selection collapses identical positions first; two
+   *  genuinely different classes stay ambiguous, and ambiguous means nothing
+   *  resolves. */
+  async resolveTypeCursorByName(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined> {
+    try {
+      const candidates = workspaceSymbolCandidates(
+        await this.request("workspace/symbol", { query: name }),
+        pyLspSymbolRole,
+      );
+      return selectSoleTypeCursor(candidates, name, hint);
+    } catch {
+      return undefined;
+    }
   }
 
   dispose(): void {

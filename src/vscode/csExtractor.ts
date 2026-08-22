@@ -33,6 +33,7 @@ import {
   SurfaceExtractor,
   TypeNameHint,
   VSCODE_TEXT_KIND,
+  resolutionReachedWrongTree,
   membersFromDocumentSymbols,
   capReferences,
   dropDeclaration,
@@ -405,6 +406,20 @@ export class CsCommandExtractor implements SurfaceExtractor {
     // GetHashCode overrides — the declared surface is returned as-is.
     try {
       const symbols = await this.run(DOCUMENT_SYMBOL_COMMAND, defCursor);
+      // The wrong-tree refusal. Roslyn answers a definition request for a type
+      // reference with the reference's OWN position often enough that it is the
+      // shape to defend against: the cursor then sits in the body of whatever
+      // method the reference was written in, the descent finds the ENCLOSING
+      // class, and its members render under `to build a <the other type>:`.
+      // Refuse instead. A wrong surface is worse than none.
+      //
+      // A member site (`stripe.|`) is NOT this shape and is not refused - it
+      // sits on no identifier, which is the first of the three facts the guard
+      // needs. An absent text reader means no evidence and no refusal.
+      const lineText = this.readText?.(defCursor.uri)?.split("\n")[defCursor.line];
+      if (resolutionReachedWrongTree(symbols, defCursor, csVscodeSymbolRole, lineText)) {
+        return [];
+      }
       return membersFromDocumentSymbols(symbols, defCursor, csVscodeSymbolRole, toCsSymbolMember);
     } catch {
       return [];

@@ -1058,6 +1058,186 @@ export function enclosingTypeName(
   return typeof name === "string" && name !== "" ? name : undefined;
 }
 
+/** The word around `character`, over `[A-Za-z0-9_]`. Empty when the position
+ *  sits on punctuation, on whitespace, or past the end of the line. */
+function identifierAt(lineText: string, character: number): string {
+  const isWord = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_]/.test(c);
+  let start = character;
+  while (start > 0 && isWord(lineText[start - 1])) {
+    start--;
+  }
+  let end = character;
+  while (end < lineText.length && isWord(lineText[end])) {
+    end++;
+  }
+  return lineText.slice(start, end);
+}
+
+/** Did a by-name type resolution reach the tree of some OTHER declaration?
+ *
+ *  `memberSymbolsOfType` cannot tell, because it only asks which container
+ *  encloses the cursor. Two different callers ask it: "what type am I writing
+ *  inside", where the enclosing class IS the answer, and "what is the surface
+ *  of the type named X", where it is not. When a language server answers an X
+ *  reference with the REFERENCE's own position, the second question gets the
+ *  first question's answer: the members of whatever class the reference was
+ *  written in, rendered under a header reading `to build a X:`. That is a false
+ *  statement the model then follows, and it is worse than injecting nothing.
+ *
+ *  Three facts have to hold together, and each one is load-bearing:
+ *
+ *   1. The cursor sits on an IDENTIFIER. A member site (`stripe.|`) sits on
+ *      none, and that is the shape the first caller asks from - it must not be
+ *      refused.
+ *   2. That identifier is not the enclosing container's own name. A genuine
+ *      definition cursor lands on the type's name token, so the two agree.
+ *   3. The cursor is inside one of the container's MEMBERS. Without this, a
+ *      definition answer landing on the `public` of `public class Tile` reads
+ *      as a wrong tree; the declaration head is outside every member's range,
+ *      so it does not.
+ *
+ *  The symbol tree resolves the scope and the text only supplies the word under
+ *  the cursor - the standing split this file's `enclosingTypeName` states. No
+ *  line text means no identifier evidence, which is not evidence of a wrong
+ *  tree: false, and the caller keeps the behaviour it always had. */
+export function resolutionReachedWrongTree(
+  symbols: unknown,
+  cursor: SourceCursor,
+  role: (kind: unknown) => SymbolRole,
+  lineText: string | undefined,
+): boolean {
+  if (!Array.isArray(symbols) || lineText === undefined) {
+    return false;
+  }
+  const word = identifierAt(lineText, cursor.character);
+  if (word === "") {
+    return false;
+  }
+  const found = findEnclosingContainer(symbols as DocumentSymbolLite[], cursor, role);
+  if (!found || found.container.name === word) {
+    return false;
+  }
+  return (found.container.children ?? []).some(
+    (child) => child?.range !== undefined && rangeContainsCursor(child.range, cursor),
+  );
+}
+
+/** One workspace-symbol hit reduced to what a by-name type resolution needs.
+ *  The transport-neutral sibling of `CsSymbolCandidate` / `GoSymbolCandidate`:
+ *  the raw vscode and LSP hit shapes differ, and so do their SymbolKind enums,
+ *  so each transport maps its own hits before selecting over them. */
+export interface WorkspaceSymbolCandidate {
+  name: string;
+  role: SymbolRole;
+  /** Whatever the server reports the hit as living in. Empty when absent. Read
+   *  for INEQUALITY and for a caller's hint, never parsed: no server spells
+   *  this the same way. Roslyn writes a project display string, gopls writes a
+   *  real import path, and tsserver and pyright leave it empty for a top-level
+   *  type and fill it with the enclosing class for a nested one. */
+  containerName: string;
+  uri: string;
+  line: number;
+  character: number;
+}
+
+/** Reduce a raw workspace-symbol answer to candidates, through the calling
+ *  transport's own SymbolKind mapper. Both hit shapes are accepted because
+ *  they differ in exactly one field: vscode hands a `Uri` object and the LSP
+ *  wire hands a string. A hit missing a name, a location or a start position
+ *  is dropped rather than defaulted - a candidate at line 0 of nowhere would
+ *  resolve to a stranger's declaration. Never throws; a non-array answer is no
+ *  candidates. */
+export function workspaceSymbolCandidates(
+  raw: unknown,
+  role: (kind: unknown) => SymbolRole,
+): WorkspaceSymbolCandidate[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return (raw as Array<{
+    name?: unknown;
+    kind?: unknown;
+    containerName?: unknown;
+    location?: { uri?: unknown; range?: { start?: { line?: unknown; character?: unknown } } };
+  }>).flatMap((s) => {
+    const rawUri = s?.location?.uri;
+    const uri =
+      typeof rawUri === "string"
+        ? rawUri
+        : typeof (rawUri as { toString?: unknown })?.toString === "function"
+          ? String(rawUri)
+          : undefined;
+    const start = s?.location?.range?.start;
+    if (
+      typeof s?.name !== "string" ||
+      // A URI must carry a scheme. Object.prototype.toString answers
+      // "[object Object]" for anything, so a shape check is what tells a real
+      // vscode Uri from a bare object that merely inherits a toString.
+      uri === undefined ||
+      !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(uri) ||
+      typeof start?.line !== "number" ||
+      typeof start?.character !== "number"
+    ) {
+      return [];
+    }
+    return [
+      {
+        name: s.name,
+        role: role(s.kind),
+        containerName: typeof s.containerName === "string" ? s.containerName : "",
+        uri,
+        line: start.line,
+        character: start.character,
+      },
+    ];
+  });
+}
+
+/** Pick the def cursor for a bare type NAME from workspace-symbol candidates,
+ *  for a language where one name means one type. The `selectCsTypeCursor`
+ *  sibling, and STRICTER than it on purpose: C# has to let several hits through
+ *  because a `partial class` is one type split across files, and Go has to
+ *  compare import paths. TypeScript and Python have neither, so two distinct
+ *  declaration sites for one name are two different things and there is no
+ *  textual way to say which the caller meant.
+ *
+ *  Every server that answers `workspace/symbol` answers it FUZZY - a query for
+ *  "Tile" also returns TileSite, tileFromMorton, every test naming it - so the
+ *  exact-name TYPE filter is what makes the answer mean anything.
+ *
+ *  AMBIGUITY IS REFUSED, not tiebroken, unless the caller brought evidence.
+ *  A `hint.container` the caller already saw the name written under decides it;
+ *  a container matching two candidates, or none, decides nothing. Honest
+ *  no-resolution beats a wrong surface. */
+export function selectSoleTypeCursor(
+  candidates: WorkspaceSymbolCandidate[],
+  name: string,
+  hint?: TypeNameHint,
+): SourceCursor | undefined {
+  const exact = candidates.filter((c) => c.name === name && c.role === "container");
+  // A server may report one declaration twice (pyright answers a stub and its
+  // implementation for the same name). Identical positions are one hit.
+  const distinct: WorkspaceSymbolCandidate[] = [];
+  for (const c of exact) {
+    if (!distinct.some((d) => d.uri === c.uri && d.line === c.line && d.character === c.character)) {
+      distinct.push(c);
+    }
+  }
+  if (distinct.length === 1) {
+    return { uri: distinct[0].uri, line: distinct[0].line, character: distinct[0].character };
+  }
+  const container = hint?.container;
+  if (distinct.length === 0 || container === undefined || container === "") {
+    return undefined;
+  }
+  const survivors = distinct.filter(
+    (c) => c.containerName === container || c.containerName.endsWith(`.${container}`),
+  );
+  return survivors.length === 1
+    ? { uri: survivors[0].uri, line: survivors[0].line, character: survivors[0].character }
+    : undefined;
+}
+
 /** How many members one `membersOfType` call may buy a signature for through a
  *  second per-member round trip. This is a COUNT ceiling, deliberately set high
  *  enough that it is NOT the binding constraint for a realistic type: the fan-out

@@ -31,8 +31,12 @@ import {
   ReferenceQuery,
   SourceCursor,
   SurfaceExtractor,
+  TypeNameHint,
   VSCODE_TEXT_KIND,
   MemberSurfaceOptions,
+  WorkspaceSymbolCandidate,
+  selectSoleTypeCursor,
+  workspaceSymbolCandidates,
   membersWithHoverSignatures,
   hoverBackfillOptions,
   capReferences,
@@ -57,6 +61,12 @@ export type TsCommandRunner = (
  *  identifier-widening. Optional: absent means the code action is requested at
  *  the bare cursor, which may miss (the honest degrade). */
 export type TsTextReader = (uri: string) => string | undefined;
+
+/** Dispatches a workspace-symbol QUERY (not a cursor) and yields the raw
+ *  vscode-shaped SymbolInformation[]; the by-name resolution leg's transport,
+ *  the C# and Go sibling. Optional on the extractor: an absent runner means no
+ *  by-name fallback (resolveTypeCursorByName then resolves nothing). */
+export type TsSymbolRunner = (query: string) => Promise<unknown>;
 
 const COMPLETION_COMMAND = "vscode.executeCompletionItemProvider";
 const HOVER_COMMAND = "vscode.executeHoverProvider";
@@ -107,6 +117,7 @@ export class TsCommandExtractor implements SurfaceExtractor {
   constructor(
     private readonly run: TsCommandRunner,
     private readonly readText?: TsTextReader,
+    private readonly runSymbol?: TsSymbolRunner,
   ) {}
 
   async completeMembers(cursor: SourceCursor): Promise<CompletionMember[]> {
@@ -296,6 +307,34 @@ export class TsCommandExtractor implements SurfaceExtractor {
       return members;
     } catch {
       return [];
+    }
+  }
+
+  // The by-name resolution leg: a bare type NAME -> the cursor at its
+  // definition's name token, via vscode.executeWorkspaceSymbolProvider. The C#
+  // and Go sibling, and the reason it exists is the same in all three: a type
+  // the server will not point a DEFINITION at is otherwise unreachable, even
+  // when it is declared in this very workspace.
+  //
+  // tsserver answers this from navto, whose SymbolInformation.location.range is
+  // the NAME token, so the cursor feeds membersOfType directly. The hit list is
+  // fuzzy (a query for "Tile" also returns TileSite), so selectSoleTypeCursor
+  // narrows to the exact-name TYPE and refuses an ambiguity rather than
+  // guessing - TypeScript has no partial class, so two declaration sites for
+  // one name are two different things. An absent or throwing symbol runner
+  // degrades to undefined, never a guess.
+  async resolveTypeCursorByName(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined> {
+    if (!this.runSymbol) {
+      return undefined;
+    }
+    try {
+      const candidates: WorkspaceSymbolCandidate[] = workspaceSymbolCandidates(
+        await this.runSymbol(name),
+        tsVscodeSymbolRole,
+      );
+      return selectSoleTypeCursor(candidates, name, hint);
+    } catch {
+      return undefined;
     }
   }
 }

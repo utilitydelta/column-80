@@ -2,9 +2,9 @@ import * as vscode from "vscode";
 import { SurfaceExtractor } from "../core/extraction";
 import { TS_LANGUAGE_IDS } from "../core/tsExtraction";
 import { RaCommandExtractor, createRaCommandRunner, createRaTextReader } from "./raExtractor";
-import { TsCommandExtractor, TsCommandRunner, TsTextReader } from "./tsExtractor";
+import { TsCommandExtractor, TsCommandRunner, TsSymbolRunner, TsTextReader } from "./tsExtractor";
 import { CsCommandExtractor, CsCommandRunner, CsSymbolRunner, CsTextReader } from "./csExtractor";
-import { PyCommandExtractor, PyCommandRunner, PyTextReader } from "./pyExtractor";
+import { PyCommandExtractor, PyCommandRunner, PySymbolRunner, PyTextReader } from "./pyExtractor";
 import { GoCommandExtractor, GoCommandRunner, GoSymbolRunner, GoTextReader } from "./goExtractor";
 
 /**
@@ -26,7 +26,7 @@ export function extractorFor(languageId: string): SurfaceExtractor | undefined {
     return new RaCommandExtractor(createRaCommandRunner(), createRaTextReader());
   }
   if (TS_LANGUAGE_IDS.has(languageId)) {
-    return new TsCommandExtractor(createTsCommandRunner(), createTsTextReader());
+    return new TsCommandExtractor(createTsCommandRunner(), createTsTextReader(), createTsSymbolRunner());
   }
   if (languageId === "csharp") {
     // Registered atomically with the gesture wiring, so C# never runs
@@ -39,7 +39,7 @@ export function extractorFor(languageId: string): SurfaceExtractor | undefined {
     // the names-only gate, the out-of-span import routing), so Python never
     // runs half-wired on the Rust/undefined default. Distinct class, never the
     // Rust fallthrough.
-    return new PyCommandExtractor(createPyCommandRunner(), createPyTextReader());
+    return new PyCommandExtractor(createPyCommandRunner(), createPyTextReader(), createPySymbolRunner());
   }
   if (languageId === "go") {
     // Registered atomically with the gesture wiring (the memberSite dispatch,
@@ -84,6 +84,25 @@ export function createGoTextReader(): GoTextReader {
  *  vscode.executeWorkspaceSymbolProvider, for the by-name resolution leg
  *  (session-v40 item 2's anchor leg) — the createCsSymbolRunner sibling. */
 export function createGoSymbolRunner(): GoSymbolRunner {
+  return (query) =>
+    Promise.resolve(vscode.commands.executeCommand("vscode.executeWorkspaceSymbolProvider", query));
+}
+
+/** The product TypeScript workspace-symbol runner: dispatch a bare NAME query
+ *  against the user's running TS server via
+ *  vscode.executeWorkspaceSymbolProvider, for the by-name resolution leg — the
+ *  createCsSymbolRunner sibling. The command is provider-agnostic, so the whole
+ *  difference between the four is which extractor it is handed to. */
+export function createTsSymbolRunner(): TsSymbolRunner {
+  return (query) =>
+    Promise.resolve(vscode.commands.executeCommand("vscode.executeWorkspaceSymbolProvider", query));
+}
+
+/** The product Python workspace-symbol runner: dispatch a bare NAME query
+ *  against the user's running Pylance via
+ *  vscode.executeWorkspaceSymbolProvider, for the by-name resolution leg — the
+ *  createCsSymbolRunner sibling. */
+export function createPySymbolRunner(): PySymbolRunner {
   return (query) =>
     Promise.resolve(vscode.commands.executeCommand("vscode.executeWorkspaceSymbolProvider", query));
 }

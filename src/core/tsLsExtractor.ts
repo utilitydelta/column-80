@@ -27,7 +27,10 @@ import {
   ReferenceQuery,
   SourceCursor,
   SurfaceExtractor,
+  TypeNameHint,
+  WorkspaceSymbolCandidate,
   capReferences,
+  selectSoleTypeCursor,
 } from "./extraction";
 import { toTsCompletionMember, tsElementMemberKind } from "./tsExtraction";
 
@@ -43,6 +46,17 @@ const DETAIL_RESOLVE_CAP = 32;
 // member variants (TS2662/TS2663) are excluded: their code-fix path assumes an
 // enclosing class and crashes typescript 5.9 outside one.
 const UNRESOLVED_NAME_CODES = new Set([2304, 2552]);
+
+// navto ranks fuzzily and returns everything it can match, so the by-name leg
+// asks for a bounded page rather than the whole index. Wide enough that the
+// exact-name hits are never crowded out by camelCase matches: the filter keeps
+// only `matchKind === "exact"`, and navto orders exact matches first.
+const NAVTO_MAX_RESULTS = 256;
+
+// The ScriptElementKind strings navto reports for a declaration that can be a
+// TYPE. A same-named function, variable or property is not a construction
+// surface and is not a candidate.
+const TS_TYPE_ELEMENT_KINDS = new Set(["class", "interface", "enum", "type"]);
 
 /** The project's own typescript module, resolved by walking up from the
  *  project root so hoisted monorepo installs (node_modules at the repo root)
@@ -529,6 +543,53 @@ export class TsLsExtractor implements SurfaceExtractor {
       return members;
     } catch {
       return [];
+    }
+  }
+
+  /** The by-name resolution leg: a bare type NAME -> the cursor at its
+   *  declaration's name token. The product transport's headless sibling, and it
+   *  answers from `getNavigateToItems` - the same source the TypeScript
+   *  extension's own workspace-symbol provider uses, so the two transports see
+   *  the same hit list.
+   *
+   *  navto is fuzzy by design: a query for "Tile" also returns TileSite and
+   *  tileFromMorton, under `matchKind` "prefix"/"substring"/"camelCase". Only an
+   *  exact case-sensitive match is a candidate, and only a TYPE kind - a
+   *  same-named function is not the thing a construction surface was asked for.
+   *
+   *  A `.d.ts` hit is kept but ranked BELOW real source, the analogue of the C#
+   *  leg preferring a workspace location over decompiled metadata: a project
+   *  that emits declarations otherwise reports its own class twice and refuses
+   *  itself. When only the declaration exists (an ambient or packaged type) it
+   *  is still the answer. */
+  async resolveTypeCursorByName(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined> {
+    if (this.disposed) {
+      return undefined;
+    }
+    try {
+      const hits = this.service
+        .getNavigateToItems(name, NAVTO_MAX_RESULTS)
+        .filter((i) => i.name === name && i.matchKind === "exact" && TS_TYPE_ELEMENT_KINDS.has(i.kind));
+      const source = hits.filter((i) => !i.fileName.endsWith(".d.ts"));
+      const candidates: WorkspaceSymbolCandidate[] = [];
+      for (const hit of source.length > 0 ? source : hits) {
+        const text = this.fileText(path.resolve(hit.fileName));
+        if (text === undefined) {
+          continue;
+        }
+        const at = positionAt(text, hit.textSpan.start);
+        candidates.push({
+          name: hit.name,
+          role: "container",
+          containerName: hit.containerName ?? "",
+          uri: pathToFileURL(hit.fileName).href,
+          line: at.line,
+          character: at.character,
+        });
+      }
+      return selectSoleTypeCursor(candidates, name, hint);
+    } catch {
+      return undefined;
     }
   }
 

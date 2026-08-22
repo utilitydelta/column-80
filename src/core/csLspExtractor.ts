@@ -39,6 +39,7 @@ import {
   SourceCursor,
   SurfaceExtractor,
   TypeNameHint,
+  resolutionReachedWrongTree,
   membersFromDocumentSymbols,
   toReferenceLocations,
 } from "./extraction";
@@ -525,6 +526,15 @@ export class CsLspExtractor implements SurfaceExtractor {
     const symbols = await this.request("textDocument/documentSymbol", {
       textDocument: { uri: defCursor.uri },
     });
+    // The wrong-tree refusal, the product transport's sibling. A definition
+    // answer at the REFERENCE's own position lands inside the body of the
+    // method the reference was written in; the descent would then hand back the
+    // ENCLOSING class as if it were the named type. Refuse instead. A member
+    // site sits on no identifier and is not refused.
+    const lineText = this.texts.get(defCursor.uri)?.split("\n")[defCursor.line];
+    if (resolutionReachedWrongTree(symbols, defCursor, csLspSymbolRole, lineText)) {
+      return [];
+    }
     return membersFromDocumentSymbols(symbols, defCursor, csLspSymbolRole, toCsSymbolMember);
   }
 

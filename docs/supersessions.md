@@ -1150,3 +1150,53 @@ answers only when its signal aborts, so a settled round is proof the abort trave
 and 6 were red at the branch point; row 6 recorded the false sentence verbatim. Rows 7 and 8 are
 the controls: a real failure still warns exactly once, and a server whose message merely says
 "aborted" is still a failure.
+
+## S28. "TypeScript and Python already refuse the wrong tree" was never true
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 9, which closes roadmap item 21.
+
+**What changed.** Two legs landed. TypeScript and Python got the by-name workspace-symbol leg C#
+and Go already had (`resolveTypeCursorByName` on `TsCommandExtractor`, `PyCommandExtractor`, and
+their headless siblings `TsLsExtractor` / `PyLspExtractor`, wired through `extractorFor`). C# got
+the wrong-tree refusal: `membersOfType` now asks `resolutionReachedWrongTree` before descending,
+and answers nothing when the resolution reached some other declaration's tree.
+
+**The refuted claim.** Roadmap item 21, session-v59's goal and the blind file's own comment all
+said C# was the only language that renders the enclosing helper class, because "TS and Python
+already refuse it". They do not refuse it and never did. Their row passed by accident of the
+fixture: `findTypeAnchorInText` finds `Tile` on the `import { Tile } from "./tile"` line, which is
+OUTSIDE the helper class, so no container enclosed the cursor and the descent degraded for a reason
+that has nothing to do with a refusal. C# has no import line naming `Tile`, so its anchor landed at
+`Tile tile = ...` inside a method body and the trap fired. Measured: the anchors are TS `line 1`,
+Python `line 1`, C# `line 7`.
+
+**The gap this leaves open, stated rather than hidden.** TypeScript and Python still have no
+wrong-tree refusal. A type referenced without an import line - a same-file type, a global, an
+ambient one - puts the anchor in a method body, and both transports then hand back the enclosing
+class exactly as C# did. This is not hypothetical: `blind-v15-argtype-identity`'s own fixture row
+"the SITE file's symbol tree and Tile's symbol tree share no member name" drives
+`TsCommandExtractor.membersOfType` at a cursor inside a method body and gets all five helpers back,
+green, today. It is green because that row asks the OTHER question - "what type am I writing
+inside" - which is legitimate and must keep its answer.
+
+That is why the refusal is C#-only and why it is not a one-line predicate. It needs three facts
+together: the cursor sits on an identifier, that identifier is not the enclosing container's name,
+and the cursor is inside one of that container's members. Drop the first and a member site
+(`stripe.|`) is refused. Drop the second and a constructor's own name token is refused. Drop the
+third and a definition answer landing on the `public` of `public class Tile` is refused. Extending
+it to two more languages is a ruling for a human, not a free extension, because the question it
+must not break has no oracle in those languages.
+
+**The selection is stricter than C#'s, on purpose.** `selectSoleTypeCursor` refuses two distinct
+declaration sites for one name outright. `selectCsTypeCursor` cannot, because a C# `partial class`
+is one type split across files, and Go compares real import paths; TypeScript and Python have
+neither, so two sites are two things and guessing is the worse failure. Identical positions are
+collapsed first, which is the one duplicate worth having (pyright reports a stub beside its
+implementation).
+
+**Pinned by.** `test/blind-v15-argtype-identity.test.cjs` (both `gtodo` sites re-cut, `todo` false
+in every language, bodies carrying the original demand with the per-language branch deleted) and
+`test/impl-v59-p9-byname-leg.test.cjs`. All three `KNOWN WRONG:` rows were red at the moment the
+leg landed and before they were re-cut; that red is recorded in the phase report. Each of the six
+guards above was mutated and killed exactly the row that names it.
+

@@ -107,6 +107,19 @@ const gtest = (name, fn) =>
 // `KNOWN WRONG:` onto a name that states the DEMAND yields a row reading
 // "KNOWN WRONG: <the correct behaviour>", which is its own opposite. The
 // inverted leg takes `wrongName`, which states what the code actually does.
+//
+// RE-CUT 2026-08-23 (session-v59 phase 9): THE LEG LANDED, and the inverted legs
+// did what they were built to do - all three went red on a build that was
+// working. TypeScript and Python got the by-name workspace-symbol leg that C#
+// and Go already had; C# got the wrong-tree refusal. Both call sites below now
+// pass `todo: false` in every language, and their bodies carry the ORIGINAL
+// demand, applied uniformly. Nothing was softened to get here: what used to be
+// one language's leg is now every language's, and the per-language branch is
+// gone from each body because there is no longer a language that needs one.
+//
+// `gtodo` is kept rather than folded back into `gtest`. Its `wrongName` argument
+// is the written record of what each defect actually produced, and a future
+// language regressing this leg re-inverts a row instead of arguing about it.
 const gtodo = (todo, name, wrongName, fn) =>
   test(todo ? `KNOWN WRONG: ${wrongName}` : name, (ctx) => {
     if (bundleError) return ctx.skip("bundle failed to build; see the harness test");
@@ -711,44 +724,35 @@ for (const lang of LANGS) {
 // ===========================================================================
 
 for (const lang of LANGS) {
-  // C# only: the C# transport hands back the enclosing helper class, which is the
-  // false statement to the model this whole file exists to catch. TS and Python
-  // already refuse it.
+  // The wrong-tree refusal, now in every language. C# used to be the one that
+  // handed back the enclosing helper class - the false statement to the model
+  // this whole file exists to catch - and it refuses now: a resolution whose
+  // cursor sits on an identifier that is NOT the enclosing container's name,
+  // inside one of that container's members, has reached some other declaration's
+  // tree and yields nothing.
   //
-  // CONVERTED 2026-08-10: for C# this row USED to assert `leaked` and `present`
-  // are both [] - no helper name reaches Tile's surface or the block. C# fails
-  // that. The C# leg now asserts the exact leak the shipped transport produces,
-  // so the row is green and still binds the same two expressions to exact
-  // values. TS and Python keep the original demand unchanged.
-  gtodo(lang.id === "csharp", `${lang.id}: cross-file - when the language server answers the Tile reference with the REFERENCE POSITION (inside the helper class), the helper members are never presented as Tile's surface`, `${lang.id}: cross-file - a definition answer at the REFERENCE POSITION presents every helper class in the cursor file as Tile's surface, and the renderer is what stops it`, async () => {
+  // WAS INVERTED FOR C# 2026-08-10, RE-CUT 2026-08-23. The C# leg asserted the
+  // exact leak the shipped transport produced (`leaked` deepEqual HELPERS, all
+  // five, and the block degrading to receiver-only because the helper symbols
+  // carry no signature). That leg went red when the refusal landed, which is
+  // what marked the demand as met. What stands below is the demand TS and Python
+  // always carried here, verbatim, with the C# branch deleted rather than
+  // relaxed.
+  //
+  // Note what TS and Python's green NEVER proved: their anchors land on the
+  // `import { Tile }` / `from tile import Tile` line, which is outside the
+  // helper class, so no container enclosed the cursor and the descent degraded
+  // for a reason that had nothing to do with a refusal. C# has no import line
+  // naming Tile, so its anchor landed in the method body and the trap fired.
+  // Two languages passing this row by accident is why the C# leg was the worst
+  // of the three defects and not merely the loudest.
+  gtodo(false, `${lang.id}: cross-file - when the language server answers the Tile reference with the REFERENCE POSITION (inside the helper class), the helper members are never presented as Tile's surface`, `${lang.id}: cross-file - a definition answer at the REFERENCE POSITION presents every helper class in the cursor file as Tile's surface, and the renderer is what stops it`, async () => {
     const { extractor } = transportFor(lang, { definitionMode: "referenceSite", workspaceSymbols: false });
     const { members } = await resolveTypeSurface(lang, extractor, "Tile");
     const got = namesOf(members);
     const leaked = got.filter((n) => HELPERS.includes(n));
     const block = String(blockFor(lang, members) ?? "");
     const present = HELPERS.filter((h) => block.includes(h));
-    if (lang.id === "csharp") {
-      // The defect, stated exactly. The C# transport accepts the reference
-      // position as Tile's definition and hands back the ENCLOSING file's
-      // helper classes, every one of them, and the renderer prints them under
-      // "to build a Tile:". Red here means the cross-file leg landed.
-      assert.deepStrictEqual(
-        leaked,
-        HELPERS,
-        `KNOWN WRONG: C# presents all five of the cursor file's helper classes as Tile's surface; got ${JSON.stringify(got)}`
-      );
-      assert.deepStrictEqual(
-        present,
-        [],
-        `the leak stops at the renderer - the helper symbols carry no signature, so no name reaches the block:\n${block}`
-      );
-      assert.strictEqual(
-        block,
-        receiverOnly(lang),
-        `and the block degrades to receiver-only, byte-identical:\n${block}`
-      );
-      return;
-    }
     assert.deepStrictEqual(
       leaked,
       [],
@@ -757,38 +761,20 @@ for (const lang of LANGS) {
     assert.deepStrictEqual(present, [], `and nothing from the helper class reaches the block:\n${block}`);
   });
 
-  // TS and Python only: neither has a by-name workspace-symbol leg, so a type
-  // whose definition the server will not point at is simply unreachable. C# has one.
+  // The by-name workspace-symbol leg, now in every language. A type whose
+  // definition the server will not point at is still reachable, because the
+  // workspace knows the NAME. C# and Go always had this leg; TypeScript and
+  // Python got it in session-v59.
   //
-  // CONVERTED 2026-08-10: for TS and Python this row USED to assert that
-  // `cursor` is truthy, lands in Tile's own file, and carries Tile's
-  // constructor. Neither language has a by-name leg, so all three fail. The
-  // TS/Python legs now assert the exact unreachability the shipped transports
-  // produce - no cursor, no members, and a block byte-identical to the
-  // receiver-only fallback. C# keeps the original demand unchanged.
-  gtodo(lang.id !== "csharp", `${lang.id}: cross-file - with NO usable definition answer for the reference, Tile is still reached by NAME, because Tile is defined in this workspace`, `${lang.id}: cross-file - with NO usable definition answer, Tile is not reached at all: there is no by-name workspace-symbol leg in this transport`, async () => {
+  // WAS INVERTED FOR TS AND PYTHON 2026-08-10, RE-CUT 2026-08-23. Those legs
+  // asserted the exact unreachability the shipped transports produced - no
+  // cursor at all, no members, and a block byte-identical to the receiver-only
+  // fallback. Both went red when `resolveTypeCursorByName` landed on
+  // TsCommandExtractor and PyCommandExtractor, which is what marked the demand
+  // as met. What stands below is the demand C# always carried here, verbatim.
+  gtodo(false, `${lang.id}: cross-file - with NO usable definition answer for the reference, Tile is still reached by NAME, because Tile is defined in this workspace`, `${lang.id}: cross-file - with NO usable definition answer, Tile is not reached at all: there is no by-name workspace-symbol leg in this transport`, async () => {
     const { extractor } = transportFor(lang, { definitionMode: "none" });
     const { cursor, members } = await resolveTypeSurface(lang, extractor, "Tile");
-    if (lang.id !== "csharp") {
-      // The gap, stated exactly. Red here means the by-name leg landed for this
-      // language.
-      assert.strictEqual(
-        cursor,
-        undefined,
-        `KNOWN WRONG: ${lang.id} has no by-name workspace-symbol leg, so a type the server will not point at is unreachable; got ${JSON.stringify(cursor)}`
-      );
-      assert.deepStrictEqual(
-        namesOf(members),
-        [],
-        `KNOWN WRONG: and with no cursor there is no surface at all; got ${JSON.stringify(namesOf(members))}`
-      );
-      assert.strictEqual(
-        blockFor(lang, members),
-        receiverOnly(lang),
-        "and the degrade is honest: byte-identical to the receiver-only block, with no 'to build a Tile:' header"
-      );
-      return;
-    }
     assert.ok(
       cursor,
       "a type named in a member's signature and defined elsewhere in the workspace must still be reachable; a per-file cursor is not the only leg"
