@@ -34,7 +34,7 @@ import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/c
 import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
-import { firstLine, hasMoreThanOneLine, tierDisabledToast } from "./toastText";
+import { firstLine, hasMoreThanOneLine, oneLineWithPointer, tierDisabledToast } from "./toastText";
 // The failure translator, a leaf beside `toastText.ts` for the same reason it
 // is: the download toast and the tighten gesture need the same sentences and
 // neither may take an edge back into the file that registers them.
@@ -1037,18 +1037,47 @@ export class ProposalPresenter {
     // own typing won without them watching — goes to a background caller's
     // channel. Everything after the human clicked Accept is news about an edit
     // they approved, so it toasts in every session, callback or not.
-    const discard = (why: string, surface: "channel-if-wired" | "toast"): ProposalOutcome => {
+    //
+    // `detail` is the one thing on this path the product did not author: the
+    // caught error from a preview that would not open. It arrives separately
+    // from `why` so the CUT can land inside the brackets the sentence puts it
+    // in. Cutting the composed sentence instead - which is what the first fix
+    // did - splits the bracket pair and welds the sentence's own period to a
+    // truncated clause: "...could not be opened (Error: the diff editor is
+    // gone." reached the screen.
+    const discard = (
+      why: string,
+      surface: "channel-if-wired" | "toast",
+      detail?: string,
+    ): ProposalOutcome => {
       if (surface === "channel-if-wired" && request.onSystemDiscard !== undefined) {
         request.onSystemDiscard(why);
       } else {
         // ONE LINE, the deferred fix item 63 left on this string. Five of the
         // six reasons below are product prose, but the preview-open branch
         // interpolates a caught error, and a stack in a notification renders as
-        // a wall of rows. No channel pointer: this reason is never written to
-        // the channel, so a pointer would promise a message that is not there.
-        void vscode.window.showWarningMessage(`Column 80: generation discarded — ${firstLine(why)}.`);
+        // a wall of rows.
+        //
+        // The open bracket sits in `text` and its partner is the `end`
+        // argument, on purpose: `oneLineWithPointer` applies `end` AFTER the
+        // cut, so the pair cannot be split however long the error is. The
+        // period is the `tail`, which lands after the bracket rather than
+        // inside it, and the channel pointer - now that the whole reason
+        // reaches `logOutcome` below - is a promise with something behind it.
+        void vscode.window.showWarningMessage(
+          detail === undefined
+            ? oneLineWithPointer(`Column 80: generation discarded — ${why}`, ".")
+            : oneLineWithPointer(`Column 80: generation discarded — ${why} (${detail}`, ")", "."),
+        );
       }
-      service.logOutcome("discarded");
+      // THE REASON, and ONLY where there is one to lose. Without this the
+      // toast's cut destroyed the only copy of a multi-line error: nothing else
+      // on this path writes it anywhere, so a reader who saw "the preview could
+      // not be opened" had no way to find out what the editor actually said.
+      // The five product-prose reasons pass nothing, because they are one line,
+      // are never cut, and the record they leave is the one the session-v56
+      // surface contract pinned.
+      service.logOutcome("discarded", detail === undefined ? undefined : { discardedBecause: detail });
       return "discarded";
     };
 
@@ -1077,7 +1106,7 @@ export class ProposalPresenter {
       // Not one of the two racing causes: an editor that cannot open the diff
       // is broken machinery, not the user typing over background work, and a
       // background session's channel is the wrong place to bury that.
-      return discard(`the preview could not be opened (${String(err)})`, "toast");
+      return discard("the preview could not be opened", "toast", String(err));
     } finally {
       // The tab now exists (or never will): the pruner may own the entry.
       this.pendingPreviews.delete(previewKey);

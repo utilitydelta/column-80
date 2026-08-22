@@ -18,8 +18,8 @@ import { firstLine } from "./toastText";
 // is a RENDERING problem only: the class was already known here, and nothing on
 // this path could ask what it meant while the table lived inside `fnGen.ts`.
 // The record is `docs/supersessions.md` S24.
-import { translateServiceReject } from "./failureToast";
-import { escapeBreaks, HttpStatusError } from "../core/errorBound";
+import { DOWNLOAD_VOICE, httpStatusToast } from "./failureToast";
+import { escapeBreaks } from "../core/errorBound";
 
 // First-run tier flow, the modelPull pattern ported from the
 // human-replay-vscode-extension's src/modelPull.ts (same author): detect
@@ -344,8 +344,22 @@ export async function offerModelPull(
     // head, so a hostile registry could pick one by putting the marker in its
     // error field. A status is a number the transport read off the response and
     // nothing in a body can forge it.
+    //
+    // `httpStatusToast`, NOT the whole translator behind an
+    // `instanceof HttpStatusError` gate. The gate reads as if it enforced the
+    // paragraph above and it does not: it admits every typed status, and an
+    // unclassified one returns no class sentence and falls through to the
+    // anchored, carrier and substring passes. A 404 reading
+    // `pull failed: generation was empty after postprocess` drew a generation
+    // reject's sentence here (session-v59 phase 1 review). This entry point can
+    // only ever answer with a class sentence or nothing.
+    //
+    // AND ITS OWN CONSEQUENCE CLAUSE. The diagnosis half is the same one every
+    // surface gives this class; the other half is not portable - there is no
+    // gesture behind a Download click, so `DOWNLOAD_VOICE` names the command
+    // that actually re-offers the download.
     void vscode.window.showWarningMessage(
-      (err instanceof HttpStatusError ? translateServiceReject(err) : undefined) ??
+      httpStatusToast(err, DOWNLOAD_VOICE) ??
         `Column 80: the download failed - ${firstLine(errorText(err))}. The full message is in the output channel.`,
     );
     return false;

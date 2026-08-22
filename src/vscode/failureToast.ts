@@ -220,6 +220,58 @@ const CLI_FAILED_TOAST =
   "Column 80: the Claude Code CLI failed, so nothing was written - the full message is in the " +
   "output channel.";
 
+/** What a SURFACE says happened, and how the user retries there.
+ *
+ *  Every status sentence below has the shape
+ *  `Column 80: <CAUSE>, so nothing was written - <REMEDY>. <pointer>`, and the
+ *  two halves are not equally portable. The CAUSE is what the server did, so it
+ *  is true wherever the throw lands. The consequence and the remedy are about
+ *  the gesture, and on two of the three surfaces the generation gesture's words
+ *  were false:
+ *
+ *  * The tighten gesture does NOT stop at its warn. It goes on through the
+ *    delta and existence gates and applies the re-wrap, so "nothing was
+ *    written" arrived in the same notification as the write, beside
+ *    "The re-wrap needs no model." - the product contradicting itself in one
+ *    sentence.
+ *  * The download has no gesture to run again. The user clicked Download in a
+ *    notification, and "run the gesture again" names a control that is not
+ *    there - the same defect a crafted remedy pointing at a setting that does
+ *    not exist was, one class up.
+ *
+ *  So they split. One throw class still produces one DIAGNOSIS on every
+ *  surface, which is the invariant worth holding; only this half varies. */
+export interface SurfaceVoice {
+  /** The clause after the cause: what did NOT happen here. */
+  readonly consequence: string;
+  /** How the user retries HERE, named as a control that exists. */
+  readonly retry: string;
+}
+
+/** The generation gestures, and the DEFAULT everywhere. Every caller that does
+ *  not name a surface draws exactly the sentences it drew before the split. */
+export const GENERATION_VOICE: SurfaceVoice = {
+  consequence: "so nothing was written",
+  retry: "run the gesture again",
+};
+
+/** The tighten gesture's model round only supplies backticked type names, so a
+ *  refused round costs the names and nothing else. This is the clause the
+ *  surface's own unclassified sentence has always used, kept rather than
+ *  invented. */
+export const TIGHTEN_VOICE: SurfaceVoice = {
+  consequence: "so no type names were offered",
+  retry: "run the gesture again",
+};
+
+/** The download. Its retry names the command the product's own "fn-gen is
+ *  disabled" message names, because that command IS how a user reaches the
+ *  one-click download again - `offerModelPull` has no other entry point. */
+export const DOWNLOAD_VOICE: SurfaceVoice = {
+  consequence: "so the model was not downloaded",
+  retry: 'run "Column 80: Select Hardware Tier" to try again',
+};
+
 /** What an HTTP status means to the person who has to do something about it.
  *
  *  CLASSES, NOT CODES. A 401 and a 403 are one problem to a user - the key was
@@ -235,7 +287,7 @@ const CLI_FAILED_TOAST =
  *  The provider's own body never reaches here. It is in the channel twice - raw
  *  under `[http-body]`, bounded under `[fngen] request failed:` - and putting a
  *  JSON document where a sentence belongs is what this replaces. */
-function httpStatusSentence(transport: string, status: number): string | undefined {
+function httpStatusSentence(transport: string, status: number, voice: SurfaceVoice): string | undefined {
   if (status === 401 || status === 403) {
     // TWO SENTENCES, because the next action genuinely differs by arm and this
     // is the one class where it does. `column80.cloudApiKey` is the product's
@@ -246,10 +298,10 @@ function httpStatusSentence(transport: string, status: number): string | undefin
     // something in front of it wants auth, and that is the user's own
     // deployment.
     return transport === "ollama"
-      ? "Column 80: the local model server refused the request as unauthorised, so nothing was " +
-          "written - check the server's own authentication. The full message is in the output channel."
-      : "Column 80: the model provider refused the API key, so nothing was written - check " +
-          "`column80.cloudApiKey`, then run the gesture again. The full message is in the output channel.";
+      ? `Column 80: the local model server refused the request as unauthorised, ${voice.consequence} - ` +
+          "check the server's own authentication. The full message is in the output channel."
+      : `Column 80: the model provider refused the API key, ${voice.consequence} - check ` +
+          `\`column80.cloudApiKey\`, then ${voice.retry}. The full message is in the output channel.`;
   }
   if (status === 429) {
     // The pointer is not decoration here: the body separates a per-minute rate
@@ -259,8 +311,8 @@ function httpStatusSentence(transport: string, status: number): string | undefin
       // "this key" was wrong on one arm. 401/403 splits on transport because
       // the remedy differs; this one does not need a split, it needed a word
       // that is true everywhere - the local backend has no key to rate limit.
-      "Column 80: the model provider is rate limiting these requests, so nothing was written - " +
-      "wait, then run the gesture again. The full message is in the output channel."
+      `Column 80: the model provider is rate limiting these requests, ${voice.consequence} - ` +
+      `wait, then ${voice.retry}. The full message is in the output channel.`
     );
   }
   // THE WHOLE 5xx RANGE, not four enumerated codes. The first cut listed 500,
@@ -270,8 +322,12 @@ function httpStatusSentence(transport: string, status: number): string | undefin
   // action. NaN fails both comparisons and Infinity fails the second, so neither
   // reaches a sentence.
   if (status >= 500 && status < 600) {
+    // NO `voice.retry` HERE, and none in the 401 local branch either. "Try
+    // again shortly" is already surface-independent, and a local server's own
+    // authentication is not something a gesture re-run fixes. A voice supplies
+    // words where the sentence needs them, not everywhere it could.
     return (
-      "Column 80: the model provider is having trouble, so nothing was written - try again " +
+      `Column 80: the model provider is having trouble, ${voice.consequence} - try again ` +
       "shortly. The full message is in the output channel."
     );
   }
@@ -332,9 +388,21 @@ function translateStructural(err: unknown): string | undefined {
  *  `instanceof`, not a name check, and not a text match. The status is a number
  *  the transport read off a `Response`, so no server can forge a class by
  *  putting `429` in its body - which is the whole reason this is a typed error
- *  rather than three more marker rows. */
-function translateHttpStatus(err: unknown): string | undefined {
-  return err instanceof HttpStatusError ? httpStatusSentence(err.transport, err.status) : undefined;
+ *  rather than three more marker rows.
+ *
+ *  EXPORTED because one surface wants ONLY this, and used to get it by gating
+ *  the whole translator on `err instanceof HttpStatusError` - which is not the
+ *  same thing. The gate admits every typed status, and an UNCLASSIFIED one
+ *  returns undefined from here and fell through to the anchored, payload-carrier
+ *  and substring passes. Driven: a 404 whose message read
+ *  `pull failed: generation was empty after postprocess` drew a GENERATION
+ *  reject's sentence on a download toast. Unreachable through the download
+ *  transport, whose every message is headed `Ollama <status> ` and so trips the
+ *  carrier guard - so the surface was protected by a table two modules away
+ *  rather than by the gate whose comment claimed the protection. This is that
+ *  gate, said in code. */
+export function httpStatusToast(err: unknown, voice: SurfaceVoice = GENERATION_VOICE): string | undefined {
+  return err instanceof HttpStatusError ? httpStatusSentence(err.transport, err.status, voice) : undefined;
 }
 
 /** Message heads that mean "the rest of this string came from the server."
@@ -358,13 +426,19 @@ const PAYLOAD_CARRIERS: readonly string[] = [
 ];
 
 /** The crafted sentence for a known service reject, or undefined for anything
- *  else. Matches on the error MESSAGE (String(err) would prepend "Error: "). */
-export function translateServiceReject(err: unknown): string | undefined {
+ *  else. Matches on the error MESSAGE (String(err) would prepend "Error: ").
+ *
+ *  `voice` is the SURFACE's consequence clause, and it defaults to the
+ *  generation gestures' so every caller that does not name a surface gets the
+ *  sentence it got before the split, byte for byte. Only the HTTP status
+ *  sentences read it today; the structural and marker rows are one wording per
+ *  throw and stay that way. */
+export function translateServiceReject(err: unknown, voice: SurfaceVoice = GENERATION_VOICE): string | undefined {
   // STRUCTURAL FIRST, before any text is looked at. A typed failure knows what
   // it is; every pass below is guessing from a string, and the backend this
   // serves leads its strings with text the CLI chose. Only ever narrows: an
   // unrecognised reason returns undefined and falls straight through.
-  const structural = translateStructural(err) ?? translateHttpStatus(err);
+  const structural = translateStructural(err) ?? httpStatusToast(err, voice);
   if (structural !== undefined) {
     return structural;
   }

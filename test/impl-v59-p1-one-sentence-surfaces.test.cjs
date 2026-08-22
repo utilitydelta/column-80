@@ -19,15 +19,21 @@
 //
 // ROWS
 //   1  the bundle builds and exports the three surfaces
-//   2  the download toast IS the class sentence, for all four classified classes
+//   2  the download toast IS the class sentence, in the download's own voice
 //   3  an unclassified status and a plain Error keep today's download wording
 //   4  the download toast is one line and carries no JSON
 //   5  the pull's channel line and its cancel branch are untouched
-//   6  the tighten warning carries the class sentence AND keeps its second clause
+//   6  the tighten warning carries the class diagnosis AND keeps its second clause
 //   7  an unclassified failure keeps the tighten sentence byte for byte
-//   8  the invariant: one throw class, the same sentence body on all three
-//   9  ride-along - a multi-line discard reason renders one line
+//   8  the invariant: one throw class, one DIAGNOSIS on all three
+//   9  ride-along - a multi-line discard reason renders one line, brackets closed
 //  10  control - a single-line discard reason is byte-identical to today's
+//
+// ROWS 2, 6 AND 8 WERE RE-CUT. They pinned the same SENTENCE on all three
+// surfaces, and the phase 1 adversarial review found that sentence false on two
+// of them: the tighten gesture writes, and the download has no gesture to run
+// again. The consequence half is now the surface's own and the diagnosis half is
+// what they agree on. `docs/supersessions.md` S31.
 //
 // Run: node --test test/impl-v59-p1-one-sentence-surfaces.test.cjs
 
@@ -136,7 +142,7 @@ try {
   fs.writeFileSync(
     ENTRY,
     `export { HttpStatusError } from "../src/core/errorBound";
-export { translateServiceReject, generationFailedToast } from "../src/vscode/failureToast";
+export { translateServiceReject, generationFailedToast, DOWNLOAD_VOICE, TIGHTEN_VOICE } from "../src/vscode/failureToast";
 export { offerModelPull } from "../src/vscode/firstRun";
 export { tightenDocComment } from "../src/vscode/tightenDocComment";
 export { ProposalPresenter } from "../src/vscode/fnGen";\n`,
@@ -173,6 +179,25 @@ const httpErr = (status, transport = "ollama") =>
 
 /** The four classified classes, one representative each. */
 const CLASSIFIED = [401, 403, 429, 503];
+
+/** THE CONTRACT NARROWED, and rows 2, 6 and 8 are re-cut on it.
+ *
+ *  This file first pinned the SAME SENTENCE on all three surfaces, and that was
+ *  wrong on two of them. Every status sentence reads
+ *  `Column 80: <CAUSE>, so nothing was written - <REMEDY>.` The cause is what
+ *  the server did, so it travels; the consequence and the remedy are about the
+ *  gesture and do not. The tighten gesture carries on past its warn and applies
+ *  the re-wrap, so "nothing was written" arrived in the same notification as the
+ *  write, beside "The re-wrap needs no model." - the product contradicting
+ *  itself in one sentence. The download has no gesture to run again.
+ *
+ *  So each surface supplies its own consequence, the generation gestures' words
+ *  stay byte-identical, and what all three still agree on is the DIAGNOSIS. That
+ *  half is what these rows compare. `docs/supersessions.md` S31. */
+const diagnosisOf = (err) => {
+  const full = B.translateServiceReject(err);
+  return typeof full === "string" ? full.split(",")[0] : undefined;
+};
 
 // ===========================================================================
 // 1 - harness
@@ -227,9 +252,15 @@ for (const status of CLASSIFIED) {
     assert.strictEqual(got.warns.length, 1, `exactly one toast, got ${got.warns.length}`);
     assert.strictEqual(
       got.warns[0],
-      B.translateServiceReject(err),
-      `row 2: the download surface must draw the SAME crafted sentence the generation surfaces draw.\n` +
-        `  got     : ${show(got.warns[0])}\n  expected: ${show(B.translateServiceReject(err))}`,
+      B.translateServiceReject(err, B.DOWNLOAD_VOICE),
+      `row 2: the download surface draws the class's crafted sentence in its OWN voice - same ` +
+        `diagnosis, its own consequence.\n  got     : ${show(got.warns[0])}\n` +
+        `  expected: ${show(B.translateServiceReject(err, B.DOWNLOAD_VOICE))}`,
+    );
+    assert.ok(
+      got.warns[0].includes(diagnosisOf(err)),
+      `row 2: and the diagnosis half is the one every other surface gives.\n` +
+        `  got      : ${show(got.warns[0])}\n  diagnosis: ${show(diagnosisOf(err))}`,
     );
   });
 }
@@ -383,11 +414,21 @@ for (const status of CLASSIFIED) {
     const err = httpErr(status);
     const warnings = await driveTighten(err);
     assert.strictEqual(warnings.length, 1, `exactly one warning, got ${show(warnings)}`);
-    const sentence = B.translateServiceReject(err);
+    const sentence = B.translateServiceReject(err, B.TIGHTEN_VOICE);
     assert.ok(
       warnings[0].includes(sentence),
       `row 6: the tighten surface must say what actually happened. The server was REACHED and it ` +
         `refused.\n  got     : ${show(warnings[0])}\n  must hold: ${show(sentence)}`,
+    );
+    assert.ok(
+      warnings[0].includes(diagnosisOf(err)),
+      `row 6: the diagnosis is the half that travels, and it is the same one the other two surfaces ` +
+        `give.\n  got      : ${show(warnings[0])}\n  diagnosis: ${show(diagnosisOf(err))}`,
+    );
+    assert.ok(
+      !warnings[0].includes("so nothing was written"),
+      `row 6: this gesture WRITES. It proceeds past the warn through the delta and existence gates and ` +
+        `applies the re-wrap, which the very next clause says.\n  got: ${show(warnings[0])}`,
     );
     assert.ok(
       warnings[0].endsWith(TIGHTEN_TAIL),
@@ -417,9 +458,13 @@ btest("row 7 [tighten/unclassified]: today's sentence survives byte for byte", a
 // ===========================================================================
 
 for (const status of CLASSIFIED) {
-  btest(`row 8 [invariant/${status}]: one throw class, the same sentence on all three surfaces`, async () => {
+  btest(`row 8 [invariant/${status}]: one throw class, one diagnosis on all three surfaces`, async () => {
     const err = httpErr(status);
-    const sentence = B.translateServiceReject(err);
+    const diagnosis = diagnosisOf(err);
+    assert.ok(
+      typeof diagnosis === "string" && diagnosis.trim() !== "",
+      `row 8 PRECONDITION: ${status} must be classified, or every clause below bans the empty string`,
+    );
     const pull = (await drivePull(err)).warns[0];
     const tighten = (await driveTighten(err))[0];
     const fngen = B.generationFailedToast(err, "function generation");
@@ -429,10 +474,20 @@ for (const status of CLASSIFIED) {
       ["tighten", tighten],
     ]) {
       assert.ok(
-        text.includes(sentence),
-        `row 8: ${surface} does not carry the class sentence.\n  got : ${show(text)}\n  want: ${show(sentence)}`,
+        text.includes(diagnosis),
+        `row 8: ${surface} does not carry the class diagnosis.\n  got : ${show(text)}\n` +
+          `  want: ${show(diagnosis)}`,
       );
     }
+    // AND THE CONSEQUENCES REALLY DIFFER. Without this the row above passes on
+    // a build that never split anything - the diagnosis is a prefix of the
+    // generation sentence, so three identical sentences satisfy it too.
+    assert.notStrictEqual(pull, fngen, "row 8: the download's consequence is not the gesture's");
+    assert.ok(
+      !tighten.includes("so nothing was written") && !pull.includes("so nothing was written"),
+      `row 8: only the generation gestures write source.\n  download: ${show(pull)}\n` +
+        `  tighten : ${show(tighten)}`,
+    );
   });
 }
 
@@ -497,6 +552,23 @@ btest("row 9 [ride-along]: a multi-line discard reason renders one line", async 
   assert.ok(
     got.warns[0].startsWith("Column 80: generation discarded — the preview could not be opened ("),
     `row 9: the wording is unchanged, only the cut is added: ${show(got.warns[0])}`,
+  );
+  // STRENGTHENED after the phase 1 review. The row above passed on
+  // "...could not be opened (Error: the diff editor is gone." - an unclosed
+  // bracket with the sentence's period welded to a truncated clause - because
+  // the only thing it asked about was the head. The cut belongs at the
+  // interpolation, inside the bracket pair, never across it.
+  const opens = (got.warns[0].match(/\(/g) || []).length;
+  const closes = (got.warns[0].match(/\)/g) || []).length;
+  assert.strictEqual(
+    opens,
+    closes,
+    `row 9: the cut landed inside the brackets and the pair never closed.\n  got: ${show(got.warns[0])}`,
+  );
+  assert.ok(
+    /\)\.( |$)/.test(got.warns[0]),
+    `row 9: the period is the SENTENCE's, so it sits after the closing bracket rather than glued to a ` +
+      `cut clause.\n  got: ${show(got.warns[0])}`,
   );
 });
 

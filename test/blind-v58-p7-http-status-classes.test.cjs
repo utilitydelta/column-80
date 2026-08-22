@@ -1,7 +1,6 @@
 // Blind oracle, session-v58 phase 7: "the HTTP statuses become sentences"
 // (roadmap item 68, second half - the structural pass, second case).
-// Contract: session-v58/contract-phase7.md. Written BEFORE the change, against
-// the CONTRACT and nothing else.
+// Written BEFORE the change, against the phase-7 CONTRACT and nothing else.
 //
 // ===========================================================================
 // WHAT THIS FILE PINS
@@ -501,6 +500,7 @@ try {
     "now",
     `${ENTRY_FOR(ROOT)}` +
       `export { generationFailedToast, translateServiceReject } from "../src/vscode/fnGen";\n` +
+      `export { DOWNLOAD_VOICE } from "../src/vscode/failureToast";\n` +
       `export { ClaudeCodeError } from "../src/core/claudeCodeInstruct";\n`,
   );
   BASE_OLD = bundle("old", ENTRY_FOR(TMP_OLD));
@@ -1401,13 +1401,29 @@ btest("C7 [pull toast]: the download toast IS the class sentence, not the baseli
   // The generate arm's own answer for the same status, asked of the translator
   // directly. A literal here would be a second copy of the sentence to keep in
   // step, which is the failure item 66 closed.
-  const want = NOW.translateServiceReject(new NOW.HttpStatusError("ollama", 503, "Ollama 503 x"));
-  assert.notStrictEqual(want, undefined, "PRECONDITION: 503 is a classified status");
+  const generated = NOW.translateServiceReject(new NOW.HttpStatusError("ollama", 503, "Ollama 503 x"));
+  assert.notStrictEqual(generated, undefined, "PRECONDITION: 503 is a classified status");
+  // RE-CUT ON THE NARROWED CONTRACT (`docs/supersessions.md` S31). This row used
+  // to demand the two surfaces render one string. They still speak with one
+  // voice about WHAT HAPPENED - the diagnosis half is byte-identical - but the
+  // rest of the sentence is about the gesture, and there is no gesture behind a
+  // Download click. "So nothing was written - run the gesture again" named a
+  // control this surface does not have.
+  const want = NOW.translateServiceReject(
+    new NOW.HttpStatusError("ollama", 503, "Ollama 503 x"),
+    NOW.DOWNLOAD_VOICE,
+  );
   assert.strictEqual(
     t,
     want,
     `C7: the pull's throw is byte-identical to the generate site's, so the two surfaces must speak with ` +
       `one voice.\n  now : ${show(t)}\n  want: ${show(want)}`,
+  );
+  const diagnosis = generated.split(",")[0];
+  assert.ok(
+    t.startsWith(diagnosis),
+    `C7: and the half that says what the server did is the generate arm's, word for word.\n` +
+      `  now      : ${show(t)}\n  diagnosis: ${show(diagnosis)}`,
   );
   assert.notStrictEqual(t, before.warns[0], `C7: and it is no longer ${BASE_P6_REF}'s wording`);
   assert.ok(!t.includes("\n") && !JSON_TOKENS.some((x) => t.includes(x)), `C7: one line, no JSON: ${show(t)}`);

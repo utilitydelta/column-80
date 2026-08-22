@@ -44,7 +44,7 @@ import { firstLine, tierDisabledToast } from "./toastText";
 // The failure translator, a leaf beside `toastText.ts`. This file may not take
 // a runtime edge to `fnGen.ts`, which registers it, and that is exactly why the
 // table had to move out of there before this gesture could read it.
-import { translateServiceReject } from "./failureToast";
+import { TIGHTEN_VOICE, translateServiceReject } from "./failureToast";
 // The in-flight registry, a leaf that imports `vscode` and nothing of ours.
 // Same reason as the translator above: this file may not take a runtime edge to
 // `fnGen.ts`, and the registry is reachable because it lives outside it.
@@ -656,7 +656,12 @@ async function runProposer(
     // three statuses that reach here most: a 401, a 429 and a 503 were all
     // REACHED, and refused. The crafted sentence rides out beside the flag so
     // the warn site stays the only place that composes user words.
-    return { spans: [], failed: true, reject: translateServiceReject(err) };
+    //
+    // IN THIS SURFACE'S VOICE. The class diagnosis is the same one every
+    // surface gives; the consequence is not. This gesture carries on past the
+    // warn and writes the re-wrap, so the generation gestures'
+    // "so nothing was written" arrived in the same notification as the write.
+    return { spans: [], failed: true, reject: translateServiceReject(err, TIGHTEN_VOICE) };
   } finally {
     claim?.release();
   }

@@ -84,9 +84,9 @@ export interface FnGenRequest {
    *  the test-authoring pass must never see a body-scoped comment. */
   scaffoldComments?: string[];
   /**
-   * How `injectedSurface` shrinks, when the window arbitration needs it to
-   * (session-v48 phase 2). `blocks` is how many droppable type blocks it
-   * carries; `keep(n)` RE-RENDERS it with only the first n of them.
+   * How `injectedSurface` shrinks, when the window arbitration needs it to.
+   * `blocks` is how many droppable type blocks it carries; `keep(n)`
+   * RE-RENDERS it with only the first n of them.
    *
    * A re-render rather than a slice, because dropping a type block also has to
    * narrow the payload's own "use only these types" instruction - a sentence
@@ -215,7 +215,7 @@ export class FnGenService {
       localSymbols: request.localSymbols,
       scaffoldComments: request.scaffoldComments,
     };
-    // THE WINDOW GUARD (session-v48 phase 2, roadmap item 43). Here and not in
+    // THE WINDOW GUARD (roadmap item 43). Here and not in
     // the command, because this is the one place that turns a request into the
     // prompt string AND holds the transport's own `numCtx`/`maxTokens`: an
     // estimate taken anywhere else would be an estimate of a prompt somebody
@@ -712,17 +712,39 @@ export class FnGenService {
    *  A reject carries its why: which check refused and the first line of what
    *  the model offered. A bare `outcome=reject` made the one repair that
    *  mattered unanalyzable — whether the model answered wrong or the machinery
-   *  wrongly refused was unknowable from the log
-   *  (session-v27/capture-csharp-linq.md, defect 2). */
+   *  wrongly refused was unknowable from the log (the capture is in
+   *  docs/architecture/fn-generation.md, "The dark reject").
+   *
+   *  A DISCARD CARRIES ITS WHY TOO, for the same reason one class down. Five of
+   *  the six discard causes are product prose, but the sixth interpolates the
+   *  editor's own error and the toast that renders it is cut to one line. With
+   *  no copy here, that cut was the end of the message: the log said
+   *  `outcome=discarded` and the reader could not find out what the editor
+   *  said. The reason line is what makes the toast's channel pointer a true
+   *  promise. Escaped, because that sixth reason is not the product's text and
+   *  this sink renders one row per break.
+   *
+   *  ON ITS OWN LINE, and that is not a layout choice. `outcome=discarded` is an
+   *  evidence token readers match WHOLE - the surface contract's oracle asks
+   *  whether that exact string is on the log, and treats it as saying neither
+   *  what nor why by design, with the story required elsewhere.
+   *  Suffixing the reason onto it turns every one of those matches into a miss
+   *  and says the discard never happened. A reject's detail rides on the outcome
+   *  line because it was there before any reader existed. */
   logOutcome(
     outcome: "accept" | "reject" | "discarded",
-    rejectDetail?: { refusedBy: string; offered: string },
+    detail?: { refusedBy: string; offered: string } | { discardedBecause: string },
   ): void {
-    const detail =
-      rejectDetail === undefined
+    if (detail !== undefined && "discardedBecause" in detail) {
+      this.log?.(`[fngen] discarded: ${escapeBreaks(detail.discardedBecause)}`);
+      this.log?.(`[fngen] outcome=${outcome}`);
+      return;
+    }
+    const suffix =
+      detail === undefined
         ? ""
-        : ` refused-by=${rejectDetail.refusedBy} offered=${firstOfferedLine(rejectDetail.offered)}`;
-    this.log?.(`[fngen] outcome=${outcome}${detail}`);
+        : ` refused-by=${detail.refusedBy} offered=${firstOfferedLine(detail.offered)}`;
+    this.log?.(`[fngen] outcome=${outcome}${suffix}`);
   }
 
   dispose(): void {

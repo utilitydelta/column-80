@@ -1043,14 +1043,27 @@ inverted here: they pin the closure and carry the old assertion in their failure
 row that pins a fix should say what the fix was for.
 
 **One narrowing that is not a wording change.** The download surface asks about the typed status
-ONLY (`err instanceof HttpStatusError`), not about the whole translator. Every row the later
-text-matching passes can reach is a generation reject - "the model's reply contained no usable
-code, so nothing was written" - and none of those sentences is true of a download. `pullModel`'s
-in-stream throw carries server-chosen text under no payload-carrier head, so routing the whole
-translator onto that surface would let a hostile registry pick the sentence by putting a marker in
-its error field. A status is a number the transport read off the response, and a body cannot forge
-it. The tighten gesture takes the whole translator: every throw that reaches it comes from a
-transport, and every transport throw carries an anchor or a carrier head.
+ONLY, not about the whole translator. Every row the later text-matching passes can reach is a
+generation reject - "the model's reply contained no usable code, so nothing was written" - and none
+of those sentences is true of a download. `pullModel`'s in-stream throw carries server-chosen text
+under no payload-carrier head, so routing the whole translator onto that surface would let a
+hostile registry pick the sentence by putting a marker in its error field. A status is a number the
+transport read off the response, and a body cannot forge it. The tighten gesture takes the whole
+translator: every throw that reaches it comes from a transport, and every transport throw carries
+an anchor or a carrier head.
+
+**AMENDED 2026-08-23, because the paragraph above described an intent the code did not carry out.**
+As built, the download surface called the WHOLE translator behind an `err instanceof
+HttpStatusError` gate, and those are not the same narrowing. The gate admits every typed status;
+only a CLASSIFIED one gets a class sentence, and an unclassified one returned undefined from the
+status pass and fell through to the anchored, payload-carrier and substring passes - the exact
+passes this paragraph said the surface does not consult. Driven: `new HttpStatusError("ollama",
+404, "pull failed: generation was empty after postprocess")` drew a generation reject's sentence on
+a download toast. Not reachable through the real download transport, which heads every message
+`Ollama <status> ` and so trips the `"Ollama "` carrier guard - so the surface was protected by a
+table two modules away rather than by the gate whose own comment claimed the protection. The code
+now calls a status-only entry point, `httpStatusToast`, which can answer only with a class sentence
+or with nothing.
 
 **A row that lost a disjunction.** `C7 [pull toast]` in
 `test/blind-v58-p7-http-status-classes.test.cjs` accepted EITHER the baseline's wording or a clean
@@ -1063,9 +1076,22 @@ ships - a disjunction that still accepts the baseline cannot catch a revert to r
 preview-open branch interpolates a caught error, and a stack in a notification renders as a wall of
 rows. No channel pointer, because that reason is never written to the channel.
 
+**AMENDED 2026-08-23: the ride-along cut in the wrong place, and the paragraph above is why.** With
+the whole sentence wrapped, the cut fell INSIDE the brackets the sixth reason puts the error in:
+`Column 80: generation discarded — the preview could not be opened (Error: the diff editor is gone.`
+- an unclosed pair with the sentence's own period welded to a truncated clause. And "that reason is
+never written to the channel" was the second half of the defect rather than a justification: the cut
+destroyed the only copy there was. The interpolation is now cut at its own site through
+`oneLineWithPointer(text, ")", ".")`, so the pair cannot be split however long the error is, and the
+whole reason is handed to `logOutcome`, which writes it as `[fngen] discarded: <reason>` - escaped,
+on its OWN line, because `[fngen] outcome=discarded` is an evidence token S22's surface oracle
+matches whole. The pointer is therefore earned rather than withheld. The five product-prose reasons
+pass nothing and their record is unchanged.
+
 **Pinned by.** `test/impl-v59-p1-one-sentence-surfaces.test.cjs`, whose row 8 drives one
-`HttpStatusError` through all three surfaces and asserts the same sentence body reaches each, plus
-rows 3, 5b, 7 and 10 for the four unchanged branches.
+`HttpStatusError` through all three surfaces, plus rows 3, 5b, 7 and 10 for the four unchanged
+branches. Rows 2, 6 and 8 were re-cut by S31; row 9 was strengthened to fail on an unclosed bracket,
+which it did not before.
 
 ## S26. The Rust and C# test rungs stop filtering by substring
 
@@ -1329,3 +1355,75 @@ implicit.
 service and the real transport mapping. Both directions were red before the fix and neither was red
 at the same time: with Rust ungated the invented-name rows fail; with Rust naively gated and one
 list, `.await` and postfix `match` fail. The phase report carries both failure texts.
+
+## S31. A failure's cause travels between surfaces; its consequence does not
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59, repairing phase 1. It narrows S25, which is
+this session's own contract, and it re-cuts a row in the phase 1 blind oracle that the narrowing
+makes impossible to satisfy.
+
+**What the old contract said.** S25's central claim was an agreement claim: for a given
+`HttpStatusError`, the crafted sentence appears in the toast text of all three surfaces. One throw
+class, one sentence, everywhere.
+
+**Why that is wrong.** Every status sentence has the shape
+`Column 80: <CAUSE>, so nothing was written - <REMEDY>. The full message is in the output channel.`
+The cause is what the server did, so it is true wherever the throw lands. The rest is about the
+gesture, and on two of the three surfaces the generation gesture's words are false:
+
+- **The tighten gesture writes.** It does not stop at its warn; it proceeds through the delta and
+  existence gates and applies the re-wrap. So a 401, 403, 429 or 5xx produced, in ONE notification,
+  `...so nothing was written - wait, then run the gesture again. The full message is in the output
+  channel. The re-wrap needs no model.` The protected second clause makes the contradiction
+  explicit. The sentence S25 replaced did not have this problem: "so no type names were offered"
+  scoped the claim to the half that actually failed.
+- **The download has no gesture.** The user clicked Download in a notification, and "run the gesture
+  again" names a control that is not there. That is the same defect as a crafted remedy pointing at
+  a setting the product does not contribute, one class up.
+
+**The split.** `SurfaceVoice` carries a `consequence` clause and a `retry`, and
+`httpStatusSentence` interpolates them:
+
+- `GENERATION_VOICE` - "so nothing was written" / "run the gesture again". The DEFAULT, so every
+  caller that names no surface draws the sentence it drew before, byte for byte.
+- `TIGHTEN_VOICE` - "so no type names were offered" / "run the gesture again". The clause the
+  surface's own unclassified sentence has always used, kept rather than invented.
+- `DOWNLOAD_VOICE` - "so the model was not downloaded" / `run "Column 80: Select Hardware Tier" to
+  try again`. That command is what the product's own "fn-gen is disabled" message names, and it is
+  the only way back to the one-click download.
+
+Two branches take no `retry` at all: the local 401/403 ends at "check the server's own
+authentication", and the 5xx at "try again shortly", which is already surface-independent. A voice
+supplies words where the sentence needs them, not everywhere it could. The vocabulary did not
+otherwise move: the 401/403 split on transport survives with its reasoning intact, and this is a
+factoring rather than a rewrite.
+
+**What is kept, and it is the half worth keeping.** One throw class produces one DIAGNOSIS on every
+surface. Only the consequence varies. The generation gestures regress on nothing, and the split does
+not reach the structural `ClaudeCodeError` sentences or the marker table, which are one wording per
+throw and stay that way.
+
+**RESIDUE, stated rather than hidden.** The Claude Code reasons carry the same
+`so nothing was written` clause and the tighten gesture can reach them - its transport is the same
+tier-resolved one fn-gen uses. They are out of this ruling's scope because the ruling named
+`httpStatusSentence`, and threading a voice through seven closures of three different shapes is a
+second build. On that surface those sentences still say something false.
+
+**The blind oracle row this makes impossible.** `C1 [401|403|429|503]` in
+`test/blind-v59-p1-one-sentence-everywhere.test.cjs` asserts that the string
+`translateServiceReject` returns is a SUBSTRING of the download and tighten toasts. No split can
+satisfy that: the returned string is the generation sentence, and the whole point is that its
+consequence clause must not appear on the other two. The four rows are RED and were left red rather
+than edited. Their failure text is itself the evidence - it prints all three sentences side by side,
+same diagnosis, three consequences. The oracle's other 13 rows are green, including C2 (the re-wrap
+clause), C3 (one line), C4 (no borrowed class sentence) and C6 (the leaf module). Ratifying this
+entry is what authorises re-cutting C1 onto the diagnosis.
+
+**Pinned by.** `test/impl-v59-p1fix-surface-consequence.test.cjs`. Row F1 types the eight generation
+sentences out literally, so the byte-identity constraint cannot drift; D2a to D2d drive the real
+tighten and download surfaces at all four classes and assert the diagnosis reaches both while the
+generation consequence reaches neither; D3a drives the typed-but-unclassified leak. Rows 2, 6 and 8
+of `test/impl-v59-p1-one-sentence-surfaces.test.cjs` and `C7 [pull toast]` in
+`test/blind-v58-p7-http-status-classes.test.cjs` were re-cut onto the same claim; row 8 also asserts
+the consequences really differ, because the diagnosis is a prefix of the generation sentence and
+three identical sentences would otherwise satisfy it.
