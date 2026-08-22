@@ -5524,6 +5524,10 @@ export function registerFnGen(
     // recorded reason its refusal names (item 58).
     tierGate,
     tierMessage: () => tier?.message,
+    // A GETTER because `inFlight` is declared below this call: reading it here
+    // would be a TDZ throw at activation. The gesture runs long after the const
+    // is bound (scrap S58-11).
+    inFlight: () => inFlight,
   });
 
   context.subscriptions.push(

@@ -45,6 +45,10 @@ import { firstLine, tierDisabledToast } from "./toastText";
 // a runtime edge to `fnGen.ts`, which registers it, and that is exactly why the
 // table had to move out of there before this gesture could read it.
 import { translateServiceReject } from "./failureToast";
+// The in-flight registry, a leaf that imports `vscode` and nothing of ours.
+// Same reason as the translator above: this file may not take a runtime edge to
+// `fnGen.ts`, and the registry is reachable because it lives outside it.
+import { InFlightRegistry, isCancellation } from "./inFlight";
 
 import { InstructGenerateFn } from "../core/ollama";
 import { FnGenConfig } from "../core/config";
@@ -148,6 +152,20 @@ export interface TightenWiring {
   tierGate: () => Promise<{ allowed: boolean; reason?: string }>;
   /** The disabled tier's recorded reason, for the refusal to name. */
   tierMessage: () => string | undefined;
+  /** What is running, and how a user stops it. A GETTER, and not because a
+   *  getter is tidier: `registerTightenDocComment` is called from inside
+   *  `registerFnGen` ABOVE the registry's own `const`, so passing the instance
+   *  at the call site is a TDZ throw the moment the extension activates. The
+   *  arrow is evaluated when the gesture runs, by which time the const is
+   *  bound - the same shape `transport` and `tierMessage` already use, and it
+   *  keeps the fnGen edit to one line.
+   *
+   *  Optional so the headless drives that build this record by hand keep
+   *  working. What enforces the wiring is not the type, it is
+   *  `test/impl-v59-p3-tighten-cancel.test.cjs`, which drives the REAL
+   *  registration and the real cancel command: a signal nobody aborts passes
+   *  every source pin ever written (scrap S58-11). */
+  inFlight?: () => InFlightRegistry | undefined;
 }
 
 /** Seams the suite replaces. Every one defaults to the real host. */
@@ -283,6 +301,14 @@ export async function tightenDocComment(
   // sliced out of the prose at an offset `parseProposerReply` found.
   const proposed = await runProposer(prose, languageId, log, wiring, deps);
   const spans = proposed.spans;
+  if (proposed.cancelled) {
+    // The user stopped this. The gesture ends where they stopped it rather than
+    // carrying on to offer a diff nobody asked for any more, and it ends the
+    // way the review's own cancel ends - one channel line, nothing on screen,
+    // nothing written.
+    log("[tighten] cancelled: nothing was written");
+    return { status: "cancelled" };
+  }
   if (proposed.failed) {
     // Ship condition 8, and the review found this one silent: an unreachable
     // model used to leave a channel line and nothing on the surface. The
@@ -577,17 +603,25 @@ export async function tightenDocComment(
 // ------------------------------------------------------------- the proposer
 
 /** One model round. A transport that throws is a refusal to propose, never a
- *  failed command: the render still stands on its own. */
+ *  failed command: the render still stands on its own - unless the user stopped
+ *  it, which ends the gesture and says nothing. */
 async function runProposer(
   prose: string,
   languageId: string,
   log: (line: string) => void,
   wiring: TightenWiring,
   deps: TightenDeps,
-): Promise<{ spans: ReturnType<typeof parseProposerReply>; failed: boolean; reject?: string }> {
+): Promise<{ spans: ReturnType<typeof parseProposerReply>; failed: boolean; reject?: string; cancelled?: boolean }> {
   const config = (deps.config ?? readFnGenConfig)();
   const prompt = assembleProposerPrompt({ prose, languageId });
   const controller = new AbortController();
+  // THE CLAIM IS WHAT MAKES THE SIGNAL REACHABLE. Before it, this controller was
+  // built, passed to the transport, and aborted by nobody: a tighten round
+  // against a hung server was invisible AND unstoppable, and no source pin over
+  // `new AbortController()` could tell the difference (scrap S58-11). The
+  // registry gives it a caller - the status-bar item and the cancel command -
+  // and the `finally` gives the item back however the round ends.
+  const claim = wiring.inFlight?.()?.begin("Tightening a doc comment", controller);
   let reply: string;
   try {
     const result = await wiring.transport()({
@@ -606,6 +640,16 @@ async function runProposer(
     });
     reply = result.text;
   } catch (err) {
+    // CANCEL IS NOT A FAILURE, and on this surface it used to be one: every
+    // throw was logged as a failed round and, after phase 1, warned about with
+    // a translated sentence - so a user who pressed Cancel was told the model
+    // could not be reached. `isCancellation` is the name-only check, never
+    // `/abort/i` over the message: a server whose body says "aborted upstream"
+    // is a failure and has to keep saying so (S57-3).
+    if (isCancellation(err)) {
+      log("[tighten] the proposer round was cancelled");
+      return { spans: [], failed: false, cancelled: true };
+    }
     log(`[tighten] the proposer round failed (${String(err)}); no backticks are proposed`);
     // WHAT HAPPENED, not what the surface guessed. The caller used to answer
     // every throw with "the model could not be reached", which is false for the
@@ -613,6 +657,8 @@ async function runProposer(
     // REACHED, and refused. The crafted sentence rides out beside the flag so
     // the warn site stays the only place that composes user words.
     return { spans: [], failed: true, reject: translateServiceReject(err) };
+  } finally {
+    claim?.release();
   }
   const spans = parseProposerReply(reply, prose);
   log(`[tighten] proposer model=${wiring.modelTag()} named ${spans.length} span${spans.length === 1 ? "" : "s"}`);
@@ -1493,6 +1539,13 @@ export function registerTightenDocComment(
       try {
         await tightenDocComment(editor.document, editor.selection.active, log, wiring, deps);
       } catch (err) {
+        // The same rule as the proposer's catch, at the outer edge: whatever
+        // else this gesture grows a signal for later, a cancellation reaching
+        // here is the user's own action and gets no failure toast.
+        if (isCancellation(err)) {
+          log("[tighten] cancelled: nothing was written");
+          return;
+        }
         // A refusal is a sentence and a crash is not: this command edits a
         // human's words, so an unexpected throw must still leave the buffer
         // untouched and say so.

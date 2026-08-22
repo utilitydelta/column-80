@@ -1108,3 +1108,45 @@ tests whose names are strict prefixes (`add`/`add_more`, `Add`/`AddMore`), in a 
 that are NOT the defaults, both FAILING so the runner names whichever it selected. Before the fix
 each graded row read 2 selected; after, 1, and it is the named one. The live rows skip under
 `SKIP_LIVE=1`, so the gate runs their shape and a human runs their grade.
+
+## S27. A cancelled tighten round is not a failed one, and it ends the gesture
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 3, which closes S58-11. Flagged here
+because it narrows a clause of S25 one week after S25 was written, and because it stops a gesture
+that used to carry on.
+
+**What changed.** `runProposer` (`src/vscode/tightenDocComment.ts`) claims the round in the
+in-flight registry, so the `AbortController` it has always built now has a caller: the status-bar
+item and `column80.cancelGeneration`. The claim is released in a `finally`. Its catch asks
+`isCancellation(err)` first, and a cancelled round returns a cancelled flag rather than a failure -
+the channel says the round was cancelled, no warning is composed, and the command returns
+`{ status: "cancelled" }` without offering a diff.
+
+**Why the old behaviour was wrong.** Nothing ever called `abort()`. The controller was constructed,
+passed to the transport, and wired to no caller, so a tighten round against a hung server was
+invisible and unstoppable - the exact shape of the `goShapeHooks` defect. Worse after phase 1: the
+catch treated every throw as a proposer failure, so cancelling produced "Column 80: the model could
+not be reached, so no type names were offered." for work the user stopped themselves.
+
+**The narrowing of S25.** S25 says the tighten warning's second clause, `The re-wrap needs no
+model.`, rides on both branches of a proposer failure. It still does - for failures. A CANCELLATION
+now reaches no warning at all, so there is a third branch S25 did not have.
+
+**And the gesture stops.** This is the part a human should look at. A proposer failure still warns
+and carries on, because the re-wrap is real work the model was never needed for. A cancellation
+does not: the gesture ends where the user stopped it, writes nothing, and never opens the diff. The
+alternative - finish the re-wrap and show the preview anyway - answers a user who pressed Cancel
+with a dialog, and the cancelled outcome this gesture already has for a dismissed review says the
+same thing about the same intent.
+
+**One consequence, stated rather than hidden.** The registry is shared, so `Cancel Generation` now
+stops a tighten round along with everything else in flight. That is the affordance working as
+designed, and it is not the open question S58-10 asks (whether a download belongs under the same
+command); no download is involved here.
+
+**Pinned by.** `test/impl-v59-p3-tighten-cancel.test.cjs`. Its heavy rows drive the product's own
+`activate`, the registered tighten command and the registered cancel command over a transport that
+answers only when its signal aborts, so a settled round is proof the abort travelled. Rows 1, 3, 4
+and 6 were red at the branch point; row 6 recorded the false sentence verbatim. Rows 7 and 8 are
+the controls: a real failure still warns exactly once, and a server whose message merely says
+"aborted" is still a failure.
