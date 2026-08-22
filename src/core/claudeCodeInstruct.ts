@@ -88,6 +88,15 @@ export type ClaudeCodeFailureReason =
   | "cli-error"
   | "exit"
   | "bad-json"
+  /** A spawn that failed for any reason other than the two ENOENT cases above:
+   *  EACCES on a binary that is not executable, EPERM, EMFILE. Its own reason
+   *  rather than `exit`, for two reasons. The backend never started, so a user
+   *  reading "the CLI failed" is told the wrong thing about a binary that never
+   *  ran. And `exit` is DEGRADABLE, so an unspawnable binary used to clear a
+   *  live fork checkpoint and re-run the whole prompt against the same
+   *  unspawnable binary; this reason is deliberately NOT in that set, so the
+   *  pointless second round is gone. */
+  | "spawn-failed"
   /** A turn-1 warm whose reply parsed and reported success but carried no
    *  session id to fork from. Its own reason rather than `bad-json`: the output
    *  was perfectly parseable, and naming the wrong cause is the one failure
@@ -623,7 +632,8 @@ function spawnClaude(
         );
         return;
       }
-      fail("exit", `Claude Code could not start: ${err.message}`);
+      // The MESSAGE is unchanged; only its reason moved. See the union.
+      fail("spawn-failed", `Claude Code could not start: ${err.message}`);
     });
 
     child.on("close", (code) =>

@@ -34,7 +34,7 @@ import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/c
 import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
-import { firstLine, hasMoreThanOneLine, tierDisabledToast } from "./toastText";
+import { firstLine, hasMoreThanOneLine, oneLineWithPointer, tierDisabledToast } from "./toastText";
 // A leaf: it imports vscode and nothing of ours, so both this file and
 // extension.ts can hold it without a cycle.
 import { CANCEL_COMMAND, InFlightRegistry, isCancellation } from "./inFlight";
@@ -5457,6 +5457,135 @@ const SERVICE_REJECT_TOASTS: ReadonlyArray<RejectToast> = [
   },
 ];
 
+/**
+ * THE STRUCTURAL PASS. What a failure IS, rather than what its message says.
+ *
+ * Every row in the table above matches text. That works while the product owns
+ * the whole string, and the Claude Code backend is where it stops working: its
+ * failures lead with output the CLI chose, so a marker cannot be anchored ahead
+ * of the interpolation and matching a substring of CLI text would let the CLI
+ * pick the sentence. It already throws the stronger signal - a `ClaudeCodeError`
+ * whose `reason` is set at the throw site, from a union of ten - so this reads
+ * that instead (roadmap item 68).
+ *
+ * Session-v57 set "roughly ten rows" as the point to reconsider the table.
+ * Claude Code's reasons alone would double it.
+ *
+ * IT ALSO CLOSED A HOLE NOBODY HAD CLAIMED. Before this pass, a Claude Code
+ * message began with the backend's own prefix, matched no `PAYLOAD_CARRIERS`
+ * head, and so reached the substring pass - where a CLI that printed
+ * `generation was empty after postprocess` drew the model-refusal sentence.
+ * A failure on one backend could be told to the user in another failure's
+ * words.
+ *
+ * IT ONLY EVER NARROWS. A reason with no entry returns undefined and falls
+ * through to the three passes that already exist, so nothing that is not a
+ * `ClaudeCodeError` can reach a different sentence than it does today.
+ *
+ * `no-session` has no entry on purpose: the union's own comment says it never
+ * surfaces as a round failure, because a turn-1 warm that parses clean without a
+ * session id degrades to a whole-prompt round and says so on the evidence line.
+ * Giving it a sentence would invent a reachability it does not have.
+ */
+const CLAUDE_CODE_SENTENCES: Readonly<Record<string, (message: string) => string>> = {
+  "logged-out": () =>
+    "Column 80: Claude Code is not logged in, so nothing was written - run `claude` in a terminal, " +
+    "then `/login`, and run the gesture again.",
+  // THE ONE EXCEPTION to "no interpolation on screen", and it is safe because
+  // these two messages are product prose end to end: the only thing either
+  // interpolates is a binary name or a working directory this extension's own
+  // settings chose. A user who cannot start the backend needs to see WHICH
+  // path was wrong; a sentence that hides it sends them to the channel to
+  // learn one word.
+  // NEITHER CLAUSE NAMES A SETTING, because there is no setting. The binary
+  // comes from a fixed candidate list `resolveClaudeBinary` probes, and the
+  // working directory is `globalStorageUri/claude-cwd`, created once when the
+  // service is built. The first cut of these two sentences sent the user to
+  // "the Claude Code binary setting" and "the working directory setting",
+  // neither of which the product contributes - a crafted sentence naming a
+  // remedy that does not exist, which is worse than the raw message it
+  // replaced and is exactly the failure S20 was written about.
+  //
+  // The real remedies: PATH is re-resolved on every spawn, so putting `claude`
+  // back is enough; the directory is created once, so only a rebuild of the
+  // service restores it, and a window reload is how a user does that.
+  "binary-missing": (message) =>
+    oneLineWithPointer(`Column 80: ${message}`, "", " Put `claude` on PATH, then run the gesture again."),
+  "bad-cwd": (message) =>
+    oneLineWithPointer(`Column 80: ${message}`, "", " Reload the window, then run the gesture again."),
+  // A spawn that failed for any reason other than the two above: EACCES, EPERM,
+  // EMFILE. The backend never started, so it does NOT belong with the CLI-failed
+  // family - a user whose binary is not executable should not read "the CLI
+  // failed". It carries no cause, unlike its two siblings, because what it
+  // interpolates is Node's own ErrnoException rather than product prose.
+  "spawn-failed": () =>
+    "Column 80: Claude Code could not start, so nothing was written - the full message is in the " +
+    "output channel.",
+  // NO TIMING PROMISE, and the pointer is unconditional. This class is a
+  // POSITIVE classification the product makes - it fires only on a rate-limit,
+  // overloaded, quota or 429/529 match - so unlike S20's generic envelope a
+  // crafted sentence is true of every member of it. What it cannot know is HOW
+  // LONG: a per-minute rate limit clears in seconds and a subscription window
+  // in hours, and the first cut said "wait a moment" for both. All three throw
+  // sites interpolate a diagnostic this sentence discards and the service logs
+  // whole, so the pointer is kept by construction rather than by luck, which is
+  // why it can be unconditional where `oneLineWithPointer`'s must be earned.
+  "serving-failure": () =>
+    "Column 80: Claude Code is rate limited or its provider is having trouble, so nothing was " +
+    "written - wait, then run the gesture again. The full message is in the output channel.",
+  timeout: () =>
+    "Column 80: Claude Code did not answer in time, so nothing was written - run the gesture " +
+    "again, or check that the CLI still responds.",
+  // FOUR REASONS, ONE SENTENCE, because the next action is the same for all
+  // four: read the channel. `exit` is a non-zero exit, `cli-error` a declared
+  // failure, `bad-json` unparseable output and `agentic` a reply that is an
+  // agent transcript rather than a generation - four different faults with one
+  // remedy, and item 66's rule is one sentence per thing the USER must do.
+  // None of their raw text reaches here: every one of them leads with CLI
+  // output.
+  exit: () => CLI_FAILED_TOAST,
+  "cli-error": () => CLI_FAILED_TOAST,
+  "bad-json": () => CLI_FAILED_TOAST,
+  agentic: () => CLI_FAILED_TOAST,
+};
+
+const CLI_FAILED_TOAST =
+  "Column 80: the Claude Code CLI failed, so nothing was written - the full message is in the " +
+  "output channel.";
+
+/** A crafted sentence for a typed backend failure, or undefined for anything
+ *  else.
+ *
+ *  Identity, never text: `name` is set in the `ClaudeCodeError` constructor and
+ *  `reason` beside it, so neither can be forged by a CLI or a server putting
+ *  words in its output. A plain `Error` carrying the identical message gets
+ *  today's catch-all, which is the distinction this pass exists to make.
+ *
+ *  Defensive about the shape because the thing being classified is a caught
+ *  `unknown`: a non-Error, a null, or a plain object wearing the right `name`
+ *  must not reach the map or crash the translator. */
+function translateStructural(err: unknown): string | undefined {
+  if (!(err instanceof Error) || err.name !== "ClaudeCodeError") {
+    return undefined;
+  }
+  const reason = (err as Error & { reason?: unknown }).reason;
+  if (typeof reason !== "string") {
+    return undefined;
+  }
+  // OWN PROPERTIES ONLY. A bare object literal inherits from
+  // `Object.prototype`, so a reason of `constructor` used to return the raw
+  // message with its `Error:` token intact, `toString` rendered
+  // `[object Object]`, and `__proto__` threw a TypeError out of
+  // `generationFailedToast` - which runs inside the gesture's own catch, so the
+  // user got no toast at all. Unreachable from a throw site today, all of which
+  // pass literals, but the contract says an unrecognised reason falls through
+  // and six names did not.
+  if (!Object.prototype.hasOwnProperty.call(CLAUDE_CODE_SENTENCES, reason)) {
+    return undefined;
+  }
+  return CLAUDE_CODE_SENTENCES[reason](err.message);
+}
+
 /** Message heads that mean "the rest of this string came from the server."
  *
  *  Every one of these interpolates text the model server chose, so a service
@@ -5480,6 +5609,14 @@ const PAYLOAD_CARRIERS: readonly string[] = [
 /** The crafted sentence for a known service reject, or undefined for anything
  *  else. Matches on the error MESSAGE (String(err) would prepend "Error: "). */
 export function translateServiceReject(err: unknown): string | undefined {
+  // STRUCTURAL FIRST, before any text is looked at. A typed failure knows what
+  // it is; every pass below is guessing from a string, and the backend this
+  // serves leads its strings with text the CLI chose. Only ever narrows: an
+  // unrecognised reason returns undefined and falls straight through.
+  const structural = translateStructural(err);
+  if (structural !== undefined) {
+    return structural;
+  }
   const text = err instanceof Error ? err.message : String(err);
   // ANCHORED ROWS FIRST, and the order is the point rather than an optimisation.
   // "this message BEGINS with the marker" is a stronger claim than "this message
