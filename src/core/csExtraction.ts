@@ -1417,13 +1417,18 @@ function scanCsLine(line: string, s: CsLineScan): void {
     const inHole = top !== undefined;
     const c = line[i];
     const c2 = line[i + 1];
-    // Comments are honoured at statement level only, exactly as before: a `//`
-    // cannot legally appear inside an interpolation hole, and reading one there
-    // would silence the rest of a line the old scanner still scanned.
-    if (!inHole && c === "/" && c2 === "/") {
+    // Comments are read INSIDE a hole too, because a hole is C# and C# 11 lets
+    // an interpolation hold newlines: `$"x{f(a, // note` is legal, verified on
+    // dotnet 10.0.111 in all three hole kinds. Skipping them here is not
+    // harmless: a `@"` or a `"""` written inside a comment opens a context the
+    // compiler never sees, which then swallows the real closing delimiter (a raw
+    // string's content and delimiter re-indent by different amounts: CS8999) or
+    // eats the opening quote of a real `@"…"` below it (its value moves). Row
+    // A13-10.
+    if (c === "/" && c2 === "/") {
       return; // line comment: the rest of the line is inert
     }
-    if (!inHole && c === "/" && c2 === "*") {
+    if (c === "/" && c2 === "*") {
       s.block = true;
       i += 2;
       continue;

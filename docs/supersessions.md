@@ -971,10 +971,15 @@ what happened, and hand over the provider's own words everywhere else.
 `test/adversarial-v58-p7.test.cjs`, whose unlisted-status rows were re-cut to pin that the
 provider's reason survives to the screen - the property whose absence was the defect.
 
-## S24. The C# re-indent freeze mask moves for `$"`, and only for `$"`
+## S24. The C# re-indent freeze mask moves, and the count is the claim
 
-**NOT YET RATIFIED.** Session-v59 phase 5, closing roadmap item 60. The fix itself was ratified as
-a shape at filing time; what needs a call is the differential claim it falsifies.
+**NOT YET RATIFIED.** Session-v59 phase 5, closing roadmap item 60, AMENDED by that session's fix
+round after an adversarial review drove three defects into the shipped work. The fix itself was
+ratified as a shape at filing time; what needs a call is the differential claim it falsifies.
+
+**Read the amendments first.** The entry as originally filed published a boundary as measured that
+was not, and shipped a regression in the shape next door to the one it closed. Both are corrected
+below, in "The narrowing that needs the call" and "A comment inside a hole".
 
 **What changed.** `advanceCsLineScan` gained a `$"` opener that pushes a tracked context, and
 `CsStrCtx` gave `kind: "raw"` a real hole depth plus its `$` count. Two rows in
@@ -990,15 +995,54 @@ input with CS8999. That is the product emitting C# that does not build.
 
 **The narrowing that needs the call.** A13-3 asserted, over 1.2M random bodies and six opener
 configurations, that the old freeze mask and the new one *never disagree*. That is now false by
-design. The row was re-cut to pin the BOUNDARY instead: measured over the same population, 1129524
-bodies produce 70809 divergences, every one of them holds `$"`, and none is outside it. The row
-also fails if the divergence count reaches zero, so a reverted fix reddens it in the other
-direction.
+design, so the row was re-cut. **The first re-cut was wrong twice, and this is the correction.**
+
+It claimed a BOUNDARY: 1129524 bodies, 70809 divergences, every one holding `$"` and none outside
+it. That boundary is a fact about the row's own token list, not about the scanner. `JUNK` carried no
+bare `@`, no bare `$`, and none of `$$`/`@@`/`$@`/`@$`, which are exactly the sigil runs that open a
+context in a body with no `$"` anywhere in it. Two of the six configurations also satisfied
+`includes('$"')` from their prefix alone, so the assertion could not fire for them whatever the
+scanner did. Read it as measured and it is false; read it as a statement about that token list and
+it is true and worth nothing.
+
+It then asserted `movedWithDollarQuote > 0`, having measured the exact figure and left it in a prose
+comment. A `> 0` accepts any count up to the whole population. Driven: a mutant deleting the
+`$"`-still-open pop from `advanceCsLineScan` diverges on 75% more bodies than the shipped scanner,
+passes the row verbatim, and no other row in the file catches it.
+
+**What the row asserts now.** The six missing sigil tokens are in `JUNK`, and the counts are pinned
+per configuration, exactly: over 1155900 bodies, 856 / 211 / 1005 / 1005 / 0 / 60951 for
+`(none)` / `@"` / `$@"` / `@$"` / `"""` / `$"""`, 64028 in total, of which **435 carry no `$"` at
+all**. The `"""` zero says a plain raw string is untouched; the `$"""` count says the item 60 fix is
+still there. Re-run under the same mutant the counts move to 105375 and the row reddens, naming the
+configuration that moved. A scanner change of any kind moves one of these numbers, which is the
+point: re-measure and re-pin, and say what moved it.
 
 **What the divergence is worth.** The population is random junk, so the row says nothing about
 legality. Correctness on real C# is graded by dotnet elsewhere in the same file: A13-2's 216 placed
-cases still show zero values wrong, and A13-7, A13-7b, A13-8 and A13-8b each compile and run a body
-and compare the string's bytes before and after.
+cases still show zero values wrong, and A13-7, A13-7b, A13-8, A13-8b and A13-10 each compile and
+run a body and compare the string's bytes before and after.
+
+**A comment inside a hole, which is where the fix put CS8999 back.** The scanner read `//` and
+`/* */` at statement level only, on a written ground that dotnet 10.0.111 disproves: a hole is C#
+code and takes C# comments, in all three hole kinds, verified before the fix was written. Skipping
+them costs a quote the compiler never sees. An `@"` or a `"""` typed inside a comment opens a
+context that never closes, and it then either swallows the real closing delimiter of a raw string
+(content and delimiter re-indent by different amounts, CS8999 again) or eats the opening quote of a
+real `@"…"` below it, whose value then moves.
+
+Giving `$"` an opener and giving a raw string real holes is what carried that gap into the shapes
+where real C# puts a multi-line interpolation. Measured over five bodies, all legal C#, all graded
+by dotnet: three were CORRECT under the pre-phase-13 scanner and wrong after, one raw shape was
+already CS8999 in both, and the `$@"` shape already moved its value in both. **So the regression is
+three shapes, and two of the five predate this entry.** Comments are now read inside a hole too,
+which closes the pre-existing pair along with the regression. A13-10 pins the compile, the values
+and the freeze mask; A13-10b pins the attribution, because a boundary claim in prose is what this
+entry got wrong the first time.
+
+One trap the row is built against: a `"""` run in a comment freezes the whole rest of the body, so
+every value survives and all indentation below is lost. A row that grades values only cannot see
+it, which is why A13-10 also asserts the statement after the literal still moves.
 
 **One measured fact the fix leans on.** A line that BEGINS inside a raw-interpolated hole is exempt
 from the closing delimiter's whitespace rule, so classifying it as code and shifting it is legal
@@ -1099,11 +1143,40 @@ which it did not before.
 shape was ratified at filing time; what needs a call is that two BYTE-FROZEN command contracts and
 one seam's documented output shape move with it.
 
-**What changed.** `generatedTestNames` returns FILTERS, not bare names. Rust's carry the enclosing
-`mod` path (`widget_checks::add`), resolved from the marked region's own position; C#'s carry
-namespace and class (`Falsifier.Widgets.WidgetChecks.Add`, `Ns.Outer+Inner.Add` when the class is
-nested). `buildTestCommand` then emits `--exact` past the `--` separator, and `buildCsCommand`
-switches `FullyQualifiedName~` to `FullyQualifiedName=`.
+**What changed.** `generatedTestNames` returns FILTERS, not bare names. Rust's carry the full
+libtest path (`geometry::widget_checks::add`); C#'s carry namespace and class
+(`Falsifier.Widgets.WidgetChecks.Add`, `Ns.Outer+Inner.Add` when the class is nested).
+`buildTestCommand` then emits `--exact` past the `--` separator, and `buildCsCommand` switches
+`FullyQualifiedName~` to `FullyQualifiedName=`.
+
+**CORRECTED 2026-08-23, after the first cut of this entry shipped a regression.** The first cut
+resolved Rust's path from the marked region's own position in the file's TEXT, and that is not the
+whole path. A libtest path also starts with the segment the FILE contributes by being a module, and
+no amount of reading the file shows it. Rust puts a function's tests in the function's own file, so
+every crate whose code is not in `src/lib.rs` - the normal layout - got a full-SHAPED path missing
+its head, `--exact` rode along, and the rung selected ZERO. Driven, cargo 1.96, `src/lib.rs` holding
+`pub mod geometry;` and the tests in `src/geometry.rs`: `-- add` ran 2, `--exact
+widget_checks::add` ran 0 of 2, `--exact geometry::widget_checks::add` ran 1. **Before this entry
+the rung over-selected; after its first cut it selected nothing, which the entry itself calls
+strictly worse.**
+
+Two more names dropped the same way and produced the same zero. A raw-identifier module (`mod
+r#match`) was not matched by the head regex at all, so its brace was counted and no segment pushed;
+cargo KEEPS the `r#` (`r#match::widget_checks::add: test`). And `namespace @namespace` was dropped
+on the C# side, where the class alone still satisfied the fully-qualified shape check, so `=` fired
+at a name no assembly holds: `=namespace.VerbChecks.Add` selects one test on dotnet 10.0.111,
+`=VerbChecks.Add` matches nothing.
+
+**The rule the first cut was missing.** A qualification check must prove a name is COMPLETE, not
+that it is dotted or colon-separated. `generatedTestNames` now takes the placement and walks `mod`
+declarations from the `--lib` target's root file, and prefixes a name only when that walk reaches
+the file. `foo.rs`, `foo/mod.rs`, `#[path]`, nesting and raw identifiers all resolve; a file the
+walk never reaches, a crate with no lib target, a file two declarations both route to, and a call
+with no placement at all answer BARE, which keeps the substring filter. The shape check in
+`buildTestCommand` is a floor under a hand-built name, not the gate.
+
+The seam's `generatedTestNames` gains an optional third parameter carrying the placement. C#, Go,
+TypeScript and Python ignore it: each reads its whole qualified name out of the file.
 
 **Why the old behaviour was wrong.** Both filters were SUBSTRING matches, so a rung scoped to one
 generated function ran a neighbour's tests and could report the neighbour's red under the named
@@ -1134,6 +1207,15 @@ tests whose names are strict prefixes (`add`/`add_more`, `Add`/`AddMore`), in a 
 that are NOT the defaults, both FAILING so the runner names whichever it selected. Before the fix
 each graded row read 2 selected; after, 1, and it is the named one. The live rows skip under
 `SKIP_LIVE=1`, so the gate runs their shape and a human runs their grade.
+
+**Why the first cut's own falsifier missed the regression, which is the durable lesson.** Every
+Rust fixture in that file wrote `src/lib.rs`, and the row titled "an enclosing `mod` is part of the
+libtest path" asserted a shape over an INLINE `pub mod geometry { … }`. The graded row never left
+the crate root, so the one segment the build got wrong was the one segment no fixture had. A graded
+row now drives six layouts in ONE crate - `src/geometry.rs`, `src/geometry/deep.rs`,
+`src/shapes/mod.rs`, a `#[path]` module, a raw-identifier file module and a raw-identifier inline
+module - with twelve live tests, so a wrong path selects zero and a substring filter selects twelve.
+Only the resolved path selects one.
 
 ## S27. A cancelled tighten round is not a failed one, and it ends the gesture
 
@@ -1207,11 +1289,37 @@ inside" - which is legitimate and must keep its answer.
 
 That is why the refusal is C#-only and why it is not a one-line predicate. It needs three facts
 together: the cursor sits on an identifier, that identifier is not the enclosing container's name,
-and the cursor is inside one of that container's members. Drop the first and a member site
-(`stripe.|`) is refused. Drop the second and a constructor's own name token is refused. Drop the
-third and a definition answer landing on the `public` of `public class Tile` is refused. Extending
-it to two more languages is a ruling for a human, not a free extension, because the question it
-must not break has no oracle in those languages.
+and that identifier is not a C# syntax word. Drop the first and a member site (`stripe.|`) is
+refused. Drop the second and a constructor's own name token is refused. Drop the third and a
+definition answer landing on the `public` of `public class Tile` is refused. Extending it to two
+more languages is a ruling for a human, not a free extension, because the question it must not
+break has no oracle in those languages.
+
+**The third fact was wrong when this entry was first written, and it is corrected here rather than
+ratified as it stood.** It read "the cursor is inside one of that container's MEMBERS", on the
+ground that a declaration head sits outside every member and is therefore a legitimate landing
+place. A batched adversarial review found the hole and a live Roslyn 2.140.9 confirmed the shape:
+**a type referenced in a declaration HEAD was never refused**. `public class Helper : Plain`
+rendered `Use` under `to build a Plain:`; `public class Seeded(Plain seed)` rendered `Seed` and
+`Twice`; a `where T : Plain` constraint rendered `Item`; an attribute rendered the attributed
+class's members, on its own line and inline both. Roslyn emits NO constructor child for a primary
+constructor at all, and an attributed class's `range` starts at the attribute, so the old third
+fact could not fire on any of the five. It is reachable because `findTypeAnchorInText` takes the
+first non-`//` occurrence of a bare name, and a primary-constructor parameter is very often that
+first occurrence.
+
+The replacement asks a different question: a correct resolution lands on the named type's own NAME
+TOKEN, and everything else inside a container belongs to some other declaration. The container's
+name is compared at its identifier head, because Roslyn reports a generic class as `Box<T>` while
+the cursor's word is `Box` - that comparison is now what keeps a generic class and a positional
+record answering, where the old third fact was what kept them. The syntax-word list is what keeps a
+server that answers a whole-declaration span honest.
+
+**What is NOT proven, and it is the same premise the original build rests on.** The triggering
+server state was not reproduced on either run. Asked at all five head positions, this box's Roslyn
+answered `definition()` CORRECTLY every time - it pointed at `Plain`'s own name token. What is
+measured live is the shape: given a cursor at a head reference, the descent hands back the wrong
+class's members, and before this correction the refusal watched it happen.
 
 **The selection is stricter than C#'s, on purpose.** `selectSoleTypeCursor` refuses two distinct
 declaration sites for one name outright. `selectCsTypeCursor` cannot, because a C# `partial class`
@@ -1225,6 +1333,22 @@ in every language, bodies carrying the original demand with the per-language bra
 `test/impl-v59-p9-byname-leg.test.cjs`. All three `KNOWN WRONG:` rows were red at the moment the
 leg landed and before they were re-cut; that red is recorded in the phase report. Each of the six
 guards above was mutated and killed exactly the row that names it.
+
+The declaration-head correction is pinned by `test/adversarial-v59-p9-declhead.test.cjs`, over a
+symbol tree CAPTURED from the live Roslyn rather than hand-built - Roslyn's missing constructor
+child and its attribute-inclusive range are the two facts a hand-built fixture would have got
+wrong, and both are load-bearing. Six rows red before the change and green after; eight rows green
+on both sides, which is the half that matters, since a false refusal costs every correct surface
+where the gap costs one. Two mutants: deleting the syntax-word list reddens four of those eight,
+and comparing the container name whole instead of at its identifier head reddens the generic-class
+rows.
+
+The navto cursor fix has a row of its own at last, `test/adversarial-v59-p9-navto.test.cjs`, driven
+against a real in-process TypeScript language service over a real tsconfig - a fake cannot produce
+the defect, because navto's span shape IS the defect. Restoring `hit.textSpan.start` reddens the
+three name-token rows and leaves the members row green, which is the commit's own observation
+standing as an executable fact: `membersOfType` walks up the AST and survives a keyword cursor,
+`hoverSurface` does not.
 
 **Graded live, and the live run found a defect the fakes could not.** Both new legs were driven
 against real servers: a real TypeScript language service in process, and a real

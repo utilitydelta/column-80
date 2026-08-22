@@ -38,8 +38,10 @@
 // ---------------------------------------------------------------------------
 //   A13-2  216 placed cases (36 shapes x 6 contexts), graded by dotnet:
 //          0 values wrong under the new scanner, 54 wrong under the old.
-//   A13-3  1.2M random control-shaped bodies over 6 opener configurations:
-//          the old freeze mask and the new one agree on every line.
+//   A13-3  1.2M random control-shaped bodies over 6 opener configurations: the
+//          freeze mask diverges from the old scanner on an exact, pinned count
+//          per configuration. Was a blanket "they agree on every line", then a
+//          `$"` boundary that turned out to be a fact about the token list.
 //   A13-4  the ONE freeze-losing divergence in 400000 mixed random bodies,
 //          pinned - and dotnet REJECTS that body, so it is not C#.
 //   A13-5  200000 reindent/dedent round trips, known base and inferred: identity.
@@ -47,11 +49,11 @@
 //          a 5000-quote run and 200-deep nesting. No throw, no hang.
 //
 // ---------------------------------------------------------------------------
-// TWO PRE-EXISTING DEFECTS THIS PHASE FOUND, CLOSED BY SESSION-v59 PHASE 5
+// THE PRE-EXISTING DEFECTS THIS PHASE FOUND, CLOSED BY SESSION-v59 PHASE 5
 // ---------------------------------------------------------------------------
-// Both were filed as roadmap item 60 and both rows below were INVERTED to pin
-// the fix. The rows asserting the defect are gone on purpose; a row that goes
-// red because the defect came back is the point.
+// All were filed as roadmap item 60 and the rows below were INVERTED to pin the
+// fix. The rows asserting the defect are gone on purpose; a row that goes red
+// because the defect came back is the point.
 //
 //   A13-7  a raw INTERPOLATED string (`$"""`) whose hole holds a run of >= fence
 //          quotes: the scan closed the raw string early and `reindentCsBody`
@@ -63,9 +65,12 @@
 //          string's value changed. `$"` is now on the one shared opener list and
 //          pushes a tracked context. A13-8b is the same shape at statement level,
 //          where it was triaged.
-//
-// A13-3's blanket "the freeze mask never moves" was NARROWED by the same phase:
-// see its own comment for what replaced it and the measured boundary.
+//   A13-10 a `//` or `/* */` inside a hole was not read, so a quote written in
+//          the comment opened a context the compiler never sees. Giving `$"` an
+//          opener and raw strings real holes carried that gap into the shapes
+//          where real C# writes a multi-line interpolation, and CS8999 came
+//          back. Comments are read inside a hole now. A13-10b pins which shapes
+//          this was a REGRESSION in and which were already broken.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -371,21 +376,36 @@ test("A13-2 216 placed cases: the new scanner changes no value, the old one chan
 
 // ---------------------------------------------------------------------------
 // A13-3. "Nothing else moves", mechanically. 1.2M random bodies over six
-// opener configurations. Where no string is opened inside a hole and no run of
-// three quotes appears, the old freeze mask and the new one agree on every line
-// of every body.
+// opener configurations, differential against the pre-phase-13 scanner.
 //
-// NARROWED by session-v59 phase 5, which deliberately falsifies the row's
-// original "never disagree": `$"` is now a tracked context and a raw string now
-// counts its `$` sigils, so a body holding `$"` can and should change its freeze
-// mask (roadmap item 60). The row keeps its teeth by pinning the BOUNDARY
-// instead of the blanket claim: every divergence carries `$"`, none is outside
-// it, and the count is non-zero so a reverted fix reddens the row too. Measured
-// over the same population: 1129524 bodies, 70809 divergences, 70809 of them
-// holding `$"` and 0 elsewhere.
+// The row began as a blanket "the two freeze masks never disagree". Item 60
+// deliberately falsified that, and the first re-cut replaced it with a BOUNDARY:
+// "every divergence carries `$"`, none is outside it", plus a `> 0` count. Both
+// halves were wrong, and an adversarial review drove both:
+//
+//   - `> 0` accepts any count from 1 to the whole population. A mutant deleting
+//     the `$"`-still-open pop from `advanceCsLineScan` diverges on 75% MORE
+//     bodies and passed the row verbatim. A characterisation row that does not
+//     pin its number is decoration.
+//   - the `$"` boundary was a fact about THIS TOKEN LIST, not about the scanner.
+//     It held only because `JUNK` had no bare `@`, no bare `$`, and none of
+//     `$$`/`@@`/`$@`/`@$`, the sigil runs that open a context with no `$"` in
+//     the body at all. Those six tokens are in the list now, which is why the
+//     `(none)` and `@"` configs have non-zero counts below where they used to
+//     read as clean.
+//
+// So the row pins the COUNTS, per configuration, exactly. Every number here was
+// measured, and a scanner change of any kind moves one of them. Two properties
+// they carry that prose cannot: the `"""` config's zero says a plain raw string
+// is untouched, and the `$"""` count says the item 60 fix is still present.
+//
+// What the population still cannot reach, stated rather than implied: bodies
+// whose junk holds a `"""` run are dropped by the filter below, so a raw string
+// opened by the JUNK rather than by the config prefix is out of scope. Those
+// belong to A13-2, which grades them against dotnet.
 //
 // Legality is not this row's job — the population is random junk. Whether the
-// changed shapes are still CORRECT is graded by dotnet in A13-2 and A13-7/8.
+// changed shapes are still CORRECT is graded by dotnet in A13-2 and A13-7/8/10.
 // ---------------------------------------------------------------------------
 
 function frozenMask(reindent, lines) {
@@ -405,13 +425,26 @@ function mulberry(a) {
   };
 }
 
-const JUNK = ['"', '""', "'", "\\", "{", "}", "{{", "}}", "//", "/*", "*/", "a", "x;", '\\"', '$"', "(", ")", ",", ";", " ", "\\'", "b"];
+// The last six were added by the session-v59 fix round. Without them no body can
+// hold a sigil run that opens a context on its own, which is the whole reason
+// the row's old `$"` boundary looked clean.
+const JUNK = ['"', '""', "'", "\\", "{", "}", "{{", "}}", "//", "/*", "*/", "a", "x;", '\\"', '$"', "(", ")", ",", ";", " ", "\\'", "b", "@", "$", "$$", "@@", "$@", "@$"];
 
-test("A13-3 1.2M control-shaped bodies: the freeze mask moves for $\" and nowhere else", () => {
+// Divergences per opener configuration, measured. `checked` is the same for
+// every config because the filter reads the JUNK only, never the prefix.
+const A13_3_CHECKED_PER_CONFIG = 192_650;
+const A13_3_DIVERGENCES = { "(none)": 856, '@"': 211, '$@"': 1005, '@$"': 1005, '"""': 0, '$"""': 60_951 };
+const A13_3_DIVERGENCES_WITHOUT_DOLLAR_QUOTE = 435;
+
+test("A13-3 1.2M control-shaped bodies: the freeze mask diverges on exactly these counts", () => {
   const configs = ["", '@"', '$@"', '@$"', '"""', '$"""'];
-  let checked = 0;
-  let movedWithDollarQuote = 0;
+  const checked = {};
+  const diverged = {};
+  let withoutDollarQuote = 0;
   for (const prefix of configs) {
+    const key = prefix === "" ? "(none)" : prefix;
+    checked[key] = 0;
+    diverged[key] = 0;
     for (let seed = 0; seed < 200_000; seed++) {
       const r = mulberry(seed ^ 0x9e37);
       const nl = 2 + Math.floor(r() * 3);
@@ -423,13 +456,12 @@ test("A13-3 1.2M control-shaped bodies: the freeze mask moves for $\" and nowher
         junk.push(s);
       }
       // A run of three quotes opens a raw string, and a raw string opened inside
-      // a hole is precisely what this phase changed. Those bodies belong to
-      // A13-2, not here. The config's own prefix is exempt: it is the opener
-      // under test, not junk.
+      // a hole is precisely what item 60 changed. Those bodies belong to A13-2,
+      // not here. The config's own prefix is exempt: it is the opener under
+      // test, not junk.
       if (junk.some((j) => j.includes('"""'))) continue;
       const lines = ["var z = 1;", prefix + junk[0], ...junk.slice(1)];
-      const body = lines.join("\n");
-      checked++;
+      checked[key]++;
       const a = frozenMask(OLD.reindentCsBody, lines);
       const b = frozenMask(reindentCsBody, lines);
       let moved = false;
@@ -438,12 +470,23 @@ test("A13-3 1.2M control-shaped bodies: the freeze mask moves for $\" and nowher
         if (b[n] !== a[n]) moved = true;
       }
       if (!moved) continue;
-      assert.ok(body.includes('$"'), `freeze mask moved on a body with no $" in it: ${JSON.stringify(body)}`);
-      movedWithDollarQuote++;
+      diverged[key]++;
+      if (!lines.join("\n").includes('$"')) withoutDollarQuote++;
     }
   }
-  assert.ok(checked > 1_000_000, `too few bodies survived the filter: ${checked}`);
-  assert.ok(movedWithDollarQuote > 0, "no freeze mask moved at all, so the item 60 fix is gone");
+  for (const key of Object.keys(A13_3_DIVERGENCES)) {
+    assert.strictEqual(checked[key], A13_3_CHECKED_PER_CONFIG, `config ${key}: the population itself changed, so its count is not comparable`);
+  }
+  assert.deepStrictEqual(
+    diverged,
+    A13_3_DIVERGENCES,
+    "the freeze mask diverges from the pre-phase-13 scanner on a different set of bodies than the one measured; re-measure before re-pinning, and say what moved it",
+  );
+  assert.strictEqual(
+    withoutDollarQuote,
+    A13_3_DIVERGENCES_WITHOUT_DOLLAR_QUOTE,
+    'divergences carrying no `$"` at all - the count the row used to claim was zero',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -788,4 +831,178 @@ test("A13-9 a string left OPEN inside a hole now freezes the tail; at statement 
   assert.notEqual(OLD.reindentCsBody(inHole, INDENT), inHole, "the old scanner shifted it");
   assert.equal(reindentCsBody(atTop, INDENT), atTop, "at statement level the freeze is not new");
   assert.equal(OLD.reindentCsBody(atTop, INDENT), atTop, "... the old scanner did the same");
+});
+
+// ---------------------------------------------------------------------------
+// A13-10. A COMMENT INSIDE AN INTERPOLATION HOLE.
+//
+// The scanner used to read `//` and `/* */` at statement level only, on the
+// stated ground that a comment "cannot legally appear inside an interpolation
+// hole". dotnet 10.0.111 disproves that: every body in the table below compiles
+// and runs, in all three hole kinds. C# 11 allows newlines in every
+// interpolation, and a hole is C# code, so it takes C# comments.
+//
+// The cost of not reading them is a quote character the compiler never sees:
+// an `@"` or a `"""` written inside a comment opens a phantom string context
+// that never closes, and from there the freeze mask is wrong for the rest of
+// the body. Two distinct damages, and a row that grades VALUES alone sees only
+// the first:
+//
+//   - the phantom swallows the real closing delimiter's line, so a raw string's
+//     content and its delimiter are re-indented by different amounts: CS8999,
+//     compilable input to uncompilable output;
+//   - the phantom freezes everything below it, so a real `@"…"` further down
+//     never opens and its continuation line takes the indent: the value moves.
+//
+// The table is graded on both, plus the tail: the statement after the literal
+// is ordinary code and must still shift. A body whose tail stopped moving is
+// the "frozen from here down" failure, which preserves every value and loses
+// all indentation below - invisible to a value-only grade.
+//
+// Each `expect` was taken from dotnet before the row was written.
+// ---------------------------------------------------------------------------
+
+// `old` is what the PRE-phase-13 scanner does with the same body, measured, and
+// it is the reason this table cannot be fed to `csProgram`: two of the five old
+// outputs do not compile, so the three-copy program has no build.
+const COMMENT_IN_HOLE = [
+  {
+    name: "raw hole, line comment holding @\"",
+    expect: "head x|y tail",
+    frozen: [1, 4], // the raw string's first content line, and its delimiter
+    old: "same",
+    lines: [`var s = $"""`, `    head {H.J(`, `"x", // @"oops`, `"y")} tail`, `    """;`, `return s;`],
+  },
+  {
+    name: "raw hole, line comment holding a fence run",
+    expect: "head x|y tail",
+    frozen: [1, 4],
+    old: "cs8999", // the fence run closed the raw string early in BOTH scanners
+    lines: [`var s = $"""`, `    head {H.J(`, `"x", // """oops`, `"y")} tail`, `    """;`, `return s;`],
+  },
+  {
+    name: "$\" hole, line comment holding @\"",
+    expect: "xa|p\nqy",
+    frozen: [3], // the second line of the real @"p\nq"
+    old: "same",
+    lines: [`var s = $"x{H.J(`, `    "a", // note @"oops`, `    @"p`, `q")}y";`, `return s;`],
+  },
+  {
+    name: "$\" hole, block comment holding @\"",
+    expect: "xa|p\nqy",
+    frozen: [3],
+    old: "same",
+    lines: [`var s = $"x{H.J(`, `    "a", /* note @"oops */`, `    @"p`, `q")}y";`, `return s;`],
+  },
+  {
+    name: "$@\" hole, line comment holding @\"",
+    expect: "xa|p\nqy",
+    frozen: [3],
+    old: "moved", // verbatim holes were tracked all along, so this one predates phase 5
+    lines: [`var s = $@"x{H.J(`, `    "a", // note @"oops`, `    @"p`, `q")}y";`, `return s;`],
+  },
+];
+
+/** One C# program holding `pairs.length` before/after method pairs, each printing
+ *  its two values base64. Separate from `csProgram` because that one always
+ *  carries a THIRD copy from the old scanner, and an old copy that does not
+ *  compile takes the whole build down with it. */
+function pairProgram(pairs) {
+  return `using System;
+using System.Text;
+namespace Cases {
+  public static class H { public static string J(string a, string b) => a + "|" + b; }
+  public static class Before {
+${pairs.map((p, id) => method("Case", id, p.body)).join("\n")}
+  }
+  public static class After {
+${pairs.map((p, id) => method("Case", id, INDENT + p.out)).join("\n")}
+  }
+  public static class Program {
+    public static void Main() {
+${pairs
+  .map(
+    (_, id) =>
+      `      Console.WriteLine(${id} + "\\t" + Convert.ToBase64String(Encoding.UTF8.GetBytes(Before.Case${id}())) + "\\t" + Convert.ToBase64String(Encoding.UTF8.GetBytes(After.Case${id}())));`,
+  )
+  .join("\n")}
+    }
+  }
+}
+`;
+}
+
+/** id -> { before, after }, decoded, from a `pairProgram` run. */
+function pairValues(stdout) {
+  const dec = (b) => Buffer.from(b, "base64").toString("utf8");
+  const out = new Map();
+  for (const line of stdout.trim().split("\n")) {
+    const [id, before, after] = line.split("\t");
+    if (after === undefined) continue;
+    out.set(Number(id), { before: dec(before), after: dec(after) });
+  }
+  return out;
+}
+
+test("A13-10 a comment inside a hole hides its quotes: the output compiles, the tail still moves", { skip: SKIP, timeout: 600_000 }, () => {
+  const pairs = [];
+  for (const c of COMMENT_IN_HOLE) {
+    const body = c.lines.join("\n");
+    const out = reindentCsBody(body, INDENT);
+    const got = out.split("\n");
+    assert.equal(got.length, c.lines.length, `${c.name}: line count`);
+    assert.equal(
+      got[c.lines.length - 1],
+      INDENT + c.lines[c.lines.length - 1],
+      `${c.name}: a phantom string opened in the comment froze the tail, so everything below lost its indent`,
+    );
+    for (const f of c.frozen) {
+      assert.equal(got[f], c.lines[f], `${c.name}: line ${f} is string TEXT and must come back byte-exact`);
+    }
+    pairs.push({ body, out });
+  }
+  const r = dotnetRun(pairProgram(pairs));
+  assert.equal(
+    r.status,
+    0,
+    `every re-indented body must COMPILE; CS8999 is the raw delimiter re-indented away from its content\n${r.stdout.slice(-4000)}\n${r.stderr.slice(-4000)}`,
+  );
+  assert.doesNotMatch(r.stdout + r.stderr, /CS8999/, "a raw literal's lines disagree on their leading whitespace");
+  const values = pairValues(r.stdout);
+  assert.equal(values.size, COMMENT_IN_HOLE.length, "every case reached the output");
+  for (const [n, c] of COMMENT_IN_HOLE.entries()) {
+    assert.equal(values.get(n).before, c.expect, `${c.name}: the FIXTURE does not hold the value the row was written against`);
+    assert.equal(values.get(n).after, c.expect, `${c.name}: the re-indent changed the string's value`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// A13-10b. The attribution, measured rather than asserted in prose. Three of the
+// five bodies were CORRECT under the pre-phase-13 scanner and went wrong when
+// phase 5 gave `$"` an opener and made a raw string's holes real; two were
+// already broken, because a verbatim string's holes were tracked all along and a
+// fence run inside a raw hole closed the string early in both scanners.
+//
+// So the regression is real and its blast radius is three shapes, not five. That
+// number is what the commit message and S24 are allowed to say.
+// ---------------------------------------------------------------------------
+
+test("A13-10b comment-in-hole: 3 of 5 shapes are a phase-5 regression, 2 were already broken", { skip: SKIP, timeout: 600_000 }, () => {
+  const ok = COMMENT_IN_HOLE.filter((c) => c.old !== "cs8999");
+  const r = dotnetRun(pairProgram(ok.map((c) => ({ body: c.lines.join("\n"), out: OLD.reindentCsBody(c.lines.join("\n"), INDENT) }))));
+  assert.equal(r.status, 0, `the old scanner's output for these shapes still compiles\n${r.stdout.slice(-4000)}\n${r.stderr.slice(-4000)}`);
+  const values = pairValues(r.stdout);
+  const outcome = new Map(ok.map((c, n) => [c.name, values.get(n).after === values.get(n).before ? "same" : "moved"]));
+  for (const c of COMMENT_IN_HOLE) {
+    if (c.old === "cs8999") continue;
+    assert.equal(outcome.get(c.name), c.old, `${c.name}: what the PRE-phase-13 scanner did with this body`);
+  }
+  // The two the old scanner could not compile either, one at a time so the
+  // failure is attributable to a body rather than to the batch.
+  for (const c of COMMENT_IN_HOLE.filter((x) => x.old === "cs8999")) {
+    const body = c.lines.join("\n");
+    const bad = dotnetRun(pairProgram([{ body, out: OLD.reindentCsBody(body, INDENT) }]));
+    assert.notEqual(bad.status, 0, `${c.name}: the old scanner's output was supposed to be the PRE-EXISTING CS8999`);
+    assert.match(bad.stdout + bad.stderr, /CS8999/, `${c.name}: rejected, but not for the whitespace rule`);
+  }
 });
