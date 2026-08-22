@@ -47,20 +47,25 @@
 //          a 5000-quote run and 200-deep nesting. No throw, no hang.
 //
 // ---------------------------------------------------------------------------
-// TWO PRE-EXISTING DEFECTS THIS PHASE DID NOT INTRODUCE AND DID NOT CLOSE
+// TWO PRE-EXISTING DEFECTS THIS PHASE FOUND, CLOSED BY SESSION-v59 PHASE 5
 // ---------------------------------------------------------------------------
+// Both were filed as roadmap item 60 and both rows below were INVERTED to pin
+// the fix. The rows asserting the defect are gone on purpose; a row that goes
+// red because the defect came back is the point.
+//
 //   A13-7  a raw INTERPOLATED string (`$"""`) whose hole holds a run of >= fence
-//          quotes: the scan closes the raw string early and `reindentCsBody`
-//          emits C# THAT DOES NOT COMPILE (CS8999). Byte-identical before and
-//          after this phase.
-//   A13-8  a `@"..."` inside a `$"..."` (non-verbatim interpolated) hole is not
-//          modelled at all, so the quote count desynchronises and a later
-//          string's value changes. Byte-identical before and after this phase.
-//          This one matters to the review because the new code comment claims
-//          the merged branch means "a string opened inside a hole is recognised
-//          by the same openers that recognise one at statement level". That is
-//          true for a VERBATIM string's hole and false for a `$"` hole, because
-//          `$"` is never pushed as a context.
+//          quotes: the scan closed the raw string early and `reindentCsBody`
+//          emitted C# THAT DID NOT COMPILE (CS8999). `CsStrCtx` now carries a
+//          raw string's `$` count and a real hole depth. A13-7b covers the other
+//          half: a hole that spans lines.
+//   A13-8  a `@"..."` inside a `$"..."` (non-verbatim interpolated) hole was not
+//          modelled at all, so the quote count desynchronised and a later
+//          string's value changed. `$"` is now on the one shared opener list and
+//          pushes a tracked context. A13-8b is the same shape at statement level,
+//          where it was triaged.
+//
+// A13-3's blanket "the freeze mask never moves" was NARROWED by the same phase:
+// see its own comment for what replaced it and the measured boundary.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -369,6 +374,18 @@ test("A13-2 216 placed cases: the new scanner changes no value, the old one chan
 // opener configurations. Where no string is opened inside a hole and no run of
 // three quotes appears, the old freeze mask and the new one agree on every line
 // of every body.
+//
+// NARROWED by session-v59 phase 5, which deliberately falsifies the row's
+// original "never disagree": `$"` is now a tracked context and a raw string now
+// counts its `$` sigils, so a body holding `$"` can and should change its freeze
+// mask (roadmap item 60). The row keeps its teeth by pinning the BOUNDARY
+// instead of the blanket claim: every divergence carries `$"`, none is outside
+// it, and the count is non-zero so a reverted fix reddens the row too. Measured
+// over the same population: 1129524 bodies, 70809 divergences, 70809 of them
+// holding `$"` and 0 elsewhere.
+//
+// Legality is not this row's job — the population is random junk. Whether the
+// changed shapes are still CORRECT is graded by dotnet in A13-2 and A13-7/8.
 // ---------------------------------------------------------------------------
 
 function frozenMask(reindent, lines) {
@@ -390,9 +407,10 @@ function mulberry(a) {
 
 const JUNK = ['"', '""', "'", "\\", "{", "}", "{{", "}}", "//", "/*", "*/", "a", "x;", '\\"', '$"', "(", ")", ",", ";", " ", "\\'", "b"];
 
-test("A13-3 1.2M control-shaped bodies: the old freeze mask and the new one never disagree", () => {
+test("A13-3 1.2M control-shaped bodies: the freeze mask moves for $\" and nowhere else", () => {
   const configs = ["", '@"', '$@"', '@$"', '"""', '$"""'];
   let checked = 0;
+  let movedWithDollarQuote = 0;
   for (const prefix of configs) {
     for (let seed = 0; seed < 200_000; seed++) {
       const r = mulberry(seed ^ 0x9e37);
@@ -414,13 +432,18 @@ test("A13-3 1.2M control-shaped bodies: the old freeze mask and the new one neve
       checked++;
       const a = frozenMask(OLD.reindentCsBody, lines);
       const b = frozenMask(reindentCsBody, lines);
+      let moved = false;
       for (let n = 1; n < lines.length; n++) {
         if (b[n] === null) continue;
-        assert.equal(b[n], a[n], `freeze mask moved at line ${n} of ${JSON.stringify(body)}`);
+        if (b[n] !== a[n]) moved = true;
       }
+      if (!moved) continue;
+      assert.ok(body.includes('$"'), `freeze mask moved on a body with no $" in it: ${JSON.stringify(body)}`);
+      movedWithDollarQuote++;
     }
   }
   assert.ok(checked > 1_000_000, `too few bodies survived the filter: ${checked}`);
+  assert.ok(movedWithDollarQuote > 0, "no freeze mask moved at all, so the item 60 fix is gone");
 });
 
 // ---------------------------------------------------------------------------
@@ -528,46 +551,149 @@ test("A13-6 pathological input: 13 shapes, no throw and no hang", () => {
 });
 
 // ---------------------------------------------------------------------------
-// A13-7. PRE-EXISTING, unchanged by this phase, and it produces C# that does
-// not compile. A raw INTERPOLATED string whose hole holds a run of >= fence
-// quotes: `csRawClose` finds that run and closes the string early, so the real
-// closing-delimiter line is classified as code and gets the indent while the
-// content lines stay put. CS8999.
+// A13-7. INVERTED by session-v59 phase 5 (roadmap item 60, queue Q16b). The row
+// used to pin the DEFECT and its byte-identity with the pre-phase-13 scanner:
+// `CsStrCtx` pinned `holeDepth: 0` for `kind: "raw"`, so a hole inside
+// `$"""…"""` was scanned as string TEXT, `csRawClose` took the run of `>= fence`
+// quotes inside the hole as the close, and `reindentCsBody` shifted the real
+// closing-delimiter line away from its content. CS8999 out of compilable in.
+//
+// The scanner now carries a raw string's `$` count and tracks its holes, so the
+// row pins the fix instead: the literal comes back byte-exact, the bytes DIVERGE
+// from the old scanner (equality here would mean the fix was reverted), and
+// dotnet compiles AND runs the output to the same value as the input.
 // ---------------------------------------------------------------------------
 
 const RAW_INTERP_HOLE = [`var s = H.Fmt($"""`, `    a{@"say ""hi"""}b`, `    """);`, `return s;`].join("\n");
 
-test("A13-7 a raw-interpolated hole holding a quote run: the output is uncompilable, and byte-identical before and after this phase", { skip: SKIP, timeout: 600_000 }, () => {
+test("A13-7 a raw-interpolated hole holding a quote run: the literal is frozen, and the output compiles to the same value", { skip: SKIP, timeout: 600_000 }, () => {
   const nu = reindentCsBody(RAW_INTERP_HOLE, INDENT);
-  assert.equal(nu, OLD.reindentCsBody(RAW_INTERP_HOLE, INDENT), "this phase did not change this shape");
-  // The closing delimiter moved and the content line did not, which is exactly
-  // the thing C# forbids.
+  assert.notEqual(nu, OLD.reindentCsBody(RAW_INTERP_HOLE, INDENT), "the old scanner's bytes came back, so the Q16b fix is gone");
   const src = RAW_INTERP_HOLE.split("\n");
   const out = nu.split("\n");
-  assert.equal(out[1], src[1], "the content line stayed put");
-  assert.equal(out[2], INDENT + src[2], "the closing delimiter was shifted away from it");
+  assert.equal(out[1], src[1], "the content line is frozen");
+  assert.equal(out[2], src[2], "the closing delimiter is frozen WITH it - this is the whole CS8999 fix");
+  assert.equal(out[3], INDENT + src[3], "code after the literal still moves, so this is not a whole-body freeze");
   const wrap = (body) => `using System;
+using System.Text;
 class H { public static int N = 7; public static string Fmt(string x) => x; }
 class Program {
-  static string A() {
+  static string Before() {
+${RAW_INTERP_HOLE}
+  }
+  static string After() {
 ${body}
   }
-  public static void Main() { Console.WriteLine(A()); }
+  public static void Main() {
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(Before())));
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(After())));
+  }
 }
 `;
-  assert.equal(dotnetRun(wrap(RAW_INTERP_HOLE)).status, 0, "the input is legal C#");
-  const bad = dotnetRun(wrap(INDENT + nu));
-  assert.notEqual(bad.status, 0, "the reindented output compiled, so this claim is stale");
-  assert.match(bad.stdout + bad.stderr, /CS8999/, "line does not start with the same whitespace as the closing line of the raw string literal");
+  const r = dotnetRun(wrap(INDENT + nu));
+  assert.equal(r.status, 0, `the re-indented output must COMPILE; CS8999 here is the defect back\n${r.stdout.slice(-3000)}${r.stderr.slice(-2000)}`);
+  assert.doesNotMatch(r.stdout + r.stderr, /CS8999/, "the raw literal's lines disagree on their leading whitespace again");
+  const [before, after] = r.stdout.trim().split("\n");
+  assert.equal(after, before, "the re-indent changed the string's value");
 });
 
 // ---------------------------------------------------------------------------
-// A13-8. PRE-EXISTING, unchanged by this phase. A `@"..."` inside a `$"..."`
-// hole is not modelled: `$"` is scanned as a plain regular string, so the scan
-// stops at the verbatim string's OPENING quote and the quote count
-// desynchronises. Found by generating legal C# and running it: 1 wrong value in
-// 1200 generated bodies under the new scanner, and the old scanner emits the
-// same bytes for it.
+// A13-7b. The other half of a raw string's `$` count, and the reason a hole line
+// is CODE rather than frozen: a line that BEGINS inside a `$"""` hole is exempt
+// from the closing delimiter's whitespace rule, so shifting it is legal and
+// value-preserving. Measured on dotnet 10.0.111 before the row was written - the
+// same body at two different hole columns compiles to one value.
+// ---------------------------------------------------------------------------
+
+const RAW_HOLE_SPANS = [`var s = $"""`, `    head {H.J(`, `"x", "y")} tail`, `    """;`, `return s;`].join("\n");
+
+test("A13-7b a $\"\"\" hole that spans lines: the hole's line is code and moves, the text lines do not", { skip: SKIP, timeout: 600_000 }, () => {
+  const nu = reindentCsBody(RAW_HOLE_SPANS, INDENT);
+  const src = RAW_HOLE_SPANS.split("\n");
+  const out = nu.split("\n");
+  assert.equal(out[1], src[1], "the text line that OPENS the hole is frozen");
+  assert.equal(out[2], INDENT + src[2], "the line that BEGINS inside the hole is code and shifts");
+  assert.equal(out[3], src[3], "the closing delimiter is frozen");
+  const prog = `using System;
+using System.Text;
+class H { public static int N = 7;
+  public static string Fmt(string x) => "<" + x + ">";
+  public static string J(string a, string b) => a + "|" + b; }
+class Program {
+  static string Before() {
+${RAW_HOLE_SPANS}
+  }
+  static string After() {
+${INDENT + nu}
+  }
+  public static void Main() {
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(Before())));
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(After())));
+  }
+}
+`;
+  const r = dotnetRun(prog);
+  assert.equal(r.status, 0, `both bodies must compile\n${r.stdout.slice(-3000)}${r.stderr.slice(-2000)}`);
+  const [before, after] = r.stdout.trim().split("\n");
+  assert.equal(after, before, "shifting the hole's line changed the string's value");
+});
+
+// ---------------------------------------------------------------------------
+// A13-7c. The `$` COUNT, which is the part of the raw fix nothing else reaches:
+// with two dollars a hole opens on a run of TWO braces and a lone `{` is literal
+// text. dotnet rejects `{{` as an escape at one dollar (CS9006), so the count has
+// to be carried rather than assumed.
+//
+// The shape is chosen so a scanner that ignores the count FAILS here, which the
+// first cut of this row did not do: `a{b` opens a phantom hole at one dollar, the
+// brace arithmetic never returns to zero, and the closing-delimiter line is
+// classified as code and shifted - CS8999 again. Verified by mutation: clamping
+// `dollars` to 1 reddens this row and nothing else in the file.
+// ---------------------------------------------------------------------------
+
+const RAW_TWO_DOLLARS = [`var s = H.Fmt($$"""`, `    a{b {{H.N}} c`, `    """);`, `return s;`].join("\n");
+
+test("A13-7c a $$\"\"\" raw string: the hole needs two braces, and the literal's lines stay frozen", { skip: SKIP, timeout: 600_000 }, () => {
+  const nu = reindentCsBody(RAW_TWO_DOLLARS, INDENT);
+  const src = RAW_TWO_DOLLARS.split("\n");
+  const out = nu.split("\n");
+  assert.equal(out[1], src[1], "the content line holding the hole is frozen");
+  assert.equal(out[2], src[2], "the closing delimiter is frozen with it");
+  assert.equal(out[3], INDENT + src[3], "the statement after the literal is code and shifts");
+  const prog = `using System;
+using System.Text;
+class H { public static int N = 7;
+  public static string Fmt(string x) => "<" + x + ">";
+  public static string J(string a, string b) => a + "|" + b; }
+class Program {
+  static string Before() {
+${RAW_TWO_DOLLARS}
+  }
+  static string After() {
+${INDENT + nu}
+  }
+  public static void Main() {
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(Before())));
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(After())));
+  }
+}
+`;
+  const r = dotnetRun(prog);
+  assert.equal(r.status, 0, `both bodies must compile\n${r.stdout.slice(-3000)}${r.stderr.slice(-2000)}`);
+  const [before, after] = r.stdout.trim().split("\n");
+  assert.equal(after, before, "the re-indent changed a two-dollar raw string's value");
+});
+
+// ---------------------------------------------------------------------------
+// A13-8. INVERTED by session-v59 phase 5 (roadmap item 60, queue Q16c). The row
+// used to pin the DEFECT: `$"` had no opener, so it was scanned as a plain
+// regular string, the scan stopped at the OPENING quote of a `@"` inside its
+// hole, the quote count desynchronised, and a later line sitting in a real
+// `$@"…"` string's TEXT was shifted and lost its value.
+//
+// `$"` is now a tracked context with its own holes, so the row pins the fix: the
+// bytes DIVERGE from the old scanner, the line inside the string's text is
+// frozen, and dotnet runs both bodies to the SAME value.
 // ---------------------------------------------------------------------------
 
 const DOLLAR_HOLE = [
@@ -576,11 +702,11 @@ const DOLLAR_HOLE = [
   `return s;`,
 ].join("\n");
 
-test("A13-8 a verbatim string inside a $\"...\" hole still changes a value, identically before and after", { skip: SKIP, timeout: 600_000 }, () => {
+test("A13-8 a verbatim string inside a $\"...\" hole no longer desynchronises the quote count", { skip: SKIP, timeout: 600_000 }, () => {
   const nu = reindentCsBody(DOLLAR_HOLE, INDENT);
-  assert.equal(nu, OLD.reindentCsBody(DOLLAR_HOLE, INDENT), "this phase did not change this shape");
+  assert.notEqual(nu, OLD.reindentCsBody(DOLLAR_HOLE, INDENT), "the old scanner's bytes came back, so the Q16c fix is gone");
   const src = DOLLAR_HOLE.split("\n");
-  assert.equal(nu.split("\n")[1], INDENT + src[1], "line 1 is inside the $@\"...\" string's TEXT and was shifted anyway");
+  assert.equal(nu.split("\n")[1], src[1], "line 1 is inside the $@\"...\" string's TEXT and is now frozen");
   const prog = `using System;
 using System.Text;
 class H { public static int N = 7;
@@ -602,7 +728,49 @@ ${INDENT + nu}
   const r = dotnetRun(prog);
   assert.equal(r.status, 0, `the reproducer must compile\n${r.stdout.slice(-3000)}${r.stderr.slice(-2000)}`);
   const [before, after] = r.stdout.trim().split("\n");
-  assert.notEqual(before, after, "the value did not move, so this claim is stale");
+  assert.equal(after, before, "the re-indent still moves this value");
+});
+
+// ---------------------------------------------------------------------------
+// A13-8b. The same desync at STATEMENT level, which is where it was triaged: the
+// missing `$"` opener is in the one shared opener list, so a `@"` inside a `$"`
+// hole loses the count whether or not an outer string is open. A second physical
+// line inside the `@"…"` proves the count, because only a scan that is still
+// inside a string freezes it.
+// ---------------------------------------------------------------------------
+
+const DOLLAR_TOPLEVEL = [`var s = $"a{@"p`, `q"}b";`, `var t = @"x`, `y";`, `return H.J(s, t);`].join("\n");
+
+test("A13-8b a $\"…\" hole at statement level keeps the quote count, so the string after it holds its value", { skip: SKIP, timeout: 600_000 }, () => {
+  const nu = reindentCsBody(DOLLAR_TOPLEVEL, INDENT);
+  assert.notEqual(nu, OLD.reindentCsBody(DOLLAR_TOPLEVEL, INDENT), "the old scanner's bytes came back, so the Q16c fix is gone");
+  const src = DOLLAR_TOPLEVEL.split("\n");
+  const out = nu.split("\n");
+  assert.equal(out[1], src[1], "line 1 sits in the @\"…\" text inside the hole and is frozen");
+  assert.equal(out[3], src[3], "line 3 sits in the LATER @\"…\" text and is frozen");
+  assert.equal(out[4], INDENT + src[4], "the statement after both strings is code and shifts");
+  const prog = `using System;
+using System.Text;
+class H { public static int N = 7;
+  public static string Fmt(string x) => "<" + x + ">";
+  public static string J(string a, string b) => a + "|" + b; }
+class Program {
+  static string Before() {
+${DOLLAR_TOPLEVEL}
+  }
+  static string After() {
+${INDENT + nu}
+  }
+  public static void Main() {
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(Before())));
+    Console.WriteLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(After())));
+  }
+}
+`;
+  const r = dotnetRun(prog);
+  assert.equal(r.status, 0, `both bodies must compile\n${r.stdout.slice(-3000)}${r.stderr.slice(-2000)}`);
+  const [before, after] = r.stdout.trim().split("\n");
+  assert.equal(after, before, "the re-indent moved a value after a $\"…\" hole");
 });
 
 // ---------------------------------------------------------------------------

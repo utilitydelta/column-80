@@ -1180,31 +1180,46 @@ export function isCsAddImportAction(action: { title?: unknown; data?: unknown })
 // quote), a raw string `"""..."""` (a run of >=3 quotes, closed by a run of the
 // same length), and a `/* */` block comment (does NOT freeze the line — a
 // comment line shifts fine — but a quote inside it must not open a string).
-// Regular `"..."` strings and `'x'` char literals never span physical lines in
+// A plain `"..."` string and a `'x'` char literal never span physical lines in
 // C# (a newline inside is a compile error), so they carry no cross-line state.
+// An INTERPOLATED `$"..."` is different and it is why `$"` is a tracked context
+// too: its TEXT still cannot span a line, but since C# 11 its `{...}` hole can,
+// so a `@"p<newline>q"` inside that hole is legal and the scan must be inside a
+// string when the next line starts. Measured on dotnet 10.0.111.
 //
-// A verbatim string may be INTERPOLATED (`$@"..."` or `@$"..."`): a `{...}` hole
-// carries C# code, where a `"` (e.g. `{x.ToString("C")}`) is NOT the string's
-// close and a `{{`/`}}` is an escaped literal brace. The scan tracks hole depth
-// so a quote inside a hole never mis-closes the string; a line whose start is
-// inside a hole is CODE (shifted), a line inside the string TEXT is frozen.
+// Any of the three quote shapes may be INTERPOLATED (`$@"..."` / `@$"..."`,
+// `$"..."`, `$"""..."""`): a `{...}` hole carries C# code, where a `"` (e.g.
+// `{x.ToString("C")}`) is NOT the string's close and a `{{`/`}}` is an escaped
+// literal brace. The scan tracks hole depth so a quote inside a hole never
+// mis-closes the string; a line whose start is inside a hole is CODE (shifted),
+// a line inside the string TEXT is frozen.
+//
+// A RAW string counts its `$` sigils: N dollars means a hole opens on a run of N
+// braces and closes on a run of N, and `{{` is not an escape at N=1 (dotnet
+// rejects it with CS9006). A line that begins inside a raw hole is exempt from
+// the closing delimiter's whitespace rule, so shifting it is legal and value
+// preserving — measured, not assumed (row A13-7b).
 // ---------------------------------------------------------------------------
 
-/** One line-spanning string context. `holeDepth` is the brace depth inside an
- *  interpolated verbatim string's `{...}` holes; 0 means the scan is in that
- *  string's TEXT. A raw string carries no hole depth, because this scanner has
- *  never tracked holes inside one and widening that is not this phase.
+/** One line-spanning string context. `holeDepth` is the brace depth inside the
+ *  string's `{...}` holes; 0 means the scan is in that string's TEXT, and that
+ *  one number is what decides whether a line is frozen or shifted.
  *
- *  That gap has a sharp edge, and it is worse than a shifted byte: in a raw
- *  INTERPOLATED string a hole holding a run of `>=` fence quotes closes the
- *  string early, so the closing delimiter's line is classified as code and
- *  re-indented away from its content, and the C# that comes out DOES NOT
- *  COMPILE (CS8999). Pre-existing, byte-identical before and after phase 13,
- *  filed as roadmap item 60 (formerly queue Q16b) and pinned live by row A13-7 of
- *  `test/adversarial-v55-p13-scanner-stack.test.cjs`. */
+ *  Every kind carries a real hole depth. A raw string used to pin it at 0, and
+ *  that gap was worse than a shifted byte: a hole holding a run of `>= fence`
+ *  quotes closed the string early, the closing delimiter's line was classified
+ *  as code and re-indented away from its content, and the C# that came out DID
+ *  NOT COMPILE (CS8999 on input that compiled). Roadmap item 60, closed by row
+ *  A13-7 of `test/adversarial-v55-p13-scanner-stack.test.cjs`.
+ *
+ *  `dollars` is a raw string's `$` count: 0 is not interpolated, N means a hole
+ *  opens and closes on a run of N braces. `interp` is the verbatim equivalent.
+ *  A `$"..."` needs neither — it is always interpolated and its holes are always
+ *  one brace. */
 type CsStrCtx =
   | { kind: "verbatim"; interp: boolean; holeDepth: number }
-  | { kind: "raw"; fence: number; holeDepth: 0 };
+  | { kind: "interp"; holeDepth: number }
+  | { kind: "raw"; fence: number; dollars: number; holeDepth: number };
 
 interface CsLineScan {
   /** The open string contexts, innermost LAST. Empty means ordinary code.
@@ -1231,10 +1246,12 @@ interface CsLineScan {
 /** Is the scan sitting in string TEXT - bytes a re-indent must not touch?
  *
  *  The innermost context decides, which is the whole point of the stack: inside
- *  an interpolated verbatim string's `{...}` hole the answer is NO, that is C#
- *  code and it moves, but inside a string opened WITHIN that hole it is yes
- *  again. Both callers ask this one question so the two directions cannot
- *  disagree about which bytes are a value. */
+ *  any interpolated string's `{...}` hole the answer is NO, that is C# code and
+ *  it moves, but inside a string opened WITHIN that hole it is yes again. A raw
+ *  string's hole answers the same way, and dotnet agrees: a line beginning
+ *  inside one is exempt from the closing delimiter's whitespace rule and shifts
+ *  without changing the value. Both callers ask this one question so the two
+ *  directions cannot disagree about which bytes are a value. */
 function csScanFrozen(s: CsLineScan): boolean {
   const top = s.open[s.open.length - 1];
   return top !== undefined && top.holeDepth === 0;
@@ -1297,6 +1314,18 @@ function csRawClose(line: string, from: number, fence: number): number {
  *  scanPyStringState: consume any carried string/comment, then scan the rest of
  *  the line as code, opening the shapes that can span into the next line. */
 function advanceCsLineScan(line: string, s: CsLineScan): void {
+  scanCsLine(line, s);
+  // A `$"..."` whose TEXT is still open at the end of the line is not C# — only
+  // its HOLE may hold a newline. Drop it, so a truncated reply leaves the tail
+  // as code exactly as it did when `$"` was scanned as a plain string. An open
+  // HOLE (holeDepth > 0) is legal and carries.
+  const top = s.open[s.open.length - 1];
+  if (top?.kind === "interp" && top.holeDepth === 0) {
+    s.open.pop();
+  }
+}
+
+function scanCsLine(line: string, s: CsLineScan): void {
   const n = line.length;
   let i = 0;
   while (i < n) {
@@ -1310,16 +1339,49 @@ function advanceCsLineScan(line: string, s: CsLineScan): void {
       continue;
     }
     const top = s.open[s.open.length - 1];
-    if (top?.kind === "raw") {
-      const close = csRawClose(line, i, top.fence);
-      if (close < 0) {
+    if (top?.kind === "raw" && top.holeDepth === 0) {
+      // RAW STRING TEXT. Whichever comes first wins: the closing fence, or a
+      // hole opened by a run of `dollars` braces. Scanning for the fence alone
+      // was the CS8999 defect — a quote run inside a hole is not a close.
+      const next = csRawTextStep(line, i, top);
+      if (next < 0) {
         return; // raw string continues to the next line
       }
-      i = close;
-      s.open.pop();
+      if (top.holeDepth === 0) {
+        s.open.pop(); // the fence closed it; a hole leaves holeDepth at 1
+      }
+      i = next;
       continue;
     }
-    if (top !== undefined && top.holeDepth === 0) {
+    if (top?.kind === "interp" && top.holeDepth === 0) {
+      // `$"..."` TEXT: a REGULAR string's escapes (`\"`, not `""`) plus holes.
+      const ch = line[i];
+      if (ch === "\\") {
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        s.open.pop();
+        i++;
+        continue;
+      }
+      if (ch === "{") {
+        if (line[i + 1] === "{") {
+          i += 2; // {{ is an escaped literal brace in the string text
+          continue;
+        }
+        top.holeDepth = 1;
+        i++;
+        continue;
+      }
+      if (ch === "}" && line[i + 1] === "}") {
+        i += 2; // }} is an escaped literal brace in the string text
+        continue;
+      }
+      i++;
+      continue;
+    }
+    if (top?.kind === "verbatim" && top.holeDepth === 0) {
       // VERBATIM STRING TEXT. `""` is the escape, `\` is a literal character,
       // and `{` opens a hole only when the string is interpolated.
       const ch = line[i];
@@ -1351,16 +1413,9 @@ function advanceCsLineScan(line: string, s: CsLineScan): void {
     // CODE: either nothing is open, or the innermost context is an interpolation
     // hole, whose contents are C#. ONE branch for both, which is what lets a
     // string opened inside a hole be recognised by the same openers that
-    // recognise one at statement level - the defect this phase fixes was that
-    // the hole had its own, shorter, list.
-    //
-    // What that shared list does NOT contain, at EITHER level, is `$"` - a
-    // regular interpolated string. Its `{...}` hole is modelled nowhere, so a
-    // `@"` opened inside one desynchronises the quote count and a later
-    // string's value can move. The parity above is real, but it is parity with
-    // a statement level that has the same hole; roadmap item 60 (formerly queue
-    // Q16c), pinned live by row A13-8 of
-    // `test/adversarial-v55-p13-scanner-stack.test.cjs`.
+    // recognise one at statement level. Every quote shape C# has is on that one
+    // list, `$"` included: leaving it off was what let a `@"` inside a `$"` hole
+    // desynchronise the quote count (roadmap item 60, row A13-8).
     const inHole = top !== undefined;
     const c = line[i];
     const c2 = line[i + 1];
@@ -1381,32 +1436,36 @@ function advanceCsLineScan(line: string, s: CsLineScan): void {
       continue;
     }
     if (inHole && c === "}") {
+      // A raw string's hole closes on a run of `dollars` braces, so at the
+      // outermost hole level the whole run is one closer; deeper in, a `}` is
+      // just a code block ending and counts one.
+      const run = top.kind === "raw" ? top.dollars : 1;
+      if (top.holeDepth === 1 && run > 1) {
+        let b = 0;
+        while (line[i + b] === "}") {
+          b++;
+        }
+        if (b >= run) {
+          top.holeDepth = 0;
+          i += run;
+          continue;
+        }
+      }
       top.holeDepth--; // 0 puts the scan back in the enclosing string's TEXT
       i++;
       continue;
     }
-    // Verbatim string openers: @" (plain), and the interpolated $@" / @$" forms.
-    if (((c === "$" && c2 === "@") || (c === "@" && c2 === "$")) && line[i + 2] === '"') {
-      s.open.push({ kind: "verbatim", interp: true, holeDepth: 0 });
-      i += 3;
-      continue;
-    }
-    if (c === "@" && c2 === '"') {
-      s.open.push({ kind: "verbatim", interp: false, holeDepth: 0 });
-      i += 2;
-      continue;
-    }
-    if (c === '"') {
-      let q = 0;
-      while (line[i + q] === '"') {
-        q++;
-      }
-      if (q >= 3) {
-        s.open.push({ kind: "raw", fence: q, holeDepth: 0 }); // the carry above finds its close
-        i += q;
+    if (c === "$" || c === "@" || c === '"') {
+      const opened = csOpenString(line, i, s);
+      if (opened > i) {
+        i = opened;
         continue;
       }
-      i = skipCsRegularString(line, i, n); // a regular "..." closes on this line
+      if (c === '"') {
+        i = skipCsRegularString(line, i, n); // a regular "..." closes on this line
+        continue;
+      }
+      i++; // a bare `$` or `@` that introduces no string, e.g. `@class`
       continue;
     }
     if (c === "'") {
@@ -1415,6 +1474,89 @@ function advanceCsLineScan(line: string, s: CsLineScan): void {
     }
     i++;
   }
+}
+
+/** Consume the raw string TEXT starting at `i`, stopping at whichever comes
+ *  first: the closing fence (the context is left for the caller to pop) or a
+ *  hole, which is opened in place by setting `holeDepth`. Returns the index to
+ *  resume at, or -1 when the text runs to the end of the line. */
+function csRawTextStep(line: string, i: number, top: { fence: number; dollars: number; holeDepth: number }): number {
+  if (top.dollars === 0) {
+    return csRawClose(line, i, top.fence);
+  }
+  const n = line.length;
+  let k = i;
+  while (k < n) {
+    if (line[k] === "{") {
+      let b = 0;
+      while (line[k + b] === "{") {
+        b++;
+      }
+      // A run longer than `dollars` is literal content up to the LAST `dollars`
+      // braces, which are the opener: `$$"""lit{{{n}}}"""` renders `lit{7}`.
+      if (b >= top.dollars) {
+        top.holeDepth = 1;
+        return k + b;
+      }
+      k += b;
+      continue;
+    }
+    if (line[k] === '"') {
+      let q = 0;
+      while (line[k + q] === '"') {
+        q++;
+      }
+      if (q >= top.fence) {
+        return k + q;
+      }
+      k += q;
+      continue;
+    }
+    k++;
+  }
+  return -1;
+}
+
+/** Push the string context opened at `i`, if one is. Returns the index past the
+ *  opening delimiter, or `i` when these characters open nothing that can carry.
+ *
+ *  One list for every quote shape: a run of `$`/`@` sigils and then the quotes
+ *  they apply to. `@` anywhere in the run means verbatim; otherwise three or
+ *  more quotes is raw and one is a plain or `$`-interpolated string. */
+function csOpenString(line: string, i: number, s: CsLineScan): number {
+  let dollars = 0;
+  let at = 0;
+  let j = i;
+  while (line[j] === "$" || line[j] === "@") {
+    if (line[j] === "$") {
+      dollars++;
+    } else {
+      at++;
+    }
+    j++;
+  }
+  if (line[j] !== '"') {
+    return i;
+  }
+  if (at > 0) {
+    // `@"""x"""` is a verbatim string, not a raw one; its text branch reads the
+    // doubled quotes as escapes, which is what C# does.
+    s.open.push({ kind: "verbatim", interp: dollars > 0, holeDepth: 0 });
+    return j + 1;
+  }
+  let q = 0;
+  while (line[j + q] === '"') {
+    q++;
+  }
+  if (q >= 3) {
+    s.open.push({ kind: "raw", fence: q, dollars, holeDepth: 0 });
+    return j + q;
+  }
+  if (dollars > 0) {
+    s.open.push({ kind: "interp", holeDepth: 0 });
+    return j + 1;
+  }
+  return i; // a plain `"..."`, which closes on this line and carries nothing
 }
 
 /** Re-indent a generated C# definition so a nested target's body lands at the
@@ -1436,8 +1578,8 @@ export function reindentCsBody(generated: string, indent: string): string {
   const out: string[] = [];
   for (let n = 0; n < lines.length; n++) {
     const line = lines[n];
-    // Frozen (byte-exact) only inside string TEXT: a line whose start is inside a
-    // verbatim string's {...} interpolation hole is code and still gets shifted.
+    // Frozen (byte-exact) only inside string TEXT: a line whose start is inside
+    // any interpolation hole is code and still gets shifted.
     const frozen = csScanFrozen(s);
     if (frozen || line.trim() === "") {
       out.push(line);
@@ -1453,9 +1595,9 @@ export function reindentCsBody(generated: string, indent: string): string {
 
 /** Normalise C# code read out of a document to its own column zero, the inverse
  *  of reindentCsBody. Frozen on the same condition that leg freezes on: inside a
- *  verbatim string's TEXT (a line starting inside a `{...}` interpolation hole
- *  is code and moves) or inside a raw string, decided by the SAME scan, so the
- *  two directions can never disagree about which bytes are a string's value. */
+ *  string's TEXT, verbatim or raw (a line starting inside a `{...}` interpolation
+ *  hole is code and moves), decided by the SAME scan, so the two directions can
+ *  never disagree about which bytes are a string's value. */
 export function dedentCsBody(code: string, known?: string): string {
   const lines = code.split("\n");
   const s: CsLineScan = { open: [], block: false };

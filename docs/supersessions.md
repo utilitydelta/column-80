@@ -971,6 +971,45 @@ what happened, and hand over the provider's own words everywhere else.
 `test/adversarial-v58-p7.test.cjs`, whose unlisted-status rows were re-cut to pin that the
 provider's reason survives to the screen - the property whose absence was the defect.
 
+## S24. The C# re-indent freeze mask moves for `$"`, and only for `$"`
+
+**NOT YET RATIFIED.** Session-v59 phase 5, closing roadmap item 60. The fix itself was ratified as
+a shape at filing time; what needs a call is the differential claim it falsifies.
+
+**What changed.** `advanceCsLineScan` gained a `$"` opener that pushes a tracked context, and
+`CsStrCtx` gave `kind: "raw"` a real hole depth plus its `$` count. Two rows in
+`test/adversarial-v55-p13-scanner-stack.test.cjs` asserted the DEFECT and were inverted on purpose:
+A13-7 asserted the output was uncompilable and byte-identical to the pre-phase-13 scanner, A13-8
+asserted a value still moved. Both now pin the corrected behaviour, and A13-7b and A13-8b were
+added beside them.
+
+**Why the old behaviour was wrong.** A hole inside `$"""…"""` was scanned as string TEXT, so a run
+of fence quotes in the hole closed the string early, the closing delimiter's line took the indent
+while its content lines did not, and dotnet 10.0.111 rejected the re-indented output of compilable
+input with CS8999. That is the product emitting C# that does not build.
+
+**The narrowing that needs the call.** A13-3 asserted, over 1.2M random bodies and six opener
+configurations, that the old freeze mask and the new one *never disagree*. That is now false by
+design. The row was re-cut to pin the BOUNDARY instead: measured over the same population, 1129524
+bodies produce 70809 divergences, every one of them holds `$"`, and none is outside it. The row
+also fails if the divergence count reaches zero, so a reverted fix reddens it in the other
+direction.
+
+**What the divergence is worth.** The population is random junk, so the row says nothing about
+legality. Correctness on real C# is graded by dotnet elsewhere in the same file: A13-2's 216 placed
+cases still show zero values wrong, and A13-7, A13-7b, A13-8 and A13-8b each compile and run a body
+and compare the string's bytes before and after.
+
+**One measured fact the fix leans on.** A line that BEGINS inside a raw-interpolated hole is exempt
+from the closing delimiter's whitespace rule, so classifying it as code and shifting it is legal
+and value-preserving. Driven against dotnet 10.0.111 before the row was written, not reasoned from
+the spec; A13-7b is the pin.
+
+**A `$"` left open at end of line still carries nothing.** Its TEXT cannot span a line in C#, only
+its hole can, so the scan pops an unterminated one and the tail stays code - which is what a
+truncated model reply already got when `$"` was scanned as a plain string. No change there, stated
+because it is the shape a reader will ask about.
+
 ## S25. Two surfaces stop keeping their own failure wording
 
 **NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 1, which closes S58-7 and S58-13.
