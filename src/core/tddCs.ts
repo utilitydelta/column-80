@@ -1342,6 +1342,11 @@ function escapeFilterValue(name: string): string {
   return name.replace(/[\\()&|=!~,]/g, "\\$&");
 }
 
+/** A VSTest fully-qualified test name: a namespace-and-type path, `+` between
+ *  nested types, ending in the method. A bare method name is NOT one, which is
+ *  what keeps `=` off a name it would fail to match. */
+const CS_FULLY_QUALIFIED = /^\w+(?:[.+]\w+)+$/;
+
 /**
  * `dotnet test <project> --no-restore --filter <expr> --logger trx --results-directory <tmp>`
  * from the TEST project's directory. Every part of it is load-bearing:
@@ -1360,12 +1365,15 @@ function escapeFilterValue(name: string): string {
  *    command hard-fails — the same divergence `GoOracle` already warns about for
  *    `GOENV=off`. A missing runtime is an `environmentError`: name it and stop.
  *
- * `FullyQualifiedName~` is a CONTAINS match. Stated residual, because it is a
- * real one: unlike Go's `^(…)$` and vitest's `$`, VSTest's filter grammar has no
- * anchor, so a generated name that is a PREFIX of another test's name selects
- * both. The mitigation is naming, not syntax — generated names carry the symbol
- * under test — and over-selection is the safe direction here, since it can only
- * add a red, never manufacture a green.
+ * `FullyQualifiedName=` is an EXACT match and rides with a RESOLVED name, only.
+ * `~` is a CONTAINS match, so a generated name that is a prefix of another
+ * test's name selects both and the rung can blame the neighbour. The operator
+ * alone does not fix it: measured on dotnet 10.0.111, `=Add` against a bare
+ * method name matches NOTHING, and a rung that selects nothing reads as a
+ * passing rung with nothing in it. So `=` is emitted only when EVERY name is
+ * fully qualified, which is what `csGeneratedTestNames` produces once the
+ * enclosing namespace and class resolve. Anything less keeps `~`, which
+ * over-selects and can only add a red, never manufacture a green.
  */
 function buildCsCommand(placement: TestPlacement, testNames: string[]): TestRunCommand {
   const names = testNames.filter((n) => n.length > 0);
@@ -1376,6 +1384,7 @@ function buildCsCommand(placement: TestPlacement, testNames: string[]): TestRunC
   }
   const trx = csTrxPath(placement);
   const project = placement.packageArg;
+  const op = names.every((n) => CS_FULLY_QUALIFIED.test(n)) ? "=" : "~";
   return {
     command: "dotnet",
     args: [
@@ -1383,7 +1392,7 @@ function buildCsCommand(placement: TestPlacement, testNames: string[]): TestRunC
       ...(project === undefined ? [] : [project]),
       "--no-restore",
       "--filter",
-      names.map((n) => `FullyQualifiedName~${escapeFilterValue(n)}`).join("|"),
+      names.map((n) => `FullyQualifiedName${op}${escapeFilterValue(n)}`).join("|"),
       "--logger",
       `trx;LogFileName=${path.basename(trx)}`,
       "--results-directory",
@@ -2097,6 +2106,103 @@ function csNewFile(input: ScaffoldInput, usings: string[], begin: string, end: s
   return parts.join("\n");
 }
 
+/** A `where T : class` constraint leaves `class where` in the text, and a head
+ *  regex reads that as a type named `where`. None of these is ever a type name. */
+const CS_NOT_A_TYPE_NAME = new Set([
+  "where",
+  "new",
+  "class",
+  "struct",
+  "record",
+  "interface",
+  "namespace",
+  "unmanaged",
+  "notnull",
+  "default",
+]);
+
+/** A namespace or type head. Sticky, so the scan never slices the source. */
+const CS_SCOPE_HEAD = /(namespace|class|struct|record|interface)\s+([A-Za-z_][\w.]*)/y;
+
+/**
+ * The FULLY-QUALIFIED name of the type enclosing `index`, the way VSTest spells
+ * it: `Falsifier.Widgets.WidgetChecks`, and `Ns.Outer+WidgetChecks` for a nested
+ * class. undefined when no type encloses the position.
+ *
+ * It exists because `FullyQualifiedName=` matches the whole name and nothing
+ * less. Measured on dotnet 10.0.111: `=Add` against a bare method name matches
+ * NOTHING, `=Ns.Outer.Inner.Add` for a nested class matches nothing either, and
+ * `=Ns.Outer+Inner.Add` matches one. A command that selects no test reads as a
+ * passing rung with nothing in it, so the operator and the name have to move
+ * together or neither moves.
+ *
+ * A GENERIC enclosing type refuses: the CLR spells it ``Foo`1`` and this build
+ * has not measured that, so the caller keeps the substring filter, which
+ * over-selects and never selects nothing.
+ */
+export function csEnclosingTypePath(text: string, index: number): string | undefined {
+  const stack: Array<{ kind: string; name: string; depth: number; generic: boolean }> = [];
+  let fileScopedNs: string | undefined;
+  let pending: { kind: string; name: string; generic: boolean } | undefined;
+  let depth = 0;
+  let i = 0;
+  const limit = Math.min(index, (text ?? "").length);
+  while (i < limit) {
+    const skipped = skipLiteralOrComment(text, i, CS_LITERALS);
+    if (skipped > i) {
+      i = skipped;
+      continue;
+    }
+    const c = text[i];
+    if (c === "{") {
+      depth++;
+      if (pending !== undefined) {
+        stack.push({ ...pending, depth });
+        pending = undefined;
+      }
+      i++;
+      continue;
+    }
+    if (c === "}") {
+      while (stack.length > 0 && stack[stack.length - 1].depth >= depth) {
+        stack.pop();
+      }
+      depth--;
+      i++;
+      continue;
+    }
+    if (c === ";") {
+      // `namespace X;` is file-scoped: it opens no brace and never closes, so it
+      // cannot live on the depth stack.
+      if (pending?.kind === "namespace") {
+        fileScopedNs = pending.name;
+      }
+      pending = undefined;
+      i++;
+      continue;
+    }
+    if (/[a-z]/.test(c) && !isIdentChar(text[i - 1] ?? "")) {
+      CS_SCOPE_HEAD.lastIndex = i;
+      const m = CS_SCOPE_HEAD.exec(text);
+      if (m !== null && !CS_NOT_A_TYPE_NAME.has(m[2])) {
+        pending = { kind: m[1], name: m[2], generic: text[CS_SCOPE_HEAD.lastIndex] === "<" };
+        i = CS_SCOPE_HEAD.lastIndex;
+        continue;
+      }
+    }
+    i++;
+  }
+  const types = stack.filter((e) => e.kind !== "namespace");
+  if (types.length === 0 || types.some((e) => e.generic)) {
+    return undefined;
+  }
+  const namespaces = [fileScopedNs, ...stack.filter((e) => e.kind === "namespace").map((e) => e.name)].filter(
+    (n): n is string => n !== undefined,
+  );
+  const typePath = types.map((e) => e.name).join("+");
+  return namespaces.length === 0 ? typePath : `${namespaces.join(".")}.${typePath}`;
+}
+
 /**
  * The names of the test METHODS previously generated for markerId.
  *
@@ -2109,6 +2215,13 @@ function csNewFile(input: ScaffoldInput, usings: string[], begin: string, end: s
  *
  * Only declarations at the region's TOP level count, so a local function inside
  * a test body is not mistaken for a test.
+ *
+ * Each name is FULLY QUALIFIED (`Falsifier.Widgets.WidgetChecks.Add`), because
+ * that is the only string `FullyQualifiedName=` matches; without it the rung is
+ * a CONTAINS filter and `Add` also runs `AddMore`. A method whose enclosing type
+ * does not resolve — or a GENERIC method, whose VSTest name this build has not
+ * measured — stays bare, and `buildCsCommand` then keeps `~` for the whole
+ * command rather than pairing `=` with a name it cannot match.
  */
 function csGeneratedTestNames(fileText: string, markerId: string): string[] {
   const { begin, end } = testMarkers(markerId, CS_MARKER_PREFIX);
@@ -2121,6 +2234,7 @@ function csGeneratedTestNames(fileText: string, markerId: string): string[] {
     return [];
   }
   const region = fileText.slice(bi + begin.length, ei);
+  const typePath = csEnclosingTypePath(fileText, bi);
   const names: string[] = [];
   let i = 0;
   let depth = 0;
@@ -2145,9 +2259,13 @@ function csGeneratedTestNames(fileText: string, markerId: string): string[] {
       if (head !== undefined) {
         // The bare name: a generic test method is filtered by its name, and
         // `Widen<int>` is not a name VSTest would ever match.
-        const bare = head.name.includes("<") ? head.name.slice(0, head.name.indexOf("<")) : head.name;
+        const generic = head.name.includes("<");
+        const bare = generic ? head.name.slice(0, head.name.indexOf("<")) : head.name;
         if (!bare.includes(".")) {
-          names.push(bare);
+          // A generic method keeps its bare name, which holds the whole command
+          // on `~`: the CLR name of a generic method is not measured here, and a
+          // wrong exact name selects zero tests.
+          names.push(typePath === undefined || generic ? bare : `${typePath}.${bare}`);
         }
         i = head.paramsOpen + 1;
         continue;

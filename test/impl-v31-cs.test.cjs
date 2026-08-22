@@ -1018,15 +1018,18 @@ test("generatedTestNames reads method DECLARATIONS, never a call or a name insid
       ].join("\n"),
     }),
   ).text;
-  assert.deepStrictEqual(cs().generatedTestNames(file, "m1"), ["AnalysisHappy", "AnalysisZero"]);
+  // Item 59: fully qualified, because `FullyQualifiedName=` matches the whole
+  // name and nothing less. A bare `Add` also selected `AddMore`; a bare name
+  // under `=` selects nothing at all, measured on dotnet 10.0.111.
+  assert.deepStrictEqual(cs().generatedTestNames(file, "m1"), ["Acme.Tests.Gaps.AnalysisTests.AnalysisHappy", "Acme.Tests.Gaps.AnalysisTests.AnalysisZero"]);
 });
 
 test("generatedTestNames is scoped to ITS marker and answers [] when there is none", () => {
   const a = cs().scaffold(scaffoldInput()).text;
   const b = cs().scaffold(scaffoldInput({ existingText: a, markerId: "m2", generatedTests: "[TestMethod]\npublic void Other()\n{\n}" }));
   const after = a.slice(0, b.start) + b.text + a.slice(b.end);
-  assert.deepStrictEqual(cs().generatedTestNames(after, "m1"), ["AnalysisHappy"]);
-  assert.deepStrictEqual(cs().generatedTestNames(after, "m2"), ["Other"]);
+  assert.deepStrictEqual(cs().generatedTestNames(after, "m1"), ["Acme.Tests.Gaps.AnalysisTests.AnalysisHappy"]);
+  assert.deepStrictEqual(cs().generatedTestNames(after, "m2"), ["Acme.Tests.Gaps.AnalysisTests.Other"]);
   assert.deepStrictEqual(cs().generatedTestNames(after, "nope"), []);
   assert.deepStrictEqual(cs().generatedTestNames("", "m1"), []);
 });
@@ -1035,7 +1038,10 @@ test("the command's filter is built from exactly those names", () => {
   const file = cs().scaffold(scaffoldInput()).text;
   const names = cs().generatedTestNames(file, "m1");
   const cmd = MSTEST.buildCommand(fakePlacement(), names);
-  assert.strictEqual(cmd.args[cmd.args.indexOf("--filter") + 1], "FullyQualifiedName~AnalysisHappy");
+  // `=` and the resolved name land together or neither lands: `=AnalysisHappy`
+  // against a bare name matches NOTHING, which reads as a passing rung with no
+  // test in it.
+  assert.strictEqual(cmd.args[cmd.args.indexOf("--filter") + 1], "FullyQualifiedName=Acme.Tests.Gaps.AnalysisTests.AnalysisHappy");
 });
 
 // ===========================================================================

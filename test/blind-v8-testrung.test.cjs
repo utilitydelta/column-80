@@ -251,8 +251,14 @@ test("buildTestCommand with a non-empty filter: handed to libtest after the `--`
   // is not the same for two: `cargo test` takes exactly ONE [TESTNAME], so a
   // second filter before `--` is `error: unexpected argument`. Everything from
   // `--` onward goes to libtest, which takes as many filters as it is given.
+  //
+  // AMENDED by item 59 (v59 phase 4): a filter that is a full libtest path now
+  // rides with `--exact`, because the substring default ran `add_more` for a
+  // rung scoped to `add`. The flag is libtest's, so it sits past the separator
+  // with the filters. P4 §2's demand — the filter reaches libtest, not cargo's
+  // positional slot — is unchanged and is still what this row asserts.
   const cmd = buildTestCommand(CRATE, "tests::adds");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "tests::adds"], "filter trails the separator, not cargo's own positional slot");
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "--exact", "tests::adds"], "filter trails the separator, not cargo's own positional slot");
   assert.strictEqual(cmd.command, "cargo");
   assert.strictEqual(cmd.cwd, CRATE);
 });
@@ -264,8 +270,8 @@ test("buildTestCommand noRun: includes --no-run (build, do not run), and it stay
   const filtered = buildTestCommand(CRATE, "tests::adds", { noRun: true });
   assert.deepStrictEqual(
     filtered.args,
-    ["test", "--lib", "--no-run", "--", "tests::adds"],
-    "--no-run is a cargo flag so it precedes `--`; the filter is libtest's so it follows. Deterministic order."
+    ["test", "--lib", "--no-run", "--", "--exact", "tests::adds"],
+    "--no-run is a cargo flag so it precedes `--`; --exact and the filter are libtest's so they follow. Deterministic order."
   );
 });
 

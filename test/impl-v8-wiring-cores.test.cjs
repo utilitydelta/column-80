@@ -57,20 +57,26 @@ mod tests {
   const plan = planTestInsertion("pub fn kth_largest() {}\n", genModule, { markerId: "kth_largest" });
   const fileText = "pub fn kth_largest() {}\n" + plan.text;
   const names = generatedTestNames(fileText, "kth_largest");
-  assert.deepStrictEqual(names, ["kth_happy", "kth_edge"], "exactly this fn's generated test names");
+  // INVERTED by item 59. The names used to come back bare, and bare names are
+  // what forced the rung onto SUBSTRING filters, where `add` also runs
+  // `add_more`. They now carry the enclosing `mod` path, which is the only
+  // string `--exact` matches.
+  assert.deepStrictEqual(names, ["tests::kth_happy", "tests::kth_edge"], "exactly this fn's generated test names");
 });
 
 // ---- the two halves joined, with REAL names --------------------------------
 
-test("FIXTURE FIDELITY: the names generatedTestNames really produces are bare `fn` names, and buildTestCommand must build a command libtest accepts from THOSE — a full-path fixture hides a real-world break", () => {
-  // Every other fixture in this repo hand-writes full paths (`tests::adds`,
-  // `tests::t_happy`). The product never produces one: generatedTestNames reads
-  // `\bfn\s+(\w+)` out of the marked region, so it yields `add_returns_sum`,
-  // never `tests::add_returns_sum`. That gap is not cosmetic — it is why an
-  // `--exact` attempt looked correct against every existing row and would have
-  // run ZERO tests in production, because --exact matches libtest's full path
-  // and the real names have no path on them. This row drives the REAL function
-  // so the fixture cannot drift back to a shape the product never emits.
+test("FIXTURE FIDELITY: the names generatedTestNames really produces carry the enclosing module, and buildTestCommand must build a command libtest accepts from THOSE — a hand-written fixture hides a real-world break", () => {
+  // INVERTED by item 59, and the inversion is the fix landing.
+  //
+  // This row used to pin the names as BARE (`add_returns_sum`) and `--exact` as
+  // ABSENT, because bare names were what the product really emitted and
+  // `--exact` against a bare name selects ZERO tests on cargo 1.96 — measured.
+  // The names now carry the resolved `mod` path, so exactness is reachable and
+  // the rung stops running `add_more` when it was scoped to `add`.
+  //
+  // The fidelity demand is unchanged: drive the REAL function, because a
+  // hand-written fixture cannot tell a resolved path from a hard-coded one.
   const genModule = `#[cfg(test)]
 mod tests {
     use super::*;
@@ -83,20 +89,20 @@ mod tests {
   const plan = planTestInsertion(src, genModule, { markerId: "add" });
   const names = generatedTestNames(src + plan.text, "add");
 
-  assert.deepStrictEqual(names, ["add_returns_sum", "add_handles_zero"], "bare fn names, no module path — this is the real shape");
-  assert.ok(names.every((n) => !n.includes("::")), "if this ever fails the product started emitting paths and --exact becomes reachable");
+  assert.deepStrictEqual(names, ["tests::add_returns_sum", "tests::add_handles_zero"], "full libtest paths — this is the real shape");
+  assert.ok(names.every((n) => n.includes("::")), "if this ever fails the product went back to bare names and --exact must go with them");
 
   const cmd = buildTestCommand("/w", names);
 
   // A command libtest accepts: cargo's own args first, then the separator, then
-  // the filters. Anything cargo has to parse itself is limited to ONE
-  // [TESTNAME], so a second name before `--` would be a hard error, not a run.
+  // the flag and the filters. Anything cargo has to parse itself is limited to
+  // ONE [TESTNAME], so a second name before `--` would be a hard error, not a
+  // run — and `--exact` before it would be cargo's flag, not libtest's.
   const sep = cmd.args.indexOf("--");
   assert.notStrictEqual(sep, -1, "there is a separator");
   assert.deepStrictEqual(cmd.args.slice(0, sep), ["test", "--lib"], "cargo sees only its own flags and no positional");
-  assert.deepStrictEqual(cmd.args.slice(sep + 1), names, "libtest sees the bare names, in order, as substring filters");
-  assert.ok(!cmd.args.includes("--exact"), "--exact against bare names selects nothing; exactness needs the module path resolved first (queue Q3b)");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "add_returns_sum", "add_handles_zero"]);
+  assert.deepStrictEqual(cmd.args.slice(sep + 1), ["--exact", ...names], "libtest sees --exact and then the full paths, in order");
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "--exact", "tests::add_returns_sum", "tests::add_handles_zero"]);
 });
 
 test("planTestInsertion indents the FIRST #[test] like the rest — no ragged column-0 line", () => {
@@ -137,6 +143,6 @@ test("generatedTestNames scopes by markerId — a different fn's region is not r
   const genA = `#[cfg(test)]\nmod tests {\n    #[test]\n    fn a_one() {}\n}`;
   const planA = planTestInsertion("fn a(){}\nfn b(){}\n", genA, { markerId: "a" });
   const file = "fn a(){}\nfn b(){}\n" + planA.text;
-  assert.deepStrictEqual(generatedTestNames(file, "a"), ["a_one"]);
+  assert.deepStrictEqual(generatedTestNames(file, "a"), ["tests::a_one"]);
   assert.deepStrictEqual(generatedTestNames(file, "b"), [], "fn b has no marked region");
 });

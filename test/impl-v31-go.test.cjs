@@ -646,13 +646,14 @@ test("BYTE-FROZEN: the Rust rung's command and result are untouched by the Go pl
   // "Untouched by the plumbing" is the claim, and it is an equivalence: the
   // Rust rung must equal the shipped buildTestCommand, whatever that builds.
   // The literal below carries the `--` separator because the Q3 fix moved it
-  // there (cargo takes one positional; libtest takes many), and the Go work is
-  // still not what moved it — the second assertion is the one that says so.
+  // there (cargo takes one positional; libtest takes many), and `--exact`
+  // because item 59 scoped the rung to the test it names. Neither move is the
+  // Go work — the second assertion is the one that says so.
   const LIBTEST = "\nrunning 1 test\ntest tests::a ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n";
   const runner = fakeRunner(LIBTEST, "", 0);
   const oracle = new RustOracle({ fileExists: (p) => p === "/w/Cargo.toml" });
   const res = await runTestOracle(oracle, "/w/src/lib.rs", ["tests::a"], { runCommand: runner });
-  assert.deepStrictEqual(runner.last, { command: "cargo", args: ["test", "--lib", "--", "tests::a"], cwd: "/w" });
+  assert.deepStrictEqual(runner.last, { command: "cargo", args: ["test", "--lib", "--", "--exact", "tests::a"], cwd: "/w" });
   assert.deepStrictEqual(runner.last, buildTestCommand("/w", ["tests::a"]));
   assert.strictEqual(res.filterMatchedNothing, undefined, "Rust has no positive filter-miss tell, a fact not an omission");
   assert.strictEqual(res.environmentError, undefined);

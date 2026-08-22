@@ -118,8 +118,11 @@ test("DEFECT: the `@$\"…\"` misread reaches `generatedTestNames` too, and sile
   const region = (body) => `public class T\n{\n    // column80-tests:m1:begin\n${body}\n    // column80-tests:m1:end\n}`;
   const body = (prefix) =>
     `    [TestMethod]\n    public void A() { var p = ${prefix}"C:\\"; }\n    [TestMethod]\n    public void B() { }`;
-  assert.deepStrictEqual(cs().generatedTestNames(region(body('$@')), "m1"), ["A", "B"], "$@ is fine");
-  assert.deepStrictEqual(cs().generatedTestNames(region(body('@$')), "m1"), ["A", "B"]);
+  // `T.` since item 59: the names carry the enclosing type, which is what
+  // `FullyQualifiedName=` matches. The defect this row guards is unchanged — a
+  // misread literal drops a method and shortens the filter.
+  assert.deepStrictEqual(cs().generatedTestNames(region(body('$@')), "m1"), ["T.A", "T.B"], "$@ is fine");
+  assert.deepStrictEqual(cs().generatedTestNames(region(body('@$')), "m1"), ["T.A", "T.B"]);
 });
 
 test("VERIFIED: the inversion holds, and the message, generic arguments and one-argument overloads are safe", () => {

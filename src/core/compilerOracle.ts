@@ -1023,17 +1023,21 @@ export interface TestCommandOptions {
  * a lie about code that compiles fine. Past `--`, libtest takes as many filters
  * as it is given and OR-s them, which is what the doc always claimed.
  *
- * What this does NOT fix, deliberately: the filters are still SUBSTRING
- * matches, so a rung scoped to `add` still runs `add_more`. `--exact` is the
- * obvious answer and it is wrong here, which is worth writing down because it
- * looks right: `--exact` matches libtest's FULL path (`tests::add`), and
- * `generatedTestNames` returns bare `fn` names. Measured, the pair runs zero
- * tests, which turns a working red into silence. Prefixing `tests::` is not the
- * fix either: `findCfgTestModule` matches any `mod <name>`, so extending an
- * existing module inherits the developer's own name. Exactness needs the
- * enclosing module resolved and threaded to here, and that is roadmap item 59
- * (formerly queue Q3b).
+ * `--exact` rides along with a RESOLVED path and only with one. libtest's
+ * filters are substrings by default, so a rung scoped to `add` also runs
+ * `add_more` and can blame the neighbour for the named function's red. The flag
+ * that fixes that matches libtest's FULL path and nothing else: measured on
+ * cargo 1.96, `--exact add` against a bare `fn` name selects ZERO tests, and a
+ * command that selects nothing reads as a passing rung with nothing in it —
+ * strictly worse than over-selecting. So the flag is emitted only when EVERY
+ * filter is a full path, which is what `generatedTestNames` produces once the
+ * enclosing `mod` chain resolves. A bare name keeps the substring filter.
  */
+/** A libtest path with at least one module segment and a real name at the end.
+ *  `tests::` is deliberately NOT one: it is the whole-module substring filter,
+ *  and `--exact tests::` matches no test at all. */
+const LIBTEST_FULL_PATH = /^\w+(?:::\w+)+$/;
+
 export function buildTestCommand(
   crateRoot: string,
   filter: string | string[],
@@ -1045,7 +1049,11 @@ export function buildTestCommand(
   }
   const filters = (Array.isArray(filter) ? filter : [filter]).filter((f) => f.length > 0);
   if (filters.length > 0) {
-    args.push("--", ...filters);
+    args.push("--");
+    if (filters.every((f) => LIBTEST_FULL_PATH.test(f))) {
+      args.push("--exact");
+    }
+    args.push(...filters);
   }
   return { command: "cargo", args, cwd: crateRoot };
 }

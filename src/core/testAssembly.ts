@@ -735,6 +735,73 @@ function findCfgTestModule(text: string): { open: number; close: number } | unde
   return close === -1 ? undefined : { open, close };
 }
 
+/** A `mod <name>` head with the delimiter that follows it: `{` opens an inline
+ *  module, `;` is a declaration whose body lives in another file. Sticky, so the
+ *  scan below never slices the source to match. */
+const MOD_HEAD = /mod\s+(\w+)\s*([{;])/y;
+
+function isIdentChar(c: string): boolean {
+  return /[A-Za-z0-9_]/.test(c);
+}
+
+/**
+ * The `mod` chain enclosing `index`, outermost first: the
+ * `["geometry", "widget_checks"]` in libtest's `geometry::widget_checks::add`.
+ *
+ * It exists because `--exact` matches libtest's FULL path and nothing else.
+ * Measured on cargo 1.96: `--exact add` against a bare fn name selects ZERO
+ * tests, and a hard-coded `tests::` is no fix either — the generated region
+ * lands in whatever `#[cfg(test)] mod <name>` the developer already wrote, and
+ * `cargo test -- --list` prints an enclosing `mod` as part of the path too.
+ *
+ * Resolved from the REGION's own position rather than from the first
+ * `#[cfg(test)]` in the file: the region is what the filter names, so its
+ * enclosing modules are the only ones certain to be on the path. Empty means
+ * nothing encloses it, and the caller must then stay on substring filters — a
+ * wrong path selects nothing, which is worse than over-selecting.
+ */
+export function enclosingModulePath(text: string, index: number): string[] {
+  const stack: Array<{ name: string; depth: number }> = [];
+  let depth = 0;
+  let i = 0;
+  const limit = Math.min(index, text.length);
+  while (i < limit) {
+    const skipped = skipLiteralOrComment(text, i);
+    if (skipped > i) {
+      i = skipped;
+      continue;
+    }
+    const c = text[i];
+    if (c === "{") {
+      depth++;
+      i++;
+      continue;
+    }
+    if (c === "}") {
+      while (stack.length > 0 && stack[stack.length - 1].depth >= depth) {
+        stack.pop();
+      }
+      depth--;
+      i++;
+      continue;
+    }
+    if (c === "m" && !isIdentChar(text[i - 1] ?? "")) {
+      MOD_HEAD.lastIndex = i;
+      const m = MOD_HEAD.exec(text);
+      if (m !== null) {
+        if (m[2] === "{") {
+          depth++;
+          stack.push({ name: m[1], depth });
+        }
+        i = MOD_HEAD.lastIndex;
+        continue;
+      }
+    }
+    i++;
+  }
+  return stack.map((e) => e.name);
+}
+
 // One indent level inside `mod tests { … }`; the generated fns are normalized to
 // it so the FIRST line lines up with the rest.
 const BODY_INDENT = "    ";
@@ -793,10 +860,16 @@ export function testMarkers(markerId: string, prefix = "//"): { begin: string; e
 }
 
 /**
- * The names of the `#[test]` fns previously generated for `markerId` (between its
- * markers) — for scoping the cargo test rung to EXACTLY this function's tests, so
- * a red never blames the whole crate's tests on this implementation. Empty when no
- * marked region exists (no generated tests yet).
+ * The `#[test]` fns previously generated for `markerId` (between its markers) as
+ * libtest FILTERS — for scoping the cargo test rung to EXACTLY this function's
+ * tests, so a red never blames the whole crate's tests on this implementation.
+ * Empty when no marked region exists (no generated tests yet).
+ *
+ * Each name carries the enclosing `mod` path (`widget_checks::add`), because
+ * that is the only string `--exact` matches; without it the rung is a SUBSTRING
+ * filter and `add` also runs `add_more`. A region nothing encloses yields the
+ * bare name, and `buildTestCommand` then keeps the substring filter rather than
+ * pairing `--exact` with a name it cannot match.
  */
 export function generatedTestNames(fileText: string, markerId: string): string[] {
   const { begin, end } = testMarkers(markerId);
@@ -809,7 +882,9 @@ export function generatedTestNames(fileText: string, markerId: string): string[]
     return [];
   }
   const region = fileText.slice(bi + begin.length, ei);
-  return [...region.matchAll(/\bfn\s+(\w+)/g)].map((m) => m[1]);
+  const modPath = enclosingModulePath(fileText, bi);
+  const prefix = modPath.length === 0 ? "" : `${modPath.join("::")}::`;
+  return [...region.matchAll(/\bfn\s+(\w+)/g)].map((m) => prefix + m[1]);
 }
 
 /**

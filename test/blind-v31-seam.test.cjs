@@ -337,12 +337,17 @@ gtest("frameworkFor: the FIRST framework whose detect fires wins, precedence ord
 //    [goal.md 'Rust's shipped behaviour is byte-frozen'; contract-seam.md
 //     invariant 1 '`cargo test --lib` ... behave EXACTLY as today']
 //
-//    The filter literals below moved once, in the Q3 fix, and the seam is not
-//    what moved them. `cargo test` takes exactly ONE [TESTNAME] positional, so
-//    the multi-name shape these rows used to pin was a hard cargo error
-//    (`error: unexpected argument 'tests::adds_wrong' found`) and ran no tests
-//    at all. Filters now go after the `--` separator, which is the only place
-//    libtest sees more than one of them and OR-s them.
+//    The filter literals below moved twice, and the seam is not what moved
+//    them either time. First the Q3 fix: `cargo test` takes exactly ONE
+//    [TESTNAME] positional, so the multi-name shape these rows used to pin was
+//    a hard cargo error (`error: unexpected argument 'tests::adds_wrong'
+//    found`) and ran no tests at all. Filters go after the `--` separator,
+//    which is the only place libtest sees more than one of them and OR-s them.
+//
+//    Then item 59: a filter that is a full libtest path rides with `--exact`,
+//    because the substring default ran `add_more` for a rung scoped to `add`.
+//    A BARE name still gets no flag — measured on cargo 1.96, that pair selects
+//    ZERO tests, which is a silent rung rather than a scoped one.
 // ===========================================================================
 
 gtest("BYTE-FROZEN buildCommand: no test names -> cargo test --lib, cwd = the crate root [contract-seam.md invariant 1]", () => {
@@ -355,7 +360,7 @@ gtest("BYTE-FROZEN buildCommand: no test names -> cargo test --lib, cwd = the cr
 gtest("BYTE-FROZEN buildCommand: one test name -> it is the trailing libtest filter, after the `--` separator [contract-seam.md invariant 1; goal.md 'wrapping the shipped buildTestCommand']", () => {
   const cmd = libtest().buildCommand(rustPlacement(), ["tests::adds"]);
   assert.strictEqual(cmd.command, "cargo");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "tests::adds"], "the name is handed to libtest past `--`, no flag, no quoting");
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "--exact", "tests::adds"], "the name is handed to libtest past `--`, with the exactness flag that makes it name ONE test");
   assert.strictEqual(cmd.cwd, CRATE);
 });
 
@@ -364,8 +369,8 @@ gtest("buildCommand: several test names ride past `--` as libtest filters in the
   assert.strictEqual(cmd.command, "cargo");
   assert.deepStrictEqual(
     cmd.args,
-    ["test", "--lib", "--", "tests::adds", "tests::adds_wrong"],
-    "names go past the separator in the caller's order; cargo itself takes ONE positional, so this is what makes a two-test rung run at all"
+    ["test", "--lib", "--", "--exact", "tests::adds", "tests::adds_wrong"],
+    "names go past the separator in the caller's order; cargo itself takes ONE positional, so this is what makes a two-test rung run at all. `--exact` OR-s across all of them - measured."
   );
   assert.strictEqual(cmd.cwd, CRATE);
 });
@@ -381,7 +386,7 @@ gtest("buildCommand wired end to end: a placementFor result feeds buildCommand a
   assert.strictEqual(res.ok, true);
   const cmd = lang.frameworks[0].buildCommand(res.placement, ["tests::adds"]);
   assert.strictEqual(cmd.command, "cargo");
-  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "tests::adds"]);
+  assert.deepStrictEqual(cmd.args, ["test", "--lib", "--", "--exact", "tests::adds"]);
   assert.strictEqual(cmd.cwd, CRATE, "the resolved crate root reaches the command unchanged");
 });
 

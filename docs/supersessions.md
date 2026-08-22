@@ -1066,3 +1066,45 @@ rows. No channel pointer, because that reason is never written to the channel.
 **Pinned by.** `test/impl-v59-p1-one-sentence-surfaces.test.cjs`, whose row 8 drives one
 `HttpStatusError` through all three surfaces and asserts the same sentence body reaches each, plus
 rows 3, 5b, 7 and 10 for the four unchanged branches.
+
+## S26. The Rust and C# test rungs stop filtering by substring
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 4, closing roadmap item 59. The fix
+shape was ratified at filing time; what needs a call is that two BYTE-FROZEN command contracts and
+one seam's documented output shape move with it.
+
+**What changed.** `generatedTestNames` returns FILTERS, not bare names. Rust's carry the enclosing
+`mod` path (`widget_checks::add`), resolved from the marked region's own position; C#'s carry
+namespace and class (`Falsifier.Widgets.WidgetChecks.Add`, `Ns.Outer+Inner.Add` when the class is
+nested). `buildTestCommand` then emits `--exact` past the `--` separator, and `buildCsCommand`
+switches `FullyQualifiedName~` to `FullyQualifiedName=`.
+
+**Why the old behaviour was wrong.** Both filters were SUBSTRING matches, so a rung scoped to one
+generated function ran a neighbour's tests and could report the neighbour's red under the named
+function. Measured: `cargo test --lib -- add` runs `add` and `add_more`; `--filter
+FullyQualifiedName~Add` passes two tests.
+
+**Why both halves had to land together.** The operator alone selects NOTHING, which reads as a
+passing rung with no test in it - strictly worse than over-selecting. Measured on this box:
+`--exact add` against a bare name runs 0 tests on cargo 1.96, and `FullyQualifiedName=Add` matches
+no test on dotnet 10.0.111. So the exact form is emitted only when EVERY filter is a resolved path,
+and an unresolved one keeps the substring filter it always had.
+
+**The contracts that move.** `contract-seam.md` invariant 1 called Rust's command BYTE-FROZEN, and
+the rows pinning it are re-cut: `blind-v31-seam.test.cjs` (three), `blind-v8-testrung.test.cjs`
+(two), `impl-v31-seam.test.cjs` (five), `impl-v31-go.test.cjs` (one, the row that says the Go
+plumbing is not what moved the literal). `contract-cs.md`'s `generatedTestNames` rows in
+`blind-v31-cs.test.cjs` move the same way. Every one of those rows keeps its own demand; only the
+literal changed. `impl-v8-wiring-cores.test.cjs`'s fidelity row is the designated inversion: it
+pinned bare names and `--exact` ABSENT, which was the honest pin while the path was unresolved.
+
+**Two refusals, both deliberate.** A GENERIC C# test method keeps its bare name, and so holds the
+whole command on `~`: the CLR spells a generic method's name in a form this build has not measured,
+and a wrong exact name selects nothing. A generic enclosing TYPE refuses for the same reason
+(``Foo`1``). Rust needs no equivalent - a `#[test] fn` cannot be generic.
+
+**Graded, not reasoned.** `test/impl-v59-p4-scoped-rung.test.cjs` drives both real toolchains: two
+tests whose names are strict prefixes (`add`/`add_more`, `Add`/`AddMore`), in a module and class
+that are NOT the defaults, both FAILING so the runner names whichever it selected. Before the fix
+each graded row read 2 selected; after, 1, and it is the named one. The live rows skip under
+`SKIP_LIVE=1`, so the gate runs their shape and a human runs their grade.

@@ -148,7 +148,7 @@ test("scaffold takes BARE test functions too, and the fn heads survive into the 
   assert.ok(plan.text.includes("fn t_happy"), "the fn head is the test name the rung filters on");
   assert.ok(plan.text.includes("fn t_zero"));
   assert.ok(plan.text.includes("#[cfg(test)]") && plan.text.includes("use super::*;"), "the shipped Rust wrapper");
-  assert.deepStrictEqual(rust().generatedTestNames(plan.text, "widen"), ["t_happy", "t_zero"], "and the rung can read them back");
+  assert.deepStrictEqual(rust().generatedTestNames(plan.text, "widen"), ["tests::t_happy", "tests::t_zero"], "and the rung can read them back");
 });
 
 test("scaffold passes an ALREADY-WRAPPED module straight through, byte for byte", () => {
@@ -239,7 +239,10 @@ test("generatedTestNames routes to the shipped reader, so the rung stays scoped 
     "#[cfg(test)]\nmod tests {\n    // column80-tests:widen:begin\n" +
     "    #[test]\n    fn t_happy() {}\n    #[test]\n    fn t_zero() {}\n" +
     "    // column80-tests:widen:end\n    #[test]\n    fn developers_own() {}\n}\n";
-  assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen"), ["t_happy", "t_zero"]);
+  // Item 59: the names carry the enclosing `mod`, which is the only string
+  // `--exact` matches. Bare names are what forced the rung onto substring
+  // filters, where a rung scoped to `add` also ran `add_more`.
+  assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen"), ["tests::t_happy", "tests::t_zero"]);
   assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen"), generatedTestNames(fileText, "widen"));
   assert.deepStrictEqual(rust().generatedTestNames(fileText, "other"), [], "an unmarked id has no generated tests");
 });
@@ -373,9 +376,12 @@ test("libtest.buildCommand is BYTE-IDENTICAL to the shipped buildTestCommand", (
   // Two names, and they sit past `--`. Before `--` cargo would take the first
   // as its single [TESTNAME] and reject the second outright, so the separator
   // is what makes a multi-test rung run instead of erroring.
+  // Item 59 added `--exact`, which is libtest's flag and so sits past `--` with
+  // the filters. It rides only with full paths: `--exact` on a bare name selects
+  // ZERO tests on cargo 1.96, measured.
   const names = ["tests::t_happy", "tests::t_zero"];
   const cmd = rust().frameworks[0].buildCommand(placementAt("/w"), names);
-  assert.deepStrictEqual(cmd, { command: "cargo", args: ["test", "--lib", "--", "tests::t_happy", "tests::t_zero"], cwd: "/w" });
+  assert.deepStrictEqual(cmd, { command: "cargo", args: ["test", "--lib", "--", "--exact", "tests::t_happy", "tests::t_zero"], cwd: "/w" });
   assert.deepStrictEqual(cmd, buildTestCommand("/w", names), "the seam adds nothing and drops nothing");
 });
 
@@ -607,7 +613,7 @@ test("runTestOracle keeps its shipped file-path signature and its shipped result
   const res = await runTestOracle(oracleWithRoot("/w"), "/w/src/lib.rs", ["tests::a", "tests::b"], {
     runCommand: runner(LIBTEST_MIXED, "", 101),
   });
-  assert.deepStrictEqual(runner.last, { command: "cargo", args: ["test", "--lib", "--", "tests::a", "tests::b"], cwd: "/w" });
+  assert.deepStrictEqual(runner.last, { command: "cargo", args: ["test", "--lib", "--", "--exact", "tests::a", "tests::b"], cwd: "/w" });
   assert.strictEqual(res.crateRoot, "/w");
   assert.strictEqual(res.ran, true);
   assert.strictEqual(res.success, false, "a failing test is a red, not a crash");
@@ -667,7 +673,7 @@ test("the options object a strategy's buildTestCommand sees now carries packageA
   assert.deepStrictEqual(seen, [{ noRun: undefined, packageArg: undefined }]);
   assert.deepStrictEqual(
     runner.last,
-    { command: "cargo", args: ["test", "--lib", "--", "tests::a"], cwd: "/w" },
+    { command: "cargo", args: ["test", "--lib", "--", "--exact", "tests::a"], cwd: "/w" },
     "and the extra opts key changes nothing about the command cargo is handed"
   );
 });

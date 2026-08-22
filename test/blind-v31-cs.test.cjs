@@ -2097,6 +2097,9 @@ ptest("renderBlankValue csharp: bare-versus-hinted holds in BOTH DIRECTIONS acro
 // ===========================================================================
 
 const MARKER_ID = "Widen.Apply-1";
+// The fully-qualified prefix the rung filters by since item 59: the fixture's
+// own namespace and test class, resolved from the file text.
+const FQ = "Contoso.ProcessingLogic.Tests.WidenTests.";
 const USING_SOURCE = "using Contoso.ProcessingLogic;";
 const USING_MSTEST = "using Microsoft.VisualStudio.TestTools.UnitTesting;";
 
@@ -2316,10 +2319,14 @@ ptest("generatedTestNames csharp: reads the METHOD NAMES inside the marked regio
     "}\n";
 
   const names = csLang.generatedTestNames(fileText, MARKER_ID);
+  // AMENDED by item 59: the names are FULLY QUALIFIED now, because
+  // `FullyQualifiedName=` matches the whole name and nothing less, and `~Add`
+  // also ran `AddMore`. The contract's demand is unchanged — real method
+  // declarations only, in order, no phantom from a string or a comment.
   assert.deepStrictEqual(
     names,
-    ["WidenHappy", "WidenZero"],
-    `only the real methods inside the region, in order. A phantom name goes into the FullyQualifiedName~ filter and selects nothing, or worse selects something else. Got ${JSON.stringify(names)}`
+    [`${FQ}WidenHappy`, `${FQ}WidenZero`],
+    `only the real methods inside the region, in order. A phantom name goes into the FullyQualifiedName filter and selects nothing, or worse selects something else. Got ${JSON.stringify(names)}`
   );
   assert.ok(!names.includes("HumanWroteThis"), "the human's own test is outside the region and is not this function's");
   assert.ok(!names.includes("OutsideTheRegion"), "so is anything below the end marker");
@@ -2335,7 +2342,7 @@ ptest("generatedTestNames csharp: the scaffold ROUND-TRIPS, so scaffold and the 
   const out = applyPlan("", plan);
   assert.deepStrictEqual(
     csLang.generatedTestNames(out, MARKER_ID),
-    ["WidenHappy"],
+    [`${FQ}WidenHappy`],
     `the round trip recovers the generated name, got ${JSON.stringify(csLang.generatedTestNames(out, MARKER_ID))}`
   );
 });
