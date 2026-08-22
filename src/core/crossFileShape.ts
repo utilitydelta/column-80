@@ -1006,8 +1006,23 @@ export const freshSettleAllowance = (): SettleAllowance => ({
 // Three Go rows landed within 8ms of each other at ~1025ms, which is not a graph
 // cost. It is 8 stuck cursors x 3 re-polls x 40ms. Every re-polled cursor's
 // answer sequence was recorded across five languages: Go 32 re-polled cursors,
-// C# 9, Rust 0, Python 0, TypeScript 0. **41 cursors, ZERO recovered a
-// renderable member**, every one answering identically all four times.
+// C# 9, Rust 0, Python 0, TypeScript 0. 41 cursors, zero recovered a renderable
+// member, every one answering identically all four times.
+//
+// THAT ZERO IS A FACT ABOUT THE PROBE, AND THE LOOP IS KEPT ON THE EVIDENCE THAT
+// REPLACED IT. The probe behind those numbers pre-opened every file and slept
+// 250ms per open before the clock started, so the one case this loop exists for -
+// a just-opened definition file the server has not read - could never occur in
+// it. A cold probe was built (roadmap item 45, ratified 2026-08-16) and it
+// produces the case: across five Python runs, **17 re-polled cursors and 2
+// recovered**, both going 0/5 signed to 5/5 one 40ms step later. On the runs
+// where the race did not fire, the row rendered the same surface - so the
+// re-poll bought back a member list that would otherwise have rendered empty.
+//
+// Rust's and TypeScript's zeros are NOT the same claim as Go's and C#'s. TS's
+// extractor is an in-process LanguageService reading off disk with getProgram()
+// primed at start, so a not-yet-read definition file cannot exist there at all.
+// TypeScript belongs beside Rust here, not beside Python.
 //
 // THE BOUND IS THE GESTURE'S ALLOWANCE AND NOTHING ELSE. A no-progress stop was
 // built first and then removed, and why is worth keeping: it ended the loop when
