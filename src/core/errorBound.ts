@@ -77,6 +77,79 @@ function boundTo(body: string, budget: number): string {
   return `${kept} [+${body.length - kept.length} chars elided]`;
 }
 
+/** The provider's own reason, out of a field only WE typed.
+ *
+ *  Every in-stream error envelope on every arm is declared by this repo and
+ *  guaranteed by nobody. The cloud client alone serves OpenRouter, Groq,
+ *  DeepSeek and a local vLLM, and they do not agree on the shape: `error` may
+ *  be a string, a number, an array, or an object whose `message` is itself an
+ *  object.
+ *
+ *  THREE THINGS THIS GETS RIGHT THAT `String(x.message ?? x.type ?? "unknown")`
+ *  GOT WRONG, each measured by the session-v58 phase-4 review:
+ *
+ *  1. A bare string envelope, `{"error":"upstream overloaded"}`, has no
+ *     `.message`, so the old chain fell through to "unknown" and threw the
+ *     provider's whole reason away - the exact failure roadmap item 67 exists
+ *     to close, one wire shape over.
+ *  2. `??` treats `""` as PRESENT, so `{"message":"","type":"rate_limit_exceeded"}`
+ *     rendered a sentence ending in a bare colon and discarded the only cause
+ *     the provider named. An empty or whitespace-only value is ABSENT here.
+ *  3. `String()` on a non-primitive can THROW. No prototype games needed - plain
+ *     JSON carrying `{"message":{"toString":1}}` gives ToPrimitive a
+ *     non-callable `toString`, it falls to `Object.prototype.valueOf`, gets an
+ *     object back and raises. That TypeError escaped from inside the reader
+ *     carrying no marker, so the translation table could not see it and the
+ *     catch-all put "Cannot convert object to primitive value" on screen. This
+ *     never calls `String()` on anything but a primitive.
+ *
+ *  A structure with nothing scalar in it renders as JSON rather than
+ *  `[object Object]`: the field names are worth more than the placeholder, and
+ *  `JSON.stringify` escapes line breaks, so the result is always one line and
+ *  can never widen a toast. Callers still bound it. */
+export function providerReason(error: unknown): string {
+  const structured = error !== null && typeof error === "object";
+  const rec = structured ? (error as { message?: unknown; type?: unknown }) : undefined;
+  return (
+    scalar(error) ??
+    scalar(rec?.message) ??
+    scalar(rec?.type) ??
+    // The JSON fallback is for STRUCTURES only. A primitive that `scalar`
+    // already refused is blank, and handing it to `JSON.stringify` gives it
+    // back in quotes - a whitespace-only `error` rendered as `"  "` on screen,
+    // which is this helper contradicting its own rule that blank means absent.
+    // Reachable on the Anthropic arm, whose branch fires on `type === "error"`
+    // whatever `error` holds.
+    (structured ? jsonOf(error) : undefined) ??
+    "unknown"
+  );
+}
+
+/** A primitive rendered, or undefined when there is nothing there. Empty and
+ *  whitespace-only both count as nothing: a blank reason is the absence of a
+ *  reason, and treating it as present is what let an empty `message` hide a
+ *  named `type`. */
+function scalar(v: unknown): string | undefined {
+  const t = typeof v;
+  if (t !== "string" && t !== "number" && t !== "boolean" && t !== "bigint") {
+    return undefined;
+  }
+  const s = String(v).trim();
+  return s === "" ? undefined : s;
+}
+
+/** The structure itself, when nothing in it was scalar. Cycles and BigInt make
+ *  `JSON.stringify` throw, and an empty result says no more than "unknown". */
+function jsonOf(v: unknown): string | undefined {
+  let s: string | undefined;
+  try {
+    s = JSON.stringify(v);
+  } catch {
+    return undefined;
+  }
+  return s === undefined || s === "{}" || s === "[]" || s === "null" ? undefined : s;
+}
+
 /** The channel's record of what a server actually answered.
  *
  *  The toast says "The full message is in the output channel". Between

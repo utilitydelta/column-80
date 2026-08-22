@@ -26,7 +26,7 @@
 import { usageEvidence } from "./cacheEvidence";
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, channelBodyLine, channelUnreadLine, readBody } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, providerReason, readBody } from "./errorBound";
 
 export interface AnthropicInstructConfig {
   /** Resolved endpoint root: the `anthropic` preset's baseUrl or the user's
@@ -60,7 +60,9 @@ interface AnthropicEvent {
   message?: { usage?: unknown };
   delta?: { text?: string; stop_reason?: string | null };
   usage?: unknown;
-  error?: { message?: string; type?: string };
+  /** `unknown` for the reason the cloud arm's twin gives: this field is
+   *  declared here and guaranteed by nobody. `providerReason` reads it. */
+  error?: unknown;
 }
 
 /**
@@ -224,7 +226,7 @@ async function streamMessages(
       // "stream error" was. The wording is deliberately plain so the catch-all
       // renders a sentence rather than jargon.
       throw new Error(
-        `Anthropic reported an error mid-reply: ${boundBody(String(evt.error?.message ?? evt.error?.type ?? "unknown"))}`,
+        `Anthropic reported an error mid-reply: ${boundBody(providerReason(evt.error))}`,
       );
     }
     if (evt.type === "message_start") {

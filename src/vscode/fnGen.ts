@@ -5461,6 +5461,12 @@ const PAYLOAD_CARRIERS: readonly string[] = [
   "Ollama ",
   "Anthropic reported an error mid-reply:",
   "Anthropic ",
+  // Listed explicitly even though the broader `"Cloud "` head below already
+  // covers it, for the reason its Anthropic twin above is listed beside
+  // `"Anthropic "`: this table is read as the inventory of throws that carry
+  // server-chosen text, and a reader looking for the cloud error frame should
+  // find it named rather than have to notice it falls under a prefix.
+  "Cloud reported an error mid-reply:",
   "Cloud ",
 ];
 

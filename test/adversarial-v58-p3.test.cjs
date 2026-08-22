@@ -34,25 +34,34 @@
 //     pre-existing rows stayed green. This file establishes that the change IS
 //     live rather than unwired.
 //
-// STATE. Three defects, each with a red row, each named DEFECT in its row name:
+// STATE. Three defects were found red and all three were FIXED in the phase-3
+// commit (7e4eb79). Every row that caught one is KEPT and now green: a fix
+// nobody can see failing is a fix that comes back. Each keeps its DEFECT name
+// and the comment above it says what it used to catch.
 //
-//   DEFECT [abort/local-late-abort], DEFECT [abort/cloud-late-abort]
-//       A cancellation that lands after the reader's final abort check is
-//       reported to the caller as a silent server. MEDIUM.
-//   DEFECT [seam/instruct-result-shape]
-//       `sawDone` is not spent - it comes out of generateInstruct on the
-//       InstructGenerateFn seam, where the interface does not declare it and
-//       the other three backends do not produce it. LOW.
-//   DEFECT [seam/inner-annotation]
-//       `streamGenerateInner`'s declared return type does not list `sawDone`,
-//       and tsc cannot see the difference, so the field the guard reads is not
-//       compiler-enforced end to end. LOW.
+//   DEFECT [abort/local-late-abort], DEFECT [abort/cloud-late-abort]   MEDIUM
+//       A cancellation that lands after the reader's final abort check was
+//       reported to the caller as a silent server. Fixed by re-checking the
+//       signal INSIDE the cut branch on both arms.
+//   DEFECT [seam/instruct-result-shape]                                 LOW
+//       `sawDone` crossed the InstructGenerateFn seam, where the interface does
+//       not declare it and the other three backends do not produce it. Fixed by
+//       spelling out the four declared fields at the return.
+//   DEFECT [seam/inner-annotation]                                      LOW
+//       `streamGenerateInner`'s declared return type did not list `sawDone`,
+//       and tsc could not see the difference, so the field the guard reads was
+//       not compiler-enforced end to end. Fixed by declaring it required at
+//       both ends, which makes removing it a compile error.
 //
-// TWO THINGS ARE PINNED AS ACCEPTED rather than left to be rediscovered:
+// ONE ROW WAS RE-CUT AT PHASE 4. `CLEAN [cloud/error frame]` was pinned as a
+// moved baseline while phase 3 held the sentence for a branch it did not own;
+// phase 4 landed the error-frame throw and flipped it, which is the row doing
+// its job. It now pins the settled behaviour and both sentences it must not be.
+//
+// TWO THINGS STAY PINNED AS ACCEPTED rather than left to be rediscovered:
 // F5's neither-signal case (the contract's recorded risk, re-driven here in the
-// shape a real provider frame actually has, `finish_reason: null`), and the
-// cloud in-stream error frame, whose sentence this phase moved on the way past
-// even though phase 4 owns that branch.
+// shape a real provider frame actually has, `finish_reason: null`) and the
+// keepalive-only stream.
 //
 // Run: node --test test/adversarial-v58-p3.test.cjs
 
@@ -219,6 +228,23 @@ async function reference() {
   return refCache;
 }
 
+/** The EMPTY-GENERATION sentence, read out of the product the same way: drive a
+ *  terminated cloud stream whose text is whitespace only, all the way through
+ *  FnGenService, and toast whatever it refuses with. Written down nowhere, so a
+ *  re-wording of that sentence re-baselines this file instead of rotting it. */
+let emptyRefCache;
+async function emptyReference() {
+  if (emptyRefCache === undefined) {
+    const got = await withServer(
+      clean([sse({ choices: [{ delta: { content: "   " }, finish_reason: "stop" }] }), DONE], SSE),
+      (b) => outcome(() => service(b, makeCloudInstruct({ baseUrl: b, apiKey: "k" })).generateRaw("write a function")),
+    );
+    assert.strictEqual(got.ok, false, "harness: a whitespace-only generation must reach the service's empty reject");
+    emptyRefCache = toast(got.err);
+  }
+  return emptyRefCache;
+}
+
 // ===========================================================================
 // 1. THE PLACEMENT. Everything the instruct arm now refuses must still resolve
 //    on the keystroke path, in every shape - not only the one the oracle drives.
@@ -277,24 +303,24 @@ test("CLEAN [placement/one spender]: streamGenerate has exactly two callers and 
 // 2. THE SEAM. Two defects live here.
 // ===========================================================================
 
-test("DEFECT [seam/instruct-result-shape]: `sawDone` is not spent - it comes out of generateInstruct on the InstructGenerateFn seam", async () => {
-  // The signal is documented as "Reported, never acted on HERE ... Spent at
-  // generateInstruct." It is not spent: generateInstruct returns
-  // streamGenerate's object unchanged, so a private transport flag crosses the
-  // InstructGenerateFn seam that four backends implement.
+test("DEFECT [seam/instruct-result-shape]: `sawDone` is spent, not returned across the InstructGenerateFn seam", async () => {
+  // WHAT THIS CAUGHT, fixed in 7e4eb79. The signal is documented as "Reported,
+  // never acted on HERE ... Spent at generateInstruct." It was not spent:
+  // generateInstruct returned streamGenerate's object unchanged, so a private
+  // transport flag crossed the seam that four backends implement.
   //
   // The interface it crosses on declares four fields (text, ttftMs, totalMs,
-  // doneReason). TypeScript cannot catch the fifth, because the value is
+  // doneReason). TypeScript could not catch the fifth, because the value is
   // returned through a variable rather than an object literal, so nothing in
-  // the build says the declaration and the runtime disagree.
+  // the build said the declaration and the runtime disagreed.
   //
-  // WHY IT MATTERS rather than being cosmetic: the field now means "this arm
-  // saw its terminal frame" on ONE of the four backends and is `undefined` on
-  // the other three, which read as "no terminal frame" to anyone who finds it.
+  // WHY IT MATTERED rather than being cosmetic: the field means "this arm saw
+  // its terminal frame" on ONE of the four backends and is `undefined` on the
+  // other three, which reads as "no terminal frame" to anyone who finds it.
   // Phase 4 and phase 5 both work on this seam. The blind file pins exactly
   // this property for generateFim ("a leaked field is how a caller downstream
-  // starts branching on the instruct path's business"); the instruct side got
-  // no such row.
+  // starts branching on the instruct path's business"); the instruct side had
+  // no such row. This is it.
   const local = await withServer(
     clean([nd({ response: "fn add() {}" }), nd({ done: true, done_reason: "stop" })], ND),
     (b) => outcome(() => driveLocal(b)),
@@ -322,18 +348,19 @@ test("DEFECT [seam/instruct-result-shape]: `sawDone` is not spent - it comes out
   );
 });
 
-test("DEFECT [seam/inner-annotation]: streamGenerateInner's declared return type omits the field the guard depends on", () => {
-  // `streamGenerate` declares `sawDone?: boolean` and `generateInstruct` reads
-  // it. The function that actually PRODUCES it, streamGenerateInner, declares a
-  // return type without it and returns the field through a conditional spread.
-  // Excess-property checking does not apply to spreads, so tsc is silent:
-  // verified by compiling the same shape standalone, which is clean.
+test("DEFECT [seam/inner-annotation]: streamGenerateInner declares the field the guard depends on", () => {
+  // WHAT THIS CAUGHT, fixed in 7e4eb79. `streamGenerate` declared
+  // `sawDone?: boolean` and `generateInstruct` read it. The function that
+  // actually PRODUCES it, streamGenerateInner, declared a return type without
+  // it and returned the field through a conditional spread. Excess-property
+  // checking does not apply to spreads, so tsc was silent: verified by
+  // compiling the same shape standalone, which is clean.
   //
-  // The failure this leaves open is not small. Delete or rename the spread and
+  // The failure that left open was not small. Delete or rename the spread and
   // `result.sawDone` is `undefined` on every stream, the guard fires on every
   // instruct generation, and the product tells every user their server went
-  // silent - with a green `tsc --noEmit`. The outer annotation is the only
-  // thing standing between the guard and that, and it is not the annotation on
+  // silent - with a green `tsc --noEmit`. The outer annotation was the only
+  // thing standing between the guard and that, and it was not the annotation on
   // the code that fills the field.
   const src = readSrc("core", "ollama.ts");
   const marker = "async function streamGenerateInner(): Promise<{";
@@ -448,33 +475,33 @@ for (const [label, drive, ctype, frames] of [
   ["local", driveLocal, ND, [nd({ response: F1 }), `{"response":${JSON.stringify(F2)}}`]],
   ["cloud", driveCloud, SSE, [sse({ choices: [{ delta: { content: F1 } }] }), `data: ${JSON.stringify({ choices: [{ delta: { content: F2 } }] })}`]],
 ]) {
-  test(`DEFECT [abort/${label}-late-abort]: a cancellation that lands after the reader's last check is reported as a silent server`, async () => {
-    // THE HOLE. Both readers check `signal.aborted` at the TOP of handleLine
-    // and nowhere after, and the new terminal guard does not consult the signal
-    // at all. So a cancel that lands inside the final handleLine - after that
-    // call's own check - is never seen again, and the guard converts it into
-    // the silent-server sentence.
+  test(`DEFECT [abort/${label}-late-abort]: a cancellation that lands after the reader's last check still reads as a cancellation`, async () => {
+    // WHAT THIS CAUGHT, fixed in 7e4eb79. Both readers check `signal.aborted`
+    // at the TOP of handleLine and nowhere after, and the terminal guard did
+    // not consult the signal at all. So a cancel that landed inside the final
+    // handleLine - after that call's own check - was never seen again, and the
+    // guard converted it into the silent-server sentence.
     //
     // onChunk is the deterministic way to hit the window; it is not the only
     // one. Any cancel delivered between the reader's last check and the guard
     // lands here, and the guard is the only code between them.
     //
-    // WHAT THE USER GETS: they pressed cancel, and the product tells them their
+    // WHAT THE USER GOT: they pressed cancel, and the product told them their
     // model server went silent and to go check it. Contract C8 is explicit that
     // cancellation is a different outcome from failure and that phase 5 depends
     // on the distinction; the blind file binds C8 at the transport, which is
-    // exactly where this fails.
+    // exactly where this failed.
     //
-    // NOT VISIBLE AT THE FN-GEN GESTURES TODAY, and the next row pins why:
+    // IT WAS NOT VISIBLE AT THE FN-GEN GESTURES, and the next row pins why:
     // FnGenService.run catches, asks `controller.signal.aborted` FIRST and
-    // returns undefined, so the sentence is swallowed before a toast. That is a
-    // downstream accident, not this guard being right - Tighten Doc Comment
+    // returns undefined, so the sentence was swallowed before a toast. That was
+    // a downstream accident, not the guard being right - Tighten Doc Comment
     // uses the same seam without that catch, and phase 5's cancel affordance is
     // new code on this boundary.
     //
-    // FIX: `if (params.signal.aborted) throw abortError();` immediately before
-    // the terminal check on each arm, or fold the signal into the guard's
-    // condition the way `stopped` already is.
+    // THE FIX re-checks the signal INSIDE the cut branch on both arms, which is
+    // the placement that keeps `CLEAN [abort/last frame]` green: a stream that
+    // finished properly and was cancelled a moment later still resolves.
     const ref = await reference();
     const ac = new AbortController();
     const got = await withServer(cut(frames, ctype), (b) =>
@@ -549,17 +576,60 @@ test("ACCEPTED [cloud/keepalives only]: a stream of SSE comments and nothing els
   assert.strictEqual(toast(got.err), ref.sentence);
 });
 
-test("ACCEPTED [cloud/error frame]: this phase moved the sentence for a branch phase 4 owns", async () => {
-  // Out of scope per the contract, and it moved anyway. A cloud 200 carrying
-  // `data: {"error":...}` used to reach the caller as an empty resolve and draw
-  // the service's "no usable code" sentence; it now draws the silent-server
-  // sentence, because an error frame carries neither terminal signal. Pinned
-  // here so phase 4 sees the sentence it is changing FROM, rather than assuming
-  // the branch-point behaviour.
-  const ref = await reference();
-  const got = await withServer(clean([sse({ error: { message: "upstream overloaded" } })], SSE), (b) => outcome(() => driveCloud(b)));
-  assert.strictEqual(got.ok, false, `an error frame carries no terminal signal. Got RESOLVED ${JSON.stringify(got.value)}`);
-  assert.strictEqual(toast(got.err), ref.sentence, "today it is the silent-server sentence; phase 4 replaces it with the provider's own reason");
+test("CLEAN [cloud/error frame]: the provider's own reason reaches the user, and neither wrong sentence does", async () => {
+  // RE-CUT AT PHASE 4, and the history is the point of the row. A cloud 200
+  // carrying `data: {"error":...}` has drawn three different things:
+  //
+  //   branch point  the frame matched nothing and vanished; the call resolved
+  //                 with empty text and the service said "no usable code",
+  //                 while the provider had said it was overloaded.
+  //   phase 3       the terminal check turned it into the silent-server
+  //                 sentence - closer, still wrong, and a sentence this phase
+  //                 moved on the way past a branch it did not own. Pinned red
+  //                 on purpose so the moved baseline could not move again
+  //                 unnoticed.
+  //   phase 4       the frame throws in handleLine, BEFORE the terminal check,
+  //                 and carries the provider's own message. No crafted sentence
+  //                 (S20, ratified 2026-08-22): a generic envelope carries a
+  //                 rate limit, a refused key and a malformed request alike, and
+  //                 a crafted sentence would delete the only actionable half.
+  //
+  // Both wrong sentences are read out of the product at run time rather than
+  // written down, so a re-wording of either re-baselines this row instead of
+  // letting it pass on a stale literal.
+  const silent = (await reference()).sentence;
+  const empty = await emptyReference();
+  const REASON = "upstream overloaded";
+
+  // No finish_reason and no [DONE] in this drive, deliberately: the error frame
+  // has to win over the terminal check, and it can only do that by throwing
+  // first. A branch placed after the reader loop would draw `silent` here.
+  const got = await withServer(clean([sse({ error: { message: REASON, type: "server_error" } })], SSE), (b) =>
+    outcome(() => driveCloud(b)),
+  );
+  assert.strictEqual(got.ok, false, `an error frame must reject. Got RESOLVED ${JSON.stringify(got.value)}`);
+  const said = toast(got.err);
+  assert.ok(
+    said.includes(REASON),
+    `the provider's own reason is the actionable half and must reach the user.\n` +
+      `  thrown: ${JSON.stringify(got.message)}\n  toast : ${JSON.stringify(said)}`,
+  );
+  assert.notStrictEqual(said, empty, `the branch-point sentence is wrong: the model produced nothing BECAUSE the provider failed`);
+  assert.notStrictEqual(said, silent, `the phase-3 sentence is wrong: the server did not go silent, it said what went wrong`);
+  assert.strictEqual(
+    translateServiceReject(got.err),
+    undefined,
+    `a generic provider envelope gets no crafted sentence (S20). Got ${JSON.stringify(translateServiceReject(got.err))}`,
+  );
+
+  // AND THE FORGERY, which is what the new PAYLOAD_CARRIERS entry is for: the
+  // message is server-chosen text, so a provider whose reason happens to be a
+  // service reject's own words must not draw that service's sentence.
+  const forged = await withServer(clean([sse({ error: { message: "generation was empty after postprocess" } })], SSE), (b) =>
+    outcome(() => driveCloud(b)),
+  );
+  assert.strictEqual(forged.ok, false, "precondition: the forged frame rejects");
+  assert.notStrictEqual(toast(forged.err), empty, "a service marker inside the provider's own text is the server talking");
 });
 
 test("CLEAN [cloud/dialect retry]: a learned-dialect retry starts its terminal state clean", async () => {

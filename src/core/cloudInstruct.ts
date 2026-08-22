@@ -21,7 +21,7 @@
 
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, channelBodyLine, channelUnreadLine, readBody } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, providerReason, readBody } from "./errorBound";
 
 export interface CloudProvider {
   id: string;
@@ -63,6 +63,17 @@ export interface CloudInstructConfig {
  *  (usage, reasoning traces, tool calls - none land in a function body). */
 interface StreamDelta {
   choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
+  /** A provider failure delivered INSIDE a 200, the OpenAI-compatible sibling
+   *  of ollama's in-stream `error` field and Anthropic's SSE error event.
+   *
+   *  `unknown`, because that is the truth: this field is declared here and
+   *  guaranteed by nobody, and the four compat surfaces this client serves do
+   *  not agree on its shape. `providerReason` in `errorBound.ts` is the only
+   *  thing that reads it. An earlier version of this declaration promised
+   *  `{ message?: string }` and the code below believed it, which lost the
+   *  reason on a string envelope and let a crafted `toString` throw out of the
+   *  reader. */
+  error?: unknown;
 }
 
 /**
@@ -178,6 +189,35 @@ async function streamChat(
       return;
     }
     const evt = JSON.parse(payload) as StreamDelta;
+    // A 200 whose stream carries the failure. Before this branch the frame was
+    // parsed, matched nothing and vanished: the call resolved with empty text
+    // and the user was told the model produced nothing usable, while the
+    // provider had said it was overloaded (roadmap item 67, third hole).
+    //
+    // NO CRAFTED SENTENCE, and that is the ruling rather than an omission
+    // (docs/supersessions.md S20, ratified 2026-08-22, extended to this arm by
+    // session-v58's goal). This is a GENERIC provider envelope: a rate limit,
+    // a refused key and a malformed request all arrive through it. Session-v57
+    // drove all three on the Anthropic arm and found a crafted sentence telling
+    // a user with a bad key to check a server that was fine. The provider's own
+    // message is the actionable half; what a crafted sentence would remove is
+    // the only part that says what happened.
+    //
+    // Deliberately word-for-word the Anthropic arm's shape. One event, one
+    // wording, across the two transports that can raise it.
+    //
+    // COUPLING: this message's HEAD is an entry in fnGen.ts PAYLOAD_CARRIERS,
+    // which is what stops a service marker inside the provider's own text from
+    // drawing that service's sentence.
+    //
+    // Fires on ANY error frame, including one that arrives after a
+    // `finish_reason` or a `[DONE]`, and the banked body is refused with it.
+    // Deliberate: a provider that says "error" after saying "done" has said
+    // something is wrong with the reply, and this product's expensive failure
+    // is proposing a body the user then has to unpick.
+    if (evt.error) {
+      throw new Error(`Cloud reported an error mid-reply: ${boundBody(providerReason(evt.error))}`);
+    }
     const choice = evt.choices?.[0];
     const chunk = choice?.delta?.content;
     if (chunk) {

@@ -318,8 +318,15 @@ test("every in-200 server string that reaches a user surface goes through the bo
     3,
     "ollama.ts has exactly three in-200 sites: the generate error, the pull error, and the pull status",
   );
+  // session-v58 phase 4: the coercion inside the bound moved from
+  // `String(evt.error?.message ?? evt.error?.type ?? "unknown")` to
+  // `providerReason(evt.error)`, because the old chain assumed a shape the wire
+  // does not guarantee - it lost the reason entirely on a string envelope, let
+  // an empty `message` hide a named `type`, and could make `String()` itself
+  // throw a TypeError out of the reader. What this row pins is unchanged and is
+  // the reason it exists: the frame's payload reaches the screen BOUNDED.
   assert.ok(
-    /boundBody\(String\(evt\.error\?\.message/.test(anthropic),
+    /boundBody\(providerReason\(evt\.error\)\)/.test(anthropic),
     "anthropicInstruct.ts must bound its SSE error frame. A later phase gives this site a translated " +
       "sentence, and a translation is not a bound: a marker reworded out of the table would put the " +
       "whole payload back on the screen.",
