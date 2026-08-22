@@ -35,6 +35,9 @@ import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
 import { firstLine, hasMoreThanOneLine, tierDisabledToast } from "./toastText";
+// A leaf: it imports vscode and nothing of ours, so both this file and
+// extension.ts can hold it without a cycle.
+import { CANCEL_COMMAND, InFlightRegistry, isCancellation } from "./inFlight";
 import {
   DocumentSymbolLite,
   MEMBER_CAP,
@@ -1589,6 +1592,10 @@ async function resolveClaudeBinary(run: ProbeCommandFn): Promise<string | undefi
 export interface FnGenDeps {
   probeOpts?: ProbeHardwareOptions;
   buildService?: typeof buildFnGenService;
+  /** The in-flight registry that owns the status-bar item and the cancel
+   *  command's targets. Injectable so a headless oracle can read what the item
+   *  says without a real status bar; defaults to a real one. */
+  inFlight?: InFlightRegistry;
   /** The post-accept oracle, injectable so the manual repair command's wiring
    *  (the ctx it builds) is testable without a live cargo check. Defaults to
    *  the real runPostAcceptOracle. */
@@ -5696,6 +5703,22 @@ export function registerFnGen(
   // steering never promotes a platform-pruned optional dep.
   const catalogFetcher = makeHostScopedCatalogFetcher();
 
+  // What is running, and the only way to stop it that survives the progress
+  // notification being dismissed (roadmap item 67's ruled replacement for a
+  // watchdog). Every cancellable `withProgress` below claims from this; the
+  // claim is released in a `finally` so a gesture that throws still gives the
+  // status-bar item back.
+  const inFlight = deps.inFlight ?? new InFlightRegistry(log);
+  context.subscriptions.push(
+    inFlight,
+    vscode.commands.registerCommand(CANCEL_COMMAND, () => {
+      // No toast either way. Cancelling is the user's own action and needs no
+      // confirmation, and pressing a bound key with nothing running is not a
+      // mistake worth a notification. The channel carries both outcomes.
+      inFlight.cancelAll();
+    }),
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand("column80.generateFunction", async () => {
       const editor = vscode.window.activeTextEditor;
@@ -5925,6 +5948,11 @@ export function registerFnGen(
           async (_progress, token) => {
             const controller = new AbortController();
             token.onCancellationRequested(() => controller.abort());
+            // Claimed for as long as this runs, so cancel outlives the
+            // notification above it being dismissed. Released in the `finally`
+            // at the end of this callback, whatever ends the work.
+            const claim = inFlight.begin(`Generating ${resolved.symbolName}`, controller);
+            try {
             // Read from the LIVE store at generate time, never a copy captured
             // earlier: bar 3 (a removed block must never reach a prompt, zero
             // tolerance) hangs on this ordering. Since v33 the TEXT is live
@@ -5959,7 +5987,13 @@ export function registerFnGen(
               localSymbols,
               scaffoldComments: harvest.comments,
             };
-            return service.generate(
+            // `return await`, NOT `return`. Inside a try/finally, a bare
+            // `return promise` runs the finally at the RETURN, before the
+            // promise settles - so the claim was released the instant the
+            // generation started and the status-bar item appeared and vanished
+            // in the same tick. The await is what makes the finally mean "when
+            // this work ends".
+            return await service.generate(
               {
                 ...promptInput,
                 span: resolved.span,
@@ -5980,6 +6014,9 @@ export function registerFnGen(
               },
               controller.signal,
             );
+            } finally {
+              claim.release();
+            }
           },
         );
       } catch (err) {
@@ -6029,6 +6066,9 @@ export function registerFnGen(
             (_p, token) => {
               const controller = new AbortController();
               token.onCancellationRequested(() => controller.abort());
+              // Claimed so cancel outlives a dismissed notification; released
+              // on the promise below, so a rejection releases it too.
+              const claim = inFlight.begin(`Reworking ${resolved.symbolName}`, controller);
               return service.generateRaw(
                 assembleAntiPuntReprompt({
                   signature: resolved.signature,
@@ -6056,7 +6096,7 @@ export function registerFnGen(
                   contextBlocks: originalBlocks,
                 },
                 controller.signal,
-              );
+              ).finally(() => claim.release());
             },
           );
           if (retry && !looksLikePunt(retry.text)) {
@@ -6150,6 +6190,9 @@ export function registerFnGen(
               },
               source: "fngen",
               service,
+              // The registry, so a repair or refine round can be stopped from the
+              // status bar (roadmap item 67's ruled cancel affordance).
+              inFlight,
               output,
               presenter,
               // The post-accept re-resolution admits Struct/Enum under the
@@ -6200,6 +6243,9 @@ export function registerFnGen(
                 landedSpan: { start: startOffset, end: startOffset + textLength },
                 source: "fim",
                 service,
+                // The registry, so a repair or refine round can be stopped from the
+                // status bar (roadmap item 67's ruled cancel affordance).
+                inFlight,
                 output,
                 presenter,
                 // Admit Struct/Enum under the injection gate so a FIM
@@ -6328,6 +6374,9 @@ export function registerFnGen(
           landedSpan: resolved.span,
           source: "fngen",
           service,
+          // The registry, so a repair or refine round can be stopped from the
+          // status bar (roadmap item 67's ruled cancel affordance).
+          inFlight,
           output,
           presenter,
           resolveFunction: (doc, pos) =>
@@ -6497,6 +6546,9 @@ export function registerFnGen(
           (_p, token) => {
             const controller = new AbortController();
             token.onCancellationRequested(() => controller.abort());
+            // Claimed so cancel outlives a dismissed notification; released on
+            // the promise below, so a rejection releases it too.
+            const claim = inFlight.begin(`Generating tests for ${resolved.symbolName}`, controller);
             return service.generateTests(
               {
                 signature: resolved.signature,
@@ -6509,7 +6561,7 @@ export function registerFnGen(
                 span: resolved.span,
               },
               controller.signal,
-            );
+            ).finally(() => claim.release());
           },
         );
       } catch (err) {
@@ -6813,10 +6865,27 @@ export function registerFnGen(
           (_p, token) => {
             const controller = new AbortController();
             token.onCancellationRequested(() => controller.abort());
-            return runFrameworkTestsAt(framework, placement, testNames, { log, signal: controller.signal });
+            // A spawned test run claims too. It is not a generation, and the
+            // contract's out-of-scope line first said so - but a hung
+            // `cargo test` behind a dismissed notification is the same user
+            // problem as a hung server, and it is work this product started.
+            const claim = inFlight.begin(`Running tests for ${resolved.symbolName}`, controller);
+            return runFrameworkTestsAt(framework, placement, testNames, {
+              log,
+              signal: controller.signal,
+            }).finally(() => claim.release());
           },
         );
       } catch (err) {
+        // A cancel is not a failure, and this arm is now cancellable from the
+        // status bar as well as from the notification, so the throw that
+        // arrives here can be the user's own action. Toasting "the run could
+        // not start" at someone who just cancelled the run is the wrong cause
+        // and an alarming one. Silent, with the channel keeping the record.
+        if (isCancellation(err)) {
+          output.appendLine(`[tdd] the ${framework.displayName} run was cancelled`);
+          return;
+        }
         // The spawn itself failed: the runner binary is not on PATH, or the
         // process could not start. NOT a compile error — nothing was built. Name
         // the problem and STOP: this product never offers to install anything.

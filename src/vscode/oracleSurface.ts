@@ -11,6 +11,9 @@ import {
 // toastText is a leaf that imports nothing, so this edge cannot cycle back
 // through fnGen, which registers this surface.
 import { oneLineWithPointer } from "./toastText";
+// Type only: no runtime edge from this surface to the registry, which is
+// constructed in fnGen.ts and passed in.
+import type { InFlightClaim } from "./inFlight";
 import { CrateResolution } from "../core/compilerDirected";
 import { buildResolution } from "../core/crateResolution";
 import { fetchMetadataJson, resolveHostTriple } from "../core/catalog";
@@ -100,6 +103,14 @@ export interface PostAcceptContext {
    *  replacement's length. The display anchors here. */
   landedSpan: FunctionSpan;
   source: GenerationSource;
+  /** The cancel affordance's registry (roadmap item 67, ruled 2026-08-22). The
+   *  progress over these rounds is `withVerifyStatus`, a
+   *  ProgressLocation.Window spinner carrying no cancellation token, so a claim
+   *  here is the ONLY thing that can stop a hung repair or refine.
+   *
+   *  Optional, and absent is exactly the pre-phase-5 behaviour: a headless
+   *  caller owns no status bar and every call site uses `?.`. */
+  inFlight?: { begin(label: string, controller: AbortController): InFlightClaim };
   /** Repair rounds go through this same service: same producer guards,
    *  same splice/preview consent gate, no second insertion route. */
   service: FnGenService;
@@ -784,6 +795,15 @@ async function executeSession(
         `${usage.length > 0 ? ` usage=${usage.length} section(s)` : ""}`,
     );
 
+    // The ONLY thing that can stop this round. The progress over it is
+    // `withVerifyStatus`, a ProgressLocation.Window spinner with no
+    // cancellation token, so before the claim a repair against a hung server
+    // could not be cancelled at all: the spinner spun, the status bar was
+    // empty, and the cancel command said "nothing in flight". Roadmap
+    // item 67's ruling replaced the watchdog with cancellation, and this is the
+    // path a user reaches by ACCEPTING a generation (session-v58 phase 5).
+    const controller = new AbortController();
+    const claim = ctx.inFlight?.begin(`Repairing ${resolved.symbolName}`, controller);
     let result;
     try {
       result = await ctx.service.generateRaw(prompt, {
@@ -799,7 +819,7 @@ async function executeSession(
         // context by construction, so it should hit the checkpoint the
         // generation before it already paid for rather than build a second one.
         contextBlocks: repairBlocks,
-      });
+      }, controller.signal);
     } catch (err) {
       // A WINDOW REFUSAL IS NOT A FAILURE (adversarial review D1). Nothing
       // broke: the prompt did not fit and no model was called. A repair prompt
@@ -817,8 +837,17 @@ async function executeSession(
       // failed); the session ends, remaining diagnostics stay surfaced.
       outcome("failed");
       return;
+    } finally {
+      // Released the instant the MODEL CALL settles, not at the end of the
+      // round: the placement and preview after it are local work, and an item
+      // that stayed up for them would say "still talking to the server" when
+      // nothing is.
+      claim?.release();
     }
     if (!result) {
+      // An abort lands here, because the service returns undefined on a
+      // cancelled round rather than throwing. No toast: cancelling is the
+      // user's own action.
       outcome("aborted");
       return;
     }
@@ -1482,6 +1511,10 @@ async function runRefine(
   );
   const outcome = (result: string) => log(`[repair] refine outcome round=${action.round} result=${result}`);
 
+  // As on the repair round: `withVerifyStatus` carries no token, so this claim
+  // is the only way to stop a refine against a hung server.
+  const controller = new AbortController();
+  const claim = ctx.inFlight?.begin(`Refining ${resolved.symbolName}`, controller);
   let result;
   try {
     result = await ctx.service.generateRaw(prompt, {
@@ -1493,7 +1526,7 @@ async function runRefine(
       bodyOnly: resolved.bodyOnly,
       // Same checkpoint the generation and any repair round used.
       contextBlocks: refineBlocks,
-    });
+    }, controller.signal);
   } catch (err) {
     // As on the repair round. Refine is the sharper case of the two: it is a
     // DIRECT user gesture reachable with no preceding generation, so before this
@@ -1504,6 +1537,8 @@ async function runRefine(
     }
     outcome("failed");
     return;
+  } finally {
+    claim?.release();
   }
   if (!result) {
     outcome("aborted");

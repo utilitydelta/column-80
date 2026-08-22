@@ -141,6 +141,11 @@
       {
         "command": "column80.dumpCompletionItems",
         "title": "Column 80: Dump Completion Items At Cursor (diagnostic)"
+      },
+      {
+        "command": "column80.cancelGeneration",
+        "title": "Cancel Generation",
+        "category": "Column 80"
       }
     ],
     "keybindings": [
