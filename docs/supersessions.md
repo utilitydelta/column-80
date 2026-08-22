@@ -1251,11 +1251,37 @@ inside" - which is legitimate and must keep its answer.
 
 That is why the refusal is C#-only and why it is not a one-line predicate. It needs three facts
 together: the cursor sits on an identifier, that identifier is not the enclosing container's name,
-and the cursor is inside one of that container's members. Drop the first and a member site
-(`stripe.|`) is refused. Drop the second and a constructor's own name token is refused. Drop the
-third and a definition answer landing on the `public` of `public class Tile` is refused. Extending
-it to two more languages is a ruling for a human, not a free extension, because the question it
-must not break has no oracle in those languages.
+and that identifier is not a C# syntax word. Drop the first and a member site (`stripe.|`) is
+refused. Drop the second and a constructor's own name token is refused. Drop the third and a
+definition answer landing on the `public` of `public class Tile` is refused. Extending it to two
+more languages is a ruling for a human, not a free extension, because the question it must not
+break has no oracle in those languages.
+
+**The third fact was wrong when this entry was first written, and it is corrected here rather than
+ratified as it stood.** It read "the cursor is inside one of that container's MEMBERS", on the
+ground that a declaration head sits outside every member and is therefore a legitimate landing
+place. A batched adversarial review found the hole and a live Roslyn 2.140.9 confirmed the shape:
+**a type referenced in a declaration HEAD was never refused**. `public class Helper : Plain`
+rendered `Use` under `to build a Plain:`; `public class Seeded(Plain seed)` rendered `Seed` and
+`Twice`; a `where T : Plain` constraint rendered `Item`; an attribute rendered the attributed
+class's members, on its own line and inline both. Roslyn emits NO constructor child for a primary
+constructor at all, and an attributed class's `range` starts at the attribute, so the old third
+fact could not fire on any of the five. It is reachable because `findTypeAnchorInText` takes the
+first non-`//` occurrence of a bare name, and a primary-constructor parameter is very often that
+first occurrence.
+
+The replacement asks a different question: a correct resolution lands on the named type's own NAME
+TOKEN, and everything else inside a container belongs to some other declaration. The container's
+name is compared at its identifier head, because Roslyn reports a generic class as `Box<T>` while
+the cursor's word is `Box` - that comparison is now what keeps a generic class and a positional
+record answering, where the old third fact was what kept them. The syntax-word list is what keeps a
+server that answers a whole-declaration span honest.
+
+**What is NOT proven, and it is the same premise the original build rests on.** The triggering
+server state was not reproduced on either run. Asked at all five head positions, this box's Roslyn
+answered `definition()` CORRECTLY every time - it pointed at `Plain`'s own name token. What is
+measured live is the shape: given a cursor at a head reference, the descent hands back the wrong
+class's members, and before this correction the refusal watched it happen.
 
 **The selection is stricter than C#'s, on purpose.** `selectSoleTypeCursor` refuses two distinct
 declaration sites for one name outright. `selectCsTypeCursor` cannot, because a C# `partial class`
@@ -1269,6 +1295,22 @@ in every language, bodies carrying the original demand with the per-language bra
 `test/impl-v59-p9-byname-leg.test.cjs`. All three `KNOWN WRONG:` rows were red at the moment the
 leg landed and before they were re-cut; that red is recorded in the phase report. Each of the six
 guards above was mutated and killed exactly the row that names it.
+
+The declaration-head correction is pinned by `test/adversarial-v59-p9-declhead.test.cjs`, over a
+symbol tree CAPTURED from the live Roslyn rather than hand-built - Roslyn's missing constructor
+child and its attribute-inclusive range are the two facts a hand-built fixture would have got
+wrong, and both are load-bearing. Six rows red before the change and green after; eight rows green
+on both sides, which is the half that matters, since a false refusal costs every correct surface
+where the gap costs one. Two mutants: deleting the syntax-word list reddens four of those eight,
+and comparing the container name whole instead of at its identifier head reddens the generic-class
+rows.
+
+The navto cursor fix has a row of its own at last, `test/adversarial-v59-p9-navto.test.cjs`, driven
+against a real in-process TypeScript language service over a real tsconfig - a fake cannot produce
+the defect, because navto's span shape IS the defect. Restoring `hit.textSpan.start` reddens the
+three name-token rows and leaves the members row green, which is the commit's own observation
+standing as an executable fact: `membersOfType` walks up the AST and survives a keyword cursor,
+`hoverSurface` does not.
 
 **Graded live, and the live run found a defect the fakes could not.** Both new legs were driven
 against real servers: a real TypeScript language service in process, and a real
