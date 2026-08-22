@@ -314,3 +314,182 @@ inject 13.6% vs dark 4.9% compiled (+8.7, ~2.8x). Supersession S15 records the n
 global-cap rows this reversed. Qualified-usage mining for Go and C# refuses a name immediately
 followed by `(` before any workspace/symbol lookup fires (a call, never a type) - live round trips
 per row halved.
+
+## Measured records
+
+The runs behind the constants and the ordering rules in this subsystem. They were recorded in
+session folders, which a clone does not have, so the numbers live here. Where the raw harvest for a
+run no longer exists, that is said rather than implied.
+
+### Member ordering: the server's tier, and why reordering lost
+
+The trigger was a live capture. At a tuple member site a 1.5b served `clone(),` on both the scoped
+and the unscoped rerun, with the full 21-member surface injected. The cause was proven: the
+renderer preserved the provider's raw order, so `clone(&self) -> Self` was listed FIRST, the header
+says "use one of these exact names", and both serves picked exactly the first exact name.
+
+The rule that came out of it: the injected surface is a steering instrument, not a transcript. The
+receiver's own members lead and universal blanket members trail or vanish, and the discriminator is
+always the SERVER'S OWN relevance tier, never a hand-written own-versus-trait name list. A plain
+`viaTrait` test would demote a human's domain trait impls along with the noise.
+
+Per-language discriminators, each measured rather than assumed:
+
+- rust-analyzer: `sortText`, probed at `7fffffff` plus `preselect` for own members and `80000004`
+  for blanket.
+- pyright: the dunder tier.
+- Roslyn: the Object four-name fallback. Its `sortText` is an alphabetical index and is
+  probe-proven useless for this.
+- tsserver: needs none, it serves only declared members.
+- gopls: untouched. Its rank order IS relevance, and it is the only real ranker of the five.
+
+Four arms ran over 44 real Rust member sites with ground truth, one generation per site per arm,
+scored on first-line correctness against what the developer actually wrote: A today's block
+(control), B reordered own-tier-first, C reordered plus section labels, D own tier only at an empty
+partial with the blanket tier dropped from the block.
+
+**Arm D wins: 79.5% top-1 against the control's 75.0%, and blanket-first serves 0 against 2.**
+Reordering-and-keeping LOST to the control at 70.5%. The primacy hypothesis is DEAD: 0 of 13 wrong
+picks took the first listed name. Proximity to the cursor is the real force, so a blanket TAIL
+hurts more than a blanket head ever did and only dropping the tier helps. That is also why the
+whole-block renderer leaves root order untouched and reserves budget instead: what sits nearest the
+cursor is what the model reaches for.
+
+The enforcement set is never narrowed by any of this. `memberNames` carries every name at every
+tier, so trimming or reordering the BLOCK cannot weaken the output gate.
+
+The raw harvest for this run is lost. The arm figures above survive only through this record and
+the session's own progress notes.
+
+The `sortText` family evidence did survive an independent re-derivation over every item of all 44
+sites: 17 distinct values, 9 in `7fffffd9`..`7fffffff` and 8 in `80000000`..`8000000b`. No `9`-led
+value, no non-hex, and no member item anywhere in the harvest with an absent `sortText`. Matching
+the exact string `7fffffff` silently demotes type-matched BOOSTED own fields, which is the run-1
+mispartition kept on the record as the warning. Note also that the measurement harness partitioned
+the opposite way (`startsWith("7")`) to the product's rule (`startsWith("8")`): extensionally
+identical over that harvest, but a future rust-analyzer emitting a third family splits the two
+rules.
+
+### The C# chain surface
+
+Why `src/core/chainSurface.ts` is C#-only. Measured against Roslyn 5.7.0, rust-analyzer 1.96.0,
+tsserver 5.9.3 and pyright 1.1.411.
+
+| language | receiver | items at empty partial | signatures eager? | verdict |
+|---|---|---|---|---|
+| C# (Roslyn) | `tiles.` on `List<Tile>` | 115, `Where<>` at position 113 | NO, nothing until resolve | STARVED |
+| Rust (rust-analyzer) | `tiles.iter().` | 89 | YES, in `labelDetails.description` | EAGER |
+| TypeScript (tsserver) | `tiles.` on `Tile[]` | 34, chain verbs at positions 7 to 28 | NO, but 34 fits the 32 cap | MIXED |
+| Python (pyright) | `xs.` on `list[Tile]` | 52, 11 own methods lead | NO | not starved |
+| Go (gopls) | slices carry no methods | n/a | n/a | the site does not exist |
+
+Typing a letter does not help C#: the same 115 items arrive in the same order, so partial-directed
+resolution is unreachable in-editor. A raw unresolved `Where<>` item carries label, kind and
+`sortText` `"0113Where"` and nothing else; even `data` rides on `itemDefaults`. Python is not a
+member-surface problem at all, because its chain vocabulary (`filter`, `map`, `sum`, `sorted`)
+lives at GLOBAL scope.
+
+Targeted per-item resolve cost, warm medians: Roslyn 5.4ms, rust-analyzer 8.0ms, tsserver 1.0ms
+(and all 8 items in ONE batched request costs 2.9ms), pyright 8.6ms at a member site.
+
+Filling the cache off the keystroke path costs, for C#, 86ms plus 450ms for 80 resolves (3.0ms
+median per item), yielding 76 distinct methods with unsubstituted `TSource`. That is affordable
+once per workspace and unaffordable per keystroke.
+
+Dead ends, measured so nobody re-walks them: `workspace/symbol("Enumerable")` returns 0 results,
+because metadata types are unreachable that way; and a hover at a real `Where` call site works
+(20.7ms) but returns the SUBSTITUTED signature, which makes it a per-site primitive rather than a
+workspace-constant one.
+
+Two C# traps for anyone touching this: Roslyn labels every generic method `Where<>` and not
+`Where`, so any cache key or gate comparison must strip `<>`. And a `completionItem/resolve` sent
+WITHOUT merging `itemDefaults.data` does not error, it KILLS the server process
+(`CompletionResolveHandler.cs:127`, reproduced twice).
+
+The element type inside a lambda is inferred by every server measured (C# 9 items all five `Tile`
+members, Rust 25, TypeScript 3, Python 26), which is why the cache can ship unsubstituted forms.
+
+A live dogfood capture at the same receiver logged 123 members where the headless session served
+115. Same site, different session state, identical mechanics.
+
+### The hover fan-out: what it gathers against what reaches the prompt
+
+Measured on a real Go corpus (pgx) through gopls, 20 distinct struct roots, 165 files pre-opened
+before the clock started, bounds `D_MAX 2 / N_MAX 30` for the cross-file walk and
+`D_MAX 2 / B_MAX 6 / N_MAX 24 / TOK_MAX 400` for the data shape, 2400 chars aggregate per prompt.
+
+Totals: 117 types gathered, 117 hovers, 86 reachable, 63 rendered in a solo render, and only 14
+rendered in the real 8-root prompt. 54 of 117 gathered types (46%) never reach the prompt under the
+most generous render. Of those, 31 (26% of everything gathered) are UNREACHABLE by the render's own
+BFS: each cost a `definition`, a hover and a `documentSymbol`, and no budget at any stop could ever
+have spent them. The rest were char-budget cuts, and that distinction is what makes the fan-out cap
+commit-counted rather than queue-counted.
+
+`pgx.Conn` is the worst row: 542ms, 26 gathered, 15 reachable, 4 rendered solo and 1 in the prompt,
+with 11 unreachable and 11 more cut by the char budget. Its 130ms of hover time is almost the whole
+of it. Four unreachable types recur across `ConnConfig`, `Config` and `ConnectError`, which is why
+the cap generalises rather than fitting one root.
+
+The cost of a hover is not uniform: a hover into a package gopls has not type-checked measures 71ms
+and 76ms where a warm one measures 0.08 to 0.15ms, so a type nobody will read can cost a package
+load.
+
+### The cold cross-file walk, and why a no-progress stop is wrong
+
+At the whole-block site a cold `membersOfType` on the first walk over a just-opened definition file
+answered **11 members with 1 signed in 52ms**, against a 50ms fan-out budget. The single ask that
+landed was `__init__`, and `renderMethods` DROPS the construction member by design. One survivor,
+and it was the one member the renderer discards, so the block that shipped was 71 chars: header plus
+the type name, zero members. The same walk warm renders 7 of 11.
+
+That is the shape that rules out a no-progress stop on the settle loop. The member COUNT is complete
+from the first answer because `documentSymbol` is cheap; what is missing is SIGNATURES, and a server
+still cold 40ms later is cut by the same wall clock and answers 11 and 1 again. A stop keyed on "the
+count and the signed count did not move" fires exactly one poll before the answer the loop exists to
+reach.
+
+The sibling failure at the same cap, warm and same-file: at a 16-member class the fan-out fills all
+eight `HOVER_SIGNATURE_CAP` slots with the eight ATTRIBUTES, because they are declared before the
+eight methods and the ask loop takes members in descent order. The block names every field and not
+one callable, which is the exact inverse of what a "how do I build one of these" block is for.
+
+Three named single points of failure for anyone changing this: `HOVER_FANOUT_BUDGET_MS` cutting the
+cold fan-out; `renderMethods` dropping the sole surviving constructor; and the descent-order ask
+loop plus the cap of eight. The fan-out budget is ENTANGLED with the injection deadline, since the
+caller's 50ms race cuts first. Do not retune it blind; fix the surface outcome and prove the
+outcome.
+
+Related correction on the record: the whole-block budget is 1200 chars (`DATASHAPE_TOTAL_TOK` 300
+times 4), not the 1600 an earlier goal asserted three times. `HOVER_SIGNATURE_CAP` of 8 is OURS and
+not tsserver's; it exists because tsserver returns `detail: ""` on every `documentSymbol` node, so
+every member needs a hover round trip. Cost control leaked into the surface, and Python and
+TypeScript share the constant.
+
+### Does a count cap buy the server anything a time cap does not?
+
+The question the split raises: `withinBudget` races each ask against a shared deadline and abandons
+the RESULT, not the WORK, so every request it gave up on is still queued and still competes with
+whatever the editor asks for next. That was prose until it was measured.
+
+The probe bundles the product's OWN `PyLspExtractor` and the real cap constants rather than
+re-deriving them, because a re-derived mapping is how an earlier arm result got inverted. It picks
+the FATTEST class under a root as the fan-out target and refuses to run if that class has fewer
+members than the narrow cap, because an instrument that cannot produce the case cannot report on it.
+The timed NEXT REQUEST is a hover on a class in a DIFFERENT file, fired with no `await` in between,
+so nothing the fan-out computed can serve it and it lands while any abandoned work is still queued.
+Both cursors are warmed three times and the two arms ALTERNATE per rep, so a server that warms or
+degrades over the run cannot be read as an arm effect.
+
+| corpus | arm | fan-out median / max | signed | next request median / p95 |
+|---|---|---|---|---|
+| a real class, 38 members | cap 4 | 1ms / 1ms | 4 of 38 | 0ms / 1ms |
+| a real class, 38 members | cap 64 | 3ms / 3ms | 38 of 38 | 0ms / 0ms |
+| synthetic, 400 members | cap 4 | 3ms / 6ms | 4 of 400 | 0ms / 0ms |
+| synthetic, 400 members | cap 400 | 13ms / 19ms | 400 of 400 | 0ms / 1ms |
+
+12 reps real, 10 synthetic. The answer is +0ms on the median in both. 400 hovers cost 13ms, so the
+50ms deadline never cuts and nothing is ever abandoned: on pyright the hazard the count cap exists
+for is UNREACHABLE at any population, real or synthetic.
+
+Every number here is WARM and the probe says so. It cannot make a genuinely cold row, so the
+comparison is warm-to-warm.

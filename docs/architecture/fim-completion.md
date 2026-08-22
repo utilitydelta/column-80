@@ -216,3 +216,163 @@ Both caches (completion and whole-block) tag entries with their document URI. An
 Context: the first cut keyed the cache on untruncated document text, which made 100 entries from a 2MB document retain ~200MB and pushed miss-path lookups toward ~13ms.
 Decision: window every key's prefix to `prefixChars` and hand the cache a bounded flat copy; the prefix walk recomputes candidate windows so walk hits survive.
 Consequence: memory ~2.5MB and ~0.4ms lookups for the same scenario, at the cost of window-level rather than document-level cache identity. The walk margin (50 chars) bounds how far a user can type through a suggestion and still hit.
+
+## Measured records
+
+The runs behind the bounds, the filters and the withdrawn gate legs on this path. They were
+recorded in session folders, which a clone does not have.
+
+### The plain-continuation bound: what it costs to stop early
+
+Two populations were driven, both chosen because "one line" is most likely to be wrong there:
+chained statements (LINQ, iterator chains, promise chains) and short block constructs (`match`,
+`switch`, `if err != nil`, `try`). Four bounds were scored off the SAME generation so no arm got a
+luckier draw: `today` (the multiline pipeline), `line`, `stmt` (line, extended while the statement
+is unterminated, cap 8) and `block` (line, extended until braces balance or the Python indent
+returns, cap 12). Latency per bound came from the newline arrival times of that same stream, so
+"what would it have cost to stop there" is a real number rather than a model.
+
+What the corpus looked like first: 83% of plain ghosts are multi-line, median 4 to 14 lines by
+language, p90 17 to 32, with Python worst at a median of 24 lines at a `def |` head, so indent
+scoping does not save it. Of 7,397 lines served past line 1, 208 are right and 7,189 are wrong.
+
+The three-arm precursor tied in every one of 15 cells: extra lines never rescue a wrong first line,
+and bounding never breaks a right one.
+
+The bound run proper: on chained statements a statement bound has the same precision as a line
+bound with 2.75x the correct lines. On `match`, `switch` and `if err != nil` a construct bound
+keeps every correct line today produces at half the length.
+
+Latency is the other half and it is the larger one. Only 26% of plain requests land under the 200ms
+bar today (p50 300ms, p90 716ms). Bounded, 99% do (p50 141ms, p90 173ms). At a block-opening line
+end, 100 of 100 generations begin with a newline, so `stop:["\n"]` serves nothing every time;
+aborting the read keeps 97 of 100 served at identical correctness at 2 to 3.5x the speed.
+
+`MAX_BOUND_LINES = 4` is backed by the whole-construct rate: seven of the eight whole constructs
+the model gets right are 2 to 4 lines, and past four the whole-construct rate is 1 in 73.
+
+The construct-opener table must not be widened without re-measuring: rust `match` / `if let` /
+`while let`; go `if err != nil` / `switch` / `select`; csharp `switch` / `try`; ts and js `switch` /
+`try`; python `match` / `try`. A trailing `,` is SAFE when there is an unclosed opener, otherwise
+the trailing-separator and cap rules compose to suppress every `match` and `switch` longer than the
+cap entirely.
+
+### The own-binding suppression leg, and why it was withdrawn
+
+The probe bundled `ghostRefsOwnBinding` and walked a real external-repo corpus. At every `.`
+followed by an identifier character the prefix was the file text up to and including the dot,
+windowed to `prefixChars`, and the ghost was the author's real remainder of the line. A firing
+therefore means dropping code the author shipped. A positive control ran first so the probe could
+not be a null: `let rehomedresult = tile.` with ghost `rehome(&rehomedresult);` fires, the same with
+an outer `let rehomedresult` one line up does not (the shadowing carve-out is honoured), and
+`let x = tile.` with ghost `area();` does not.
+
+| language | sites | false suppressions | rate |
+|---|---|---|---|
+| Rust | 741,222 | 78 | 0.011% |
+| C# | 254,814 | 117 | 0.046% |
+| TypeScript | 449,726 | 23 | 0.005% |
+| Python | 154,301 | 6 | 0.004% |
+| total | 1,600,063 | 224 | 0.014% |
+
+Against no true positive. The C# figure reproduced independently on a file set gathered by a
+different walker (116 in 253,233 against 117 in 254,814, both 0.046%).
+
+The firing shapes read by hand: C# is lambdas and switch arms wall to wall
+(`conn => ConnectorId.From(conn.ConnectorId)`, `e => Log.Error(e, "...")`, roughly forty
+near-identical `v => ...` sites in one repo alone), and every one compiles. Python is keyword
+arguments (`dry_run = repo.clone(dry_run=True)`).
+
+The window control is the part worth keeping. At one site with the declaration at char 1674 and the
+use at char 5511 (distance 3,837), the leg fires at `prefixChars` 100, 300, 800, 1500 and 3000 and
+does NOT fire at 20000. The answer flips on WINDOW SIZE alone with the file, prefix and ghost
+identical, and the residual grows 8.7x as `prefixChars` moves down a range the user is allowed to
+set.
+
+Fixing forward was refused rather than deferred. Reading `=>` as a binding `=` and Python kwargs are
+cheap fixes, but a binding the ghost itself introduces (`let x = xs.iter().find(|x| ...)`) is the
+largest correct-code class in Rust and is unreachable by any backwards-looking textual scan. That is
+a redesign, not a fix. The standing position behind the withdrawal: a wrong ghost costs one Tab not
+pressed, a suppressed ghost costs the whole completion unconditionally.
+
+### The empty-serve separator, and the burden of proof on dropping
+
+At 47 real scoped member sites, all 4 empty serves had the exact correct separator as the raw
+stream's first line, and `dropDuplicatedHead` deleted it. The class is empty serves, and it was 4 of
+4 of them. The four captured shapes: `;` against `}` (a TypeScript getter, 3 of the 4), `,` against
+`}`, and `)` against `}` (a Rust tuple close).
+
+The predicate was re-ruled twice, which is why it reads the way it does. The first narrowing was
+`}`-led only, and that REGRESSED the ratified capture itself: a lone `,` sits before a `)`-led
+closer, a shape the measured corpus missed because the human wrote the function the same day. The
+final predicate is a lone separator AND (the suffix line starts `}` with no `}` in the ghost, OR the
+ghost is disjoint from the suffix's leading closer run).
+
+**The standing ruling: a dedup filter drops duplication, not wrongness.** Any future drop in the
+disjoint-lone-separator class requires a dogfood capture of a served disjoint lone separator doing
+real harm at a real site. The burden lands on the drop side permanently, because that side was wrong
+twice on modelled shapes.
+
+The known cost of that ruling: near-identical trailing-separator RUNS are resurrected end to end
+(ghost `);` with next line `)`, ghost `;` with next line `,`, ghost `),` with next line `))`). The
+escape class is runs whose FINAL character differs from the suffix's first character, so no
+downstream filter matches.
+
+### Usage windows at a member site
+
+The site is the shipped scoped-ghost path: the widget is open, the human has arrowed onto a member,
+the prefix already ends with that member's name. The model's whole job from there is the CALL, which
+is exactly the part an earlier examples spike lifted (arity 84% to 94-100%) and exactly the part of
+that spike that was never about retrieval.
+
+Three arms, because a position effect had already been measured at the fn-gen surface (the model
+reaches for whatever sits nearest the code) and guessing which way it goes here costs more than
+measuring it: `A` today's member signature block only, `B-above` plus usage windows above the
+signature block, `B-below` plus usage windows below it, nearest the cursor. Ground truth is the
+developer's own call, taken from the untruncated file, over a real Rust corpus with references from
+a live rust-analyzer.
+
+| arm | served | opens call | arity ok | shape ok | exact | in scope |
+|---|---|---|---|---|---|---|
+| A, signatures only | 39/40 | 37 | 34 | 30 | 19 | 34 |
+| B-above | 40/40 | 39 | 37 | 33 | 21 | 33 |
+| B-below | 40/40 | 40 | 38 | 31 | 21 | 33 |
+
+The below placement is what ships. Window availability: 37 of 40 sites had 3 usage windows, 2 had 2,
+1 had none.
+
+One caveat on the record. The type-wrong figure quoted at the call sites (8 of 40 down to 3) came
+from a scoring pass that ran rust-analyzer diagnostics over the served line, and that pass's output
+no longer exists. The arm table above is the surviving raw run and is scored differently. Re-measure
+before leaning on the 8-to-3 figure.
+
+### The one-request downgrade flag
+
+`downgradeNextManual` is a provider-global boolean with no identity and no expiry: it is set in the
+expiry timer and consumed by whichever request arrives next, in any file, at any position, after any
+delay.
+
+Two directions were probed and the original goal priced the wrong one. It can go stale and mute a
+genuine Ctrl+Space fan-out to a single suggestion, which happens when the expiry's own
+`inlineSuggest.trigger` produces no request at all (focus in a terminal, an unregistered scheme,
+inline suggestions off). Or an unrelated request eats it first, so the provider's own re-trigger
+reaches the service `manual: true` and pays the debounce bypass plus the three alternative
+generations the flag exists to avoid. The second is the more expensive one and it is the reachable
+one.
+
+Blast radius, stated plainly: nothing here produces a wrong ghost. The whole blast radius is one
+request's suggestion count.
+
+The prescribed fix is to give the flag identity (a uri, version and position, plus a short freshness
+bound, matched and consumed, otherwise leave the user's trigger alone) AND to consume it before the
+enabled gate. Only the second half is implemented. Reopen trigger: a dogfood session reporting a
+Ctrl+Space that returned one suggestion for no reason.
+
+Three separate findings converge on the same boolean, which is the argument for taking the fix
+whole rather than in pieces. A configuration change disposes and rebuilds the service without
+touching the provider's record or the context key, and nothing re-invokes an inline provider on a
+config change, so the scoped-ghost context key stays true over a disabled extension and leaves the
+flag armed indefinitely. `dropScope()` arms the flag synchronously while the consuming request only
+arrives after `executeCommand` crosses the extension-host boundary, so typing one character right
+after the second Escape eats the flag. That window existed on the timer path too; making the flag
+keystroke-triggered raises the rate rather than creating the hole.

@@ -71,6 +71,8 @@ Testing discipline, carried from the build: the `test/blind*.test.cjs` files are
 | Surface injection | The compiler-directed loop: resolve real API from the language server and inject it, directed by the compiler's error class | [docs/architecture/surface-injection.md](docs/architecture/surface-injection.md) |
 | Hardware tiers + carve | Probe, tier table, the VRAM carve, and the ratified pull flow | [docs/architecture/hardware-tiers.md](docs/architecture/hardware-tiers.md) |
 | VS Code layer | Wiring, evidence channel, the core/vscode split, and the test harness | [docs/architecture/vscode-layer.md](docs/architecture/vscode-layer.md) |
+| TDD language seam | The contract every language leg of the test-authoring gesture is built to: placement, runner command, the three no-run outcomes, the blank-value rule, and the per-language locators | [docs/architecture/tdd-language-seam.md](docs/architecture/tdd-language-seam.md) |
+| Tighten Doc Comment | The re-wrap and backtick gesture: the fold, the workspace-symbol existence gate and its measured cost, the delta census behind the eviction argument, and the two prose flags | [docs/architecture/tighten-doc-comment.md](docs/architecture/tighten-doc-comment.md) |
 
 Layout rule underneath all of it: `src/core/` never imports `vscode` and holds every decision; `src/vscode/` is adapters and wiring. That split is what makes the contract oracles runnable headless.
 

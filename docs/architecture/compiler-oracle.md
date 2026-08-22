@@ -126,3 +126,84 @@ Consequence: zero model calls on assertion-only failures; refusing is the featur
 Context: an unscoped session would feed a crate's pre-existing errors to the model, spending rounds on faults the accept did not cause and inviting edits far from the consent the human gave.
 Decision: eligibility intersects each error's primary span with the accepted function's byte range, resolved through the same path function as display (identity match, never suffix match, so workspace-root and member files with the same relative path cannot collide).
 Consequence: out-of-scope errors surface without model calls; the failure direction is over-refusal, which costs a repair round, never a wrong edit.
+
+## Measured records
+
+The runs behind the gate's completeness bar, the operand steer and the repair usage-window switch.
+They were recorded in session folders, which a clone does not have.
+
+### Why only a CLOSED set may refuse
+
+One answer covers half the adversarial findings against the first gate build: the gate may refuse
+only against a CLOSED member set, which in practice means an enum. A class's static surface is OPEN
+(nested types, a property named after its type, extension members, generic statics, partials), so
+refusing against it is refusing on absence of evidence. That is the footgun the FIM gate's own
+comments already name.
+
+The closed-set rule kills four of the six measured false-refusal classes on its own. Three more
+defects rode with it and are worth keeping because each is a way the gate could look correct and be
+blind:
+
+- A type disclosed with an EMPTY member list must never power a refusal. The module header already
+  promised that; the type-as-member leg did not read it.
+- `memberNameOf` must strip Roslyn's `(extension)` prefix. Every extension member dropped out of the
+  member set while `complete` stayed true.
+- `memberAccesses` must read `::` as well as `.`. Rust spells every static and variant access with
+  `::`, so the static leg could not fire in the product's founding language.
+
+The junk rate on the span type scan measured 28% overall and 38% in Go, with two named causes:
+`withoutDeclaredName` skipping a keyword (`func (t Tile) Encloses(...)` leaves `Encloses` surviving
+as a type, and Go is worst because exported identifiers are PascalCase), and a stop set that had to
+grow the Rust prelude values, all-caps constants and `System`.
+
+Two rules on refusal behaviour came out of the same pass. A terminal steer is injected ALONE, so the
+resolver says when its payload is terminal and the caller drops everything else. And a refusal
+returns to the routing table rather than ending the session, so the round cap governs: a refusal
+that silently ate the remaining round was strictly worse than no gate.
+
+Known holes, left open deliberately: a generic operand discloses nothing (CS0019 on `List<Tile>`
+yields no type, because no type is named), and TypeScript DI-token constants still read as types.
+
+### Disclosure alone is not enough
+
+The operand steer exists because disclosure by itself was measured insufficient. The record that
+survives in full is the C# whole-block arm: real Roslyn over a C# playground, the shipped FIM config
+on `qwen2.5-coder:1.5b-base`, 5 generations per arm against the same warm server.
+
+- Roots only: `if (tile.Band == LodBand.Municipal) continue; // skip`, all 5 runs.
+- Roots plus reached enums: `if (tile.Band == LodBand.Regional) count++;`, all 5 runs.
+
+Neither arm invented a member. Disclosing the type NAME alone moved the failure from an invented
+member to a wrong value, which is harder to see rather than easier: `Municipal` is real, so it
+compiles, the oracle passes it, and it counts the wrong tiles.
+
+The mechanism the steer adds: `classifyCsHallucination` reads a CS0019 operand pair into
+`{ kind: "operand-mismatch", types, cursor }` and resolves NO member block of its own, because there
+is no receiver at an operator site. What it does is hand its operand type names to the span-types
+resolver as `diagnosticTypes` and stop reading `class=none` on the channel. There is no CS0019 at
+round 1, because with the enclosing type unresolved the operand mismatch cannot be seen at all.
+
+### The repair usage-window arm, and why it defaults off
+
+16 real cases from a private Rust corpus, 4 arms, 3 repeats, 192 runs. Arms: A control, B receiver,
+C usage, D both.
+
+| arm | runs | pass | compiles | keeps call | keeps params | compiled by deleting the call | owner disclosed | median s |
+|---|---|---|---|---|---|---|---|---|
+| A control | 48 | 23 (48%) | 26 (54%) | 45 (94%) | 45 (94%) | 3 (6%) | 9 (19%) | 4.3 |
+| B receiver | 48 | 36 (75%) | 36 (75%) | 45 (94%) | 48 (100%) | 0 | 33 (69%) | 4.2 |
+| C usage | 48 | 24 (50%) | 24 (50%) | 48 (100%) | 48 (100%) | 0 | 9 (19%) | 7.2 |
+| D both | 48 | 30 (63%) | 30 (63%) | 48 (100%) | 48 (100%) | 0 | 33 (69%) | 6.8 |
+
+Usage scores 24 against the control's 23, and adding it to the winning arm costs six passes (B 36 to
+D 30) and 2.6 seconds of median latency (4.2s to 6.8s).
+
+The receiver-blind subset is the case the work exists for: 8 cases, 24 runs per arm. A passes 3
+(13%), B 21 (88%), C 3 (13%), D 12 (50%). A to B is 6 cases differing, +100 points mean, two-sided
+sign-flip p = 0.031, the only significant comparison in the run. A to C is 0 cases differing, 0
+points, p = 1.000. Usage moves nothing where the motivating information state holds, and on the
+capture case that motivated the whole session it actively cancels the receiver win (A 0/3, B 3/3,
+C 0/3, D 0/3).
+
+The leg is kept behind a switch rather than deleted so it can be re-armed once window selection is
+fixed.

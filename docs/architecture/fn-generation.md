@@ -100,3 +100,38 @@ Consequence: no streamed diff in the buffer during generation. The service alrea
 Context: silent insertion is faster and most completion tools do it for small edits.
 Decision: never write a document without an explicit accept. The consent gate is structural: the accept handler inside `ProposalPresenter` is the extension's only document write.
 Consequence: one extra gesture per generation, and the honesty guarantee that nothing lands the human did not see. Consent gates the splice, not the model call; repair may spend a model round before asking.
+
+## Measured records
+
+### The dark reject, from the capture that named it
+
+The capture: a C# LINQ flow in a real editor, 2026-07-27. The human wrote
+`return tiles.Where(t => t.IsRegional).Count();` and wanted
+`return tiles.Where(t => t.Band == LodBand.Regional).Count();`, and got there by hand through a
+broken middle. Four distinct behaviours came out of one log, and three of them worked as designed:
+the scoped ghost with injection nailed the target twice (at `t.Band` the injected surface carried
+`LodBand Tile.Band { get; }`, and the enum TYPE name in the injection is what made the model right),
+the compiler oracle caught the hallucinated `IsRegional` as CS1061, and the member gate held a
+123-candidate ghost at a preselect.
+
+The fourth is the defect this section exists for. Repair round 1 ran cross-model with the `Tile`
+surface injected INCLUDING `Band : LodBand`, so the prompt contained everything the fix needed. The
+answer came back at length 97 and the log said `[fngen] outcome=reject` with no reason line.
+Whether the model answered wrong or the gate wrongly refused is UNKNOWABLE from that log. **A reject
+without a why is a dark site**, and the fix is the same cheap observability pattern as the
+scope-surface line.
+
+Three more findings rode along and are worth keeping, because each is a way the shipped path can
+teach a developer something false:
+
+- Lambda-interior blindness. The ghost at `tiles.Where` served `(t => t.IsRegional).Count();`. The
+  member gate checks the member at the SITE (`Where`, valid); `t.IsRegional` is a member access on a
+  different receiver inside the lambda argument and is invisible to the gate by design. The oracle
+  caught it after the accept, but the ghost had already taught the human a member that does not
+  exist.
+- Plain FIM at `t.Band == ` served ` Band.Regional).Count();`: the wrong name (it needs `LodBand.`)
+  AND a re-type of the `).Count();` already in the suffix, composing `...Count();).Count();`. Two
+  causes, an enum-RHS injection gap and a suffix-overlap trim that missed the run.
+- Roslyn's cold start missed the injection window for the first sites, then warmed to 7-14ms. A
+  fixture carrying pre-existing out-of-span errors ate the repair cap, so round 2 ended
+  cap-exhausted on errors the repair was never allowed to touch.

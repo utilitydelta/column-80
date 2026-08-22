@@ -194,5 +194,133 @@ wheel to steer by; that gap is the roadmap's, not the reader's.
 3. When a value is changed, this ledger's row updates in the same commit, with the arm named.
 4. The per-model budget profile (roadmap item 41) now has its seam: `budgetProfileFor(modelClass,
    languageId)` in `src/core/budgetProfile.ts`, shipped with identity defaults and an empty
-   override table (phase-0b, session-v46). Non-identity cells still arrive only with a
-   measurement arm behind them.
+   override table. Non-identity cells still arrive only with a measurement arm behind them. The
+   seam's own contract is the next section.
+
+## The derivation seam's contract
+
+The contract `src/core/budgetProfile.ts` was built to. It lived in a session folder, which a clone
+does not have.
+
+`modelClassFor(provider, modelTag)` returns `fim-small`, `local-mid` or `frontier`. It is pure,
+total and never throws. `claude-code`, `anthropic`, `openai`, `xai`, `gemini` and any other
+non-local provider resolve to `frontier`. Provider `ollama` (and empty or default) resolves by tag:
+the shipped FIM family `qwen2.5-coder:1.5b*` is `fim-small`, anything else local is `local-mid`. An
+UNKNOWN tag on an unknown provider resolves to `local-mid`, conservatively, and never to `frontier`.
+
+`budgetProfileFor(cls, languageId)` returns at minimum `surfaceBudgetTok`, `memberCap`,
+`surfaceCap`, `refineTotalChars`, `walkTokMax`, `maxTokens`, `numCtx` and `timeoutMs`. `numCtx` is
+meaningful for local classes only and `timeoutMs` for the Claude Code transport.
+
+The identity guarantee, for EVERY class and EVERY shipped language id with no overrides:
+`surfaceBudgetTok` 300 (C# is 300 times `CS_BUDGET_FACTOR`, which is 1), `memberCap` 24,
+`surfaceCap` 4, `refineTotalChars` 2400, `walkTokMax` 200, `maxTokens` 2048, `numCtx` 16384,
+`timeoutMs` 120000. The acceptance test is that a replayed generation produces a BYTE-IDENTICAL
+prompt to the pre-seam build on the same fixture.
+
+Deriveds are declared rather than free-floating: `memberCap`, `surfaceCap`, `refineTotalChars` and
+`walkTokMax` are expressed IN CODE as visible fractions or functions of `surfaceBudgetTok`, chosen
+so identity reproduces the table exactly. Moving `surfaceBudgetTok` for a cell moves the deriveds
+with it unless that cell declares an override.
+
+The call sites that must consume the profile rather than module-level constants: `fnGen.ts`'s budget
+and caps, `extraction.ts`'s `MEMBER_CAP`, `oracleSurface.ts`'s `SURFACE_CAP` and
+`REFINE_TOTAL_CHARS`, and `readFnGenConfig`.
+
+## Why the context stop is a dial and not a measured constant
+
+The ruling behind `CONTEXT_STOP_TABLE`, and the evidence for it. Every row except `shipped` is a
+judgment call.
+
+There are hundreds of models a developer might point this at, from a 30B locally to a frontier model
+per token. No measured curve generalises across that space, and a session spent measuring one would
+ship a number that is wrong for most users while looking authoritative.
+
+The evidence that the DIRECTION is right, which is a different claim and a weaker one:
+
+- On a private Rust corpus, 30 paired rows all test-covered, the shipped path scored 13 of 30
+  correct against a full-context ceiling of 21 of 30. More context did not merely compile more, it
+  was more often CORRECT, and silently-wrong did not inflate.
+- 11 of those same 30 rows were already at or over the 4-type cap. On a third of rows the enclosing
+  type does not add a candidate, it EVICTS one. The shipped point is not "some context", it is "some
+  context minus whatever got pushed out".
+
+**The trap: three of the four numbers make the fourth inert.** At the shipped values (`D_MAX` 2,
+`B_MAX` 4, `N_MAX` 6, `DATASHAPE_TOTAL_TOK` 300, `PREFILL_TYPE_CAP` 4) one root plus four children
+is already five of six, so raising `B_MAX` alone changes nothing, and even with the structural caps
+opened the render budget truncates it back. A slider that silently does nothing is the failure class
+this project has spent two sessions digging out of, which is why roots and budget move together in
+the table.
+
+Depth stays 2 at every stop: a type's fields and the types of those fields. Deeper describes
+infrastructure the function never touches. The floor is a 27B model, enforced by the VRAM gate, so
+no stop aims at a small model and `fim-small` is unreachable for fn-gen.
+
+Go's separate 8-root cap goes away in the dial. Go's 8 came from a cap-ladder knee over 907
+functions in six repositories while the Rust ladder measured flat, but the Rust ladder ran with the
+budget PINNED, and raising the type cap alone relocates the loss rather than removing it. In the
+dial roots and budget move together, so Rust's flat condition does not hold.
+
+Cost at the top stop: 4000 input tokens on a frontier model is about two cents uncached and roughly
+a fifth of a cent once the prefix caches, since the injected surface sits in the stable prefix.
+Output dominates; the frontier stop is not where the money goes.
+
+**Amendment, and it bites.** C#, Go and Python must support data-shape walks over fields, methods
+and statics. Go's `parseHoverFields` was the RUST parser (`name: Type`) run against Go hovers that
+write `Name Type`, so a realistic Go struct hover yielded `[]`, and C#'s and Python's were
+`() => []`. Consequence: breadth, total types and depth reach nothing in three of five languages, so
+`medium` is byte-identical to `small` there.
+
+## The prompt-versus-window arbitration
+
+The contract `src/core/promptBudget.ts` was built to, roadmap item 43. Its own file lived in a
+session folder.
+
+The defect: `GEN_NUM_CTX` bounds prompt AND generation together, and past it ollama silently
+truncates the prompt, eating the HEAD. There was no prompt-versus-window guard anywhere in the
+product on any path. The failure is INVERTED: context blocks are budget-exempt by design and the
+injected surface is budgeted, so a developer who adds two files is tipped over by bytes that are not
+theirs, and what gets discarded is the product's own injected type surface. Adding context makes the
+model receive LESS injection.
+
+The human's ruling: the developer's manually added files win, because they know what they want to
+add. Where it does not fit at all, refuse and say why, because refusing puts the decision with the
+developer and needs no new UI surface. One honesty constraint: the message must say what the total
+is and how much of it is OURS. Frontier is exempt.
+
+1. **The window.** For a LOCAL class the space a prompt may occupy is `numCtx - maxTokens`, the
+   window less the output ceiling the same window must hold. At shipped local values that is
+   `16384 - 2048 = 14336` tokens. Frontier skips the whole path: no estimate, no shrink, no refusal.
+2. **The estimate** is a character proxy, and it must be stated as approximate wherever a human sees
+   it. It must be CONSERVATIVE: it may over-estimate and refuse a prompt that would have fitted, and
+   it must NOT under-estimate and let a truncation through silently. Three named parts, kept apart
+   because arbitration and the message both need them apart: `developerTok` (rendered context
+   blocks, untouchable), `injectedTok` (the product's own pre-fill blocks, member lists and
+   data-shape defs, the part that shrinks) and `fixedTok` (instruction, signature, doc comment,
+   scaffold comments, local-symbol line, irreducible because the gesture is meaningless without it).
+   The contract specified `chars / 4`; the phase-2 adversarial review changed it to 3 and added the
+   non-ASCII and template-token terms, so the shipped values are the ones in the rows above.
+3. **Arbitration, in order.** Frontier does nothing. Total within available does nothing and is
+   byte-identical to before, and this is the overwhelmingly common case and must stay free: no
+   re-render, no re-walk, no observable change. Otherwise shrink the injected surface, and only
+   that, down to and including zero. If `developerTok + fixedTok` still exceeds available, REFUSE.
+4. **A refusal** is no model call, no buffer write, no proposal, no ghost: a user-visible message in
+   the product's refusal voice plus a channel line with the same numbers.
+5. **The breakdown must be honest.** State the estimated total and the window it is measured
+   against, how much is the developer's added context, and how much is the product's own injected
+   surface. A message without that last line is a defect, because it blames the developer for our
+   bytes. At refusal time the injected part is 0 and the message must still SAY 0 rather than omit
+   the line: "we already dropped all of ours" is exactly the fact that makes the refusal fair.
+6. **A shrink is visible.** The channel says how many injected types were cut, from what to what,
+   and that the developer's context was preserved. A silent shrink is the same class of defect as a
+   silent truncation.
+7. **Nothing changes when nothing is tight.** Byte-identical prompt, no channel line, and the
+   suite's frozen prompt-identity oracles stay green untouched.
+8. `walkDataShape` already records names a cap dropped entirely and nothing read it. Those go on the
+   channel per fn-gen, naming the types and what dropped them, silent when empty. A developer whose
+   channel says nothing was dropped knows the stop is not their problem; one who sees eleven names
+   knows exactly what raising it buys.
+
+Must not change: the FIM path; context blocks stay budget-exempt (arbitration counts them and
+refuses to shrink them, which is the opposite of budgeting them); `GEN_NUM_CTX`, `GEN_MAX_TOKENS`,
+`FRONTIER_MAX_TOKENS`, `GEN_TIMEOUT_MS`; and any prompt that fits today.

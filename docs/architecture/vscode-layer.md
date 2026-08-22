@@ -118,3 +118,88 @@ Commands:
 Live tests need ollama at `localhost:11434` with the three models pulled, cargo, and the reference-class GPU. Cargo-running tests copy fixture crates to scratch dirs and mutate the copies; the repo's fixtures are never touched in place, and no test pulls a model.
 
 - `npm run test:vscode` drives the real extension host and needs a FOCUSED X display: the suggest widget will not open unfocused, and the gesture measurements are meaningless without it. On a box whose real display (`:1`) is a live desktop session, run a nested server first — `Xephyr :9 -screen 1400x1000 -ac -noreset` — and point the tier at it with `DISPLAY=:9`, which gives `focused: true`. No sudo, no extra package (Xephyr is already installed). Pin the editor version before believing any gesture measurement: 1.124.2 does not re-request inline completions on a suggest-selection change for C#/TypeScript, 1.130.0 does (see the version-floor note above).
+
+## Measured records
+
+The runs behind the expiry hook's hide-then-trigger and the member-dot gesture's window. They were
+recorded in session folders, which a clone does not have.
+
+### The explicit trigger preserves the drawn item, and the source chain that proves it
+
+Read from a sparse clone of VS Code 1.130.0 at commit `1b6a188`, all under
+`src/vs/editor/contrib/inlineCompletions/browser/`:
+
+1. `inlineSuggest.trigger` defaults `explicit: true` and calls `model.trigger({explicit:true})`
+   (`controller/commands.ts` L104-135).
+2. An explicit trigger fires `_forceUpdateExplicitlySignal` and the handler sets
+   `changeSummary.preserveCurrentCompletion = true` (`inlineCompletionsModel.ts` L351-353); the
+   fetch then takes `itemToPreserveCandidate = this.selectedInlineCompletion.read(undefined)`
+   (L446-448, L457).
+3. `createStateWithAppliedResults` (`inlineCompletionsSource.ts` L407) checks `canBeReused`
+   (`inlineSuggestionItem.ts` L368-376): the range contains the cursor, it is still visible, the
+   range is not shrunk. All three are true after 1500ms of no typing. There is no hash match, so the
+   OLD item is PREPENDED (source L683).
+4. `_selectedInlineCompletionId` is unset, `findIndex` returns -1, the index resets to 0, and
+   `selectedInlineCompletion = filteredCompletions[0]` (model L553-570).
+
+Live, at a gesture site where the widget preselects `AggregateFanout` and the model's unscoped
+answer is `Enroll(7)`:
+
+| run | tree | expiry row landed | second-Escape landed | suite |
+|---|---|---|---|---|
+| run A / B, phase-1 acceptance | hide-then-trigger | Enroll | Enroll | 44/0, 44/0 |
+| run D / E | hide-then-trigger | Enroll | Enroll | 44/0, 44/0 |
+| review run 1 | bare trigger, current tree | AggregateFanout (stale) | nothing (row red) | 42/2 |
+| review run 2 | bare trigger, current tree | AggregateFanout (stale) | Enroll (green) | 46/0 |
+
+Run 1's red second-Escape row is the tier's known flake family, present pre-change too, and not the
+change. The baseline timeline is the part that matters for reading this table: the bare trigger had
+never been exercised by the tier before that review, because the acceptance runs finished nineteen
+minutes before the files were modified.
+
+The product half worked throughout. The run-2 extension log shows the passive scope expiring
+followed by an Invoke re-invocation that served the unscoped completion from cache. The platform's
+preservation then overrode the display.
+
+The nuance the fix must keep: a bare trigger IS correct on the zero-serve hand-back path, because
+`selectedInlineCompletion` and `itemToPreserveCandidate` are both undefined there, and
+hide-then-trigger is also safe there, since the cache clear and deactivation are undone by the
+explicit trigger that follows. The bare trigger alone cannot do the swap on the stable API: there is
+no way to suppress preservation from the provider side, and the only states where a bare trigger
+works are the ones with nothing on screen.
+
+The reason the suite stayed green through this is worth keeping as its own lesson. The expiry row's
+title promises "Tabs in the model answer, not the widget guess" and asserts only that something was
+committed. It never compares the landed member against the preselect. The row that exists to guard
+the swap cannot fail when the swap breaks.
+
+### The member-dot journey, and the uniform window
+
+The gesture, as the human dictated it: type a variable name, hit dot, the widget pops and preselects
+a row, the ghost runs constrained by that selection, arrowing chooses a different member, Escape
+keeps the ghost from whatever the last run was and allows a Tab within 1.5 seconds, and once that
+elapses the model reruns unconstrained. A second Escape shortcuts the wait.
+
+The six steps and what each requires:
+
+1. `.` opens the widget and it preselects one row. **The preselect is the editor's; the product does
+   not choose it.**
+2. A scoped request goes out with the prompt rewritten to `receiver.member` and injection narrowed
+   to it. Where the selection is a BARE NAME the ghost renders as an extension of the highlighted
+   row. Where it is a CALL SNIPPET nothing can render while the widget is open, because of VS Code's
+   augment rule, so the scoped ghost's only chance is the post-Escape serve. That is what the
+   `served` bit exists for.
+3. Each new highlight is a new constrained run.
+4. The last scoped run's ghost survives the widget's dismissal so Tab can take it.
+5. **The rerun must always arrive.** A scoped run that served nothing must never strand the site
+   silent.
+6. A second Escape is the same action as the elapse, immediately.
+
+The divergence that had to be ruled: the dictation makes no distinction between the editor's
+preselect and an arrowed member, while the shipped behaviour at the time held an arrowed choice
+INDEFINITELY after Escape, until an edit, a cursor move or a second Escape, with no window and no
+automatic unconstrained rerun. The two readings agreed on everything else.
+
+Ruled 2026-07-26: a uniform 1.5 second window. The passive/active distinction survives only where it
+still earns its keep, which is `refusedAt` (an arrow clears a refusal, a preselect respects it) and
+widget-open session tracking.
