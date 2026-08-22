@@ -34,7 +34,7 @@ import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/c
 import { runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
-import { firstLine, tierDisabledToast } from "./toastText";
+import { firstLine, hasMoreThanOneLine, tierDisabledToast } from "./toastText";
 import {
   DocumentSymbolLite,
   MEMBER_CAP,
@@ -6293,8 +6293,15 @@ export function registerFnGen(
           `[repair] manual repair: gate closed reason=${repairTierGate.reason}; check-and-surface only: ${why}`,
         );
         void vscode.window.showWarningMessage(
+          // `hasMoreThanOneLine`, not `firstLine(why) === why.trim()`. The two
+          // agree on every message broken by `\n`, and disagree once `firstLine`
+          // cuts the wider set: `trim()` strips U+2028 and U+2029 but not NEL,
+          // so a `why` ending in NEL was cut by the toast and kept by the
+          // comparison, and the pointer promised a channel line that had no more
+          // than the toast did. The leaf states the rule now; this was the last
+          // site still inferring it.
           `Column 80: repair is unavailable - ${firstLine(why)}. Errors are still checked and surfaced.` +
-            (firstLine(why) === why.trim() ? "" : " The full message is in the output channel."),
+            (hasMoreThanOneLine(why) ? " The full message is in the output channel." : ""),
         );
       }
       // One announcer for the whole invocation. The oracle runs the reader once

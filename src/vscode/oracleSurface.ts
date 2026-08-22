@@ -8,6 +8,9 @@ import {
   resolveDiagnosticPath,
   runOracleCheck,
 } from "../core/compilerOracle";
+// toastText is a leaf that imports nothing, so this edge cannot cycle back
+// through fnGen, which registers this surface.
+import { oneLineWithPointer } from "./toastText";
 import { CrateResolution } from "../core/compilerDirected";
 import { buildResolution } from "../core/crateResolution";
 import { fetchMetadataJson, resolveHostTriple } from "../core/catalog";
@@ -970,9 +973,16 @@ async function executeSession(
     if (errors.length > 0) {
       const first = errors[0];
       const code = first.code ? `${first.code}: ` : "";
+      // The channel gets the diagnostic WHOLE, and this line is new: the
+      // give-up path had no channel record of the message it was about to put
+      // in a notification, so the pointer below would have promised something
+      // that was not there (roadmap item 69, second shape).
+      log(`[repair] give-up why=${action.why} errors=${errors.length} first=${first.code ?? "-"}\n${first.message}`);
       void vscode.window.showWarningMessage(
-        `Column 80: repair stopped with ${errors.length} error${errors.length === 1 ? "" : "s"} still in ` +
-          `${resolved?.symbolName ?? "the generated code"}. First: ${code}${first.message}`,
+        oneLineWithPointer(
+          `Column 80: repair stopped with ${errors.length} error${errors.length === 1 ? "" : "s"} still in ` +
+            `${resolved?.symbolName ?? "the generated code"}. First: ${code}${first.message}`,
+        ),
       );
     }
   }
@@ -1607,10 +1617,22 @@ async function runRefine(
     `[repair] refine INTRODUCED ${introduced.length} error(s) that were not there before: ` +
       introduced.map((d) => `${d.code ?? "-"} ${d.message.slice(0, 70)}`).join(" | "),
   );
+  // The digest above is a 70-char-per-error index, not the message. This line is
+  // the whole first diagnostic, so the notification's channel pointer is a true
+  // promise (roadmap item 69, second shape). Session-v57's S57-6 recorded that
+  // the refine path already had this; it did not - it had the digest.
+  log(`[repair] refine introduced first=${first.code ?? "-"}\n${first.message}`);
   outcome(`introduced-errors=${introduced.length}`);
   void vscode.window.showWarningMessage(
-    `Column 80: the refine of ${resolved.symbolName} introduced ${introduced.length} error${introduced.length === 1 ? "" : "s"} that were not there before. ` +
-      `First: ${code0}${first.message}. Undo it with the editor's own undo (the build was clean before this change).`,
+    // The interpolation sits MID-sentence here, so the undo instruction is the
+    // `tail`: cutting the composed sentence would take the instruction with the
+    // elaboration lines, and the instruction is the actionable half.
+    oneLineWithPointer(
+      `Column 80: the refine of ${resolved.symbolName} introduced ${introduced.length} error${introduced.length === 1 ? "" : "s"} that were not there before. ` +
+        `First: ${code0}${first.message}`,
+      ".",
+      " Undo it with the editor's own undo (the build was clean before this change).",
+    ),
   );
 }
 

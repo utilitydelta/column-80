@@ -874,3 +874,39 @@ to a green gate.
 
 **Pinned by.** `test/adversarial-v58-p1.test.cjs`, the four `forges its own channel lines` rows,
 re-cut to pin one physical row per dump and no product tag at the head of any rendered row.
+
+## S22. The toast's channel pointer is earned by segment count, not by `trim()`
+
+**NOT YET RATIFIED.** Ruled 2026-08-22 as amendment 1 to `session-v58/contract-phase2.md`, after
+the phase-2 blind oracle proved the written clause undecidable. Flagged here because it changes a
+behaviour session-v57 shipped, on a sentence that appears on several toast surfaces.
+
+**What changed.** Whether a one-line toast appends "The full message is in the output channel" was
+decided by `firstLine(why) === why.trim()`. It is now decided by whether the message has more than
+one non-blank segment under the widened line-break set (`hasMoreThanOneLine` in
+`src/vscode/toastText.ts`).
+
+**Why the old test could not survive the widening.** It inferred "the cut dropped something" from
+`trim()`'s own idea of a line break, and `trim()` strips U+2028 and U+2029, which are
+LineTerminators, but NOT U+0085, which is a control character. Once `firstLine` cut all six breaks,
+the same message ending in U+2029 got no pointer while ending in NEL got one - pointing at a
+channel line holding nothing the toast did not. That difference is an accident of `trim()`'s
+definition rather than anything about the message, and no rule could be written down that described
+it.
+
+**The blast radius, measured rather than argued.** The two rules agree on every message broken only
+by `\n`: checked over 1296 LF-only strings, 5832 CRLF/LF strings, and the four shapes that matter
+by hand - `"a\nb"` (pointer, both), `"a\n"` (none, both), `"a\n\n"` (none, both), `"a\n  \n"` (none,
+both). The only divergence in the whole swept set is NEL. So no message the product produces today
+changes its pointer, and the suite's re-cut list for the widening is empty.
+
+**A second live copy had to go with it.** The repair-unavailable toast (`src/vscode/fnGen.ts`) ran
+its own inline copy of the superseded comparison and would have kept answering the old way under
+the new `firstLine`. It calls the leaf now, and `test/impl-v57-p3-tier-message.test.cjs`'s source
+pin was updated to match - its assertion is unchanged, because the clause it pins (the pointer is
+conditional and earned) is still true and is now stated rather than inferred.
+
+**Pinned by.** `test/blind-v58-p2-repair-onelines.test.cjs` (the `tierDisabledToast` rows across
+the break set, and the C6 regression corpus) and `test/adversarial-v58-p2.test.cjs`, whose
+`B2 [CLEAN]` row scans every toast surface for a surviving copy of the old comparison - with
+comments stripped first, because the fix's own coupling comment quotes the expression it replaced.

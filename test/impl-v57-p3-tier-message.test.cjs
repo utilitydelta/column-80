@@ -539,8 +539,14 @@ test("every gesture that renders a tier message renders it through the rule", ()
     /repair is unavailable - \$\{firstLine\(why\)\}/.test(fnGen),
     "the repair gate embeds the message mid-sentence, so it takes firstLine directly",
   );
+  // session-v58 phase 2: the condition was `firstLine(why) === why.trim()`,
+  // which INFERRED "the cut dropped something" from trim()'s own line-break
+  // set. Once firstLine widened past `\n`, the two sets stopped agreeing -
+  // trim() strips U+2028 and U+2029 and not NEL - so the leaf now STATES the
+  // rule and this site calls it. The clause this row pins is unchanged: the
+  // pointer is still conditional and still earned.
   assert.ok(
-    /Errors are still checked and surfaced\.` \+\s*\(firstLine\(why\) === why\.trim\(\)/.test(fnGen),
+    /Errors are still checked and surfaced\.` \+\s*\(hasMoreThanOneLine\(why\)/.test(fnGen),
     "and carries the same CONDITIONAL pointer, so it does not promise a channel it did not need",
   );
 });
