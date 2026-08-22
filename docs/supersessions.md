@@ -971,10 +971,15 @@ what happened, and hand over the provider's own words everywhere else.
 `test/adversarial-v58-p7.test.cjs`, whose unlisted-status rows were re-cut to pin that the
 provider's reason survives to the screen - the property whose absence was the defect.
 
-## S24. The C# re-indent freeze mask moves for `$"`, and only for `$"`
+## S24. The C# re-indent freeze mask moves, and the count is the claim
 
-**NOT YET RATIFIED.** Session-v59 phase 5, closing roadmap item 60. The fix itself was ratified as
-a shape at filing time; what needs a call is the differential claim it falsifies.
+**NOT YET RATIFIED.** Session-v59 phase 5, closing roadmap item 60, AMENDED by that session's fix
+round after an adversarial review drove three defects into the shipped work. The fix itself was
+ratified as a shape at filing time; what needs a call is the differential claim it falsifies.
+
+**Read the amendments first.** The entry as originally filed published a boundary as measured that
+was not, and shipped a regression in the shape next door to the one it closed. Both are corrected
+below, in "The narrowing that needs the call" and "A comment inside a hole".
 
 **What changed.** `advanceCsLineScan` gained a `$"` opener that pushes a tracked context, and
 `CsStrCtx` gave `kind: "raw"` a real hole depth plus its `$` count. Two rows in
@@ -990,15 +995,54 @@ input with CS8999. That is the product emitting C# that does not build.
 
 **The narrowing that needs the call.** A13-3 asserted, over 1.2M random bodies and six opener
 configurations, that the old freeze mask and the new one *never disagree*. That is now false by
-design. The row was re-cut to pin the BOUNDARY instead: measured over the same population, 1129524
-bodies produce 70809 divergences, every one of them holds `$"`, and none is outside it. The row
-also fails if the divergence count reaches zero, so a reverted fix reddens it in the other
-direction.
+design, so the row was re-cut. **The first re-cut was wrong twice, and this is the correction.**
+
+It claimed a BOUNDARY: 1129524 bodies, 70809 divergences, every one holding `$"` and none outside
+it. That boundary is a fact about the row's own token list, not about the scanner. `JUNK` carried no
+bare `@`, no bare `$`, and none of `$$`/`@@`/`$@`/`@$`, which are exactly the sigil runs that open a
+context in a body with no `$"` anywhere in it. Two of the six configurations also satisfied
+`includes('$"')` from their prefix alone, so the assertion could not fire for them whatever the
+scanner did. Read it as measured and it is false; read it as a statement about that token list and
+it is true and worth nothing.
+
+It then asserted `movedWithDollarQuote > 0`, having measured the exact figure and left it in a prose
+comment. A `> 0` accepts any count up to the whole population. Driven: a mutant deleting the
+`$"`-still-open pop from `advanceCsLineScan` diverges on 75% more bodies than the shipped scanner,
+passes the row verbatim, and no other row in the file catches it.
+
+**What the row asserts now.** The six missing sigil tokens are in `JUNK`, and the counts are pinned
+per configuration, exactly: over 1155900 bodies, 856 / 211 / 1005 / 1005 / 0 / 60951 for
+`(none)` / `@"` / `$@"` / `@$"` / `"""` / `$"""`, 64028 in total, of which **435 carry no `$"` at
+all**. The `"""` zero says a plain raw string is untouched; the `$"""` count says the item 60 fix is
+still there. Re-run under the same mutant the counts move to 105375 and the row reddens, naming the
+configuration that moved. A scanner change of any kind moves one of these numbers, which is the
+point: re-measure and re-pin, and say what moved it.
 
 **What the divergence is worth.** The population is random junk, so the row says nothing about
 legality. Correctness on real C# is graded by dotnet elsewhere in the same file: A13-2's 216 placed
-cases still show zero values wrong, and A13-7, A13-7b, A13-8 and A13-8b each compile and run a body
-and compare the string's bytes before and after.
+cases still show zero values wrong, and A13-7, A13-7b, A13-8, A13-8b and A13-10 each compile and
+run a body and compare the string's bytes before and after.
+
+**A comment inside a hole, which is where the fix put CS8999 back.** The scanner read `//` and
+`/* */` at statement level only, on a written ground that dotnet 10.0.111 disproves: a hole is C#
+code and takes C# comments, in all three hole kinds, verified before the fix was written. Skipping
+them costs a quote the compiler never sees. An `@"` or a `"""` typed inside a comment opens a
+context that never closes, and it then either swallows the real closing delimiter of a raw string
+(content and delimiter re-indent by different amounts, CS8999 again) or eats the opening quote of a
+real `@"…"` below it, whose value then moves.
+
+Giving `$"` an opener and giving a raw string real holes is what carried that gap into the shapes
+where real C# puts a multi-line interpolation. Measured over five bodies, all legal C#, all graded
+by dotnet: three were CORRECT under the pre-phase-13 scanner and wrong after, one raw shape was
+already CS8999 in both, and the `$@"` shape already moved its value in both. **So the regression is
+three shapes, and two of the five predate this entry.** Comments are now read inside a hole too,
+which closes the pre-existing pair along with the regression. A13-10 pins the compile, the values
+and the freeze mask; A13-10b pins the attribution, because a boundary claim in prose is what this
+entry got wrong the first time.
+
+One trap the row is built against: a `"""` run in a comment freezes the whole rest of the body, so
+every value survives and all indentation below is lost. A row that grades values only cannot see
+it, which is why A13-10 also asserts the statement after the literal still moves.
 
 **One measured fact the fix leans on.** A line that BEGINS inside a raw-interpolated hole is exempt
 from the closing delimiter's whitespace rule, so classifying it as code and shifting it is legal
