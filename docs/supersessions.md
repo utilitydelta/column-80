@@ -827,3 +827,50 @@ real Anthropic failure, and the phase's review is what drove one.
 opposite (a generic provider error is NOT called a silent server, and it still puts no API vocabulary
 on the screen), and `test/impl-v57-p4-one-voice.test.cjs`, which carries the coupling on the new
 wording. The measurement and the ruling are at the end of `session-v57/goal.md`.
+
+## S21. The channel's raw body escapes its line breaks
+
+**NOT YET RATIFIED.** Narrowed 2026-08-22 in the session-v58 phase 1 review loop-back (a MEDIUM
+finding, triaged DO). Flagged here because it narrows a clause of the contract written for that
+phase, and because the clause it narrows is the one the human's ruling is about.
+
+**What changed.** `session-v58/contract-phase1.md` clause C4 says a body inside the cap reaches the
+channel whole, "byte-for-byte as the server sent it". It does not, quite. Line breaks are rendered
+as their escapes - LF, CR, U+2028, U+2029 and NEL each become a visible two-or-six character
+sequence - so the channel copy is the server's body recoverably rather than literally. Every other
+byte is untouched, and a body with no line breaks in it, which is what these APIs actually send, is
+unaffected.
+
+**Why, and it is not cosmetic.** Every real sink for this line is
+`vscode.OutputChannel.appendLine`, which renders one row per line break. Unescaped, a server chose
+how many channel rows its error occupied and what each of them said. Driven: a 500 whose body is
+
+```
+{"error":"real"}
+[fngen] outcome=ok
+[carve] pull done model=evil ms=1
+```
+
+rendered as three rows, two of them wearing the product's own tags, on the one surface whose
+trustworthiness is the entire point of the change. This line carries up to 16 KiB of
+server-controlled text, forty times what any surface carried before, so the phase widened that
+canvas by a factor of forty at the same moment.
+
+**Why escaping rather than a frame.** A begin/end frame around the dump was the other candidate and
+was rejected: a server can emit the end marker too, and the forged rows still render inside the
+frame wearing product tags. A single row cannot be forged into two, so escaping closes the whole
+route rather than labelling it.
+
+**What it does NOT close.** The elision marker is still forgeable - a body ending in the literal
+text that the bound appends reads as a body the product cut - and every OTHER channel surface that
+interpolates server text still carries unescaped line breaks: `[fngen] request failed:`,
+`[fim] request failed:` and `[carve] pull failed`. That is one decision for all of them and it is
+`session-v58/scraps.md` S58-2.
+
+**The measurement trap behind it, worth its own sentence.** A test sink collects one array element
+per `log()` call while the channel renders one row per line break, so every line-counting row in
+the suite measures a different thing from what a user sees. That is why this defect was invisible
+to a green gate.
+
+**Pinned by.** `test/adversarial-v58-p1.test.cjs`, the four `forges its own channel lines` rows,
+re-cut to pin one physical row per dump and no product tag at the head of any rendered row.

@@ -506,6 +506,13 @@ export class FnGenService {
           // split a prompt at byte 0, which is a fork that can never hit.
           ...(request.cachePrefix ? { cachePrefix: request.cachePrefix } : {}),
           signal: controller.signal,
+          // The transport's own evidence sink, for the RAW server body on an
+          // HTTP failure. The service's `[fngen] request failed:` line below
+          // carries `String(err)`, which is bounded at 400 chars; this is the
+          // unshortened copy the toast's channel pointer promises (roadmap
+          // item 69). The local transport is the only one reached through this
+          // field - the cloud clients take theirs at construction.
+          log: this.log,
           // The abort guard belongs to the real client; an injected or
           // future generateFn may lack it, so the forwarding wrapper also
           // stops chunks once this request is cancelled.

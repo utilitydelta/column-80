@@ -26,7 +26,7 @@
 import { usageEvidence } from "./cacheEvidence";
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, safeText } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, readBody } from "./errorBound";
 
 export interface AnthropicInstructConfig {
   /** Resolved endpoint root: the `anthropic` preset's baseUrl or the user's
@@ -157,7 +157,17 @@ async function streamMessages(
     // The provider's own message is the actionable half (invalid key, unknown
     // model, quota). What we sent back is never in it, so the key cannot leak
     // into a notification or the evidence channel.
-    throw new Error(`Anthropic ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
+    // Read ONCE, log the raw copy, then bound the same string for the throw.
+    // The channel gets the body before the 400-char bound does, which is what
+    // makes the toast's channel pointer true again (roadmap item 69).
+    const body = await readBody(res);
+    config.log?.(
+      body.read
+        ? channelBodyLine("anthropic", res.status, body.text)
+        : channelUnreadLine("anthropic", res.status),
+    );
+    const raw = body.read ? body.text : "<no body>";
+    throw new Error(`Anthropic ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`);
   }
   if (!res.body) {
     // COUPLING: this message's HEAD is a marker in fnGen.ts

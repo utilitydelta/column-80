@@ -297,7 +297,7 @@ export async function offerModelPull(
           const pct = Math.floor(fraction * 100);
           progress.report({ increment: pct - reported, message: `${pct}%` });
           reported = pct;
-        });
+        }, (line) => output.appendLine(line));
       },
     );
     output.appendLine(`[carve] pull done model=${model} ms=${Date.now() - started}`);
@@ -308,8 +308,12 @@ export async function offerModelPull(
       return false;
     }
     output.appendLine(`[carve] pull failed model=${model}: ${errorText(err)}`);
-    // The channel line above keeps the whole error (a pull failure can carry a
-    // raw response body); the toast is bounded to one line (roadmap item 63).
+    // The channel line above carries the BOUNDED error, the same 400 chars the
+    // toast shortens: `errorText` reads a message the transport already bounded
+    // (roadmap item 63). What makes the toast's closing sentence true is the
+    // separate `[http-body] ollama-pull <status> ...` line the transport writes
+    // when the body arrives, which holds the raw server response up to the cap
+    // (roadmap item 69, ruled 2026-08-22). The toast stays one line.
     void vscode.window.showWarningMessage(
       `Column 80: the download failed - ${firstLine(errorText(err))}. The full message is in the output channel.`,
     );

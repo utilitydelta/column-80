@@ -11,7 +11,7 @@
  * TTFT is measurable per request — the warm-latency oracle depends on it.
  */
 
-import { boundBody, safeText } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, readBody } from "./errorBound";
 
 export interface FimGenerateParams {
   apiBase: string;
@@ -153,6 +153,11 @@ export interface InstructGenerateParams {
    * every language arm in the roadmap.
    */
   cachePrefix?: string;
+  /** Evidence sink. The transport writes the RAW server body here on an HTTP
+   *  failure, before the 400-char bound builds the throw, so the channel keeps
+   *  the diagnostic the toast promises (roadmap item 69). Optional: a transport
+   *  built without one still throws the same error and logs nothing. */
+  log?: (line: string) => void;
 }
 
 export interface InstructGenerateResult {
@@ -208,7 +213,15 @@ export async function generateInstruct(
       ...(params.numGpu !== undefined ? { num_gpu: params.numGpu } : {}),
     },
   };
-  return streamGenerate(params.apiBase, body, params.signal, params.onChunk);
+  return streamGenerate(
+    params.apiBase,
+    body,
+    params.signal,
+    params.onChunk,
+    undefined,
+    undefined,
+    params.log,
+  );
 }
 
 /**
@@ -230,6 +243,7 @@ async function streamGenerate(
   onChunk?: (text: string) => void,
   stopWhen?: (textSoFar: string) => boolean,
   silence?: SilenceBound,
+  log?: (line: string) => void,
 ): Promise<{ text: string; ttftMs: number; totalMs: number; doneReason?: string; stopped?: boolean }> {
   // The silence watchdog owns the signal handed to fetch, so a bound that fires
   // cuts the socket. The caller's own signal is forwarded into it rather than
@@ -314,7 +328,18 @@ async function streamGenerate(
     });
 
     if (!res.ok) {
-      throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
+      // Read ONCE, log the raw copy, then bound the same string for the throw.
+      // The order is the whole point: the toast's "the full message is in the
+      // output channel" is only true if the channel saw the body before the
+      // 400-char bound did (roadmap item 69, ruled 2026-08-22).
+      const body = await readBody(res);
+      log?.(
+        body.read
+          ? channelBodyLine("ollama", res.status, body.text)
+          : channelUnreadLine("ollama", res.status),
+      );
+      const raw = body.read ? body.text : "<no body>";
+      throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`);
     }
     if (!res.body) {
       // COUPLING: this message's HEAD is a marker in fnGen.ts
@@ -521,6 +546,13 @@ export async function pullModel(
   model: string,
   signal: AbortSignal,
   onProgress: (fraction: number | undefined, status: string) => void,
+  // DEFAULTED, not optional, and the default is what keeps the published arity
+  // at four. `Function.length` counts parameters before the first default, and
+  // `test/blind5-pull.test.cjs` pins `pullModel.length === 4` to prove the
+  // AbortSignal has no default-argument escape hatch (the never-auto-pull
+  // contract). A bare `log?:` would read 5 and break that row without weakening
+  // anything it protects, so the sink carries its own no-op instead.
+  log: (line: string) => void = () => undefined,
 ): Promise<void> {
   const url = new URL("api/pull", withTrailingSlash(apiBase));
   const res = await fetch(url, {
@@ -530,7 +562,21 @@ export async function pullModel(
     signal,
   });
   if (!res.ok) {
-    throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${await safeText(res)}`);
+    // Same ordering as the generate path above, for the same reason: the pull
+    // failure toast points at the channel too (`firstRun.ts`).
+    const body = await readBody(res);
+    // Optional-chained even though the parameter is defaulted: a default fires
+    // for `undefined` and NOT for `null`, and a caller passing null would
+    // otherwise get "log is not a function" INSTEAD of the server's own error.
+    // The diagnostic is best effort and must never replace the failure it
+    // describes. The three sibling sites are chained for the same reason.
+    log?.(
+      body.read
+        ? channelBodyLine("ollama-pull", res.status, body.text)
+        : channelUnreadLine("ollama-pull", res.status),
+    );
+    const raw = body.read ? body.text : "<no body>";
+    throw new Error(`Ollama ${res.status} ${boundBody(res.statusText)}: ${boundBody(raw)}`);
   }
   if (!res.body) {
     throw new Error("Ollama: pull response has no body");

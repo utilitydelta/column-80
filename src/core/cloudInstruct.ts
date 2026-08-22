@@ -21,7 +21,7 @@
 
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, rawText } from "./errorBound";
+import { boundBody, channelBodyLine, channelUnreadLine, readBody } from "./errorBound";
 
 export interface CloudProvider {
   id: string;
@@ -53,6 +53,10 @@ export interface CloudInstructConfig {
   /** Resolved endpoint root: a preset's baseUrl or the user's override. */
   baseUrl: string;
   apiKey: string;
+  /** Evidence sink, the same field and the same contract the Anthropic client
+   *  carries. The transport writes the RAW server body here on an HTTP failure,
+   *  before the 400-char bound builds the throw (roadmap item 69). */
+  log?: (line: string) => void;
 }
 
 /** One SSE line's parsed choice fields; everything else in the frame is ignored
@@ -245,10 +249,24 @@ async function postChat(
 
     // UNBOUNDED on purpose: adaptDialect parses this document, and a bound
     // applied here would hand its parse a truncated body with an elision
-    // marker on the end. The bound goes on at the throw, three lines down.
-    const detail = await rawText(res);
+    // marker on the end. The bound goes on at the throw, below.
+    // `readBody` rather than `rawText` so the channel can tell a body that
+    // arrived from one that could not be read; `detail` collapses the two the
+    // way `rawText` always did, which keeps the thrown string byte-identical.
+    const body = await readBody(res);
+    const detail = body.read ? body.text : "<no body>";
     const next = adaptDialect(res.status, detail, dialect);
     if (!next) {
+      // The raw copy reaches the channel before the bound builds the throw, so
+      // the toast's "the full message is in the output channel" is true again
+      // (roadmap item 69). Logged HERE rather than at the read: a 400 that
+      // teaches the dialect is not a failure, and a channel line for every
+      // successful dialect probe would be noise, not diagnostics.
+      config.log?.(
+        body.read
+          ? channelBodyLine("cloud", res.status, body.text)
+          : channelUnreadLine("cloud", res.status),
+      );
       // Surface the provider's own message (invalid key, unknown model, quota):
       // it is the actionable half. The key is never in the body we send back.
       throw new Error(`Cloud ${res.status} ${boundBody(res.statusText)}: ${boundBody(detail)}`);

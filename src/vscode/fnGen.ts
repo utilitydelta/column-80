@@ -1394,7 +1394,7 @@ function buildCloudFnGenService(
   const generateFn =
     cloud.provider === "anthropic"
       ? makeAnthropicInstruct({ baseUrl: cloud.baseUrl, apiKey: cloud.apiKey, log })
-      : makeCloudInstruct({ baseUrl: cloud.baseUrl, apiKey: cloud.apiKey });
+      : makeCloudInstruct({ baseUrl: cloud.baseUrl, apiKey: cloud.apiKey, log });
   // model is the user's fnGenModel verbatim - a cloud id like the provider
   // documents. An id left at the local default surfaces as the provider's own
   // "unknown model" error on first request, not a guess masked here.
