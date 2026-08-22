@@ -125,6 +125,57 @@ re-export, and withholds the line when readable source proves the path wrong. A 
 better than one the compiler refuses, and worlds better than one that compiles against the wrong
 type of the same name.
 
+One transport failure, one diagnosis, on all three surfaces that report it. Function generation had
+been taught to say what a 401, a 429 or a 503 actually means, and the other two surfaces had not: the
+model download still showed you the provider's raw JSON, and Tighten Doc Comment still said "the
+model could not be reached" for a server that was reached and refused you. All three read the same
+table now. The cause is the same sentence everywhere; the consequence is not, because a warning in
+the notification that announces a write must not tell you nothing was written.
+
+A server cannot write its own lines into the output channel. A channel row is one line, and any error
+text the product interpolated into one carried whatever line breaks the server chose - so a hostile
+or merely broken server could forge rows that read like the product's own diagnostics. Every line
+carrying server text escapes its breaks now. The same held for the accept/reject accounting line,
+whose payload is the model's own generated body: a reply carrying a bare CR, a U+2028, a U+2029 or a
+NEL turned one log entry into four channel rows, one of them reading `[fngen] outcome=accept`. And a
+model server that answers 200 and then goes quiet mid-reply now leaves the partial text in the
+channel, which it never did.
+
+A download can no longer be killed by its own progress line. A pull status arriving as a structure
+rather than a string raised "Cannot convert object to primitive value" out of the progress handler.
+It renders as text now, whatever the server sends.
+
+Tighten Doc Comment can be cancelled. The gesture built the machinery to stop itself and nothing was
+wired to it, so a round against a hung server ran until it gave up. The status-bar item and
+`Column 80: Cancel Generation` now reach it, and a round you stopped is recorded as cancelled: no
+warning, no diff, nothing written. It is no longer reported back to you as a failure.
+
+A test rung runs the function it names, in Rust and C#. Both filtered by substring, so a rung scoped
+to `add` also ran `add_more` and blamed a neighbour's failure on your function. Both now resolve the
+full path - the enclosing `mod` chain in Rust, the namespace and type chain in C# - and switch to an
+exact filter only when every name is fully qualified. Where the path cannot be resolved the rung
+keeps the old substring filter on purpose: running too many tests is recoverable, running none is a
+silent green.
+
+The C# re-indent stops emitting C# that does not build. A hole inside a raw interpolated string was
+scanned as string text, so a run of quotes inside it closed the literal early and the re-indented
+output came back with `error CS8999`. Comments inside a hole were treated as unreadable, which broke
+a second shape and could change a string's value on legal code. A hole is C# and takes C# comments;
+both are fixed, along with two cases that predate the fix.
+
+Rust strikes invented members, and `.await` still works. Rust was the last language with injection
+and no enforcement, carved out because rust-analyzer serves keyword and postfix completions at a dot
+and an earlier gate ate `.await` for exactly that reason. The prompt still shows only callable
+members - byte for byte what it showed before - while the check now knows about the keyword and
+postfix labels the prompt drops, so a method that appears nowhere in the server's answer is
+suppressed and a bare `.await` is not.
+
+A type is reached by name in TypeScript and Python. Both could only anchor a collaborator the
+language server would point a definition at, so a type defined in the same workspace could be
+unreachable. And in C#, asking about a type referenced inside another class handed back the wrong
+class's members under a header saying they were the type you asked about - a false statement the
+model then followed. It refuses now rather than answering wrong.
+
 ## 2.2.0
 
 Function generation can now live on another machine. Point `column80.apiBase` at a GPU box or an

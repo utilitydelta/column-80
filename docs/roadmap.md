@@ -1,744 +1,104 @@
 # Roadmap
 
-Everything pending, one file. A session picks a slice, scouts it, builds it, and the slice comes
-out of here when it ships. Shipped work lives in ARCHITECTURE.md and git history.
+Everything pending, one file. A session picks a slice, scouts it, builds it, and the slice comes out
+of here when it ships.
 
-**Item numbers never move.** Items cross-reference each other by number, so a gap means that item
-shipped. What shipped and why is in `docs/roadmap-history.md`, along with the consolidation notes
-this file used to open with. The TIERS below are the priority order and they do move, every time the
-evidence does.
+**Four rules bind this file.**
 
-**This file is pending work only.** If an entry describes something already done, it is in the wrong
-file. Move it to the history rather than leaving it here to be read as a task.
+- **Item numbers never move.** Items cross-reference each other by number, so a gap means that item
+  shipped. What shipped and why is in `docs/roadmap-history.md`.
+- **Pending work only.** If an entry describes something already done, it is in the wrong file. Move
+  it to the history rather than leaving it here to be read as a task.
+- **PROVEN** means tested. **REASONED** means read but not run. Three entries once said PROVEN of
+  something read rather than run, which is the exact confusion the two words exist to prevent.
+- **UNVERIFIABLE** is not a hedge. It marks a claim whose backing artifact no longer exists on this
+  box, and it always names the check that would settle it. A recitation of a number inside a shipped
+  comment is not the artifact. Do not re-quote a marked figure as a baseline; re-derive it, or take
+  the marked one and say which you did.
 
-**PROVEN** means tested. **REASONED** means read but not run. The file did not keep that line: three
-entries said "PROVEN" of something read rather than run, which is the exact confusion the two words
-exist to prevent. Fixed 2026-08-16; if you find another, it is a defect.
+Five sections: features, decisions waiting on the human, measurements pending, deferred fixes, and
+the dogfood ledgers plus what has been rejected.
 
-**UNVERIFIABLE** is new here, and it is not a hedge. It marks a claim whose backing artifact no
-longer exists on this box, and it always names the check that would settle it. Roughly thirty
-measurements this file quotes are in that state, most of them lost to session-directory cleans and to
-the 2026-08-10 branch scrub rather than to anything being wrong. A recitation of a number inside a
-shipped comment is not the artifact. Do not re-quote a marked figure as a baseline; re-derive it, or
-take the marked one and say which you did.
-
-**Rewritten 2026-08-16 from a claim-by-claim audit** (`docs/triage-2026-08-15.md`). All 417 claims in
-the previous file were checked against the code: 292 held, 48 had drifted, 20 described work that had
-shipped, 2 were superseded on the record, and 55 lost their evidence. Thirty per cent wrong,
-concentrated in the tier a fresh session acts on first. So take the tier order as current and the individual diagnoses as needing a re-read
-before you build against them - item 42's first version was confidently wrong for two months, and
-nothing flagged it until a session went looking. That is the failure mode this file has, and the
-audit is what caught it the second time.
+Last caught up 2026-08-23 by session-v59, which struck items 7, 21, 22, 45, 59, 60 and 61 and filed
+item 70. Thirteen contract narrowings (S17, and S21 through S32) are recorded in
+`docs/supersessions.md` and every one of them is waiting on a human; they are indexed under Decisions
+below.
 
 ## The list, at a glance
 
-**1. Fix now**
-Proven broken, no design question left. Each is small and each is about the product or its gate telling the truth.
+**Features** - genuine builds, each wanting its own goal and scout.
 
-- **22.** shipped source cites folders a clone does not have; 234 citations across 57 files
-- **2.** a frozen live test is red and nobody runs it
-- **21.** the cross-file argument-type leg, unbuilt since v14 - and its rows are GREEN today by asserting the defect
-- **7.** Rust has injection and zero enforcement, the last such language
-- **59.** the Rust and C# test rungs filter by substring, and the obvious flags are traps
-- **60.** two C# string constructs the re-indent scanner cannot see; one emits CS8999
-- **64.** should a drained FIM session open a diff against a document still being typed in
-- **65.** the import hint names crates the target does not link, and mis-names a renamed one
-
-**2. Trust the instruments, before building on them**
-A number from the harness is a hypothesis until the instrument that produced it has been looked at. Mostly blocked on taking a measurement rather than on a design call.
-
-- **43.** nothing measures how often a real session overflows the window; the guard itself shipped in v48
-- **41.** the tuning constants were chosen for a local 30B, and the premise moved without a record
-- **42.** repair supply outside Rust, restated after the rig defect that produced the first version
-- **30.** item 1 needs a third arm before anyone knows what it did
-- **45.** the latency probe cannot make a cold row, so three of its five falsification numbers are about the probe
-- **47.** Python's pre-fill gate has never been decomposed and its last number was 7.8x
-- **48.** the injected surface carries no imports, in any language, and it is Python's largest measured failure family
-- **49.** the count cap's server justification is measured false on Python and untested on TypeScript
-- **50.** the gather buys a hover per collaborator the render drops; measured in Go and now in Rust, and Rust's shape is starvation
-- **61.** the Rust measurement arm is dead: its store module is missing from this box
-- **62.** the C# inject arm is non-deterministic, and it is designated a regression check
-
-**3. The big builds**
-Each needs its own goal and scout. The order is inherited from the evidence each was filed on, and a third of that evidence no longer has an artifact - read it as a prior, not a ranking.
-
+- **70.** one exact `workspace/symbol` hit is called unambiguous, and the resolver hands the model a
+  different type's surface between two runs over identical code
 - **36.** resolution is the hole, not the budget: 69 real failures per run against the budget's 22
 - **34.** C# and Go have a supply problem, not a cap problem
 - **28.** three of five languages cannot anchor an imported type at all
 - **27.** v34's items 1 and 2 exist for Rust only; four languages have the same hole
-- **35.** the payload elision, in the three languages v37 did not build
+- **35.** the payload elision, in the two languages v37 and v40 did not build
 - **37.** the worked-example leg quotes the wrong docs on 80% of its blocks
-
-**4. Ideas and unscouted**
-Worth doing, not yet worth a goal file. Scout before scoping.
-
-- **53.** a ratified test suite passes against a body replaced with `{ 0 }`; PROVEN 2026-08-12
+- **53.** a ratified test suite passes against a body replaced with `{ 0 }`
 - **54.** injection walks downward only, so no caller-direction fact ever reaches the model
 - **17.** ask the model which types it needs, then inject their surfaces
-- **39.** other agent CLIs as fn-gen backends: codex, opencode, and whatever comes next
+- **39.** other agent CLIs as fn-gen backends
 - **11.** include block, the recursive variant
 - **5.** the whole-block trigger cannot see how real code names its types
 - **6.** the `selected:` prompt line was never measured
 - **10.** the second call in a chain generates blind
-
-**5. The long tail**
-Real, filed, and not urgent. Priority within the tier is unchanged.
-
 - **8.** injection works on an idle box and vanishes on a busy one
 - **9.** nobody knows the injection landing rate on any machine
 - **13.** nobody knows what the ratified tests miss
 - **14.** a failing test does not drive repair
 - **16.** an invented member on line 2 of a ghost is never judged
-- **33.** the spike harness spliced on stale offsets: a record, and the corpus behind it is gone
+- **33.** the spike harness spliced on stale offsets: a record and three standing rules
 - **18.** the rest, unchanged in priority
 
-Then, below the items: decisions only the human can make, deferred one-line fixes, the dogfood
-ledgers, the tier's own health, the measurement debt, and what has been rejected.
-
-Last caught up 2026-08-21 by session-v56. Two contract narrowings from that session's review loops
-are recorded in `docs/supersessions.md` as S18 and S19 and are waiting on a human. Every catch-up
-note older than that moved to `docs/roadmap-history.md`.
-
-## 1. Fix now
-
-Proven broken, no design question left. Each is small and each is about the product or its gate telling the truth.
-
-### 22. Shipped source points at folders a clone does not have
-
-Shipped files carry comments citing gitignored `session-*/` paths, so the reasoning they point at is
-unreachable from a fresh clone. Split out of the old item 1, which was closed 2026-07-28. REASONED.
-
-**The sweep is ten times the size this item used to claim.** It named six files.
-`grep -rn "session-" src --include="*.ts"` counts **234 citations across 57 files** (verified
-2026-08-15). `fnGen.ts` alone carries 61, `crossFileShape.ts` 17, `extraction.ts` 10. The six-file
-list was never a survey; it was the files somebody happened to have open.
-
-**The policy, ratified 2026-08-16: point the citation at a committed doc.** Move the reasoning worth
-keeping out of `session-*/` and into a doc that ships, then repoint every cite at it. Delete is the
-fallback, and only for a citation whose reasoning is not worth moving. Neither answer is "leave it";
-a comment that cites an unreachable folder is a comment that cannot be checked.
-
-### 2. A frozen live test is red and nobody runs it
-
-`blind-v16-argtype-live` pins the claim "with Tile's construction injected, the model builds a
-Tile". That claim no longer reproduces. The model serves garbage instead:
-
-```
-EnrollTile(new(0, 1))
-```
-
-- **UNVERIFIABLE, and it is three of this item's four premises.** "PROVEN 2026-07-25 on GPU, so not
-  a CPU artifact", the GPU-versus-CPU control behind it, and "also red before v21" are all recorded
-  nowhere on this box (C24, C25, C26). The garbage output above survives; the run that produced it
-  does not, and "red before v21" is a bisect claim with no bisect record. What would settle all
-  three: `node --test test/blind-v16-argtype-live.test.cjs` on the GPU tier with ollama up, and a
-  git-bisect driving that row for the regression point. Needs the GPU box, so not tonight.
-- **The run-list claim is wrong in the letter and right in effect.** The file IS matched by
-  `test:unit`'s glob (`package.json:534`, `test/**/*.test.cjs`), where `SKIP_LIVE=1` makes every row
-  skip; it is absent from `test:live`'s explicit list (`package.json:537`). So it is in a list and
-  no list ever EXECUTES it, which is the worse of the two states: it reads as covered.
-- Triage: find when it regressed, or rule the row fragile single-draw evidence.
-- Its sibling baseline row already skips itself, which supports the "fragile" reading.
-- Either way: fix or re-cut, then put the file where something runs it.
-
-### 21. The cross-file argument-type leg, unbuilt since v14
-
-Three rows in `test/blind-v15-argtype-identity.test.cjs` carry the whole demand. Every assertion
-stands as written; do not soften one. PROVEN red 2026-07-28.
-
-**Read this before writing the goal, or the build session reverts its own success.** The `todo`
-markers came off on 2026-08-10 (session-v48 phase 0, G4, recorded at the file's `:99-100`). The three
-rows are GREEN today, retitled `KNOWN WRONG:`, and they pass by asserting the DEFECTIVE behaviour
-(`:103-109`). They go RED the moment the leg lands. This item used to say "take the todo off when the
-leg lands", which is now exactly inverted: the job is to flip a green row to red-then-correct, and a
-session that reads the old instruction will see its own working leg as a regression and back it out.
-
-- **C#**: when the server answers a `Tile` reference with the reference's own position, the product
-  hands back the ENCLOSING helper class and renders its five members under `to build a Tile:`. That
-  is a false statement the model then follows, and it is the worst of the three.
-- **TypeScript and Python**: no by-name workspace-symbol leg, so a type the server will not point a
-  definition at is unreachable even when it is defined in the same workspace. C# has one
-  (`csLspExtractor.ts:554`) and so does Go since v40 (`goLspExtractor.ts:385`); this bullet used to
-  name C# alone. Two languages need the leg, not three.
-- The fixture is a deliberate trap and is already written: `Tile` lives in another file, the helper
-  class shares no member name with it, so which tree a resolution reached is always decidable.
-
-### 7. Rust has injection and zero enforcement - the last such language
-
-**Ratified 2026-08-16: this BUILDS, it is not struck, and its remaining scope is the Rust carve-out
-alone.** Two of the three bullets this item used to carry have shipped, which is why it moved out of
-the long tail: what is left is small, scoped and has a written ship gate.
-
-The problem, dogfood-proven: with a clean injected member list in front of it, the model still wrote
-`s.add_tile_by_morton(...)`, a method that appears nowhere in that list. Nothing checked.
-**UNVERIFIABLE** (C211, C218): that capture is on no disk - the method name survives only in this
-file and in dictation pastes echoing it - so the no-dot-typed state behind Trap 2 cannot be read off
-anything either. A fresh Rust dogfood capture re-witnesses the class in one sitting, and the v18
-capture inventory records sibling cases (`s.try_rehome`, `s.insert`) that make the class itself
-uncontroversial.
-
-Why Rust is carved out today, and it is a decision the code calls permanent:
-
-- The gate covers **four** languages, not three: TS identifiers, C#, Python and Go
-  (`src/vscode/completionProvider.ts:715-721`, Go since the v23 scout). Rust is the one carve-out
-  (`:705-708`).
-- rust-analyzer serves keyword/postfix completions at a dot (`.await`, `.if`).
-- The extractor drops those, so Rust's member list is incomplete by construction.
-- A gated Rust once suppressed `.await` for exactly that reason, and it was turned off. That is the
-  origin of the carve-out and the whole of the risk here.
-
-**The human's ruling, and the reasoning, because the tempting move is to strike this item.** The
-answer to a suppressed `.await` is to handle that edge case, not to leave Rust permanently dark.
-Rust strikes out invented members like the other four languages. Keep the dropped keyword and postfix
-labels as members that are never rendered, so the gate's legal list is complete while the prompt still
-shows only callable ones, and handle the `Future` receiver that rewrites all 127 labels as
-`await.`-prefixed noise.
-
-**The deadline decouple this item proposes is already built** - it was presenting shipped work as
-future work. The 50ms `INJECTION_DEADLINE_MS` still bounds the PROMPT block
-(`src/core/completionService.ts:28`), but a slow resolver's member list is no longer thrown away: the
-promise is kept past the race ("Promise.race does not cancel the loser", `completionService.ts:508-530`)
-and the gate awaits the same query under `GATE_DEADLINE_MS = 500` (`:42`, `:726-734`). Built in v18
-phase 3. So the gate is not blocked on latency plumbing; it is blocked on the legal-list question
-above and nothing else.
-
-**Red-before-green in BOTH directions is the ship gate.** An invented name is suppressed, AND `.await`
-still works. The second is the regression that turned this off last time, and a session that only
-writes the first test will ship the same defect again.
-
-Two traps from the scout, both still live:
-
-- False suppression on membership measured 0 of 196 real sites. PROVEN. The author's real method was
-  never missing from the list.
-- The motivating capture had no dot typed yet, so the gate as designed would not have caught that
-  exact case. The goal must say so rather than claim the capture as its falsification.
-
-### 59. The Rust and C# test rungs still filter by substring, and the obvious flags are traps
-
-Two halves of one defect, found by session-v55 phase 6 while shipping the separator half (queue
-Q3b/Q3c). Both halves measured, neither is a one-flag fix.
-
-**Rust:** `cargo test --lib -- add` still runs `add_more`, so a rung scoped to one function's
-generated tests can blame a neighbour's. `--exact` looks like the answer and runs ZERO tests,
-measured against cargo 1.96: it matches libtest's FULL path (`tests::add_returns_sum`) while
-`generatedTestNames` (`src/core/testAssembly.ts:801`) returns bare `fn` names, so the pair filters
-everything out and turns a working red into silence. Prefixing `tests::` is not the fix either:
-`findCfgTestModule` (`:729`) matches any `mod <name>`, so extending an existing module inherits the
-developer's own name. Fix: resolve the enclosing `#[cfg(test)] mod` name, thread it to
-`buildTestCommand`, then `--exact`. The trap is already pinned the safe way round:
-`test/impl-v8-wiring-cores.test.cjs:98` asserts `--exact` is ABSENT until the module path resolves.
-
-**C#:** `buildCsCommand` (`src/core/tddCs.ts:1386`) emits `FullyQualifiedName~<name>` and `~` means
-CONTAINS, while `csGeneratedTestNames` (`:2113`) returns bare method names. Measured on dotnet
-10.0.110 / VSTest 18.0.2: `~T.Tests.Add` passes 2 (Add and AddMore), `=Add` matches nothing,
-`=T.Tests.Add` passes 1. Switching `~` to `=` without resolving the fully-qualified name breaks it
-exactly the way `--exact` broke Rust.
-
-Go, Python and TypeScript are CLEAN, checked rather than assumed: Go anchors `-run '^(a|b)$'` with
-`escapeRegex` (`tddGo.ts:805`), pytest uses exact node ids (`tddPy.ts:1034`), vitest/jest
-end-anchor.
-Falsify, per language: two tests, one name a strict prefix of the other, in a module NOT called
-`tests`; only the named one runs, and it does run.
-
-### 60. Two C# string constructs the re-indent scanner cannot see, and one breaks the build
-
-Both pre-existing, found by session-v55 phase 13's adversarial review, both byte-identical before
-and after that phase's stack fix, both pinned live by
-`test/adversarial-v55-p13-scanner-stack.test.cjs`. Mind the gate blind spot: that file runs under NO
-npm script (`test:unit` skips its dotnet-graded rows, `test:live` does not list it) - run
-`node --test` on it directly, ~9s.
-
-**The raw-interpolated hole (queue Q16b), and it is the only known scanner defect that emits
-uncompilable C#.** `CsStrCtx` gives a raw string no hole depth, so a hole inside `$"""…"""` is
-scanned as string text; a run of enough fence quotes in the hole closes the string early, the
-content lines stay frozen while the real closing-delimiter line is classified as code and takes the
-indent, and C# requires every line of a raw string literal to start with the closer's whitespace.
-Measured on dotnet 10.0.110: the input compiles, the re-indented output is rejected with **CS8999**.
-Fix shape: the scanner stack's `holeDepth` stops being pinned at 0 for `kind: "raw"`. Row A13-7
-asserts the uncompilable output AND the byte-identity with the pre-phase-13 scanner, so it goes red
-if either half changes.
-
-**The `$"` opener (queue Q16c).** `advanceCsLineScan` has openers for `@"`, `$@"`, `@$"` and `"""`
-and none for `$"`, so a `@"` opened inside a `$"…"` hole desynchronises the quote count, a phantom
-string opens, and a later line inside a real `$@"…"` string's TEXT loses its value. Not
-hole-specific, checked at triage: the identical desync happens at statement level, because `$"` is
-missing from the one shared opener list. The review's rate (1 wrong value in 1200 generated bodies)
-is the review's - its generator is not in the repo - but the SHAPE is proven: row A13-8 compiles and
-runs one such body and the value moves. Fix shape: give `$"` an opener whose holes are tracked; it
-cannot span a line, which is how it slipped past the phase-13 oracle's hole rows (P13-7c, 18 cases,
-all correct within their line).
-
-### 64. Should a drained FIM session open a diff against a document still being typed in
-
-The mechanical half shipped in session-v56: a repair discard in a `source: "fim"` session goes to
-the channel instead of a toast, and only the two PRE-CONSENT causes route there
-(`docs/supersessions.md` S18). A post-Accept failure still toasts everywhere, because that is a
-consented write failing rather than a background race. What is left is the design question the
-toast fix was deliberately built around, which makes this the one entry in a tier that says "no
-design question left" that is nothing but one. Move it to tier 4 or answer it; do not leave it
-reading as a small fix.
-
-`column80.fimAccepted` (`fnGen.ts:6082`) runs the full post-accept oracle, so accepting a ghost
-starts background repair rounds. A round captures `versionAtResolve`
-(`src/vscode/oracleSurface.ts:543`) and then spends seconds in a model call while the user keeps
-typing, which is the NORMAL case after accepting a ghost. Meanwhile a second accept parks another
-session in the pending slot (`:299-310`, newest wins). The discarded session ends, `drainPending()`
-(`:325`) fires the parked one, it re-checks the current file, and a fresh "repair round 1
-(preview)" opens against a document that has moved on. The discard is quiet now. The diff still
-arrives.
-
-So: should a drained FIM-sourced session auto-present at all while the document is actively
-changing? Options include draining only after the document has been quiet for a beat, or making the
-diagnostics surface (already shown) the only automatic output and requiring a gesture before a diff
-opens. This is the cancellation-is-a-primitive family this product has met before: background work
-racing a live keystroke stream needs its interruption story designed, not patched.
-
-Falsify: a drained FIM-sourced session against a document edited in the last N seconds does not open
-a diff, and the same session against a quiet document still does.
-
-### 65. The import hint names crates the target does not link, and mis-names a renamed one
-
-Residue of item 56, filed 2026-08-21 from that build's own not-done list. Session-v56 lifted the
-module-tree walk into `src/core/rustReach.ts` and did NOT lift `tightenRatify`'s `externCrateName`
-(`tightenRatify.ts:364`, applied at `:454`), so `renderImportHint` still emits
-`use other_crate::Thing;` for a crate the target does not link, and rustc refuses it with E0433. It
-also names the PACKAGE name (`usePath.ts:100`) where Cargo links the DEPENDENCY KEY, so a renamed
-dependency (`renamed = { package = "real-name" }`) gets the wrong prefix.
-
-PROVEN on the gesture side, where the check already lives: 43 of 435 derived lines compiled
-workspace-wide, and 43 of 50 once restricted to crates the target actually links. The fix is item
-56's shape again, one mechanism and one copy with two callers, but it DELETES coverage, so it wants
-its own measurement first: how many pre-fill collaborator types are cross-crate at all? Withholding
-a hint on a type the model then invents is not obviously better than a `use` line that fails loudly,
-and nothing has measured which way that trade falls.
-
-Falsify: a cross-crate type whose manifest does not list the crate contributes no hint; a renamed
-dependency renders the dependency key rather than the package name; every hint that compiled before
-still compiles.
-
-## 2. Trust the instruments, before building on them
-
-This tier's origin: two independent rig defects turned up in one session and each had been silently
-wrong for months. A number from the harness is a hypothesis until the instrument that produced it has
-been looked at, and most of what sits here is blocked on taking a number rather than on a design
-call. Two are not - 42's static-C# receiver is a build and 61's store rebuild is one - but each of
-those is an instrument or a measured remainder, which is why they read here rather than in tier 3.
-
-### 43. Nothing measures how often a real session overflows the context window
-
-**The build shipped; what is left is the measurement, which is why this is no longer a "fix now"
-entry.** Session-v48 phases 2+3 built the guard. `src/core/promptBudget.ts` holds the decision
-(header: "session-v48 phase 2 ... roadmap item 43"), `FnGenService.generate` arbitrates
-exempt / fits / shrink / refuse (`fnGenService.ts:290-294`), and `generateRaw` / `generateTests`
-refuse a finished prompt that does not fit, which closed the last three paths: the punt circle-back
-retry, repair, refine and test-gen were all still unguarded after the first build. The channel lines
-exist too, with full token accounting (`promptBudget.ts:433-439` refusal, `:447-455` shrink); the
-fits case stays silent on purpose (`:168`, "the overwhelmingly common case fits at full size").
-
-Two sentences this entry used to carry are now false and are struck rather than amended: "there is no
-prompt-versus-window guard anywhere in the product, on any path", and "no indicator, anywhere". The
-build was also overtaken by the human's later ruling: where a prompt does not fit at all the product
-refuses and says why (`session-v48/contract-phase2.md`), not the softer channel-line-only shape this
-item first proposed.
-
-**What survives, and it is the whole item now: how often does a real session actually overflow?**
-Nothing has run. If the answer is never, the guard is cheap insurance and this entry closes. If it is
-common, the budget itself needs revisiting, and `GEN_NUM_CTX = 16384` is measured at 12.4GB VRAM on
-the 16GB carve, so raising it is not free. Decide first whether that frequency is worth an instrument
-at all; it is a question about real sessions, and this product has no telemetry by design.
-
-**The mechanism, which is what the measurement is measuring and is unchanged.** `GEN_NUM_CTX`
-(`src/core/budgetProfile.ts`) bounds the prompt AND the generation together, and `ollama.ts` says what
-happens past it: "a prompt over that is silently truncated to fit" (`src/core/ollama.ts:150-152`).
-That is not a reading. Three prompts of 12.9KB, 13.1KB and 15.0KB all landed on exactly 2050 prompt
-tokens with nothing logged, recorded in the code itself at `ollama.ts:152-155`. Raising `num_ctx`
-moved the ceiling; it did not add a check, which is what the guard then added.
-
-**The reasoning worth keeping, because it is what made the guard non-negotiable.** Truncation eats the
-HEAD of the prompt. On a captured fn-gen prompt the head is the instruction and the injected type
-surfaces, and the doc and signature sit at the tail. So adding context made the model receive LESS
-injection, and it still answered from the bare signature, confidently. The developer's action produced
-the opposite of what they asked for and nothing said so. That is the product quietly discarding its
-own core value, and it is the shape to watch for anywhere else a silent limit exists.
-
-And the developer cannot arbitrate it alone, which is the other half of why silence was the defect:
-prefill surfaces, member lists and repair surfaces add bytes they never wrote, so someone who adds two
-context blocks can be tipped over by bytes that are not theirs. That still holds
-(`promptBudget.ts:9-11`).
-
-One correction to that half, from the sweep. Context blocks are still SHRINK-exempt by the human's own
-rule ("Their context shrinks nothing; ours shrinks to fit", `promptBudget.ts:14-16`), but they are now
-COUNTED: `developerTok` is in every arbitration (`:226`, `:230`) and is named in the refusal and
-shrink lines (`:435`,
-`:450`). "The product actively does not count the thing most likely to overflow" was true when this
-item was filed and is not true now.
-
-### 41. The tuning constants were chosen for a local 30B and now gate a frontier model
-
-Audited 2026-08-08 in full (`session-v45/constants-audit.md`, a ledger of every tuning knob on the
-injection path with a provenance verdict each). The structural fact behind the whole item:
-
-**The premise moved under this item, and that is now part of the finding.** As filed, it said prompt
-assembly is provider-blind and `readFnGenConfig()` takes `maxTokens`, `numCtx` and `temperature`
-straight off `DEFAULT_FNGEN_CONFIG`. Two of those three no longer do. `readFnGenConfig()` reads
-`maxTokens` and `numCtx` from the ACTIVE class's budget-profile cell
-(`src/vscode/config.ts:187-194`, `budgetProfileFor(fnGenModelClass(), "", injectedContextStop())`);
-only `temperature` still comes off the default object (`config.ts:202`). A named cloud provider
-resolves the `frontier` class (`src/core/budgetProfile.ts:46-49`) and gets
-`FRONTIER_MAX_TOKENS = 64000` (`:248`, `:253-257`), not the local 2048. **No supersessions entry
-covers that change**, which is why an item at the head of the instrument tier spent a release
-describing a product that had already moved. It is the same failure this whole register was rewritten
-for, caught in miniature.
-
-What still stands, and it is enough to keep the item: no SETTING overrides any of the three, the
-cloud arm still spreads `readFnGenConfig()` (`src/vscode/fnGen.ts:1108`), `numCtx` and `temperature`
-are still shared across every backend, and every one of those numbers was picked against
-`qwen3-coder:30b` at `num_ctx=16384` on a 16GB carve. "The serving knobs nobody can reach" under
-Deferred fixes discusses all four as ollama knobs only.
-
-**Re-audit before any arm.** The ground moved once without a record, so the first job is to check
-whether it moved again, not to run 41a.
-
-Three sub-items, ranked by (drift risk x cost if wrong):
-
-**41a. `DATASHAPE_TOTAL_TOK = 300`, measured through the CLOUD backends.** The one constant whose
-provenance is admitted folklore - the "~350-token codegen knee" that sizes it comes from external
-literature via an early scout and not from this product, which the constants ledger states in as many
-words (`docs/constants.md:29-30`, the INHERITED class) - and whose cost is now measured. On 465 authored-doc C# rows, 300 -> 900 takes injection 16.4% -> 31.6%, and 330 of the
-421 surviving-but-not-injected types die here, more than anchoring (68) and everything else combined.
-The mechanism to move it per-language SHIPPED in v45 phase 3 (`CS_BUDGET_FACTOR`, currently 1) with the
-value deliberately unchanged, waiting for a generation arm. The arm nobody has run is the cloud one: if
-the knee is a property of small local models rather than of codegen, it should not appear there.
-`numCtx`'s own comment supplies the motive - real prompts run p90 ~1,295 tokens against a 16K local
-window, so nothing is context-bound.
-
-**41b. `maxTokens = 2048` on the two cloud backends - SUBSTANTIALLY MOOTED, kept for the residue.**
-The defect as filed is gone. 2048 is the LOCAL ceiling now: `GEN_MAX_TOKENS = 2048`
-(`src/core/budgetProfile.ts:230`) serves `fim-small` and `local-mid`, and the frontier class, which
-is both cloud backends, gets `FRONTIER_MAX_TOKENS = 64000` (`:248`, `:253-257`) - added precisely
-because 2048 capped thinking plus answer. It was never a defect on the claude-code CLI backend, which
-exposes no budget knob and ignores it either way. What remains is one cheap number nobody has taken:
-the `length` finish rate on `fnGenProvider: anthropic` at the new ceiling. The product degrades
-honestly when it happens (a `length` finish is refused, never spliced), so this is a curiosity, not a
-blocker. Rank it last.
-
-**41c. `MEMBER_CAP = 24`, with a per-language ladder.** The highest-traffic constant with the weakest
-provenance in the ledger: no ladder, no arm, no language, no model, justified only by the same inherited
-knee, and deliberately fused across prefill and repair so the two "cannot drift". It is the direct
-upstream of 41a, because C# exhausts a token budget rather than a slot count precisely because a Roslyn
-member list is enormous. Measuring the budget without it attributes the gain to the wrong knob.
-
-**41d. `DEFAULT_TIMEOUT_MS = 120_000` on the Claude Code transport.** Measured 2026-08-08: 3 of 33
-sonnet rows on complex C# methods never answered inside it (`genError="Claude Code did not answer
-within 120000ms"`, empty reply), against a qwen maximum of 17.6s on the same sample. Two of the three
-are 21- and 23-line bodies that **qwen compiled**. Unlike 41a-41c this is not a local number that
-leaked across the seam - it was chosen for this backend, but against v43's evidence, which was a
-handful of easy live rounds at 4-8 seconds. Nothing had run a complex C# generation through it. The
-failure mode is the expensive one: the round is paid for and then discarded. The fix is not obviously
-"raise it" - a 2-minute editor stall is its own defect - so the measurement wanted is the latency
-distribution by body complexity, per backend.
-
-**Two findings worth reading beyond the ranking.** `temperature = 0.2` has NO provenance anywhere in
-the repo, and the entire measurement corpus was collected at it - so it is a baked-in confound in every
-arm ever run here, not merely an untuned knob. And the product contradicts itself: test-gen ships a
-500-token aggregate budget while fn-gen holds 300 on the strength of a 350-token threshold. Either
-test-gen is over budget by the product's own doctrine or the doctrine is wrong; it cannot be both.
-
-**One thing to resist.** `PREFILL_TYPE_CAP = 4` looks like the obvious target and is not. It is the one
-prefill cap with a real arm behind it, and v45 measured that raising it alone RELOCATES the loss
-(post-cap loss 65.7% -> 78.2%) rather than removing it. It moves after the budget, not before.
-
-### 42. Repair supply outside Rust, restated after the rig defect that produced the first version
-
-Added 2026-08-09 from session-v46's repair measurement, then **rewritten 2026-08-10** because the
-evidence behind the first version measured the RIG, not the product. The original text is not
-amended here, it is replaced: quoting it alongside a correction would keep a refuted number in
-circulation.
-
-**What the first version said.** C# repair injected no type on 37 of 52 rounds (71%), against 28%
-on TypeScript, with `CS0103` accounting for 64 of roughly 100 unmatched observations. The
-diagnosis was that `harvestDiagnosticTypes` reads Rust's backtick quoting while Roslyn quotes with
-apostrophes, so the fallback that should catch un-classified codes matches nothing outside Rust.
-
-**Why it was wrong.** `session-v46/run-arm.cjs` built the `ResolvedFunction` it hands to
-`resolvePrefill` by hand and never set `symbols`. The RECEIVER leg reads that field to find the
-type the generated body is being written INSIDE, and puts it FIRST in the candidate list, exempt
-from the type cap (`fnGen.ts:2341-2361`; `resolved.symbols` is read through `enclosingContainer` at
-`fnGen.ts:3304`). Absent `symbols` it degrades to nothing, silently. The
-shipped product is unaffected: the repair round runs the span surface before the diagnostic-keyed
-leg, at all three entry points, over a `resolved` that `resolveFunctionAtCursor` fills in.
-
-A second rig defect compounded it for Rust alone. `stub-vscode.cjs` declared nine of the
-twenty-six `SymbolKind` members and `Object` was not one, so `RUST_CONTAINER_KINDS` held
-`undefined` and rust-analyzer's `impl Foo` node could never match. Rust was dark twice over.
-
-**Re-measured with both fixed**, model-free replay of each language's own v46 arm, symbol-kind
-translation checked per row rather than trusted:
-
-| | rows | rows with any repair surface | rounds with NO surface |
-|---|---|---|---|
-| C# | 42 | 11 -> 36 of 38 | 31 -> 1 |
-| Rust | 63 | 49 -> 63 | 14 -> 0 |
-| TypeScript | 21 | 15 -> 21 | 6 -> 0 |
-
-And on a graded C# arm, same 46 rows and same model as v46: repair rounds injecting no type went
-from 29 of 42 to **0 of 37**, type injections from 27 to 202, post-repair compile from 10/46 to
-19/46, silently-wrong from 1 to 0.
-
-**Go was never affected.** `receiver.ts` defines `receiverType` for Go alone, so Go resolves its
-receiver from the signature with no symbol tree. Every Go number in the changelog stands.
-
-**What survives as work.**
-
-- **A static C# method never sees its own class.** `resolveReceiver` resolves a receiver only when
-  the signature carries one or the return type names the enclosing type; a static helper has
-  neither, so its sibling statics are invisible and the model invents them. Measured at 9 of 56
-  repair rounds (`Program`, `Utility`, `FileLoading`, `SyncEvents`), each with a CS0103 naming a
-  sibling the class really has. This is the whole of what is left of the item's C# half.
-- **The harvest really is Rust-only**, and `harvestDiagnosticTypes`' own comment really is wrong
-  where it says the other languages' classifiers already read their own shapes. That is a fact
-  about the code, not a measurement, and it survives. Its value is now second-order: CS0246 and
-  CS0200 are its real C# population, about 30% of their names resolve, so roughly ten injections.
-- **Python and Go remain unmeasured.** Neither has a corpus in the rig, which is a cost, not an
-  oversight.
-
-**The lesson, which is worth more than the item.** Every function the rig called was the product's
-own. One FIELD of one argument was missing and a silent degrade to `undefined` turned off the
-highest-value injection leg in the system. A hand-built product input is a re-derived mapping
-wearing a different coat: where a rig constructs one, it needs an assertion that the product
-agrees. `run-arm.cjs` now carries that assertion for the symbol-kind translation.
-
-### 30. Item 1 needs a third arm before anyone knows what it did
-
-Session-v34's falsification arm bundles three changes and cannot separate them:
-
-1. Item 1 itself, which REMOVES standard-library surface and shrinks prompts (11.2% fewer injected bytes
-   overall, 39.7% on the goal's own 24).
-2. The cap fix, which stops a provenance refusal from spending one of the four type slots.
-3. The wrapped-import anchor fix, which ADDS types. `acme_crypto::create_ca` went from 1 injected
-   type to 3.
-
-Smaller prompts and more types pull in opposite directions, and the arm came back at 16.0% to 13.8%
-compiled, net minus four rows on 181. So the honest statement is "no effect detected from the bundle",
-and nobody can say which part earned the minus four.
-
-**UNVERIFIABLE, every number above** (C77, C78, C79). The v34 arm chain is deleted from this box:
-`compare.cjs`, `handover.md` and `data/v34-after.json` are all gone, and `session-v34/` keeps only
-`session-state.md` and two witness scripts. The 11.2% / 39.7% byte deltas, the 1-to-3 witness output
-for `acme_crypto::create_ca`, and the 16.0-to-13.8 / minus-four pair have no artifact left. What
-would settle them: re-run the v34 item-1 arm with its compare, and re-run
-`session-v34/witness-prefill.cjs` on the same task. Neither is one command - the witness needs
-`lib-cargo.cjs` and `candidates.json`, both deleted, so the rig comes first. The third arm below is a
-different population (237 tasks against these 181 rows) and does not produce these numbers as a
-by-product.
-
-The third arm: item 1 and the cap fix in, the anchor fix reverted, same 237 tasks, same box. Compare
-three ways. One row is worth 0.6 percentage points on this corpus, so a swing under about five rows
-means nothing whichever direction it falls.
-
-Worth doing because the anchor fix is the one with the strongest independent case (no type from a
-rustfmt- or prettier-wrapped import group could be anchored at all, in any language), and it would be
-daft to revert it on a number that item 1 might have earned.
-
-Formerly blocked on item 29; that filter went live in session-v35 (struck 2026-08-08), so a fresh
-third arm's absolutes would be the filtered configuration's - unlike every number this item quotes,
-which predate v35 and stay caveated. Not blocked on anything for the
-comparison.
-
-### 45. The latency probe cannot produce a cold row, so three of its five falsification numbers are about the probe
-
-Raised 2026-08-11 by session-v50. The rule it produced: **an instrument that cannot produce the case it
-measures has not measured it.**
-
-v50 published "41 re-polled cursors across five languages, zero recovered a renderable member" and used
-it to argue the `membersWithSettle` re-poll loop is dead weight. The loop exists for exactly one case,
-a def file the editor has JUST opened whose server has not finished reading it. The probe pre-opened
-every file and slept 250ms per open before the clock started, so **no `membersOfType` in any run was
-ever the first request after a `didOpen`.** The case could not occur. The number is true and is a fact
-about the probe.
-
-A `--cold` mode was added mid-session and still does not get there. Three things warm a row before it
-is timed, all named:
-
-1. `assertAlive` probes a vetted gate cursor before every row, and the vetted cursors come from the
-   run's own roots, so those files have documentSymbol computed off the clock.
-2. `rootsFrom(..., perFile = 3)` takes three roots per file, so rows 2 and 3 over a file are warmed by
-   row 1.
-3. `makeOpener`'s `opened` set lives for the whole run, so a file an earlier row discovered is warm when
-   a later row names it as root.
-
-What is affected, precisely. The Go and C# counts are sound, because those two DO enter the loop on a
-warm corpus and answer identically every time (32 and 9 cursors, zero recoveries). Rust's zero has an
-independent code-level explanation that stands without the probe (`mayRepollHelp` refuses unsigned
-non-callables, which is every Rust data struct). **Python's zero and TypeScript's rest on the instrument
-alone.**
-
-Blocks a real decision: whether the settle loop is deleted outright. Until a cold row exists, the
-standing answer is keep the bound. A cold row's TOTAL is not comparable with a warm one and nobody
-should try; what the mode is for is the re-poll and recovery counters.
-
-**session-v51 gave this item its number, and it raises the stakes.** Go's pre-fill gate was re-run on
-both sides of a gather-breadth bound: p95 148ms and 139ms against a 118ms gate, down from 192ms and
-208ms, so Go still misses at about 1.2x. The residue is no longer distributed. Across 20 rows the
-per-primitive decomposition is **settle sleep 869ms, hover 210ms, members 80ms, definition 44ms**, and
-six rows sit at 120 to 126ms of sleep over 1 to 22ms of real server work.
-
-Derived from the measured columns of the same four runs: **with the sleep at zero the after side reads
-p95 71ms and 53ms**, a pass with margin, and the before side reads 68ms and 84ms. **The settle
-allowance is what fails this gate, on both sides of that build**, so no amount of walk work reaches it.
-
-So the decision this item blocks is now the only thing standing between Go and its gate.
-
-**Ratified 2026-08-16: keep the bound, build the cold probe, and Go's gate stays failing until it
-exists.** Do not cut the sleep on the warm numbers. Fix the three warming defects named above
-(`assertAlive`'s vetted gate cursor, `rootsFrom`'s `perFile = 3`, `makeOpener`'s run-long `opened`
-set), get a real cold row, and delete or keep the `membersWithSettle` loop on that evidence. Go
-missing its gate at about 1.2x is an accepted cost with a date on it, not an oversight anybody needs
-to re-diagnose. Anyone reading Go's red row should read this paragraph and stop.
-
-Probe: `session-v50/probe/latency-baseline.cjs` in the private working repo.
-
-### 47. Python's pre-fill gate has never been decomposed, and its last number was 7.8x
-
-Raised 2026-08-11 by session-v51, which was sent to decompose it and did not. PROVEN miss, unknown
-cause.
-
-v50 measured Python at p95 1957ms net against a 250ms absolute gate. The shape of the cost is known
-one level down and no further: Python's leg is not hover and not sleep, it is cross-file
-`definition()` into files pyright has not seen, with nine discovered-file opens across eleven rows and
-one row spending 603ms in two hover calls on a freshly opened file.
-
-Every other language's gate got a per-primitive decomposition and Python's did not, so it is the one
-gate where "a miss is a defect report, not a decision" has no report behind it. Go's equivalent work
-found that the headline primitive was not the one anybody expected: "26 hovers cost 121ms" turned out
-to be a count of cold PACKAGES, not of round trips. Assume nothing about Python's until it is measured.
-
-The instrument exists (`session-v50/probe/latency-baseline.cjs py`) and inherits item 45's limit: it
-measures warm.
-
-### 48. The injected surface carries no imports, and that is now Python's largest failure family
-
-Raised 2026-08-11 by session-v51. PROVEN on a compile-graded arm.
-
-With the enclosing type in the prompt, Python function generation goes from 15 of 40 compiling to 35
-of 40, and the invented-member family collapses from 21 to 1. What survives is imports: 3 of the 5
-remaining reds are a name the body needs and the file does not import (`contextlib`, `FileResponse`,
-`run_server`).
-
-The surface names types and members. It does not say where they come from, and the model cannot infer
-an import it was never shown.
-
-**And the hole is wider than this item first claimed.** The Rust masking is not real on this surface:
-the use-path leg (`src/core/usePath.ts:143`, `renderImportHint`) is TEST-GEN only - it fires just
-when `opts.importTargetPath` is set (`fnGen.ts:3201-3210`, "The import hint (test-gen only)"). So the
-fn-gen pre-fill carries no import payload in ANY language, Rust included (`fnGen.ts:2503`,
-"fn-gen omits it"). Cites re-walked 2026-08-21; the `fnGen.ts:2881-2890` this entry used to give was
-a stale duplicate before item 56 moved the block again. What masks it in Rust is something else and weaker: a generated body usually lands
-in a file whose imports already exist, which is the code's own stated reason. Python is where it was
-MEASURED, not where it is.
-
-Not a cap and not a budget. It is a missing payload, and it is measurable the day someone builds it:
-the same 40 rows, one arm, and the same span-scoped verdict. The Rust derivation itself was fixed in
-session-v56 (item 56, shipped) and its remaining hole is item 65, so this build meets
-both the day it lands rather than re-manufacturing them at five times the surface.
-
-### 49. The count cap's server justification is measured false on Python and untested on TypeScript
-
-Raised 2026-08-11 by session-v51. Half PROVEN, half unmeasured, and the unmeasured half is the one
-that matters.
-
-The hover fan-out is time-bounded already: `withinBudget` races every ask against a 50ms deadline. The
-count cap survives on top of that because the race abandons the RESULT and not the WORK, so abandoned
-requests stay queued against a server that answers one thing at a time. That was reasoning, never a
-number.
-
-Measured against a real pyright: a 400-hover fan-out costs 13ms, so the deadline never cuts, nothing
-is ever abandoned, and the next request costs 0ms whether 4 or 400 asks preceded it. The hazard is
-unreachable on that server at any population, real or synthetic.
-
-TypeScript is the other fan-out language and is the slower server, cold first calls at 33ms and 51ms
-against Python's flat 10-14ms. It is where a deadline would cut first, and it was not measured,
-because its fan-out lives in the vscode transport and needs a real extension host. The headless
-`TsLsExtractor` reads the checker directly and asks no hover, so no headless row can produce the case.
-
-A `test:vscode` tier measurement. Until it runs, the cap stands on population sizing alone, and the
-constant's own comment says so.
-
-### 50. The gather buys a hover for every collaborator the render drops, and only Go has a bound
-
-Raised 2026-08-11 by session-v51. PROVEN in Go, and since session-v55 measured in Rust too;
-unmeasured in the other three.
-
-Over 20 real Go roots the gather resolved 117 types and bought 117 hovers; the render kept 63 solo and
-14 inside a real 8-root prompt. 31 of the 117 sit outside `walkDataShape`'s own BFS at ANY budget,
-because the render walks at most `B_MAX` distinct local field types per node and the gather walked all
-of them.
-
-Go got a commit-counted breadth bound on the gather: round trips down 26%, and 0 of 20 roots changed a
-byte of surface. C# is provably ineligible, because `csShapeBlock` gives every gathered type a member
-block, so nothing it gathers is wasted. Rust, TypeScript and Python were not looked at.
-
-The waste is structural rather than Go-shaped, so the prior should be that it is there. What is not
-known is the size, and a bound shipped without measuring a language's own surface is how a render
-loses a type nobody was watching.
-
-**Rust is now measured (session-v55 phase 12 triage, S55-19/S55-20), and its shape is STARVATION
-rather than waste.** On a ten-field root the walk's `N_MAX: 12` is allocated first-come by the
-root's field order under a breadth-uncapped FIFO gather, so a nested collaborator like
-`Order.cust.addr`'s `Address` is gathered and then dropped - the identical outcome on a plain
-struct as on the enum whose payload edges surfaced it, 39 round trips at the bound's own ceiling.
-The remedy is measured too: `RUST_PREFILL_LANG.gatherBreadth = true` (`fnGen.ts:5200`) leaves the
-rendered block byte-identical, cuts the round trips, and puts `Address` back in the SHAPE (not the
-render - the render's own `N_MAX: 6` then spends on payload defs). Not shipped in v55 because it
-changes every Rust field walk and Rust's only fixture is synthetic; it needs its own red on a real
-corpus, the way Go's opt-in was priced on 31 of 117. And the FIM whole-block leg renders through the
-same seam against its 50ms deadline (`completionProvider.ts:1401`), pays the same round trips per
-first keystroke, and has round-trip counts but no wall-clock witness.
-
-### 61. The Rust measurement arm is dead: its store module is missing from this box
-
-Found by session-v55 phase 25's regression check, which was the first thing to actually RUN the arm
-in some time. `LANG_DEFS.rs.loadStore` requires `session-complxity-research/spikes/lib-cargo.cjs`,
-which exists nowhere on this box; `lib-rust.cjs` is a scanner with a different shape, not a
-substitute. So the 403-row Rust arm cannot load at all, and nobody noticed because nothing runs it.
-Until the store is restored or rewritten, no document may describe the Rust arm as a live regression
-check.
-
-Carry queue Q1's finding into the rebuild (S40-2): a stub TextDocument defaulting `languageId` is
-silently wrong for every language but one.
-
-Contingent debt in the same instrument: `doc-variants-py.json` does not exist, so a Python
-doc-variant campaign (`--doc D0|D1|D2`) fatals on the missing artifact. The fatal is the right
-behaviour; the artifact is the debt (S55-29).
-
-### 62. The C# inject arm is non-deterministic, and it is designated a regression check
-
-PROVEN by session-v55 phase 25: the same code run twice produced two dumps differing in one row's
-prompt by 251 bytes, and the second run was byte-identical to the pre-change baseline. The arm races
-a live Roslyn hover. The oracle legs are deterministic; the inject leg is the one the retired queue
-designated as "the regression check", and for C# that check cannot tell a real change from a flap.
-
-Characterise before fixing (S55-31): is it one row or a class of them, and is the flapping hover a
-product-visible latency fact or only a rig one.
-
-## 3. The big builds
-
-Each needs its own goal and scout. This tier used to claim it was ordered by measured value. It is
-not, and cannot be: a third of the measurements behind these six no longer have an artifact on this
-box. The order is the one the evidence justified when each was filed. Re-rank it the day somebody
-re-runs the arms.
+**Measurements pending** - a number from the harness is a hypothesis until the instrument that
+produced it has been looked at.
+
+- **2.** a frozen live test is red and nobody runs it
+- **30.** item 1 needs a third arm before anyone knows what it did
+- **41.** the tuning constants were chosen for a local 30B and now gate a frontier model
+- **42.** repair supply outside Rust
+- **43.** nothing measures how often a real session overflows the window
+- **47.** Python's pre-fill gate is decomposed, and its stated cause was wrong
+- **48.** the injected surface carries no imports, in any language
+- **49.** the count cap's server justification is measured false on Python and untested on TypeScript
+- **50.** the gather buys a hover per collaborator the render drops
+- **62.** the C# inject arm flaps on 3 of 46 rows
+- **65.** the import hint names crates the target does not link
+
+## 1. Features
+
+### 70. One exact `workspace/symbol` hit is called unambiguous, and the hint is never spent
+
+Filed 2026-08-23 by session-v59 phase 6, found while characterising item 62 rather than while looking
+for it.
+
+`resolveCsTypeCursorWithHint` treats a single exact `workspace/symbol` hit as unambiguous and returns
+without spending the hint it was given. The C# arm corpus declares `class Datum` twice in two
+namespaces, and the row reaches both: **58 members on one run, 86 on the next, disjoint member
+lists**. The tie-break is deterministic. The list it reads is not.
+
+So the product's own resolver can hand the model a different type's surface between two runs over
+identical code, and it does not know it did. Roslyn's answer depends on how much of the solution is
+indexed at the moment of the ask.
+
+REASONED as product-visible, not PROVEN: the resolver under test is the product's own
+`resolvePrefill`, matched code-to-diff rather than instrumented, because instrumenting it needed
+`src/` and the phase that found it was forbidden that file.
+
+**Why it is a build and not a one-liner.** The remedy is the resolver refusing an incomplete index,
+which is a design call against a ratified budget - refusing costs a surface the model would otherwise
+get, and the budget was ratified on the assumption that a resolved type is a resolved type. See the
+decision line under Decisions.
+
+Falsify: two same-named types in two namespaces, the hint naming one of them, and the same member
+list every run.
 
 ### 36. The budget was never the big hole. Resolution is: 69 real failures per run against the budget's 22
 
-Counted 2026-08-03 (session-v39 scrap S39-8) off the 237-row prefill arm. Denominator is reasons
-emitted per run: why a KEPT candidate produced no injected block.
-
-**UNVERIFIABLE, the whole table** (C119, C120). S39-8 was archived on the sessions branch, and that
-branch was scrubbed on 2026-08-10 after the client-source leak. It exists in no local or remote ref;
-`session-v39/` retains `run-arms.sh` and nothing else. The counts below are a recitation of a file
-this box cannot open. What would settle them: re-run the 237-row prefill arm and re-count its reasons.
-That is also the cheapest way to get a fresh baseline, so the scout should plan on producing the
-number rather than quoting it.
+Counted 2026-08-03 off the 237-row prefill arm. Denominator is reasons emitted per run: why a KEPT
+candidate produced no injected block.
 
 | reason | per run |
 |---|---|
@@ -747,26 +107,28 @@ number rather than quoting it.
 | shared-budget starvation (the line v39 measured and v40's render-pass budget took on) | 22 |
 | no anchor found - no reference cursor at all | **16** |
 
-The 53 + 16 are resolution failures, three times the budget line two whole sessions just worked, and
-nobody has yet weighed anchor on them. They belong to candidate anchoring and hover parsing, not to the
-injection budget. The cheapest first question, and the scout's first job: are the 53 one shape or fifty?
+**UNVERIFIABLE, the whole table** (C119, C120): the scrap was archived on the sessions branch scrubbed
+2026-08-10 and exists in no ref. Re-run the 237-row prefill arm and re-count its reasons; that is also
+the cheapest way to a fresh baseline, so the scout should plan on producing the number rather than
+quoting it.
 
-One member of the class is already PROVEN (v38 scrap S38-9, `session-v38/spike-trait-shape.cjs`, live
-rust-analyzer through the product's own extractor): a project TRAIT gets no members and a bare-head
-hover - the opposite of the enum hole v39 closed - so every trait-typed collaborator likely lands in
-the 53.
+The 53 + 16 are resolution failures, three times the budget line two whole sessions worked on, and
+nobody has weighed anchor on them. They belong to candidate anchoring and hover parsing, not to the
+injection budget. The scout's first job: are the 53 one shape or fifty?
 
-Rig and baseline are warm: 237 rows, v40's generation pair 63 and 66 of 237, noise floor 3. Item 29's
-standing caveat applies to any absolute rate taken on the harness. Sibling of item 37; they share the
-rig, the baseline and probably the session.
+One member of the class is PROVEN (v38 scrap S38-9, live rust-analyzer through the product's own
+extractor): a project TRAIT gets no members and a bare-head hover - the opposite of the enum hole v39
+closed - so every trait-typed collaborator likely lands in the 53.
+
+Rig and baseline are warm: 237 rows, v40's generation pair 63 and 66 of 237, noise floor 3. Sibling
+of item 37; they share the rig, the baseline and probably the session.
 
 ### 34. C# and Go have a SUPPLY problem, not a cap problem
 
-Measured in session-v37 on real production code, not fixtures. On 117 C# methods from a 162-file .NET
-solution the product names **1.7 candidate types** against **7.3** the body actually uses, and the type
-it needs is anywhere in the candidate list **4.3%** of the time. Raising the cap to 24 changes that to
-4.3%, because there is nothing to cap. Go is the same shape: 1.9 candidates against 3.0 needed, ceiling
-14.8%, flat from cap 4 upward. Rust on the same oracle has an 83.8% ceiling and TypeScript 43.7%.
+Measured in session-v37 on real production code. On 117 C# methods from a 162-file .NET solution the
+product names **1.7 candidate types** against **7.3** the body actually uses, and the type it needs is
+anywhere in the candidate list **4.3%** of the time. Raising the cap to 24 changes nothing, because
+there is nothing to cap.
 
 | corpus | lang | rows | mean candidates | mean needed | ceiling | recall @4 | recall @12 |
 |---|---|---|---|---|---|---|---|
@@ -776,272 +138,198 @@ it needs is anywhere in the candidate list **4.3%** of the time. Raising the cap
 | column-80 | typescript | 205 | 9.9 | 1.6 | 43.7% | 31.4% | 38.5% |
 | contoso dotnet | csharp | 117 | 1.7 | 7.3 | 4.3% | 4.3% | 4.3% |
 
-**UNVERIFIABLE, every row of that table** (C123, C125, C126). The v37 data chain is gone from this
-box: `candidates.json` for acme-db is missing, there is no 117-row contoso artifact and no TypeScript
-file, and the surviving `candidates-oss.json` holds 183 rows against the table's 416. 83.8% is recited
-in two session files and backed by none. The SHAPE of the finding is what survives and it is not in
-doubt, because the cause below is a fact about the code rather than a measurement. The numbers are
-not. What would settle them: re-run the two-corpus oracle and the five-corpus spike. The Go half has
-a cheaper path - `candidates-go-wide.json` is on disk with 7,185 rows and supports a fresh ceiling
-census under the current recipe.
+**UNVERIFIABLE, every row** (C123, C125, C126): the v37 data chain is gone, and the surviving
+`candidates-oss.json` holds 183 rows against the table's 416. Re-run the two-corpus oracle and the
+five-corpus spike. The Go half is cheaper - `candidates-go-wide.json` is on disk with 7,185 rows and
+supports a fresh ceiling census under the current recipe.
 
-**The cause needed no further measurement, and it has since half-closed.** As filed: `csPrioritizedTypes`
-and `goPrioritizedTypes` had FOUR candidate legs where Rust and TypeScript have five, because neither
-mines imports. Today `goPrioritizedTypes` has five (`fnGen.ts:4686-4713`, including
-`goTypesFromQualifiedUsage`) and `csPrioritizedTypes` four including `csTypesFromQualifiedUsage`
-(`fnGen.ts:4037-4067`) - the item's own v40 amendment below is that change. The half that still
-stands is the reason the leg was missing in the first place: a Go import line carries a package path
-and a C# `using` carries a namespace, so neither line ever spells a type name (`fnGen.ts:4071-4076`,
-`:4717-4721`).
+**The SHAPE is not in doubt, because the cause is a fact about the code.** A Go import line carries a
+package path and a C# `using` carries a namespace, so neither line ever spells a type name
+(`fnGen.ts:4071-4076`, `:4717-4721`). The qualified-usage legs shipped in v40
+(`goTypesFromQualifiedUsage`, `csTypesFromQualifiedUsage` in `src/core/repairTypes.ts`) mine
+`pkg.Type` and `Namespace.Type` out of the signature and body, correlated against the file's own
+import block. Go also gained the by-name workspace-symbol anchor C# already had. Measured on the Go
+rig: ceiling 5.5% -> 7.6% across 2,890 functions; C# flat at 2.6%, mechanism built and no effect
+measured there. **UNVERIFIABLE** (C133): no 2,890-row artifact survives and the pair is unrecoverable
+in recipe. A fresh census over `candidates-go-wide.json` produces a comparable number.
 
-**This is a build item with its own scout, and the two languages need different mechanisms.** Do not
-assume one leg serves both.
+**Go's answer is the taught convention, and it is measured end to end.** The human ruled the organic
+channel out of scope: column80 users are taught to doc-comment the target, so the AUTHORED population
+is the real one. On a six-repo corpus (cobra/gin/hugo + pgx/quic-go/goleveldb, 7,185 clean rows) the
+authored-gesture funnel over 907 rows measured parse 70.6% -> candidate 87.6% -> in-cap 50.9% ->
+injected 34.8%, binding stage THE CAP. A cap ladder put the knee at 8; `GO_PREFILL_TYPE_CAP = 8`
+shipped (Rust stays 4 - its own 4->12 arm measured flat, which is WHY), superseding nine frozen v37
+rows as S15. Funnel at the shipped cap: in-cap 78.8%, injected 53.9%. The generation arm, 237
+authored rows, two runs each: **inject 13.6% vs dark 4.9% compiled, +8.7 points, ~2.8x, spread under
+1 point** - the product-claim number for the convention. Residue upper bound (types a heavy doc would
+not name, per go/types): **62.9% of instances**, the remaining supply frontier, unbuilt on purpose.
+The clean ceiling recipe is `session-v42/spike-0-ceiling.cjs` at 17.8%.
 
-Two things from session-v37 that bear on it:
+Two things still gate a Go supply figure:
 
-- The backtick gesture is now the only channel these two languages have, and session-v37 widened it so
-  that `` `*Config` ``, `` `http.Client` `` and `` `Contoso.DataModel.Widget` `` all resolve. Before that
-  widening it refused **79.8%** of how Go spells a type in a real signature. **UNVERIFIABLE** (C129):
-  only a code-comment recitation survives (`src/core/compilerDirected.ts:1112-1116`); the raw v37
-  spelling census is gone. A fresh spelling census over the Go corpus would check it.
-- A widened gesture still has to ANCHOR. Go and C# have no import leg to anchor against either, so 82.5%
-  of Go and 87.2% of C# named types have no per-file anchor at all. C# partially recovers through
-  Roslyn's workspace-symbol leg (`src/core/csLspExtractor.ts:554`), and since v40 so does Go
-  (`goLspExtractor.ts:385`), which is a correction to this bullet's "Go does not recover".
-  **UNVERIFIABLE** (C130): the two percentages appear nowhere on disk outside this file. A re-run of
-  the anchor census would check them.
-
-**Amendment, 2026-08-04 (session-v40, shipped 1.2.0). The missing leg is built, and the item shrank
-rather than closed.** `goTypesFromQualifiedUsage` and `csTypesFromQualifiedUsage`
-(`src/core/repairTypes.ts`) mine qualified references (`pkg.Type`, `Namespace.Type`) out of the
-signature and body, correlated against the file's own import block so a lexical look-alike on a local
-variable is refused. Go also gained the by-name workspace-symbol anchor C# already had
-(`GoLspExtractor.resolveTypeCursorByName`), so a candidate with no local anchor is no longer a dead end.
-Measured on the new Go rig: ceiling 5.5% -> 7.6% across 2,890 functions. C# flat at 2.6% on the one
-corpus - mechanism built, no effect measured there. **UNVERIFIABLE** (C133): no 2,890-row artifact
-survives, and this item's own v42 amendment below calls the 5.5/7.6 pair unrecoverable in recipe. A
-fresh ceiling census over `candidates-go-wide.json` (7,185 rows, on disk) would produce a comparable
-number under the current recipe.
-
-One finding still gates any Go supply figure, and one has closed:
-
-- **S40-3, open**: the candidate leg admits mostly NON-types. Sampled cobra file: 3 real types in ~29
+- **The backtick gesture is the only channel these two languages have.** v37 widened it so
+  `` `*Config` ``, `` `http.Client` `` and `` `Contoso.DataModel.Widget` `` all resolve; before that
+  it refused **79.8%** of how Go spells a type in a real signature. **UNVERIFIABLE** (C129): only a
+  code-comment recitation survives (`src/core/compilerDirected.ts:1112-1116`). A fresh spelling census
+  over the Go corpus would check it.
+- **A widened gesture still has to ANCHOR**, and neither language has an import leg to anchor
+  against: **82.5% of Go and 87.2% of C# named types have no per-file anchor at all**. Both partially
+  recover through workspace-symbol (`csLspExtractor.ts:554`, `goLspExtractor.ts:385`).
+  **UNVERIFIABLE** (C130): the two percentages appear nowhere on disk. A re-run of the anchor census
+  would check them.
+- **S40-3, open:** the candidate leg admits mostly NON-types. Sampled cobra file: 3 real types in ~29
   mined names, because every exported Go identifier capitalizes. It fails SAFE (the container filter
-  refuses a non-type hit) so the harm is cost and dilution, not correctness - but part of the
-  mined-candidate gain is noise, and each miss burns a live workspace/symbol round trip. The cheapest
-  lever, refusing a mined name immediately followed by `(` before the lookup fires, SHIPPED with the
-  v42 corpus below; what stays open is the residual dilution.
-- **S40-1, closed**: the 22 unfiltered generated-file rows (stringer output) are gone.
-  `01-corpus-go.cjs` no longer exists, and the two corpus files on disk prove the fix arithmetically -
-  `candidates-go.PRE-FILTER.json` holds 4,017 rows against `candidates-go.json`'s 3,995, which is
-  exactly the 22 removed. Record at `session-v40/scraps.md:3-14`. The populations-under-different-flags
-  caveat therefore applies only to numbers taken before that filter, which is every number in the
-  table above.
+  refuses a non-type hit) so the harm is cost and dilution, and each miss burns a live
+  workspace/symbol round trip. The cheapest lever - refusing a mined name immediately followed by `(`
+  - shipped with the v42 corpus; the residual dilution is what stays open.
 
-What remains of the item is the NEXT supply leg, not a re-run of this one.
-
-**Amendment, 2026-08-08 (session-v42, shipped 1.4.0). Go's answer is the taught convention, and it
-is now measured end to end.** The human ruled the organic channel out of scope: column80 users are
-taught to doc-comment the target function, so the AUTHORED population is the real one. On a widened
-six-repo corpus (cobra/gin/hugo + pgx/quic-go/goleveldb, 7,185 clean rows - the corpus filter and
-the S40-3 call-shape guard both landed, round trips halved), the authored-gesture funnel over 907
-rows measured: parse 70.6% -> candidate 87.6% -> in-cap 50.9% -> injected 34.8%, binding stage THE
-CAP. A cap ladder put the knee at 8; `GO_PREFILL_TYPE_CAP = 8` shipped (Rust stays 4 - its own
-4->12 arm measured flat, which is WHY), superseding nine frozen v37 global-cap rows as S15. Funnel
-at the shipped cap: in-cap 78.8%, injected 53.9%. The generation arm (237 authored rows, two runs
-each): **inject 13.6% vs dark 4.9% compiled, +8.7 points, ~2.8x, spread under 1 point** - the
-product-claim number for the convention. Residue upper bound (types a heavy doc would not name,
-go/types): 62.9% of instances - the remaining supply frontier, unbuilt on purpose. Seven
-inject-regression rows are the re-measure band, named in `session-v42/arm-report.md`. The clean
-ceiling recipe is `session-v42/spike-0-ceiling.cjs` at 17.8%; v40's 5.5/7.6 pair is unrecoverable
-in recipe and quotes only as context.
+**This is a build with its own scout, and the two languages need different mechanisms.** Do not
+assume one leg serves both. What remains is the NEXT supply leg, not a re-run of this one.
 
 ### 28. Three of five languages cannot anchor an imported type at all
 
-`pyFindTypeReference`, `csFindTypeReference` and `goFindTypeReference` have no import scan: they look in
-the span, then at a same-file definition, then give up. So an imported collaborator is only anchorable
-when the target's own signature or body names it. REASONED, session-v34 - read, not run.
+`pyFindTypeReference`, `csFindTypeReference` and `goFindTypeReference` have no import scan: they look
+in the span, then at a same-file definition, then give up. So an imported collaborator is only
+anchorable when the target's own signature or body names it. REASONED, session-v34 - read, not run.
 
 Deliberately not swept from Rust, because it is a decision rather than a copy: a Go import names a
 package path, not a type, so "anchor at the import line" does not mean the same thing in all five.
 
-Related and already fixed in v34: the RUST and TYPESCRIPT scans tested each line in ISOLATION for a
+Related and already fixed in v34: the Rust and TypeScript scans tested each line in ISOLATION for a
 leading `use`/`import`, so no type from a rustfmt- or prettier-wrapped group could ever be anchored -
 the dominant shape in real code. Measured on `acme_crypto::create_ca`: injected types went from 1 to
-3 once fixed. **UNVERIFIABLE** (C143): no artifact carries that 1-to-3 count; `session-v34/` keeps only
-its witness scripts and `session-state.md`, and what survives is a prose relative in the source
-(`fnGen.ts:3442-3444`). Re-running `session-v34/witness-prefill.cjs` on the same task would check it.
+3 once fixed. **UNVERIFIABLE** (C143): no artifact carries that count; what survives is a prose
+relative in the source (`fnGen.ts:3442-3444`). Re-running `session-v34/witness-prefill.cjs` on the
+same task would check it.
+
+See also G3 under Decisions: Go's import-anchor question is the same gap, asked as a design call.
 
 ### 27. Items 1 and 2 of v34 exist for Rust only, and four languages have the same hole
 
-Session-v34 measured, on 230 rustc rows, that the round-1 prefill was spending its budget on types the
-model already knew. `PrefillLang.isStdlibDef` decides that on PROVENANCE - the definition URI the
+Session-v34 measured, on 230 rustc rows, that the round-1 prefill was spending its budget on types
+the model already knew. `PrefillLang.isStdlibDef` decides that on PROVENANCE - the definition URI the
 resolver already asks for - and only Rust fills it. Same for `RepairSurfaceLang.harvestTypes`.
 
-The defect is not Rust's. TypeScript has `Array`/`Promise` out of `lib.*.d.ts`, C# has `List<T>` out of
-reference assemblies, Python has `dict`/`Path` out of typeshed, Go has `strings.Builder` out of
+The defect is not Rust's. TypeScript has `Array`/`Promise` out of `lib.*.d.ts`, C# has `List<T>` out
+of reference assemblies, Python has `dict`/`Path` out of typeshed, Go has `strings.Builder` out of
 `$GOROOT/src`. The seam already fits all five.
 
 **The "they already have std name sets" defence does not hold.** `TS_STD_TYPE_NAMES`,
 `CS_STD_TYPE_NAMES`, `PY_STD_TYPE_NAMES` and `GO_STD_TYPE_NAMES` guard the candidate list and the
-recursive hop. That is EXACTLY the protection Rust already had: `Path` is in Rust's `STD_TYPE_NAMES` and
-still shipped a private field and 24 method signatures into a prompt headed "use these exact names, do
-not invent", because no name set guards the ROOT render.
+recursive hop. That is EXACTLY the protection Rust already had: `Path` is in Rust's `STD_TYPE_NAMES`
+and still shipped a private field and 24 method signatures into a prompt headed "use these exact
+names, do not invent", because no name set guards the ROOT render.
 
 Needs a scout, for three reasons that each change what gets built:
 
 - **C# may have no URI to test.** Roslyn answers a framework type with metadata-as-source, which may
   carry a synthetic URI or none at all. A provenance test against a URI that never appears would
-  silently never fire, which looks identical to a working feature. `session-v34/witness-provenance-langs.cjs`
-  was written to answer this for all four at once and was never run; if that folder is gone, the witness
-  is ~200 lines and re-derivable from `CsLspExtractor.start` plus the four dogfood roots.
-- **Go's design call is answered, so do not re-open it.** This bullet used to send the scout to decide
-  Go's shape hooks first. It is settled: `goShapeHooks` is Go's own (`crossFileShape.ts:613-640`) with
-  the `parseGoHoverFields` field leg lit in v49, its own `GO_STD_TYPE_NAMES` stop set and a
-  qualifier-aware `skipCandidate`, and it is wired on the pre-fill path (`fnGen.ts:4891`). What is left
-  for Go here is the provenance test itself, the same as the other three.
-- **The measurement arms exist for one of the four now.** Session-v40 built the Go arm over cobra, gin
-  and hugo, scored through the product's own `goOracle`, reproducible at a ~1.7% spread across two runs:
-  `candidates-go.json`, **3,995 rows** (the 4,017 figure this item used to quote is the pre-filter copy,
-  `candidates-go.PRE-FILTER.json`; see item 34's S40-1). The runner that produced it,
-  `05-inject-run.cjs`, is no longer on disk, so re-running the arm means rebuilding the driver.
-  TypeScript, Python and C# arms are still unbuilt, and S40-3's dilution finding still gates the Go
-  numbers.
-
-  AMENDED 2026-08-08 (session-v45 phase 0/1): **C# now has a corpus on the box.** Five pinned OSS
-  repos at `~/sandbox/v43-corpus` (Autofac, seq-api, serilog, NodaTime, Polly), 2,100 candidate
-  methods scored through the product's own `csOracle`, gated both directions per repo. `lib-cs-scan.cjs`
-  and `lib-cs.cjs` are on disk; the corpus builder that sat beside them is not, so the rig is one file
-  short of a re-run. contoso is the held-out private row (168 candidates). Two of the five repos carry
-  a recorded local build fix (S45-1, S45-6).
+  silently never fire, which looks identical to a working feature.
+  `session-v34/witness-provenance-langs.cjs` was written to answer this for all four at once and was
+  never run; if that folder is gone, the witness is ~200 lines and re-derivable from
+  `CsLspExtractor.start` plus the four dogfood roots.
+- **Go's design call is answered, so do not re-open it.** `goShapeHooks` is Go's own
+  (`crossFileShape.ts:613-640`) with the `parseGoHoverFields` field leg lit in v49, its own
+  `GO_STD_TYPE_NAMES` stop set and a qualifier-aware `skipCandidate`, wired on the pre-fill path
+  (`fnGen.ts:4891`). What is left for Go here is the provenance test itself, same as the other three.
+- **The measurement arms exist for two of the four.** Go: `candidates-go.json`, **3,995 rows**,
+  scored through the product's own `goOracle` at a ~1.7% spread across two runs; the runner that
+  produced it, `05-inject-run.cjs`, is off disk, so re-running means rebuilding the driver. C#: five
+  pinned OSS repos at `~/sandbox/v43-corpus` (Autofac, seq-api, serilog, NodaTime, Polly), 2,100
+  candidate methods scored through `csOracle`, gated both directions per repo; `lib-cs-scan.cjs` and
+  `lib-cs.cjs` are on disk, the corpus builder is not, so the rig is one file short of a re-run.
+  contoso is the held-out private row (168 candidates). TypeScript and Python arms are unbuilt.
 
 **And the reason to insist on the scout:** the arity leg went in TS-only, came back out, and left the
-standing rule "do not reintroduce without measuring four languages". Four new legs with the measurement
-half unbuilt is that same shape.
+standing rule "do not reintroduce without measuring four languages". Four new legs with the
+measurement half unbuilt is that same shape.
 
-### 35. The payload elision, in the three languages session-v37 did not build
+### 35. The payload elision, in the two languages that did not get it
 
-Session-v37 built the Rust half (item 5): an injected tuple-variant enum now renders `Constrained(u8)`
-instead of `Constrained( /* … */ )`, recovered from the definition source, measured at 224 of 224 in
-acme-db and 29 of 29 in the OSS crates. **Session-v39 widened that mechanism a long way** and
-whoever builds the languages below is reusing the wider one: `src/core/rustHoverRecovery.ts` now restores
-struct-variant payloads (`Leader { lease_epoch: u64 }`) and the members a LIST cut dropped, for `enum`
-and `struct` alike, refusing the whole type on any disagreement, on a `#[cfg]` inside a payload, or on a
-cfg-gated body when a cut is present. Measured 56 of 237 compiled against 47. Read it before writing a
-second parser.
+Rust shipped in v37 and Python in v40. The Rust mechanism was widened a long way in v39 and whoever
+builds the two below reuses the wider one: `src/core/rustHoverRecovery.ts` restores struct-variant
+payloads (`Leader { lease_epoch: u64 }`) and the members a LIST cut dropped, for `enum` and `struct`
+alike, refusing the whole type on any disagreement, on a `#[cfg]` inside a payload, or on a cfg-gated
+body when a cut is present. Read it before writing a second parser.
 
-**UNVERIFIABLE, both of those numbers** (C151, C154). The 224/224 and 29/29 pair has no artifact -
+**UNVERIFIABLE, the rates** (C151, C154): the Rust 224-of-224 and 29-of-29 pair has no artifact -
 `session-v37/spike-10-elision-rust.txt` is the PRE-build capture and still renders
-`Complete( /* … */ )` - and the raw v39 arm data is gone, with 56-against-47 surviving only as
-recitations at `CHANGELOG.md:191` and `:244`. The MECHANISM is not in doubt; it is in the tree and
-widened. The rates are. Re-running the elision arm and the 237-row prefill arm would check them, and
-whoever builds Go or C# below is running an arm anyway.
+`Complete( /* … */ )` - and v39's 56-against-47 survives only as a CHANGELOG recitation. The
+MECHANISM is in the tree and is not in doubt. Whoever builds Go or C# is running an arm anyway.
 
-**Amendment, 2026-08-04 (session-v40, shipped 1.2.0): the Python half is DONE.** The `enumMemberLine`
-hook now covers Python: an Enum/IntEnum/StrEnum/Flag class is recognised from its own class declaration
-and each variant renders as `Type.VARIANT`; a dataclass's plain fields pass through as pyright reports
-them. Built REASONED with no corpus, exactly as this item priced it, adversarially reviewed clean. What
-remains below is Go and the C# positional record - and note the ordering principle session-v40 wrote
-down: for Go, SUPPLY (item 34) comes before rendering work like this, because rendering pays only where
-the candidate list already contains the type, and Go's ceiling is still 7.6%.
-
-The remaining two are measured and unbuilt, and they are NOT the same defect. Build them in this order,
-which is cost order and not severity order.
-
-**Python first - SHIPPED 1.2.0, kept for the record of why.** It was the worst row and the cause was OURS, not the server's. pyright and Pylance both
-hover a class as `(class) LodBand`, 15 bytes that are not even Python syntax, so `parseHoverFields`
-yields nothing. But `membersOfType` DOES answer: probed directly it returns `CONTINENTAL, REGIONAL,
-MUNICIPAL, PARCEL` for an enum and `aggregate, tile_tally, bands_touched, label` for a dataclass. Those
-members carry no signature, so `renderMemberSignatures` drops every one and the enum ships empty.
-`enumMemberLine` is the hook that exists for exactly this and at the time it was set for C# only. One
-hook entry, against a hole the code already documents by name. (Cite refreshed 2026-08-15: the hook
-field is `crossFileShape.ts:448`, with the C# implementation at `:512` and the Python one this
-paragraph records at `:583`. The old `:351` cite now lands inside `candidateTypesOf`.)
-
-**Go second.** A Go enum is a named integer type plus a package-level const block, and gopls hovers the
+**Go first.** A Go enum is a named integer type plus a package-level const block, and gopls hovers the
 type alone. cobra's `ShellCompDirective` injects one line and one member while the eight directives a
-caller must name are nowhere. Rust at least prints the variant and hides its payload; Go prints neither.
-Frequency: 23 of 93 named non-struct types in cobra, gin and hugo carry a typed const set, 24.7%,
-declaring 166 constants. Same order as Rust's 50.0%, and it lands on the language item 34 already calls
-supply-starved. Build it after Rust and reuse the definition-source walk item 5 built.
-**UNVERIFIABLE** (C161): 23-of-93, 24.7% and 166 appear nowhere on disk. A typed-const census over
-cobra, gin and hugo would check them, and it is cheap - those three repos are pinned clones the Go rig
-already uses.
+caller must name are nowhere. Rust at least prints the variant and hides its payload; Go prints
+neither. Frequency: 23 of 93 named non-struct types in cobra, gin and hugo carry a typed const set,
+24.7%, declaring 166 constants. Same order as Rust's 50.0%, and it lands on the language item 34
+already calls supply-starved. Reuse the definition-source walk item 5 built.
+**UNVERIFIABLE** (C161): those three counts appear nowhere on disk. A typed-const census over the
+three pinned clones the Go rig already uses would check them, and it is cheap.
 
-**C# last. The frequency is now measured, and it is still small.** A C# ENUM is fine: Roslyn hovers it,
-documentSymbol returns the variants, and the `enumMemberLine` hook already spells them
-`ThreatLevel.Minor`. A POSITIONAL RECORD is not: hover gives the qualified name only and
-`membersOfType` returns nothing, so `record StripeSummary(int Aggregate, ...)` reaches the model with
-its constructor invisible. **UNVERIFIABLE, the record-probe half** (C163): the probe artifact behind
-"hover gives the qualified name only and `membersOfType` returns nothing" is not on disk, and v38's
-`membersOfType`-empty probe is the TRAIT one, a different case. The frequency half below is separately
-backed. Re-probing a positional record against Roslyn would check it, and that is the first step of
-building the fix anyway.
+**But note the ordering principle v40 wrote down:** for Go, SUPPLY (item 34) comes before rendering
+work like this, because rendering pays only where the candidate list already contains the type.
 
-AMENDED 2026-08-08 (session-v45 phase 1). The "one row of frequency" caveat is retired: a Roslyn
-semantic census over five pinned OSS repos (Autofac, seq-api, serilog, NodaTime, Polly - 2,100
-candidate methods) counts **10 positional records**, and contoso declares **1**. So the hole is real
-and the frequency is genuinely low across 2,268 methods of real C#, not merely unmeasured. That is an
-argument for keeping C# last, not for closing the item: the render is still wrong where it fires.
+**C# last.** A C# ENUM is fine: Roslyn hovers it, documentSymbol returns the variants, and the
+`enumMemberLine` hook already spells them `ThreatLevel.Minor`. A POSITIONAL RECORD is not: hover
+gives the qualified name only and `membersOfType` returns nothing, so
+`record StripeSummary(int Aggregate, ...)` reaches the model with its constructor invisible.
+**UNVERIFIABLE, the record probe** (C163): the artifact is off disk, and v38's `membersOfType`-empty
+probe is the TRAIT one, a different case. Re-probing a positional record against Roslyn checks it,
+and that is the first step of building the fix anyway.
 
-**TypeScript needs nothing.** Unions render verbatim, including a 178-byte discriminated union with its
-payload objects intact. An interface hovers bodyless but its fields arrive through the member list.
+The frequency half IS backed: a Roslyn semantic census over the five pinned OSS repos (2,100
+candidate methods) counts **10 positional records**, and contoso declares **1**. Real and genuinely
+low across 2,268 methods. That argues for keeping C# last, not for closing the item - the render is
+still wrong where it fires.
+
+**TypeScript needs nothing.** Unions render verbatim, including a 178-byte discriminated union with
+its payload objects intact. An interface hovers bodyless but its fields arrive through the member
+list.
 
 ### 37. The worked-example leg quotes the wrong docs on 80% of its blocks
 
-**UNVERIFIABLE in full, and this item has no other evidence** (C166, C167). Everything below was
-counted in session-v39 scrap S39-3, which lives on the sessions branch that was scrubbed on
-2026-08-10; `session-v39/` retains `run-arms.sh` and no arm rows, and the only session branch on this
-box carries no v39 path. So the worked example, the 35-of-44 and the 40-of-49 are recitations with
-nothing behind them. What would settle it: re-count usage-example blocks that never name their own
-type over a fresh 237-row arm. That is the same arm item 36 needs, which is why these two are siblings
-and should share a session.
+Counted 2026-08-03 while validating v39's phase 3, not while looking. A prefill block headed
+``Usage example for `ShardConfig` (from its docs, this compiles)`` carried the standard library's
+`core::cell` documentation; `ShardConfig`'s own doc comment is two lines with no example in it. Both
+claims in the header are false.
 
-Counted 2026-08-03, found while validating v39's phase 3, not while looking. A
-prefill block headed ``Usage example for `ShardConfig` (from its docs, this compiles)`` carried the
-standard library's `core::cell` documentation; `ShardConfig`'s own doc comment is two lines with no
-example in it. Both claims in the header are false.
+Counted over the 237-row prefill arm, denominator is usage-example BLOCKS: v38 shipped 35 of 44
+blocks never name their own type; v39 40 of 49. Pre-existing at 80% of the leg, not caused by v39 -
+v39 only made it 5 blocks more visible by pushing budget-starved types onto the example leg.
 
-Counted over the 237-row prefill arm, denominator is usage-example BLOCKS: v38 shipped 35 of 44 blocks
-never name their own type; v39 40 of 49. Pre-existing at 80% of the leg, not caused by v39 - v39 only
-made it 5 blocks more visible by pushing budget-starved types onto the example leg.
+**UNVERIFIABLE in full, and this item has no other evidence** (C166, C167): the counting scrap lived
+on the scrubbed sessions branch. Re-count usage-example blocks that never name their own type over a
+fresh 237-row arm. That is the same arm item 36 needs, which is why these two are siblings and should
+share a session.
 
-The obvious guard is not obviously right: refusing an example that never names its own type deletes 35
-of 44 blocks, most of the leg. Whether those 35 help or hurt is a MEASUREMENT - one arm with the leg
-gutted, one with it harvesting the right docs - not a reading. Wants its own arm, sized with item 36.
-
-## 4. Ideas and unscouted
-
-Worth doing, not yet worth a goal file. Scout before scoping.
+The obvious guard is not obviously right: refusing an example that never names its own type deletes
+35 of 44 blocks, most of the leg. Whether those 35 help or hurt is a MEASUREMENT - one arm with the
+leg gutted, one with it harvesting the right docs - not a reading.
 
 ### 53. A ratified test suite passes against a body replaced with `{ 0 }`
 
-PROVEN 2026-08-12, on one function, and the proof is two minutes of work anybody can repeat. This
-entry existed as an index line and nothing else until 2026-08-16; its argument had been living inside
-item 13's amendment and in `docs/ideas.md`. Both are committed, so nothing here is new evidence.
+PROVEN 2026-08-12, on one function, and the proof is two minutes of work anybody can repeat.
 
 **The function is `trim_out_client_sets`**, written up at `docs/dumb-models-work.md:360` (the `{ 0 }`
-stub), `:345` (the 406-byte fixture arithmetic) and `:325` (the qwen suite itself). The register spent
-four days carrying its strongest recent finding as an unactionable one because nobody wrote the name
-down.
+stub), `:345` (the 406-byte fixture arithmetic) and `:325` (the qwen suite itself).
 
 It enforces a 4 MiB cap. Asked for tests blind of the implementation, `qwen3-coder:30b` produced five
 scenarios whose largest fixture serialises to **406 bytes**, off by a factor of roughly 10,300. Every
-scenario therefore sits under the cap, `0` is the truthful expected value for all five, and the human
-typing `0` five times was typing the right answer every time. The model's own comments name the intent
-it could not build: `// Both sets trimmed` sits beside an assertion that zero were trimmed.
+scenario sits under the cap, `0` is the truthful expected value for all five, and the human typing
+`0` five times was typing the right answer every time. The model's own comments name the intent it
+could not build: `// Both sets trimmed` sits beside an assertion that zero were trimmed.
 
 Replace the body with `{ 0 }` and rerun: the qwen suite passes, the `gpt-5.6-sol` suite fails on its
-second scenario. Both suites pass against the real implementation, so a green board does not
-distinguish them.
+second scenario. Both pass against the real implementation, so a green board does not distinguish
+them.
 
 **Why this is structural and not a model-size complaint.** Implementation from a spec is translation:
-the doc comment names the shape, the injected surface names the tools, and a 30B renders it fine, five
-rounds running. A test from a spec is adversarial construction - you have to invent inputs that reach
-the states the spec describes. Nothing in the injected surface says `SUMMARY_PAYLOAD_MAX_BYTES` is 4
-MiB, that reaching it needs tens of thousands of entries, or that one `Option<Vec<u64>>` field is a
-cheap lever on `wire_size()`. Sol found that lever and wrote a doubling search plus a binary search to
-land the payload just over an arbitrary target. Qwen did not, and defaulted to what compiles.
+the doc comment names the shape, the injected surface names the tools, and a 30B renders it fine. A
+test from a spec is adversarial construction - you have to invent inputs that reach the states the
+spec describes. Nothing in the injected surface says `SUMMARY_PAYLOAD_MAX_BYTES` is 4 MiB, that
+reaching it needs tens of thousands of entries, or that one `Option<Vec<u64>>` field is a cheap lever
+on `wire_size()`. Sol found that lever and wrote a doubling search plus a binary search. Qwen did not,
+and defaulted to what compiles.
 
 **The blanked-expected-values rule cannot save this, and that is the sharp part.** Ratification worked
 exactly as designed. No wrong value entered the suite. The suite is still worthless.
@@ -1052,18 +340,15 @@ Two candidate builds, not exclusive:
    underspecified. A threshold function whose fixture must span orders of magnitude is arguably the
    same category, and refusal is the product's existing answer to "cannot do this honestly".
 2. **Supply the constants.** The doc comment names `SUMMARY_PAYLOAD_MAX_BYTES` and the injected
-   surface does not carry its VALUE. A const-value leg is small and deterministic, and would at least
-   let a model know what magnitude it is aiming at. Scout whether that alone moves fixture quality; it
-   is much cheaper than the alternative.
+   surface does not carry its VALUE. A const-value leg is small and deterministic. Scout whether that
+   alone moves fixture quality; it is much cheaper than the alternative.
 
-Detection belongs to item 13, whose amendment ranks a single trivial-return mutant first for exactly
-this reason. This item is the defect; 13 is the instrument that would have caught it.
+Detection belongs to item 13, whose ranking puts a single trivial-return mutant first for exactly this
+reason. This item is the defect; 13 is the instrument that would have caught it.
 
 ### 54. Injection walks downward only, so no caller-direction fact ever reaches the model
 
-Raised 2026-08-12 from the same session. REASONED, from the injection log of four real generations.
-Like item 53, this carried an index line and no section until 2026-08-16; the reasoning below is
-lifted from `docs/ideas.md`, which is committed.
+Raised 2026-08-12. REASONED, from the injection log of four real generations.
 
 The pre-fill walks INTO the enclosing type: its fields, its nested types, their public members,
 roughly depth 2 inside the token budget. Every failure in that session's round table that was not a
@@ -1077,9 +362,8 @@ spec defect was a fact living in the other direction:
 Neither is reachable at any depth downward. The frontier model missed both exactly as the 30B did,
 which is the evidence that this is an injection property rather than a capability one.
 
-Today the answer is that the human writes those facts into the doc comment, and that works. The open
-question is whether any of it can be supplied deterministically, and it is genuinely open because the
-obvious version is expensive:
+Today the human writes those facts into the doc comment, and that works. The open question is whether
+any of it can be supplied deterministically, and the obvious version is expensive:
 
 - **Callers** are a reference query the language server can answer, but rendering them costs budget
   that item 41a says is already the binding constraint, and most callers are noise.
@@ -1091,135 +375,118 @@ Scout the second before the first. And price it first: how often does a real gen
 caller-direction fact rather than on a spec defect? On the session's evidence it was one round of
 five, and one function is not a rate.
 
-### 17. Ask the model which types it needs, then inject their surfaces (human idea, 2026-07-26, unscouted)
+### 17. Ask the model which types it needs, then inject their surfaces
 
-The problem: fn-gen's pre-fill picks types deterministically from the signature, doc and span.
-When it picks wrong, the information arrives one round late. The v24 capture: with no context,
-the 30b invented three struct fields, and repair's struct-def surface fixed them one round
-later. The info existed; it was late.
+Human idea, 2026-07-26, unscouted.
 
-The idea: before (or during) generation, the model names the types it considers relevant, the
-product resolves those through the AST/LSP, injects their real surfaces, and re-prompts.
+The problem: fn-gen's pre-fill picks types deterministically from the signature, doc and span. When it
+picks wrong, the information arrives one round late. The v24 capture: with no context, the 30b
+invented three struct fields, and repair's struct-def surface fixed them one round later. The info
+existed; it was late.
+
+The idea: before or during generation, the model names the types it considers relevant, the product
+resolves those through the AST/LSP, injects their real surfaces, and re-prompts.
 
 Why it is plausible:
 
-- Type surfaces are compiler-verified, so a wrong suggestion injects a real-but-irrelevant
-  surface. The failure direction is wasted prompt budget, not invention.
+- Type surfaces are compiler-verified, so a wrong suggestion injects a real-but-irrelevant surface.
+  The failure direction is wasted prompt budget, not invention.
 - An invented type name resolves to nothing; the resolve step fails open (skip and log).
-- The 30b can articulate what it is missing: the v24 punt text contained the model's own
-  correct diagnosis, and the product discarded it.
+- The 30b can articulate what it is missing: the v24 punt text contained the model's own correct
+  diagnosis, and the product discarded it.
 - Latency is affordable here: fn-gen's floor is seconds. Banned at the FIM path, as always.
 
 Shape recommendations, to settle in the goal:
 
-- Prefer the conditional form over always-two-rounds: the generation round may emit either a
-  body or a "need: TypeA, TypeB" request; the product resolves, injects, re-prompts. The second
-  round is paid only when the model is uncertain, and the request is anchored by a real attempt.
-- Sequence against item 5. The alias/DI gap closes deterministically and covers the biggest
-  measured stratum; this item catches the semantic residual the AST cannot see.
-  Deterministic-first is the standing rule.
-- Contract: the model's requested list is logged and shown like every other prompt input. The
-  injected content stays compiler-verified, so the v7 curation exemption for type shapes
-  applies.
+- Prefer the conditional form over always-two-rounds: the generation round emits either a body or a
+  "need: TypeA, TypeB" request. The second round is paid only when the model is uncertain, and the
+  request is anchored by a real attempt.
+- Sequence against item 5. The alias/DI gap closes deterministically and covers the biggest measured
+  stratum; this item catches the semantic residual the AST cannot see. Deterministic-first is the
+  standing rule.
+- Contract: the model's requested list is logged and shown like every other prompt input. The injected
+  content stays compiler-verified.
 
-The scout question that prices the whole item: how often does a real fn-gen round get fixed by
-repair injecting a surface that could have been known up front? Measure that "info exists, one round
-late" rate before building anything.
+**The scout question that prices the whole item: how often does a real fn-gen round get fixed by
+repair injecting a surface that could have been known up front?** The counting rule to run against a
+fresh arm: count the rows whose round-0 errors are all `unresolved-method`, `unresolved-assoc` or
+`unresolved-field` against a type the repair round then resolved.
 
-**"Countable today" is no longer true, and that is a real cost to this item** (C171). The rate was
-countable off `session-complxity-research/data/v34-after.json`, a 181-row arm with round-0 and repair
-errors recorded per row. That file is deleted and the whole measurement chain around it went with it.
-The question is unchanged and still the right first move; what changed is that answering it now needs
-a fresh arm rather than a query over something that already exists. Price the scout accordingly.
+**That rate is no longer countable off anything on disk** (C171). It used to come off a 181-row arm
+with round-0 and repair errors recorded per row; that file and the chain around it are deleted. The
+question is unchanged and still the right first move; answering it now needs a fresh arm. Price the
+scout accordingly.
 
-**What session-v34 adds, 2026-07-30. Read this before scouting; it moves the odds.**
+**Read this before scouting; it moves the odds.** Item 1 was the last serious attempt at picking types
+better by heuristic, and it was measured and REFUTED. It excluded standard-library roots on
+provenance, freed their slot in the type cap, and cut injected bytes by 11.2% overall and 39.7% on its
+own 24-task subset. Compile rate went 16.0% to 13.8% across 181 rows, total errors 688 to 733. No
+effect, and if anything slightly worse. **UNVERIFIABLE** (C169): the v34 arm data is deleted, so every
+figure there is a recitation; item 30's third arm is the check. The REFUTATION does not depend on the
+exact figures - nobody has produced evidence that better heuristic picking moves the rate.
 
-Item 1 was the last serious attempt at picking types better by heuristic, and it was measured and
-REFUTED. It excluded standard-library roots on provenance, freed their slot in the type cap, and cut
-injected bytes by 11.2% overall and 39.7% on its own 24-task subset. Compile rate went 16.0% to 13.8%
-across 181 rows, total errors 688 to 733. No effect, and if anything slightly worse.
-**UNVERIFIABLE** (C169): the v34 arm's data files are all deleted, so every number in that paragraph
-is a recitation. Item 30's third arm is the check, and it is filed there. The REFUTATION is what
-matters here and it does not depend on the exact figures: nobody has produced evidence that better
-heuristic picking moves the rate.
+Two consequences, pulling the same way:
 
-Two consequences for this item, pulling the same way:
-
-- **Better heuristic selection is not where the win is.** Deterministic picking from the signature,
-  doc and span has now been tuned, capped, re-ordered and provenance-filtered, and the rate has not
-  moved. Item 17 does not compete with a heuristic that works; it competes with one that has been
-  measured flat.
+- **Better heuristic selection is not where the win is.** Deterministic picking has been tuned,
+  capped, re-ordered and provenance-filtered, and the rate has not moved. Item 17 does not compete
+  with a heuristic that works; it competes with one measured flat.
 - **The "wasted prompt budget" worry is smaller than this item assumed.** Removing 40% of the injected
-  bytes on the goal's own subset changed nothing, so budget is not the binding constraint on this
-  corpus. A wrong suggestion from the model costs less than the item's own framing feared.
+  bytes changed nothing, so budget is not the binding constraint on this corpus.
 
-A concrete "info existed, one round late" case, from a live capture on
-`acme_crypto::create_ca`. Round 0 injected `PkiError`, `DnType` and `CertificateParams` and
-produced 2 errors. Both were about types round 0 never saw: `SignatureAlgorithm::ECDSA_P256` and
-`Certificate::serialize_der`. Repair injected `KeyPair`, `SignatureAlgorithm` and `Certificate`, and the
-count fell to 1. The body then called `KeyPair::generate_for` and `Certificate::der`, both straight off
-the surface it had just been handed.
-
-So on that row the answer to the scout question is yes, twice, and the model would very likely have
-named `KeyPair` and `Certificate` if asked, since it reached for both unprompted and got their method
-names wrong. **UNVERIFIABLE** (C170): that capture is on no disk. A live fn-gen plus repair round on
-`acme_crypto::create_ca` would re-witness it, and the class is common enough that any fresh capture
-will do.
-
-The counting rule survives and is the one to run against a fresh arm: count the rows whose round-0
-errors are all `unresolved-method`, `unresolved-assoc` or `unresolved-field` against a type the repair
-round then resolved.
+A concrete "info existed, one round late" case, from a live capture on `acme_crypto::create_ca`.
+Round 0 injected `PkiError`, `DnType` and `CertificateParams` and produced 2 errors, both about types
+round 0 never saw: `SignatureAlgorithm::ECDSA_P256` and `Certificate::serialize_der`. Repair injected
+`KeyPair`, `SignatureAlgorithm` and `Certificate`, and the count fell to 1. The body then called
+`KeyPair::generate_for` and `Certificate::der`, both straight off the surface it had just been handed.
+So on that row the answer is yes, twice. **UNVERIFIABLE** (C170): that capture is on no disk; a live
+fn-gen plus repair round on the same function re-witnesses it, and the class is common enough that any
+fresh capture will do.
 
 One caveat that must not get lost: every rate above was taken on a harness where the visibility filter
-is dead (item 29), so the absolute numbers are not the product's. The comparison is sound because both
-arms ran there.
+was dead (item 29, since fixed), so the absolute numbers are not the product's. The comparison is
+sound because both arms ran there.
 
 ### 39. Other agent CLIs as fn-gen backends: codex, opencode, and whatever comes next
 
-Human ask, 2026-08-08, immediately after item 38 landed and was driven for real: the same trick for
-other CLI subscriptions. RULED not-now in that session, deliberately, so item 38 could ship on one
-proven backend rather than three guessed ones.
+Human ask, 2026-08-08, immediately after item 38 landed. RULED not-now in that session, deliberately,
+so item 38 could ship on one proven backend rather than three guessed ones.
 
-What item 38 already paid for, and what a second CLI would reuse unchanged: the
-`InstructGenerateFn` seam, the fence strip, the neutral-cwd contract and its fail-closed wiring,
-the abort and watchdog discipline, the typed failure taxonomy, and `claudeModelLabel`'s rule that
-evidence names the server of a round. `src/core/claudeCodeInstruct.ts` is the worked example.
+What item 38 already paid for and a second CLI reuses unchanged: the `InstructGenerateFn` seam, the
+fence strip, the neutral-cwd contract and its fail-closed wiring, the abort and watchdog discipline,
+the typed failure taxonomy, and `claudeModelLabel`'s rule that evidence names the server of a round.
+`src/core/claudeCodeInstruct.ts` is the worked example.
 
-What is Claude-specific and must be rebuilt per CLI, all three of them small: the argv (today
+What is Claude-specific and must be rebuilt per CLI, all three small: the argv (today
 `BASE_ARGS = ["-p", "--output-format", "json", "--strict-mcp-config", "--tools", ""]` at
 `claudeCodeInstruct.ts:139`, where `--tools ""` was added so the CLI cannot go agentic, `:129`), the
-JSON field names (`result`, `ttft_ms`,
-`duration_ms`, `stop_reason`, `num_turns`, `is_error`, `subtype`), and the failure-text patterns
-(`/not logged in/i`, the rate-limit family).
+JSON field names (`result`, `ttft_ms`, `duration_ms`, `stop_reason`, `num_turns`, `is_error`,
+`subtype`), and the failure-text patterns (`/not logged in/i`, the rate-limit family).
 
-**Do not write the adapter from documentation or memory.** Item 38's whole risk was retired by
-spiking the real CLI on the real box first, and that is what found the fence trap (replies arrive
-fenced despite an explicit no-fences instruction) and the MCP leak (user-scope servers attach in
-any cwd) - neither of which any amount of reading would have surfaced. `codex-cli 0.144.4` is
-installed on this box and emits a JSONL event stream rather than a single result object, so its
-`result`-equivalent has to be found, not assumed. One spike call per CLI, recorded, then the
-adapter.
+**Do not write the adapter from documentation or memory.** Item 38's whole risk was retired by spiking
+the real CLI on the real box first, and that is what found the fence trap (replies arrive fenced
+despite an explicit no-fences instruction) and the MCP leak (user-scope servers attach in any cwd) -
+neither of which any amount of reading would have surfaced. `codex-cli 0.144.4` is installed on this
+box and emits a JSONL event stream rather than a single result object, so its `result`-equivalent has
+to be found, not assumed. One spike call per CLI, recorded, then the adapter.
 
-The design fork, unresolved and worth a ruling before any of it is built: one small adapter per
-CLI (honest per-CLI failure taxonomy, honest messages, N modules) versus one generic
-spawn-a-command backend driven by settings (covers everything at once, but hands prompt-bearing
-argv to a user-supplied string and gives up the taxonomy that makes the disabled messages
-actionable). The session's instinct was per-CLI; the human has not ruled.
+The design fork, unresolved: one small adapter per CLI (honest per-CLI failure taxonomy, honest
+messages, N modules) versus one generic spawn-a-command backend driven by settings (covers everything
+at once, hands prompt-bearing argv to a user-supplied string, gives up the taxonomy that makes the
+disabled messages actionable). The session's instinct was per-CLI; the human has not ruled.
 
 ### 11. Include block, the recursive variant
 
-The single-block half SHIPPED in v32: Add Enclosing Symbol and Add Enclosing Block are both live,
-in all five languages, with the selectionRange chain falling back to the enclosing symbol where a
-server answers badly. The explorer-tree gesture and the menu placement shipped with it. What is
-left is the recursive variant, unscouted.
+The single-block half SHIPPED in v32: Add Enclosing Symbol and Add Enclosing Block are both live, in
+all five languages, with the selectionRange chain falling back to the enclosing symbol where a server
+answers badly. What is left is the recursive variant, unscouted.
 
 Include the block, then everything it calls, to a depth limit. Real design tension:
 
 - It must not break human-curates-everything. One click ratifying N machine-picked blocks is
-  suggest-and-ratify: every block lands in the panel individually, visible and removable.
-  Silent prompt-dumping is banned.
-- Fan-out is the unmeasured cost. Depth 2 on a hub function can be dozens of server round trips
-  and a blown prompt budget.
+  suggest-and-ratify: every block lands in the panel individually, visible and removable. Silent
+  prompt-dumping is banned.
+- Fan-out is the unmeasured cost. Depth 2 on a hub function can be dozens of server round trips and a
+  blown prompt budget.
 - Scout: call-hierarchy latency per language on the real repos, depth-2/3 tree sizes on
   acme-db-scale code, and the fn-gen prompt-budget hit.
 - Expect the answer to force a cap, dedupe, and possibly signatures-only beyond depth 1.
@@ -1227,20 +494,20 @@ Include the block, then everything it calls, to a depth limit. Real design tensi
 
 ### 5. The whole-block trigger cannot see how real code names its types
 
-The problem: whole-block injection fires only when the SIGNATURE names a concrete user type.
-Real code mostly does not do that, so the highest-value sites get no injection at all.
+Whole-block injection fires only when the SIGNATURE names a concrete user type. Real code mostly does
+not do that, so the highest-value sites get no injection at all.
 
 Measured, per stratum (v22 scout):
 
-- Aliases: acme-db reaches `ShardMemCache` through `type MemCache = ...` at 17 of 32 call
-  sites. Those sites score 0.0% recall in every arm, even when injected by hand.
-- Interfaces: contoso consumes its CSV types only as `ICsvMonitor`. The concrete 45-property
-  type never appears in a signature.
-- Dependency injection: lansura's stores make 132 consumer functions invisible vs 15 seen.
-- New face (v24 capture): a signature naming only `Option<u64>`/`u64` logs `injected=false` -
-  no user type, nothing to key on. **UNVERIFIABLE** (C182): that capture is on no disk. A live fn-gen
-  round on a signature naming only std types would re-produce it in one gesture.
-- New face (v25): 10 of 30 Rust empty-body sites are not injectable, so they fall to the bare
+- **Aliases:** acme-db reaches `ShardMemCache` through `type MemCache = ...` at 17 of 32 call sites.
+  Those sites score 0.0% recall in every arm, even when injected by hand.
+- **Interfaces:** contoso consumes its CSV types only as `ICsvMonitor`. The concrete 45-property type
+  never appears in a signature.
+- **Dependency injection:** lansura's stores make 132 consumer functions invisible against 15 seen.
+- **New face (v24):** a signature naming only `Option<u64>`/`u64` logs `injected=false` - no user
+  type, nothing to key on. **UNVERIFIABLE** (C182): that capture is on no disk. A live fn-gen round on
+  a signature naming only std types re-produces it in one gesture.
+- **New face (v25):** 10 of 30 Rust empty-body sites are not injectable, so they fall to the bare
   bound.
 
 Three fix shapes, in cost order:
@@ -1249,173 +516,148 @@ Three fix shapes, in cost order:
 - Resolve an interface-typed param to its sole implementor when the workspace has exactly one.
 - Give up on the signature and type the RECEIVER at the cursor instead.
 
-The attachment question the scout must answer: the 0.0%-even-when-injected result says naming
-the alias's TARGET may not be enough. The block may need to speak the alias's own name.
+The attachment question the scout must answer: the 0.0%-even-when-injected result says naming the
+alias's TARGET may not be enough. The block may need to speak the alias's own name.
 
 ### 6. The `selected:` prompt line was never measured
 
-The usage-windows half of this item SHIPPED in v29: `resolveUsageInBudget`
-(imported at `completionProvider.ts:52`, called at `:777`), its own `usageExamples` switch at `:452`,
-windows rendered below the signatures nearest the cursor, both the dark and the injected case logged.
-What remains is the cheap half nobody ran.
+The usage-windows half SHIPPED in v29 (`resolveUsageInBudget`, called at
+`completionProvider.ts:777`, its own `usageExamples` switch at `:452`). What remains is the cheap half
+nobody ran.
 
 - Today the prompt is rewritten to the highlighted member and injection narrows to that member's
   signature. The member is never named to the model on its own line.
-- The work: measure that shipped narrowing against an explicit `selected:` prompt line. No such
-  line exists in prompt.ts or fimInject.ts.
-- Baseline from the v22 scout, 60 real call sites, 8 seeds: no injection 39-42%, selected
-  member's signature only 76%, signature plus usage windows 78%. **UNVERIFIABLE** (C187): only
-  `session-v22/harness/analyze-spike2.cjs` survives; its inputs and results are gone and session-v22
-  was never committed. The arm this item wants produces its own baseline, so run both arms rather
-  than trusting these three numbers as the "before".
+- The work: measure that shipped narrowing against an explicit `selected:` prompt line. No such line
+  exists in `prompt.ts` or `fimInject.ts`.
+- Baseline from the v22 scout, 60 real call sites, 8 seeds: no injection 39-42%, selected member's
+  signature only 76%, signature plus usage windows 78%. **UNVERIFIABLE** (C187): only
+  `session-v22/harness/analyze-spike2.cjs` survives; its inputs and results are gone. The arm this
+  item wants produces its own baseline, so run both arms rather than trusting these three as the
+  "before".
 - If the delta is real, the line is nearly free. A night, not a session.
 
-### 10. The second call in a chain generates blind - RE-MEASURE, v27 covered part of it
+### 10. The second call in a chain generates blind - RE-MEASURE first
 
-The outcome as written stands: in `results.iter().map(|r| r.` the closure receiver's members are never
-injected, and chained style - LINQ, EF, Rust iterators, TS functional - generates with nothing.
+The outcome stands: in `results.iter().map(|r| r.` the closure receiver's members are never injected,
+and chained style - LINQ, EF, Rust iterators, TS functional - generates with nothing.
 
-**The stated mechanism was wrong, and it matters because the fix hangs off it.** Injection does not
-key on "the first dot of a statement". It keys on the dot AT THE CURSOR, and it requires a
-plain-identifier receiver (`src/core/fimInject.ts:2`, and `:109-112` where a `foo().`, `arr[0].` or
-bare-`.` receiver "we cannot name" is refused). Mid-chain dots die on the plain-identifier rule, not
-on a first-dot rule. Anyone who built against the old sentence would have gone looking for a
+**The mechanism most documents state is wrong, and it matters because the fix hangs off it.**
+Injection does not key on "the first dot of a statement". It keys on the dot AT THE CURSOR, and it
+requires a plain-identifier receiver (`src/core/fimInject.ts:2`, and `:109-112` where a `foo().`,
+`arr[0].` or bare-`.` receiver "we cannot name" is refused). Mid-chain dots die on the
+plain-identifier rule. Anyone building against the old sentence would have gone looking for a
 statement scanner that does not exist.
 
-v27's chain warm (`src/core/chainSurface.ts`) fixed an ADJACENT failure, not this one. Do not
-read it as closing the item:
+v27's chain warm (`src/core/chainSurface.ts`) fixed an ADJACENT failure. Do not read it as closing the
+item:
 
 - What it fixes: Roslyn serves 115 items at a `List<Tile>.` receiver with no signature on any
-  unresolved item, `Where<>` sits at position 113, and MEMBER_RESOLVE_CAP=32 never reaches it. A
+  unresolved item, `Where<>` sits at position 113, and `MEMBER_RESOLVE_CAP=32` never reaches it. A
   once-per-workspace background warm fills the missing signatures.
 - That is members-present-but-signatureless. Item 10 is members-never-injected-at-all.
-- The warm is C# only today (`completionProvider.ts:280`). Rust iterators and TS functional chains,
-  the motivating cases, are untouched.
+- The warm is C# only (`completionProvider.ts:280`). Rust iterators and TS functional chains, the
+  motivating cases, are untouched.
 
-The standing instruction before anyone scouts this: re-measure the per-member-call invention rate
-at second-dot sites on the current product, per language. The 7-8% flat figure predates the warm.
-If C# moved and Rust/TS did not, the item shrinks to those two.
+Standing instruction before anyone scouts: re-measure the per-member-call invention rate at second-dot
+sites on the current product, per language. The 7-8% flat figure predates the warm. If C# moved and
+Rust/TS did not, the item shrinks to those two.
 
-- TS2339 ("property does not exist") is the single largest error code in the whole compile
-  spike. **UNVERIFIABLE** (C194): no error-code tally survives anywhere on this box, only the
-  harness classifier code that would have produced one. A re-run of the compile arm with a code tally
-  would check it, and the re-measure this item already demands is that run.
-- Needs: element-type unwrapping at a collection receiver, plus a per-statement injection cache
-  that outlives a single dot.
-
-## 5. The long tail
-
-Real, filed, and not urgent. Priority within the tier is unchanged.
+- TS2339 ("property does not exist") is the single largest error code in the whole compile spike.
+  **UNVERIFIABLE** (C194): no error-code tally survives, only the harness classifier that would have
+  produced one. The re-measure this item already demands is that run.
+- Needs: element-type unwrapping at a collection receiver, plus a per-statement injection cache that
+  outlives a single dot.
 
 ### 8. Injection works on an idle box and vanishes on a busy one
 
-The problem, measured under 28 CPU spinners, 20 warm keystrokes each. "Delivered" means the
-facts reached the model:
+Measured under 28 CPU spinners, 20 warm keystrokes each. "Delivered" means the facts reached the
+model:
 
 ```
 C#  20/20     TypeScript  17/20     Rust  3/20     Python  0/20
 ```
 
-That table is backed: the run is recorded at `session-v16/session-state.md:188-196` with the raw probe
-logs at `session-v17/scout-logs/`, and `session-v17/scout-insights.md:18-28` re-measured the same arm
-on this box (TS came out 18/20 there; the figures above quote the v16 run).
+Backed: the run is recorded at `session-v16/session-state.md:188-196` with raw probe logs at
+`session-v17/scout-logs/`, and `session-v17/scout-insights.md:18-28` re-measured the same arm on this
+box (TS came out 18/20 there).
 
 Two different failures, not one:
 
-- TS and Python die on request COUNT: one keystroke fires hover requests in parallel against a server
-  that answers one at a time (`src/core/extraction.ts:1072-1074`, "tsserver answers one request at a
-  time"). **The count in this bullet used to say 8 and it is 32** - `HOVER_SIGNATURE_CAP` was raised
-  in v21 (`extraction.ts:1095`, whose comment says "It used to be 8"), and the cost is now bounded by
-  `HOVER_FANOUT_BUDGET_MS` at 50ms (`:1176`) rather than by the count. Which changes the busy-box
-  question rather than answering it: a time budget on a server that cannot be cancelled bounds when
-  the product stops WAITING, not how much work it queued.
-- Rust and Python die on the RECEIVER: one member-resolve call costs 44-75ms of a 50ms window,
-  so nothing downstream ever starts.
+- **TS and Python die on request COUNT:** one keystroke fires hover requests in parallel against a
+  server that answers one at a time (`src/core/extraction.ts:1072-1074`). The cap is 32, not 8
+  (`extraction.ts:1095`), and the cost is now bounded by `HOVER_FANOUT_BUDGET_MS` at 50ms (`:1176`)
+  rather than by the count. That changes the busy-box question rather than answering it: a time budget
+  on a server that cannot be cancelled bounds when the product stops WAITING, not how much work it
+  queued.
+- **Rust and Python die on the RECEIVER:** one member-resolve call costs 44-75ms of a 50ms window, so
+  nothing downstream ever starts.
 
 The fix has a forced order. Do not reverse it:
 
-- FIRST decouple: today the provider kills the argument-type leg whenever the receiver renders
-  empty. Cutting receiver cost first would kill that leg instead of freeing budget for it.
+- FIRST decouple: today the provider kills the argument-type leg whenever the receiver renders empty.
+  Cutting receiver cost first would kill that leg instead of freeing budget for it.
 - Detail: narrow the early-return to the empty-signature branch only.
-- Detail: an argument-types-only block must not carry the "use one of these exact names" header,
-  or it announces an empty list.
+- Detail: an argument-types-only block must not carry the "use one of these exact names" header, or it
+  announces an empty list.
 - THEN cut receiver cost per language.
-- Do NOT tune another timing constant. The language-server work cannot be interrupted, so a
-  deadline never bounds it. Three tuning passes died proving this.
-- Sequence with item 7; they share the same seam.
+- Do NOT tune another timing constant. The language-server work cannot be interrupted, so a deadline
+  never bounds it. Three tuning passes died proving this.
 
 ### 9. Nobody knows the injection landing rate on any machine
 
-The problem, made concrete on 2026-07-25: an apt upgrade killed CUDA at 07:29, the model ran
-CPU-only all morning, injection silently degraded on the reference box, and nothing recorded it.
+Made concrete on 2026-07-25: an apt upgrade killed CUDA at 07:29, the model ran CPU-only all morning,
+injection silently degraded on the reference box, and nothing recorded it.
 
 - There is no counter. The only signal is a channel line nobody reads.
 - On a weaker user's machine, injection could be silently off forever.
 - The build is small: count landed / skipped / no-site, per session, per language.
-- Surface it somewhere that gets read when things are GREEN. Failure-only messages go unread;
-  a correct diagnosis once sat in a known-red test message for a whole session.
-- This counter also gates every hardware-adaptation argument. Do not act on deadline-adaptation
-  reasoning without it.
+- Surface it somewhere that gets read when things are GREEN. Failure-only messages go unread; a
+  correct diagnosis once sat in a known-red test message for a whole session.
+- This counter gates every hardware-adaptation argument. Do not act on deadline-adaptation reasoning
+  without it.
 
 ### 13. Nobody knows what the ratified tests miss
 
-The problem: the TDD gesture ratifies tests, they pass, and nothing measures what they fail to
-cover. A green suite can be hollow.
+The TDD gesture ratifies tests, they pass, and nothing measures what they fail to cover. A green suite
+can be hollow, and item 53 is a PROVEN instance of exactly that.
 
-Three instruments, one family. None may ever become a model-optimized target - Goodhart's law:
-tests that execute lines and assert nothing.
-
-- **Coverage**: which branches of THIS function no test touches. Folds into item 14's scout;
-  same post-accept surface the oracle decorations already own.
-- **Mutation testing**: mutate the accepted function, run the ratified tests; every surviving
-  mutant is a proven hole no coverage number can fake. Expensive by construction (one test run
-  per mutant), so never the accept path - a deliberate gesture or a background pass. Scout:
-  shell out (cargo-mutants, Stryker, mutmut; Go support thinner) or mutate through the
-  product's own span machinery, and does runtime make it a nightly?
-- **Fuzzing**: earns its keep only on parse/decode/boundary functions. A classifier problem
-  first (which functions are fuzz-shaped), possibly just a template the TDD gesture emits.
-
-The mocking question, answered honestly or not at all:
-
-- The standing rule stays: refuse un-auto-testable functions rather than emit hollow or mocked
-  tests.
-- The real question: on mock-heavy C# (constructor-injected everything), does the classifier
-  refuse so much that the gesture is useless there?
-- Measure the refusal rate on real C# first. Then choose: interface-stub scaffolds the human
-  fills, or accept the gesture is for leaf logic.
-
-All three sit behind item 14, which builds the machinery they reuse.
-
-**Amendment 2026-08-12: the family now has a PROVEN instance and a ranking, and property tests were
-missing from it.** Item 53 records a ratified suite that passes against a body replaced with
-`{ 0 }`. That took two minutes by hand and separated a real suite from a hollow one with no ambiguity
-to argue about. The four techniques are not equal against it and shipping them as a bundle would hide
-which one is doing the work.
+None of these may ever become a model-optimized target - Goodhart's law: tests that execute lines and
+assert nothing. They are ranked, because shipping them as a bundle would hide which one does the work:
 
 1. **A single trivial-return mutant, first.** No framework, no `cargo-mutants`, no runtime question:
    one body replaced with `return Default::default()` and a rerun. It is the direct counter to item
    53, it cannot produce a false positive worth debating, and it retires the "is the runtime a
-   nightly" scout question for the cheap case. Full mutation testing stays as scoped above; this is
-   the rung that ships first.
-2. **Property tests, and they are the gap in the list above.** The session's off-by-4 running-total
-   drift survived every example test in the repo, and would survive coverage AND a trivial-return
-   mutant. It dies instantly to a generated-payload invariant. Arithmetic drift is precisely what a
-   small model produces from an ambiguous spec, so this is aimed at the failure item 52 documents.
-   The design question it drags in belongs in the scout, not after it: if the human types every
-   expected value, the human types the invariant too, and an invariant is harder to type than a
-   scalar. That may be the honest reason this rung is second rather than first.
-3. **Coverage, as a pre-filter only.** It WOULD have caught item 53's suite, because a 406 byte
+   nightly" scout question for the cheap case.
+2. **Property tests.** An off-by-4 running-total drift survived every example test in the repo, and
+   would survive coverage AND a trivial-return mutant. It dies instantly to a generated-payload
+   invariant. Arithmetic drift is precisely what a small model produces from an ambiguous spec. The
+   design question belongs in the scout: if the human types every expected value, the human types the
+   invariant too, and an invariant is harder to type than a scalar. That may be the honest reason this
+   rung is second rather than first.
+3. **Coverage, as a pre-filter only.** It WOULD have caught item 53's suite, because a 406-byte
    payload returns at the guard and leaves the sort and the loop unexecuted. It goes blind the moment
    a fixture reaches the code without asserting the outcome, which is the more common hollow test.
-   (The function is `trim_out_client_sets` and the byte arithmetic is written out at
-   `docs/dumb-models-work.md:345`. Until 2026-08-16 this register named neither, which made its
-   strongest recent finding unactionable to anybody who had not been in the room.)
-4. **Fuzzing stays off this rung.** The scoping above is right and the session confirmed it from the
-   other side: the function under test parses nothing and takes no untrusted bytes. Its subsystem's
-   real fuzz target is the sidecar deserialiser, where a torn file meets a CRC check and a version
-   gate. **UNVERIFIABLE** (C227): the only evidence for that subsystem claim lives in a client repo
-   this box does not read, so nothing citable backs it here. It changes no decision - fuzzing is
-   ranked last either way - and a session with standing in that repo would settle it in a minute.
+4. **Fuzzing stays off this rung.** It earns its keep only on parse/decode/boundary functions - a
+   classifier problem first, possibly just a template the TDD gesture emits. Item 53's function parses
+   nothing and takes no untrusted bytes. **UNVERIFIABLE** (C227): the claim that its subsystem's real
+   fuzz target is a sidecar deserialiser lives only in a client repo this box does not read. It
+   changes no decision.
+
+**Full mutation testing** stays scoped as before: mutate the accepted function, run the ratified
+tests, every surviving mutant is a proven hole no coverage number can fake. Expensive by construction
+(one test run per mutant), so never the accept path - a deliberate gesture or a background pass.
+Scout: shell out (cargo-mutants, Stryker, mutmut; Go support thinner) or mutate through the product's
+own span machinery, and does runtime make it a nightly?
+
+The mocking question, answered honestly or not at all:
+
+- The standing rule stays: refuse un-auto-testable functions rather than emit hollow or mocked tests.
+- The real question: on mock-heavy C# (constructor-injected everything), does the classifier refuse so
+  much that the gesture is useless there?
+- Measure the refusal rate on real C# first. Then choose: interface-stub scaffolds the human fills, or
+  accept the gesture is for leaf logic.
+
+All of it sits behind item 14, which builds the machinery they reuse.
 
 None of this reduces how much the developer has to think and it must not be sold that way. Green
 currently tells them nothing, so suspicion spreads evenly over everything a generation produced. One
@@ -1423,43 +665,23 @@ line saying *this suite survives a stub* collapses that into one place to look.
 
 ### 14. A failing test does not drive repair
 
-The problem: fn-repair converges on compile errors only. A ratified test fails after accept and
-the loop does nothing with it. The strongest oracle in the product is report-only.
+fn-repair converges on compile errors only. A ratified test fails after accept and the loop does
+nothing with it. The strongest oracle in the product is report-only.
 
 The resolved safety design (never naive converge-to-green):
 
 - The HUMAN assigns blame.
 - "Impl wrong": fn-repair runs against the human-ratified test, hard cap, stop-and-surface.
 - "Test wrong": the human re-types it. Test-repair stays banned.
-- Gate unchanged: the v1 spikes measured wrong-value-assertion repair useless. That stands
-  until beaten. The spikes themselves were deleted from the tree at `b124ffc` (2026-07-26) and
-  survive in git history under `prior-art/spike-harness/` at `7d97d2d`; cite the history commit, not
-  a working-tree path.
+- Gate unchanged: the v1 spikes measured wrong-value-assertion repair useless. That stands until
+  beaten. The spikes were deleted at `b124ffc` and survive in git history under
+  `prior-art/spike-harness/` at `7d97d2d`; cite the history commit, not a working-tree path.
 
-Second half, coverage-as-oracle:
+**The tests that already exist are the bigger half, and nothing reaches them.** Everything above
+assumes a RATIFIED test. The common case is the opposite: a real repository already has human-written
+tests covering the target, the product has never seen them, and it cannot run them.
 
-- Untested branches seed test-gen; exercised paths inform repair.
-- A signal to the human, never a model target.
-- Its own scout question: coverage tooling cost and latency on the post-accept path.
-
-Build this before item 13; it reuses this item's blame-assignment machinery.
-
-**Amendment, 2026-07-30 (session-v35): the tests that already exist are the bigger half, and nothing
-reaches them.**
-
-Everything above assumes a RATIFIED test: one the product generated and the human approved. The
-common case is the opposite. A real repository already has human-written tests covering the target,
-the product has never seen them, and it cannot run them.
-
-PROVEN 2026-07-30 on `acme-db/acme_crypto/src/pki.rs::create_ca`. **UNVERIFIABLE today** (C229, C230,
-C231): the capture file is gone, so the two channel lines below, the `cargo test` result and the
-DER-versus-PEM diagnosis are all recitations. What survives is a different run on the same function
-(`session-v35/repair-g2.log:50`, a 156-row harness line). A fresh dogfood capture on `create_ca`
-re-witnesses the class; the cargo-test rung itself needs the client environment this box does not
-read. The FINDING does not rest on the capture - the compiler oracle structurally cannot see a failing
-test, which is the item - but the vividness does, and vividness is what got this item filed.
-
-The repair round ended:
+PROVEN 2026-07-30 on `acme-db/acme_crypto/src/pki.rs::create_ca`. The repair round ended:
 
 ```
 [oracle] check done ms=190 errors=0 warnings=1 success=true
@@ -1468,21 +690,25 @@ The repair round ended:
 
 and `cargo test -p acme_crypto --lib` then failed 8 of 11, including `test_create_ca`, which was
 sitting in the same file the whole time. The generated body wrote DER where the tests read PEM and
-dropped two requirements the doc comment states in words. The compiler oracle cannot see any of it,
-so the product reported success on code that does not work.
+dropped two requirements the doc comment states in words. The compiler oracle cannot see any of it, so
+the product reported success on code that does not work.
+
+**UNVERIFIABLE** (C229-C231): the capture is gone, so the two channel lines above, the `cargo test`
+result and the DER-versus-PEM diagnosis are recitations. A different run on the same function survives
+at `session-v35/repair-g2.log:50`. The FINDING does not rest on the capture - the compiler oracle
+structurally cannot see a failing test, which is the item - but the vividness does, and vividness is
+what got this item filed. A fresh dogfood capture re-witnesses the class.
 
 **What already exists, and it is most of the machinery.** `tddLang.ts` carries a five-language,
 nine-framework runner (libtest, gotest, vitest, jest, pytest, unittest, mstest, xunit, nunit) behind
 `tddLangFor(languageId)`, with two executors, `runTestOracleAt` and `runFrameworkTestsAt`, returning a
-structured `TestRunParse` (passed/failed/ignored, `filterMatchedNothing`, `buildError`,
-`environmentError`). None of that needs building.
+structured `TestRunParse`. None of that needs building.
 
-**One correction, and it is a hole rather than a detail.** This item used to say the runner reads
-structured report FILES rather than stdout, precisely because stdout can be forged by the code under
-test. The rationale is real and is written into the code (`TestRunCommand.outputFile`, declared at
-`src/core/tddLang.ts:285` under the docblock at `:265-284`, read back at `compilerOracle.ts:1185`),
-but the mechanism is per-framework, not the runner's rule: "Rust, Go, vitest and jest leave it unset
-and are unaffected" (`tddLang.ts:276`). **Four of the nine frameworks parse stdout**, and a printing test can forge a
+**One hole in it.** Reading structured report FILES rather than stdout is the stated rationale, and it
+is written into the code (`TestRunCommand.outputFile`, declared at `src/core/tddLang.ts:285` under the
+docblock at `:265-284`, read back at `compilerOracle.ts:1185`), but the mechanism is per-framework,
+not the runner's rule: "Rust, Go, vitest and jest leave it unset and are unaffected"
+(`tddLang.ts:276`). **Four of the nine frameworks parse stdout**, and a printing test can forge a
 report on every one of them.
 
 **What is missing is the INPUT.** Both executors take test NAMES, and today those only ever come from
@@ -1496,48 +722,45 @@ out the cheap answer (run the whole enclosing target and diff) on latency ground
 Discovery is per-language and must be scouted as five, not one, or it ships for Rust and is forgotten:
 a same-file `#[cfg(test)] mod tests` sibling naming the target, pytest's `test_<name>` convention,
 xunit/nunit attributes, Go's `TestXxx` in `_test.go`, vitest/jest describe blocks. Each is a heuristic
-with its own false-positive shape, and a filter that selects NOTHING is the false green this whole
-design already guards against (`runFrameworkTestsAt` refuses an empty name list for that reason).
+with its own false-positive shape, and a filter that selects NOTHING is the false green this design
+already guards against.
 
-Sequencing: discovery first, since it is what unblocks the rest, and the blame-assignment design above
-governs what happens once a pre-existing test goes red.
+Second half, coverage-as-oracle: untested branches seed test-gen, exercised paths inform repair; a
+signal to the human, never a model target. Its own scout question is coverage tooling cost and latency
+on the post-accept path.
+
+Sequencing: discovery first, then blame assignment. Build this before item 13.
 
 ### 16. An invented member on line 2 of a ghost is never judged
 
-The problem, dogfooded: the gate runs only at a member site. A plain continuation is never
-gated in any language, so the model can invent a member mid-ghost:
+Dogfooded: the gate runs only at a member site. A plain continuation is never gated in any language,
+so the model can invent a member mid-ghost:
 
 ```rust
 stripe.enroll(Tile::from_morton(tile_fanout(), 0));
 stripe.probe()    // probe() is not a Stripe member; the gate never saw it
 ```
 
-- v25's bound was expected to shrink the exposure by about two thirds: 289 of 347 invented
-  calls sat past line 1, and the bound cuts most multi-line ghosts.
-- Standing instruction: RE-MEASURE the exposure on the bounded product before scouting any
-  gate.
-- If it still bites, the scout question is whether the member check can run over a
-  continuation's `receiver.NAME` accesses, and at what false-positive cost.
-- Suppression is the quieter failure. Every rejection leg in this product's history has run
-  aground on it.
-- Warning from the capture: the multi-line continuation itself was CORRECT (the function needed
-  its return expression). The defect was the invented name, not the extra line. **UNVERIFIABLE**
-  (C239): the capture exists only in this file's own prose. The 289-of-347 count above is backed; this
-  illustration is not. Any Rust dogfood session produces another.
+- v25's bound was expected to shrink the exposure by about two thirds: 289 of 347 invented calls sat
+  past line 1, and the bound cuts most multi-line ghosts.
+- Standing instruction: RE-MEASURE the exposure on the bounded product before scouting any gate.
+- If it still bites, the scout question is whether the member check can run over a continuation's
+  `receiver.NAME` accesses, and at what false-positive cost.
+- Suppression is the quieter failure. Every rejection leg in this product's history has run aground on
+  it.
+- Warning from the capture: the multi-line continuation itself was CORRECT (the function needed its
+  return expression). The defect was the invented name, not the extra line. **UNVERIFIABLE** (C239):
+  that illustration exists only in this file's own prose; the 289-of-347 count is backed. Any Rust
+  dogfood session produces another.
 
-### 33. The spike harness spliced generations as bodies, on stale offsets - a record, and the corpus behind it is gone
+Related and already pinned: the gate judges a dotted lead on its head alone (see Decisions, S59-7).
+That is a reach limit at a member site; this item is the continuation.
 
-FIXED 2026-07-31 (session-v36). Recorded for what it INVALIDATES, not because there is code left to
-write. Sibling of item 29: same family, same lesson, and this one went undetected for longer.
+### 33. The spike harness spliced generations as bodies, on stale offsets
 
-**Moved to the long tail 2026-08-16.** The findings are still on the record - `session-v36`'s
-`item2-redecision.md` and `session-state.md` carry the diagnosis, and the two instrument logs
-`e0433-facts-function.log` and `e0433-facts-body.log` are on disk with their per-row counts. What is
-gone is everything a session could re-run: the corpus (`candidates.json`), the three spikes, and
-`lib-cargo.cjs` with the fixes this entry used to list (C43). The `*.PRE-HARNESS-FIX.json` copies it
-promised are not kept beside the new ones either; they are not kept at all (C44). An entry whose
-verdict stands but whose instrument cannot be re-pointed is a record, not a live instrument check,
-and it was heading a tier that tells sessions what to distrust.
+FIXED 2026-07-31. Kept for what it INVALIDATES and for the three rules it earned, not because there is
+code left to write. The instrument cannot be re-pointed: the corpus (`candidates.json`), the three
+spikes and `lib-cargo.cjs` are all gone (C43, C44), so this is a record.
 
 Three defects, all proven at the time, all in the measurement rather than the product:
 
@@ -1547,63 +770,1118 @@ Three defects, all proven at the time, all in the measurement rather than the pr
    where its declared type should be, so nearly every row gained a spurious `E0308` whose types the
    harvest read as real. Function arm matched the recorded error codes on 10 of 10 rows, body arm on 0
    of 10.
-2. **Stale offsets.** 160 of 387 entries in `candidates.json` no longer landed on their own function
-   (recorded at `session-v36/session-state.md:34` and `item2-redecision.md:18`; the corpus file itself
-   is deleted). Two rows spliced into the middle of a string literal and the harvest read type names
-   out of roughly 348 lexer errors. Both runs exited 0 and printed plausible tables.
-   **UNVERIFIABLE, that splice event specifically** (C41): the corpus and the spikes were deleted and
-   were never in git history, so the ~348 has only a prose recitation behind it. Re-running the fixed
-   harness over a rebuilt corpus would check it.
-3. **The classifier called without its context.** `classifyHallucination(d)` bare. The E0433
-   `cannot find X in Y` branch is gated on `resolution` being present, so it returned `undefined` by
-   construction and every row of that form scored uncovered. The product always passes the crate
-   resolution and the file's local defs.
+2. **Stale offsets.** 160 of 387 entries no longer landed on their own function (recorded at
+   `session-v36/session-state.md:34`). Two rows spliced into the middle of a string literal and the
+   harvest read type names out of roughly 348 lexer errors. Both runs exited 0 and printed plausible
+   tables. **UNVERIFIABLE, that splice event** (C41): the ~348 has only a prose recitation behind it.
+3. **The classifier called without its context.** `classifyHallucination(d)` bare. The E0433 branch is
+   gated on `resolution` being present, so it returned `undefined` by construction and every row of
+   that form scored uncovered. The product always passes the crate resolution and the file's local
+   defs.
 
 **What it invalidates, which is the part that still binds.** Any number computed from
 `leg2-coverage.json` or `order-composition.json` before 2026-07-31, including the whole of
-session-v36 goal item 2 and the "17% zero-coverage" headline it argued from. That ruling does not
-need the artifacts to stand: the numbers are refuted, and nothing has re-derived them.
+session-v36 goal item 2 and the "17% zero-coverage" headline it argued from. That ruling stands
+without the artifacts: the numbers are refuted and nothing has re-derived them.
 
 **UNVERIFIABLE** (C45): "numbers from `spike-tier4-human.cjs` are unaffected, reproduced exactly after
-the fix". That spike is deleted. The census it produced survives as shipped prose
+the fix". That spike is deleted; the census it produced survives as shipped prose
 (`docs/user-manual.md:163`, 6,856 comment lines, 5,232 names, 122 types) and a recitation is not the
-artifact. A re-run of the tier4-human census would check the reproduction claim.
+artifact.
 
-Three standing rules this earns, and they are the reason to keep the entry at all. A harness that
-mutates a corpus must verify its own offsets before it writes, and must say out loud how many it
-moved. The check must THROW rather than skip: a guard that skips leaves a smaller corpus that still
-looks complete. And re-capturing the corpus is not a drop-in repair when the candidate id embeds its
-own offsets, because a fresh capture renames every row and orphans the generations already recorded
-against the old ones.
+**Three standing rules, and they are the reason to keep the entry.** A harness that mutates a corpus
+must verify its own offsets before it writes, and must say out loud how many it moved. The check must
+THROW rather than skip: a guard that skips leaves a smaller corpus that still looks complete. And
+re-capturing the corpus is not a drop-in repair when the candidate id embeds its own offsets, because
+a fresh capture renames every row and orphans the generations already recorded against the old ones.
 
 ### 18. The rest, unchanged in priority
 
-- **Delta-gen**: "add an arm to this enum for X" - instruction-driven modification of an
-  existing symbol, presented as a diff. Debate the interaction model first: single-shot
-  refinement on a visible diff vs conversational drift. Highest-tension interaction call here.
-- **The prefix/ranking A/B harness**: the prompt's prefix is a byte cut, not a scope, and it
-  once carried a sibling's `subtended_children()` into the model, which then wrote it on the
-  wrong receiver. Build the harness first or the fix stays opinion. The sortText half has shrunk:
-  rust-analyzer's ranking is no longer thrown away wholesale - it is captured on the member
-  (`raLspClient.ts:516-518`, `raExtractor.ts:194`), classified by `raSortTextTier`
-  (`extraction.ts:464-466`), and the tier drops blanket-ranked members from the rendered block at
-  untyped-partial sites (`fimInject.ts:940-942`, the measured v27 arm D). What is still unused is the
-  ranking ORDER for prompt ordering, and that residue is all that remains of this half.
+- **Delta-gen**: "add an arm to this enum for X" - instruction-driven modification of an existing
+  symbol, presented as a diff. Debate the interaction model first: single-shot refinement on a visible
+  diff against conversational drift. Highest-tension interaction call here.
+- **The prefix/ranking A/B harness**: the prompt's prefix is a byte cut, not a scope, and it once
+  carried a sibling's `subtended_children()` into the model, which then wrote it on the wrong
+  receiver. Build the harness first or the fix stays opinion. The sortText half has shrunk:
+  rust-analyzer's ranking is captured on the member (`raLspClient.ts:516-518`, `raExtractor.ts:194`),
+  classified by `raSortTextTier` (`extraction.ts:464-466`), and the tier drops blanket-ranked members
+  at untyped-partial sites (`fimInject.ts:940-942`, the measured v27 arm D). What is still unused is
+  the ranking ORDER for prompt ordering.
 - **Embedded languages**: .vue/.svelte need a Volar transport. Own slice.
-- **Ecosystem breadth**: Windows; non-NVIDIA GPUs currently land wrongly in below-12gb honesty
-  mode; CPU-only honesty. Apple Silicon shipped, but M-series TTFT is still unvalidated on real
-  hardware.
+- **Ecosystem breadth**: Windows; non-NVIDIA GPUs currently land wrongly in below-12gb honesty mode;
+  CPU-only honesty. Apple Silicon shipped, but M-series TTFT is still unvalidated on real hardware.
 - **De-nest transform**: parked by the user; drop-timing caveat recorded.
-- **Constrained decoding** and **machine-applicable rustc fixes**: REFUTED as written. See
-  Rejected. Do not reopen without new evidence.
+- **Constrained decoding** and **machine-applicable rustc fixes**: REFUTED as written. See Rejected.
+
+## 2. Decisions waiting on the human
+
+Every pending ruling, in one place. The one-line index comes first; the standing decisions that carry
+real bodies follow it. Nothing here has been ratified.
+
+### The index
+
+**Contract narrowings in `docs/supersessions.md`, all NOT YET RATIFIED.** Read the numbered entry for
+the full record; each line below is the ask.
+
+- **S17** - the prompt-versus-window estimate stops being `chars / 4`. Carried in from session-v48.
+- **S21** - the channel's raw body escapes its line breaks. Carried in from session-v58.
+- **S22** - the toast's channel pointer is earned by segment count, not by `trim()`. From v58.
+- **S23** - an HTTP status gets a crafted sentence only where the product knows a class. From v58, and
+  it is the rule the five bad sentences of that session produced.
+- **S24** - the C# re-indent freeze mask moves, and the COUNT is the claim. Per-configuration counts
+  over 1,155,900 bodies: `856 / 211 / 1005 / 1005 / 0 / 60951` across
+  `(none) / @" / $@" / @$" / """ / $"""`, 64,028 total, 435 carrying no `$"` at all.
+- **S25** - two surfaces stop keeping their own failure wording; one throw class, one sentence.
+- **S26** - the Rust and C# test rungs stop filtering by substring.
+- **S27** - a cancelled tighten round is not a failed one, and it ends the gesture. Narrows S25.
+- **S28** - "TypeScript and Python already refuse the wrong tree" was never true. See the finding
+  below; this one changes what item 21 was.
+- **S29** - the anthropic round line takes the whole message, escaped, rather than its first line.
+- **S30** - a Rust keyword or postfix item is dropped from the RENDER, not from the answer.
+- **S31** - a failure's cause travels between surfaces; its consequence does not. Every sentence keeps
+  the shape `Column 80: <CAUSE>, so <CONSEQUENCE> - <REMEDY>` with the cause surface-independent and
+  the consequence supplied per surface. The generation gesture's sentences stay byte-identical.
+- **S32** - the accept/reject accounting line cuts on the render break set, and a progress phrase
+  cannot crash a download.
+
+**Rulings carried from session-v58, still open.**
+
+- **S58-12** - the `agentic` sentence's wording, plus its contract narrowing.
+- **S58-10** - does one in-flight registry mean "Cancel Generation" also kills a model download? The
+  tighten wiring added a fifth claimant to that registry in v59; all five are model rounds and no
+  download is involved, so it still did not force the question.
+- **S58-2's residual** - unforgeable channel frames (a nonce) against accepted-and-recorded
+  forgeability. **Add S59-12 to that decision:** `escapeBreaks` is not injective, so a server sending
+  the literal backslash-n is indistinguishable in the channel from one sending a newline. It cannot
+  forge a row, so it is not a defect, but the decision does not currently mention it.
+- **S58-14 / S58-15** - arm and gesture naming in the sentence tables.
+- **S58-16** - the two-cause 429.
+
+**New this session.**
+
+- **Item 70 / S59-1** - should the C# resolver refuse an incomplete `workspace/symbol` index? Refusing
+  costs a surface the model would otherwise get, and the budget was ratified assuming a resolved type
+  is a resolved type. Full record: item 70 above.
+- **S59-7** - the gate judges a dotted lead on its head alone. `ghostRefs` (`src/core/fimInject.ts`)
+  judges the ghost's LEADING identifier and every later `receiver.NAME`, so
+  `await.add_tile_by_morton(m)` is judged on `await` alone and survives. **This is the gate's shape in
+  all five languages, not something the Rust legal list widened** - the same ghost written
+  `s.Insert(1).Bogus()` survives in C# for the same reason. It matters more in Rust because
+  rust-analyzer relabels EVERY member of a Future receiver as `await.<member>`, so the dotted form is
+  the server's own proposal at that site. Pinned as a `KNOWN REACH LIMIT` row in
+  `test/impl-v59-p8-rust-gate.test.cjs` rather than left implicit. **The obvious fix is wrong:**
+  reading a dotted lead as one reference puts `foo.bar` against a TypeScript legal list holding only
+  `foo` and false-suppresses four languages to catch one. A real fix judges the head against the legal
+  list and the tail against that list's own `await.`-prefixed entries, which is a per-language rule
+  wanting its own measurement.
+- **S59-8** - no ruling needed, but read it before believing any headless Rust member count. Full
+  record under Measurement debt.
+- **TypeScript and Python never had a wrong-tree refusal** (S28). The roadmap, session-v59's own goal
+  and its contract all said they "already refuse it". They do not. Their anchor lands on the
+  `import { Tile }` line, OUTSIDE the helper class, so the descent degraded for an unrelated reason
+  and looked like a refusal. A type referenced without an import line puts the anchor in a method body
+  and both leak exactly as C# did; `blind-v15`'s own green fixture row proves it. The refusal shipped
+  C#-only. **Extending it is a ruling, not a free extension**, because the question it must not break
+  has no oracle in those two languages.
+
+**Questions that live inside a numbered item.**
+
+- **Item 2's fragility ruling** - find when `blind-v16-argtype-live` regressed, or rule the row
+  fragile single-draw evidence. Either way, put the file where something runs it.
+- **Item 65's coverage-deletion trade** - withholding a hint on a type the model then invents is not
+  obviously better than a `use` line that fails loudly, and nothing has measured which way it falls.
+- **Item 43's is-an-instrument-worth-it question** - decide whether the overflow frequency is worth
+  an instrument at all, before building one. This product has no telemetry by design.
+- **Item 47's priced refusal** - a probe-side fix cuts Python's pre-fill p95 from 1940ms to 1049ms,
+  still 4.2x the 250ms gate, and it widens the cold-index race phase 7 proved fires. Build it anyway,
+  or accept the gate as failed with a number on it?
+
+### 64. Should a drained FIM session open a diff against a document still being typed in
+
+The mechanical half shipped in session-v56: a repair discard in a `source: "fim"` session goes to the
+channel instead of a toast, and only the two PRE-CONSENT causes route there (S18). A post-Accept
+failure still toasts everywhere, because that is a consented write failing rather than a background
+race. What is left is the design question the toast fix was deliberately built around.
+
+`column80.fimAccepted` (`fnGen.ts:6082`) runs the full post-accept oracle, so accepting a ghost starts
+background repair rounds. A round captures `versionAtResolve` (`src/vscode/oracleSurface.ts:543`) and
+then spends seconds in a model call while the user keeps typing, which is the NORMAL case after
+accepting a ghost. Meanwhile a second accept parks another session in the pending slot (`:299-310`,
+newest wins). The discarded session ends, `drainPending()` (`:325`) fires the parked one, it re-checks
+the current file, and a fresh "repair round 1 (preview)" opens against a document that has moved on.
+The discard is quiet now. The diff still arrives.
+
+So: should a drained FIM-sourced session auto-present at all while the document is actively changing?
+Options include draining only after the document has been quiet for a beat, or making the diagnostics
+surface (already shown) the only automatic output and requiring a gesture before a diff opens. This is
+the cancellation-is-a-primitive family this product has met before: background work racing a live
+keystroke stream needs its interruption story designed, not patched.
+
+Falsify: a drained FIM-sourced session against a document edited in the last N seconds does not open a
+diff, and the same session against a quiet document still does.
+
+### Does round-1 generation carry derives, and is 12288 the right floor on Metal?
+
+**Derives at round 1.** The repair round reads a type's `#[derive(...)]` line off its definition file
+and injects it; round 1 does not. The failure it comes from: the error was
+`ApiKeysConfig: serde::Deserialize<'de> is not satisfied` while `ApiKeysConfig`'s field list was
+ALREADY in the round-1 prompt. The derive list was the answer and no round-1 block carries one. A
+prompt-identity change with its own budget cost, so it wants its own number rather than being folded
+in quietly. **UNVERIFIABLE** (C248): the v34 row is gone; the same E0277 case is quoted at
+`src/vscode/oracleSurface.ts:2306-2309` but without the prompt contents, so "the field list was
+already in the round-1 prompt" cannot be read off anything. One fresh capture would check it.
+
+**Which serving knobs get settings.** Four are declared nowhere in `package.json` and no setting
+overrides any of them. `maxTokens` and `numCtx` come off the active backend's budget-profile cell
+(`src/vscode/config.ts:181-193`); `testMaxTokens` and `think` still read straight off the default
+object. Evidence and a recommendation per knob are under Deferred fixes, "Settings honesty". The short
+of it: `think` wants a default of false, `numCtx` wants a setting because its right value is the
+user's hardware and its failure mode is silent truncation, and the two token budgets want neither.
+
+**`MIN_FNGEN_VRAM_MB` = 12288 on unified memory.** A 16GB Mac reports about 16384 and the human has
+TESTED that it works. Subtract any honest toolchain figure and it falls under the floor - VS Code
+alone measured 4.3GB, so any reserve above 4096 excludes it. REASONED, arithmetic rather than a run.
+That the machine works anyway is evidence 12288 is a discrete-GPU number that does not transfer to
+Metal, where there is no PCIe transfer and offload behaves differently. See S11. Wants a measurement
+ON Apple Silicon, not another estimate.
+
+### The bound refuses ghosts you wanted, and its benefit was never measured
+
+v25's biggest open item. One bound rule (rule 5, the "unsafe tail" rule) serves nothing when it fires.
+Its cost is measured. Its benefit never was.
+
+- Live example (v26 capture): you type `metadata`, and the product stays silent for five keystrokes in
+  a row. The model produced `.log_id,` every time - exactly the continuation plain FIM exists to
+  serve. Rule 5 dropped every one.
+- Measured cost over 750 real sites: rule 5 fired 16 times, and 11 of those refused text the developer
+  went on to write. Two of the refused ghosts were byte-identical to what the developer typed.
+  **UNVERIFIABLE** (C255): the raw result file is gone. Re-running `session-v25/harness/cost-v25.cjs`
+  would check it, and that is the same harness the benefit measurement has to run on anyway.
+- The claimed benefit (fewer broken splices) was inferred from a run WITHOUT rule 5, so it is
+  unmeasured.
+- The work: measure the benefit the same way the cost was measured, on the v25 harness. If it costs
+  more completions than it saves, change rule 5 to retract to a shorter cut instead of refusing.
+- Size: a session, not a night.
+
+### Four look-at-real-ghosts calls from v25
+
+The rules worked as written. The question is how the output feels, and no test settles that.
+
+- **Stacked closers.** A declaration-head ghost can end `start_shard: 0,}}`. Valid code, but it reads
+  broken at the exact moment it must read trustworthy. Alternative: each closer on its own line at its
+  opener's indent.
+- **Unclosed brace.** 191 ghosts now end on an open `{`, leaving an unbalanced brace in the buffer
+  until you type the body. Deliberate; does it feel broken in practice?
+- **Residual whole functions.** 6 multi-line-signature ghosts still serve a whole function. If that
+  violates the "never a whole function" bar, the fix is one predicate in `safeTail`: refuse a cut that
+  crossed a `{` the ghost itself opened.
+- **The floor against `bar1()`.** The 8-character floor refuses `bar1()`-shaped ghosts. The corpus
+  says the floor is nearly free (7 of 710 refused, 0 correct), but `bar1()` is plausible and useful.
+  Watch dogfood; this is why the floor is a setting.
+
+### The &self render contract (S17 of v19)
+
+The injected block renders Rust methods as `partition_by_lod(&self) -> u32`. The live e2e shows the
+model copying the receiver into the call: `s.enroll(&mut self, u64);`, which is not legal Rust.
+
+- Two frozen blind files pin the opposite: keep `&self`, because it signals mutability.
+- Strip-against-keep is a real trade and the two oracles took opposite sides.
+- This blocks the Rust generation-quality fix; the attempted fix is reverted and waiting.
+- A "strip" ruling re-enters through the blind oracles for v15/v18.
+
+### The v20 trio
+
+v26 shipped the lifecycle rebuild (`src/core/scopeLifecycle.ts`), which was the stated precondition.
+Re-check each against the shipped machine rather than against the v20 capture. Any bare commit hash in
+this file older than 2026-08-10 is suspect: the leak scrub rewrote history.
+
+- Does a stray unselected request while the widget is open exist in practice? If so it breaks two
+  invariants.
+- Should a Rust snippet/keyword preselect be refused a passive scope? One cheap predicate. The wedge
+  fix shipped, so this may already be dissolved; check before designing it.
+- What do vim-keymap users get instead of the second Escape? Their Escape leaves insert mode instead.
+  Not touched by v26, so this one is certainly still open.
+
+### Go: two coupled decisions, and Go is not simply "the broken one"
+
+**G2. What replaces the single-letter skip rule, in the general case?**
+
+`candidateTypesOf` matches `\b([A-Z][A-Za-z0-9_]*)\b`. From `*testing.T` the lowercase `testing` never
+matches, so it yields exactly `["T"]`. The DEFAULT `skipCandidate` is `/^[A-Z]$/`
+(`crossFileShape.ts:476`, `:1025`), so `T` is dropped.
+
+That default is measured safe for Rust: 621 files of `acme-db` declare no single-letter struct, enum,
+trait or union. It is wrong in general for Go. Verified on go1.26.5: **194 single-letter exported
+structs in the standard library**, `testing.T` among them at `testing/testing.go:934`, plus `B`, `F`
+and `M`.
+
+**The consequence is already dead for Go, which is why this is a design question and not a defect.**
+`goShapeHooks.skipCandidate` (`crossFileShape.ts:630-638`) is qualifier-aware: it reads the field type
+AS WRITTEN and keeps `T` when a `.` precedes it, so `*testing.T` survives and the model does get
+`t.Helper()`. The default still drops a bare `T` on any leg with no Go hooks.
+
+1. Carry the qualifier through the pipeline and skip on the QUALIFIED name, everywhere. `testing.T` is
+   a real type; a bare `T` off a generic clause is not. The only option that separates the two cases
+   rather than guessing between them, and it would retire the per-language hook.
+2. Leave it as it stands: Go's hook handles Go, every other language keeps the bare-letter default.
+   Today's behaviour.
+
+Note the blast radius before starting: `candidateTypesOf` is shared by all five languages.
+
+**G3. Is a Go import line a valid anchor?**
+
+Rust anchors an imported type at its `use` line and v34 fixed the wrapped-group case. Go cannot work
+that way: `import "testing"` names a package, and the token `T` appears nowhere on it.
+
+1. Resolve Go types by qualified name through gopls workspace-symbol, the way the C# leg already
+   resolves a doc-only collaborator. Recommended if G2 lands, because by then the qualifier is in hand.
+2. Accept that an imported Go type is only anchorable when the signature or body names it. Today's
+   behaviour, honest and thin.
+
+See item 28: Python and C# share G3's gap for their own reasons.
+
+**Go housekeeping.** Install golang.go in your editor and record its gopls version beside the proven
+v0.23.0; the drift canary is green, 30/30. And pick the GOENV split-brain option: keep GOENV=off,
+per-knob pins, or hybrid. The divergence log already ships.
+
+### Two v33 surfaces that are correct and may still feel wrong
+
+Both ship as built, both are defensible, neither is a bug. They need a human who has used them.
+
+- **A refactor across three FILES throws three toasts, not one.** VS Code fires one change event per
+  document and the contract says one toast per event, so the code is right against the contract. The
+  goal's prose said "a refactor that crosses three blocks" throws one, and a cross-file rename crosses
+  three documents. Both readings are defensible; feel it, then rule.
+- **The generate-time warning repeats on every generation while a lost block sits in the panel**,
+  rather than once per loss. It is true every time and the block is one click from gone, but it is the
+  same shape as the constantly-firing stale flag v33 deleted for training the human to ignore it. Fix
+  if it grates: diff the lost id set across resolves and name only new losses.
+
+### Smaller parked calls
+
+- **S14**: workspaceState identity shapes.
+- **The un-nudge reversal path.** No longer urgent; the 19-point toast survived v22.
+- **S2**: string-keyed TS members against the frozen blind row.
+- **S21 of v21, the `.:`-seam.** Recommendation stands: let dogfood be the next oracle. (Distinct from
+  supersessions S21.)
+- **S55-2**: a real fact behind "no language server installed". VS Code collapses "no extension" and
+  "extension up, no symbols here" to one `undefined`;
+  `vscode.extensions.getExtension(id)?.isActive` would split them, and it needs an extension-id
+  registry plus a ruling on alternates (csdevkit against `ms-dotnettools.csharp`, Pylance against the
+  Python extension). If built, item 55's `empty-tree` cause becomes reachable and earns its own
+  message.
+- **S55-25**: v50's own contract oracle rows (`blind-v50-p1-settle.test.cjs` C1-2a/C1-2a2) script the
+  fictional growing cold answer that a later queue item re-cut out of the v21 files - and that file was
+  written by the agent that wrote the bound, which is why the bound looked compatible with its own
+  case. Re-cutting a RATIFIED contract oracle is a design call; take v50's contract with you, not just
+  the fixture.
+
+## 3. Measurements pending
+
+A number from the harness is a hypothesis until the instrument that produced it has been looked at.
+Two independent rig defects once turned up in one session and each had been silently wrong for months.
+Most of what sits here is blocked on taking a number rather than on a design call.
+
+### 2. A frozen live test is red and nobody runs it
+
+`blind-v16-argtype-live` pins the claim "with Tile's construction injected, the model builds a Tile".
+That claim no longer reproduces. The model serves garbage instead:
+
+```
+EnrollTile(new(0, 1))
+```
+
+- **UNVERIFIABLE, and it is three of this item's four premises** (C24, C25, C26). "PROVEN 2026-07-25
+  on GPU, so not a CPU artifact", the GPU-versus-CPU control behind it, and "also red before v21" are
+  recorded nowhere on this box. The garbage output above survives; the run that produced it does not,
+  and "red before v21" is a bisect claim with no bisect record. What would settle all three:
+  `node --test test/blind-v16-argtype-live.test.cjs` on the GPU tier with ollama up, and a git-bisect
+  driving that row for the regression point. Needs the GPU box.
+- **The run-list claim is wrong in the letter and right in effect.** The file IS matched by
+  `test:unit`'s glob (`package.json:534`), where `SKIP_LIVE=1` makes every row skip; it is absent from
+  `test:live`'s explicit list (`package.json:537`). So it is in a list and no list ever EXECUTES it,
+  which is the worse of the two states: it reads as covered.
+- Its sibling baseline row already skips itself, which supports the "fragile" reading.
+- The ruling is under Decisions. Either way: fix or re-cut, then put the file where something runs it.
+
+### 30. Item 1 needs a third arm before anyone knows what it did
+
+Session-v34's falsification arm bundles three changes and cannot separate them:
+
+1. Item 1 itself, which REMOVES standard-library surface and shrinks prompts (11.2% fewer injected
+   bytes overall, 39.7% on the goal's own 24).
+2. The cap fix, which stops a provenance refusal from spending one of the four type slots.
+3. The wrapped-import anchor fix, which ADDS types. `acme_crypto::create_ca` went from 1 injected type
+   to 3.
+
+Smaller prompts and more types pull in opposite directions, and the arm came back at 16.0% to 13.8%
+compiled, net minus four rows on 181. The honest statement is "no effect detected from the bundle",
+and nobody can say which part earned the minus four.
+
+**UNVERIFIABLE, every number above** (C77, C78, C79). The v34 arm chain is deleted: `compare.cjs`,
+`handover.md` and `data/v34-after.json` are gone. What would settle them: re-run the v34 item-1 arm
+with its compare, and re-run `session-v34/witness-prefill.cjs` on the same task. Neither is one
+command - the witness needs `lib-cargo.cjs` and `candidates.json`, both deleted, so the rig comes
+first. The third arm below is a different population (237 tasks against these 181 rows) and does not
+produce these numbers as a by-product.
+
+The third arm: item 1 and the cap fix in, the anchor fix reverted, same 237 tasks, same box. Compare
+three ways. One row is worth 0.6 percentage points on this corpus, so a swing under about five rows
+means nothing whichever direction it falls.
+
+Worth doing because the anchor fix has the strongest independent case (no type from a rustfmt- or
+prettier-wrapped import group could be anchored at all, in any language), and it would be daft to
+revert it on a number that item 1 might have earned. A fresh third arm's absolutes would be the
+post-v35 filtered configuration's, unlike every number this item quotes.
+
+### 41. The tuning constants were chosen for a local 30B and now gate a frontier model
+
+Audited 2026-08-08 in full (`session-v45/constants-audit.md`, a ledger of every tuning knob on the
+injection path with a provenance verdict each).
+
+**Re-audit before any arm.** The ground moved once without a supersessions record - `readFnGenConfig()`
+went from reading three values off `DEFAULT_FNGEN_CONFIG` to reading `maxTokens` and `numCtx` from the
+ACTIVE class's budget-profile cell (`src/vscode/config.ts:187-194`), leaving only `temperature` on the
+default object (`:202`) - so the first job is to check whether it moved again, not to run 41a.
+
+What still stands: no SETTING overrides any of the three, the cloud arm still spreads
+`readFnGenConfig()` (`src/vscode/fnGen.ts:1108`), `numCtx` and `temperature` are still shared across
+every backend, and every one of those numbers was picked against `qwen3-coder:30b` at `num_ctx=16384`
+on a 16GB carve.
+
+Three sub-items ranked by (drift risk x cost if wrong), plus a fourth:
+
+**41a. `DATASHAPE_TOTAL_TOK = 300`, measured through the CLOUD backends.** The one constant whose
+provenance is admitted folklore - the "~350-token codegen knee" comes from external literature via an
+early scout, not from this product (`docs/constants.md:29-30`, the INHERITED class) - and whose cost
+is measured. On 465 authored-doc C# rows, 300 -> 900 takes injection **16.4% -> 31.6%**, and 330 of
+the 421 surviving-but-not-injected types die here, more than anchoring (68) and everything else
+combined. The mechanism to move it per-language SHIPPED in v45 (`CS_BUDGET_FACTOR`, currently 1) with
+the value deliberately unchanged, waiting for a generation arm. The arm nobody has run is the cloud
+one: if the knee is a property of small local models rather than of codegen, it should not appear
+there. Real prompts run p90 ~1,295 tokens against a 16K local window, so nothing is context-bound.
+
+**41c. `MEMBER_CAP = 24`, with a per-language ladder.** The highest-traffic constant with the weakest
+provenance in the ledger: no ladder, no arm, no language, no model, justified only by the same
+inherited knee, and deliberately fused across prefill and repair so the two "cannot drift". It is the
+direct upstream of 41a, because C# exhausts a token budget rather than a slot count precisely because
+a Roslyn member list is enormous. Measuring the budget without it attributes the gain to the wrong
+knob.
+
+**41d. `DEFAULT_TIMEOUT_MS = 120_000` on the Claude Code transport.** Measured 2026-08-08: 3 of 33
+sonnet rows on complex C# methods never answered inside it (`genError="Claude Code did not answer
+within 120000ms"`, empty reply), against a qwen maximum of 17.6s on the same sample. Two of the three
+are 21- and 23-line bodies that **qwen compiled**. Unlike 41a-41c this is not a local number that
+leaked across the seam - it was chosen for this backend, but against v43's evidence, which was a
+handful of easy live rounds at 4-8 seconds. The failure mode is the expensive one: the round is paid
+for and then discarded. The fix is not obviously "raise it" - a 2-minute editor stall is its own
+defect - so the measurement wanted is the latency distribution by body complexity, per backend.
+
+**41b. `maxTokens = 2048` on the two cloud backends - substantially mooted, kept for the residue.**
+2048 is the LOCAL ceiling now: `GEN_MAX_TOKENS = 2048` (`src/core/budgetProfile.ts:230`) serves
+`fim-small` and `local-mid`, and the frontier class, which is both cloud backends, gets
+`FRONTIER_MAX_TOKENS = 64000` (`:248`, `:253-257`) - added precisely because 2048 capped thinking plus
+answer. It was never a defect on the claude-code CLI backend, which exposes no budget knob. What
+remains is one cheap number nobody has taken: the `length` finish rate on `fnGenProvider: anthropic`
+at the new ceiling. The product degrades honestly when it happens (a `length` finish is refused, never
+spliced). Rank it last.
+
+**Two findings worth more than the ranking.** `temperature = 0.2` has NO provenance anywhere in the
+repo, and the entire measurement corpus was collected at it - a baked-in confound in every arm ever
+run here, not merely an untuned knob. And the product contradicts itself: test-gen ships a 500-token
+aggregate budget while fn-gen holds 300 on the strength of a 350-token threshold. Either test-gen is
+over budget by the product's own doctrine or the doctrine is wrong; it cannot be both.
+
+**One thing to resist.** `PREFILL_TYPE_CAP = 4` looks like the obvious target and is not. It is the
+one prefill cap with a real arm behind it, and v45 measured that raising it alone RELOCATES the loss
+(post-cap loss 65.7% -> 78.2%) rather than removing it. It moves after the budget, not before.
+
+### 42. Repair supply outside Rust
+
+The evidence behind this item's first version measured the RIG, not the product, and the original text
+was replaced rather than amended: quoting it alongside a correction would keep a refuted number in
+circulation. `session-v46/run-arm.cjs` built the `ResolvedFunction` by hand and never set `symbols`,
+so the RECEIVER leg - which reads that field to find the type the generated body is being written
+INSIDE, and puts it FIRST in the candidate list, exempt from the type cap
+(`fnGen.ts:2341-2361`, `:3304`) - degraded to nothing, silently. A second rig defect compounded it for
+Rust alone: `stub-vscode.cjs` declared nine of twenty-six `SymbolKind` members and `Object` was not
+one, so `RUST_CONTAINER_KINDS` held `undefined` and rust-analyzer's `impl Foo` node could never match.
+The shipped product was unaffected throughout.
+
+**Re-measured with both fixed**, model-free replay of each language's own v46 arm, symbol-kind
+translation checked per row:
+
+| | rows | rows with any repair surface | rounds with NO surface |
+|---|---|---|---|
+| C# | 42 | 11 -> 36 of 38 | 31 -> 1 |
+| Rust | 63 | 49 -> 63 | 14 -> 0 |
+| TypeScript | 21 | 15 -> 21 | 6 -> 0 |
+
+And on a graded C# arm, same 46 rows and same model as v46: repair rounds injecting no type went from
+29 of 42 to **0 of 37**, type injections from 27 to 202, post-repair compile from 10/46 to 19/46,
+silently-wrong from 1 to 0.
+
+**Go was never affected.** `receiver.ts` defines `receiverType` for Go alone, so Go resolves its
+receiver from the signature with no symbol tree. Every Go number in the changelog stands.
+
+**What survives as work.**
+
+- **A static C# method never sees its own class.** `resolveReceiver` resolves a receiver only when the
+  signature carries one or the return type names the enclosing type; a static helper has neither, so
+  its sibling statics are invisible and the model invents them. Measured at 9 of 56 repair rounds
+  (`Program`, `Utility`, `FileLoading`, `SyncEvents`), each with a CS0103 naming a sibling the class
+  really has. This is the whole of what is left of the C# half.
+- **The harvest really is Rust-only**, and `harvestDiagnosticTypes`' own comment is wrong where it
+  says the other languages' classifiers already read their own shapes. A fact about the code, not a
+  measurement. Its value is second-order: CS0246 and CS0200 are its real C# population, about 30% of
+  their names resolve, so roughly ten injections.
+- **Python and Go remain unmeasured.** Neither has a corpus in the rig, which is a cost, not an
+  oversight.
+
+**The lesson, worth more than the item.** Every function the rig called was the product's own. One
+FIELD of one argument was missing and a silent degrade to `undefined` turned off the highest-value
+injection leg in the system. A hand-built product input is a re-derived mapping wearing a different
+coat: where a rig constructs one, it needs an assertion that the product agrees. `run-arm.cjs` now
+carries that assertion for the symbol-kind translation.
+
+### 43. Nothing measures how often a real session overflows the context window
+
+The build shipped (session-v48 phases 2+3). `src/core/promptBudget.ts` holds the decision,
+`FnGenService.generate` arbitrates exempt / fits / shrink / refuse (`fnGenService.ts:290-294`), and
+`generateRaw` / `generateTests` refuse a finished prompt that does not fit, which closed the punt
+circle-back retry, repair, refine and test-gen. The channel lines carry full token accounting
+(`promptBudget.ts:433-439` refusal, `:447-455` shrink); the fits case stays silent on purpose (`:168`).
+
+**What survives is the whole item: how often does a real session actually overflow?** Nothing has run.
+If the answer is never, the guard is cheap insurance and this entry closes. If it is common, the
+budget itself needs revisiting, and `GEN_NUM_CTX = 16384` is measured at 12.4GB VRAM on the 16GB
+carve, so raising it is not free. The is-it-worth-an-instrument question is under Decisions.
+
+**The mechanism, which is what the measurement is measuring.** `GEN_NUM_CTX`
+(`src/core/budgetProfile.ts`) bounds the prompt AND the generation together, and `ollama.ts` says what
+happens past it: "a prompt over that is silently truncated to fit" (`src/core/ollama.ts:150-152`).
+Three prompts of 12.9KB, 13.1KB and 15.0KB all landed on exactly 2050 prompt tokens with nothing
+logged, recorded in the code at `ollama.ts:152-155`. Raising `num_ctx` moved the ceiling; it did not
+add a check.
+
+**The reasoning that made the guard non-negotiable.** Truncation eats the HEAD of the prompt. On a
+captured fn-gen prompt the head is the instruction and the injected type surfaces, and the doc and
+signature sit at the tail. So adding context made the model receive LESS injection, and it still
+answered from the bare signature, confidently. The developer's action produced the opposite of what
+they asked for and nothing said so. That is the product quietly discarding its own core value, and it
+is the shape to watch for anywhere else a silent limit exists.
+
+The developer cannot arbitrate it alone: prefill surfaces, member lists and repair surfaces add bytes
+they never wrote, so someone who adds two context blocks can be tipped over by bytes that are not
+theirs (`promptBudget.ts:9-11`). Context blocks are still SHRINK-exempt by the human's own rule
+("Their context shrinks nothing; ours shrinks to fit", `:14-16`) but they ARE counted: `developerTok`
+is in every arbitration (`:226`, `:230`) and named in the refusal and shrink lines.
+
+### 47. Python's pre-fill gate is decomposed, and its stated cause was wrong
+
+Decomposed 2026-08-23 by session-v59 phase 7. PROVEN miss, cause now known, no fix built.
+
+**The stated cause is refuted.** This entry used to say Python's leg is cross-file `definition()` into
+files pyright has not seen. Across 11 warm rows the per-primitive decomposition is hover **5904ms**,
+probe settle 2250ms, settle sleep 383ms, members 328ms, and `definition()` **52ms - 0.58%**. The
+headline primitive is not the expected one, which is exactly what Go's decomposition found and why no
+fix was pre-committed.
+
+**One level down: 18 of 38 hover calls were the first ask about a URI, and those 18 cost 99.7% of all
+hover time.** The other 20 cost 16ms between them. The cost is per-FILE, and it is
+`pyLspExtractor.ready()`'s unconditional `delay(300)` per URI plus a 150ms-granular diagnostics wait.
+
+**No fix built, and the refusal is priced.** A probe-side replica making that 300ms conditional on
+diagnostics having arrived cuts net p95 from **1940ms to 1049ms** - still **4.2x** the 250ms absolute
+gate. Not a gate-passer, and it widens the cold-index race phase 7 proved fires. The ruling is under
+Decisions.
+
+v50's headline for reference: Python p95 1957ms net against the 250ms gate.
+
+### 48. The injected surface carries no imports, and that is now Python's largest failure family
+
+PROVEN on a compile-graded arm. With the enclosing type in the prompt, Python function generation goes
+from 15 of 40 compiling to 35 of 40, and the invented-member family collapses from 21 to 1. What
+survives is imports: 3 of the 5 remaining reds are a name the body needs and the file does not import
+(`contextlib`, `FileResponse`, `run_server`).
+
+The surface names types and members. It does not say where they come from, and the model cannot infer
+an import it was never shown.
+
+**The hole is wider than Python.** The Rust masking is not real on this surface: the use-path leg
+(`src/core/usePath.ts:143`, `renderImportHint`) is TEST-GEN only - it fires just when
+`opts.importTargetPath` is set (`fnGen.ts:3201-3210`). So the fn-gen pre-fill carries no import
+payload in ANY language, Rust included (`fnGen.ts:2503`, "fn-gen omits it"). What masks it in Rust is
+weaker: a generated body usually lands in a file whose imports already exist, which is the code's own
+stated reason. Python is where it was MEASURED, not where it is.
+
+Not a cap and not a budget. It is a missing payload, measurable the day someone builds it: the same 40
+rows, one arm, the same span-scoped verdict. Item 65 is this build's Rust half, so the two meet the
+day it lands rather than re-manufacturing them at five times the surface.
+
+### 49. The count cap's server justification is measured false on Python and untested on TypeScript
+
+Half PROVEN, half unmeasured, and the unmeasured half is the one that matters.
+
+The hover fan-out is time-bounded already: `withinBudget` races every ask against a 50ms deadline. The
+count cap survives on top of that because the race abandons the RESULT and not the WORK, so abandoned
+requests stay queued against a server that answers one thing at a time. That was reasoning, never a
+number.
+
+Measured against a real pyright: a 400-hover fan-out costs 13ms, so the deadline never cuts, nothing
+is ever abandoned, and the next request costs 0ms whether 4 or 400 asks preceded it. The hazard is
+unreachable on that server at any population, real or synthetic.
+
+TypeScript is the other fan-out language and is the slower server: cold first calls at 33ms and 51ms
+against Python's flat 10-14ms. It is where a deadline would cut first, and it was not measured, because
+its fan-out lives in the vscode transport and needs a real extension host. The headless
+`TsLsExtractor` reads the checker directly and asks no hover, so no headless row can produce the case.
+
+A `test:vscode` tier measurement. Until it runs, the cap stands on population sizing alone, and the
+constant's own comment says so.
+
+### 50. The gather buys a hover for every collaborator the render drops, and only Go has a bound
+
+PROVEN in Go, measured in Rust, unmeasured in the other three.
+
+Over 20 real Go roots the gather resolved 117 types and bought 117 hovers; the render kept 63 solo and
+14 inside a real 8-root prompt. 31 of the 117 sit outside `walkDataShape`'s own BFS at ANY budget,
+because the render walks at most `B_MAX` distinct local field types per node and the gather walked all
+of them.
+
+Go got a commit-counted breadth bound on the gather: round trips down 26%, and 0 of 20 roots changed a
+byte of surface. C# is provably ineligible, because `csShapeBlock` gives every gathered type a member
+block, so nothing it gathers is wasted. TypeScript and Python were not looked at.
+
+**Rust's shape is STARVATION rather than waste.** On a ten-field root the walk's `N_MAX: 12` is
+allocated first-come by the root's field order under a breadth-uncapped FIFO gather, so a nested
+collaborator like `Order.cust.addr`'s `Address` is gathered and then dropped - the identical outcome
+on a plain struct as on the enum whose payload edges surfaced it, 39 round trips at the bound's own
+ceiling. The remedy is measured too: `RUST_PREFILL_LANG.gatherBreadth = true` (`fnGen.ts:5200`) leaves
+the rendered block byte-identical, cuts the round trips, and puts `Address` back in the SHAPE (not the
+render - the render's own `N_MAX: 6` then spends on payload defs). Not shipped, because it changes
+every Rust field walk and Rust's only fixture is synthetic; it needs its own red on a real corpus, the
+way Go's opt-in was priced on 31 of 117. And the FIM whole-block leg renders through the same seam
+against its 50ms deadline (`completionProvider.ts:1401`), pays the same round trips per first
+keystroke, and has round-trip counts but no wall-clock witness.
+
+**Why Go's pre-fill gate is red, and it is an accepted cost rather than an open diagnosis.** Go's gate
+was re-run on both sides of a gather-breadth bound: p95 148ms and 139ms against a 118ms gate, down
+from 192ms and 208ms, so Go misses at about 1.2x. Across 20 rows the per-primitive decomposition is
+**settle sleep 869ms, hover 210ms, members 80ms, definition 44ms**, and six rows sit at 120 to 126ms
+of sleep over 1 to 22ms of real server work. Derived from the measured columns of the same four runs:
+**with the sleep at zero the after side reads p95 71ms and 53ms**, a pass with margin. The settle
+allowance is what fails this gate on both sides of that build, so no amount of walk work reaches it -
+and session-v59 phase 7 ruled the settle loop KEPT on cold evidence (see the item 45 record in
+`docs/roadmap-history.md`). So Go's red row stays red on purpose. Anyone reading it should stop here.
+
+### 62. The C# inject arm flaps on 3 of 46 rows, and the caveat has to travel
+
+Characterised 2026-08-23 by session-v59 phase 6. Seven full 46-row dry runs, five quiet and two under
+28-way load: **three rows flap, 43 are byte-identical across all seven.** One flapping row's variants
+are 1975 and 2226 bytes - session-v55's 251-byte difference, on a row it never named, reproduced
+exactly.
+
+Two mechanisms, both in shipped code. A `Datum` resolving to two different declarations, 58 members
+against 86, disjoint - that is item 70. Separately, two rows co-flap on `IActionResult`, declared
+nowhere in the corpus, so a failed resolve frees a cap slot and something else takes it.
+
+Product-visible rather than a rig artifact, labelled REASONED: the resolver under test is the
+product's own `resolvePrefill`, matched code-to-diff rather than instrumented.
+
+**The arm IS usable as a regression check, on one condition: diff PER ROW and exclude those three ids.
+Never compare whole-dump hashes.** Any document that calls this arm a regression check has to carry
+that caveat, or the next session reads a flap as a change.
+
+### 65. The import hint names crates the target does not link, and mis-names a renamed one
+
+Residue of item 56, filed 2026-08-21 from that build's own not-done list. Session-v56 lifted the
+module-tree walk into `src/core/rustReach.ts` and did NOT lift `tightenRatify`'s `externCrateName`
+(`tightenRatify.ts:364`, applied at `:454`), so `renderImportHint` still emits
+`use other_crate::Thing;` for a crate the target does not link, and rustc refuses it with E0433. It
+also names the PACKAGE name (`usePath.ts:100`) where Cargo links the DEPENDENCY KEY, so a renamed
+dependency (`renamed = { package = "real-name" }`) gets the wrong prefix.
+
+PROVEN on the gesture side, where the check already lives: 43 of 435 derived lines compiled
+workspace-wide, and 43 of 50 once restricted to crates the target actually links.
+
+The fix is item 56's shape again, one mechanism and one copy with two callers, but it DELETES
+coverage, so it wants its own measurement first: how many pre-fill collaborator types are cross-crate
+at all? The trade is under Decisions.
+
+Falsify: a cross-crate type whose manifest does not list the crate contributes no hint; a renamed
+dependency renders the dependency key rather than the package name; every hint that compiled before
+still compiles.
+
+### Measurement debt
+
+One harness phase, when the loop next needs proving. The behavioral matrix the builds deferred:
+multi-crate, multi-seed, realistic temperature, negative controls.
+
+- **A headless rig sees 4 items where the product sees 25, and this invalidates measurements**
+  (S59-8, PROVEN live on a real rust-analyzer, both transports, same crate, same receivers).
+  rust-analyzer's 19 postfix snippets arrive ONLY when the client advertises `snippetSupport: true`.
+  VS Code does, so the PRODUCT sees 25 items at a plain struct receiver: 6 members and 19 postfix
+  snippets. `RaLspExtractor.start` advertises `false`, so the headless oracle and **every measurement
+  rig** see 4 items and no snippets at all at the same receiver. The `await` keyword at a Future
+  receiver arrives either way. Two consequences, both live: no rig running through `RaLspExtractor`
+  can produce the postfix case, so a zero from one is a fact about the client capabilities and not
+  about the product; and the legal list the product builds is strictly WIDER than the one any headless
+  measurement of it would show. **Any past or future Rust member-count number taken headless needs
+  this checked before it is believed.**
+- Carries the behaviorally-sound bar: the `bloom_demo() -> true` bar is passed by a constant.
+- Carries the reasonable-subset punt: a plausible 80% implementation with no stub marker.
+- Carries LSP oracle-client hardening.
+- **Standing lesson: baselines go stale fast.** Two published numbers in one session were
+  right-measurement-wrong-baseline. Always re-run the "before" against the pipeline that actually
+  shipped.
+- The `some`-to-`every` tightening at `test-vscode/gesture.test.js:689`/`:711` waits on one VS Code
+  tier run. Its stated precondition has NO surviving artifact, so it is a recitation. Read the two
+  `provider invocations after each of three arrows` lines the rows already report, in both orders; if
+  every delta is above zero, tighten AND keep the recorded output this time. Do not tighten without
+  the run - a red row nobody executes is how it sits unseen for months.
+- Mixed-zone scoring: the 8-seed A/Bs pool every site, and all-pass/all-fail ties dilute the number.
+  Report the seed-variant sites separately; the variance zone is where the discrimination lives.
+  **UNVERIFIABLE** (C398): the "2 wins, 1 loss, 7 ties" shape is in no surviving artifact - the v22
+  per-site shapes that did survive are 1-3-4, 7-1 and 0-5-3 (`session-v22b/scraps.md:35-36`). The
+  METHOD point stands on its own and does not need the example.
+
+### Tier health - the instrument, not the product
+
+Baselines from 2026-07-25, quiet box, post-reboot, GPU live. Latency rows mean nothing unless the box
+is quiet: under parallel test load the ts row grew seven extra failures.
+
+**Read the counts below as history, not as a baseline you can diff against** (C378, C379, C381, C383,
+C387). The 2026-07-25 run logs are gone: three of the five per-language counts, the parallel-load
+finding and the four-identical-runs record have no artifact. The named ROWS all still exist; the
+numbers cannot be checked without re-running the tier per label on a quiet box, which would settle
+every one of them at once.
+
+- **ts: 43 passing, 2 failing.** Both are named opens: the membersOfType-signatures contract row
+  (tsserver returns empty `detail` 8/8, `contract.test.js:320-342`) and the v17 keystroke-cost
+  known-red.
+- **go: 44/0.** Matches v23's ship number exactly.
+- **csharp: 44/1.** The floor-and-margin latency row: `test-vscode/budget.test.js` carries two, the
+  injection-window row at `:123` and the budget-plus-margin row at `:291`.
+- **rust: 44/4 - NOT a baseline.** Every rust row grades the human's uncommitted play in rust-scratch.
+  Baseline only after the fixtures commit.
+- **python: 33/7.** Three documented latency reds, one real (the transport-richness row), one teardown
+  race (re-run before reading), one shares the S10 oracle limitation.
+- v26 claims 45 tier fails are environmental (a headless window never opens the widget) with no
+  clean-tree baseline yet. The v26 review owes that number.
+- **The tier is runnable here despite no xvfb-run:** a display is already up on :1, so
+  `DISPLAY=:1 npx vscode-test --config test-vscode/.vscode-test.mjs --label ts` runs it directly. The
+  no-model caveat is written into `.vscode-test.mjs`: an unreachable ollama ends generateFunction on
+  an awaited toast, so a row must fire the command without awaiting it.
+- The floor-and-margin rows measure machine load, not defects (RED, RED, GREEN, GREEN across four runs
+  of identical code). Where a count can replace a threshold, use the count.
+- **Nothing forces the TIER to run.** `.github/workflows/ci.yml` runs typecheck, `test:unit` and build
+  (`:54-57`), but neither workflow runs the vscode tier; `grep vscode` finds only vsce packaging in
+  `release.yml`. Skipped tests in a suite nobody runs are still just prose.
+- The NVML lesson: the hardware probe reads total VRAM and no health signal, so a broken CUDA stack
+  looks like a small GPU and the product degrades silently. Item 9 is the cheap detector.
+
+## 4. Deferred fixes - small, do on next touch of the named file
+
+Each entry waits for its trigger, the next touch of the named file, not for a slice of its own.
+
+- **`src/core/crossFileShape.ts` (the settle-loop comment, session-v59 phase 7 residue).** The comment
+  at `:1009` still reads "**41 cursors, ZERO recovered a renderable member**" and argues the bound
+  from that. Phase 7 refuted it on a cold probe - 17 re-polled cursors and 2 recoveries in Python,
+  both `0/5 -> 5/5` on the same row - and wrote a corrected comment that never landed, because the
+  file also carried another agent's in-flight edits and the change was left unstaged. Re-apply it: the
+  standing keep argues from a cold run, not from "no server did it today".
+- **`src/core/compilerOracle.ts` (the workspace anchor, S55-8/S55-9).** The deferred-fix rule already
+  FIRED on this once - session-v59 phase 4 touched the file and flagged it rather than half-doing it,
+  because it is a separate build on the CHECK path needing its own cargo-workspace corpus. The
+  content, so this deferral is not a bare pointer: the shipped rule is "nearest ancestor declaring
+  `[workspace]`", and a crate an ancestor workspace `exclude`s still anchors at the excluding
+  workspace - measured against cargo 1.96, the excluded crate's diagnostics are crate-relative.
+  Membership is the only exact predicate: read `members`/`exclude` globs or ask `cargo metadata`,
+  which `catalog.ts` already spawns. And the anchor walk has no memo: up to two runs per primary span,
+  every ancestor manifest re-read each time, 1.8ms per call against a 202KiB manifest. Any memo shares
+  the catalog memo's invalidation story.
+- **`src/vscode/completionProvider.ts:1114` (S59-10): a second `[fim] no ghost:` writer, unescaped.**
+  Session-v59 phase 2 escaped the core `noGhost` as "the choke point the shape is named for"; this is
+  the other half of the same shape. Its one non-constant is `scope.name`, a language-server-authored
+  completion label, also unescaped at `:520`, `:688`, `:997`, `:1056`. Not driven, so not a confirmed
+  defect - but the reasoning that made the core site worth escaping applies here unchanged.
+- **`src/core/oracleSurface.ts:414` (S59-11): a compiler diagnostic is cut to 70 chars without
+  escaping.** Its payload is compiler output derived from model-generated source, so the model has
+  partial reach into it. Two neighbouring sites (`:1009`, `:1659`) pass the diagnostic whole and are
+  deliberate. Not driven.
+- **`src/core/fimInject.ts` (S59-9): `memberSiteLegalNames` splits a dotted name in all five
+  languages.** Phase 8 claims only Rust joins the gate; the splitter runs for every language -
+  `[{name:"a.b"}]` yields `["a.b","a","b"]`. It only ever widens, so its worst case is a missed catch
+  rather than a false suppression, and no product transport for the other four was found to emit a
+  dotted member name. But it is a behaviour change in four languages the commit does not claim to
+  touch.
+- **The C# wrong-tree refusal's remaining blind spot (session-v59 phase 9).** The attribute gap is
+  closed only where the attribute sits inside the container's range. Roslyn puts it there; a server
+  that does not gets no refusal. Stated in the code and in S28 rather than papered over.
+- **`test/adversarial-v58-p1.test.cjs:1209` (S59-4): a re-cut locator takes the first warning, not the
+  pull toast.** Phase 1 re-cut it from `/download failed/` to `/^Column 80: /`. The row's stated
+  subject is preserved and correct. The residue: `/^Column 80: /` takes the FIRST `Column 80:` warning
+  in `__C80_WARNINGS__` rather than the pull toast specifically. Harmless in the current flow, which
+  raises one warning. A future second warning on that path makes the row assert about the wrong string,
+  silently. The fix is a locator that identifies the toast by its surface rather than by its prefix.
+- **`test/review-v27-tier.test.cjs:125` (S59-13): a row lost its pin on whether the legal tail rides
+  at all.** It gained real assertions (tier and signature must be `undefined`) but lost any pin on
+  whether the legal-only tail rides back AT ALL. A regression dropping keyword items entirely leaves
+  the loop iterating zero times and the row green. Coverage survives at
+  `test/impl-v59-p8-rust-gate.test.cjs:358` and `:411`, so only this row is weaker.
+- **`test/blind-v15-*` (S59-14): a re-cut row's title claims a behaviour two of its legs lack.** The
+  `blind-v15` rows now run one demand for all languages. TypeScript and Python pass only because the
+  fixture's anchor lands on the import line - recorded correctly in S28, but the ROW'S TITLE claims a
+  behaviour those two legs do not have. A reader of the suite is told the wrong thing.
+- **`impl5-vscode`'s never-auto-pull scan (S59-15): a guard greps `src/core` without stripping
+  comments.** Unlike its `firstRun.ts` sibling, which does. So naming `pullModel` in a core COMMENT
+  reddens the row; a session-v59 agent reworded its comment rather than loosening the guard, which was
+  the right call in the moment. The two halves of the same guard disagreeing about whether comments
+  count is the actual defect.
+- **`fimComment.ts` (the Rust `quotes` set).** The CHEAP fix shipped in session-v55 - a literal scan
+  crossing a newline is treated as a phantom - measured at zero differences over glommio and a net win
+  on this repo's own TypeScript. What remains is the quote set itself, a v25 contract change needing
+  its own blind oracle over lifetimes. **The falsification shape moved (S55-22):** the residual the
+  shipped rule cannot reach is NOT the two-line shape three documents used to name (that one now
+  closes, by pairing luck). It is a same-line block comment between the `'"'` char literal and the
+  quote it wrongly pairs with - nothing crosses a newline, so nothing is blanked. Pinned as `A14-2` in
+  `test/adversarial-v55-p14-phantom-literal.test.cjs`; any future entry names that shape or it is
+  testing the wrong thing.
+- **`fimComment.ts` (`ledAt`): the comment walk is quadratic in the prefix**, because `ledAt` does a
+  backward `lastIndexOf("\n")` per hit. 200KB of block comments on one line takes 721ms against 12.6ms
+  for the same bytes with a newline per comment; 977KB on one line takes 17.7s. `harvestBodyComments`
+  in `scaffold.ts` walks the same scanner and is slower still. Real source does not look like this, so
+  it is a line rather than a fix, but v36 put the walk on the repair path where it is awaited before
+  the model call. The row is "KNOWN WRONG: the walk is O(n^2)..." at `adversarial-v36-p1.test.cjs:484`,
+  a live GREEN ratio row (bar 2.5x, `:463-477`) that goes red when `ledAt` is fixed.
+- **`tightenDocComment.ts:253` logs the cursor cause for every cause (S55-1).** The fifth
+  resolver-driven gesture did not inherit item 55's refusal split; it is channel-only and degrades
+  rather than refusing, so no toast lies, but the diagnostic is the same wrong sentence. Routing the
+  cause in changes the `wiring.resolveFunction` seam's type, which is why it waited.
+- **The `generateTests` gesture's two SNIPPET write paths sit outside the v55 EOL bundle (S55-10):**
+  `createTestFileWithSnippet` (`fnGen.ts:6474`) and the existing-buffer insert (~`:6230`) go through
+  `editor.insertSnippet`, not `applyEdit`. VS Code is BELIEVED to re-join snippet text on
+  `model.getEOL()`, which would make both safe by the platform - REASONED, and this project has been
+  burned by research inverting platform truth, so it needs a live witness in `test-vscode/`: insert an
+  LF snippet into a CRLF document and read back what landed. Also unpinned (S55-11): the preview diff
+  and the splice share one normalised string by ordering only; a row driving both and comparing
+  byte-for-byte closes it.
+- **The single-letter type rule, five copies (S55-13):** `crossFileShape.ts:1025`,
+  `compilerDirected.ts:491`, `goPrioritizedTypes`, `resolveCallOwners`, `goShapeHooks.skipCandidate`,
+  and two disagree one function apart - `GO_PREFILL_LANG` says a Go `T` is real (186 measured structs)
+  while `goPrioritizedTypes` blind-filters `^[A-Z]$`. Harmless today because Go's owner door is shut;
+  consolidate on next touch. Related, the std filter's refusal line (S55-14): `!/^[A-Z]/` and the
+  stop-set share one "a standard-library type" sentence, so a lowercase workspace container gets a
+  false reason on the channel - split the `||` into two reasons, with rows re-cut. And
+  `oracleSurface.ts:623`'s compiler-named receiver route has no single-letter guard (S55-15): dump
+  `arityReceivers` over a real diagnostic corpus before adding one; no measured server prints a bare
+  `T` yet.
+- **The remote arm's small residue, all deliberate (S55-3 to S55-6):** a seam that throws makes
+  `buildFnGenService` reject into a hardware-worded message for a remote host; the 2s reachability
+  timer is unref'd and never cleared; `localhost.` (trailing dot), IPv4-mapped IPv6 and
+  `ip6-localhost` still read REMOTE; and `readFnGenConfig()` is read before and after the probe, so an
+  apiBase flip inside that window builds a local tier against a remote base until the next settings
+  rebuild.
+- **`budgetProfile.ts`: three prefill bounds are unmeasured numbers.** `PREFILL_TYPE_CAP` is 4
+  (`:119`), `PREFILL_RESOLVE_CAP` is 8 (`:122`) and `PREFILL_PROVENANCE_CAP` is 24 (`:125`). The first
+  predates v34; the other two were picked in v34 to make the provenance backfill possible and to bound
+  the round trips, not from a curve. The one cost that IS measured is the pre-check: prefill median
+  38ms to 45ms and p90 279ms to 293ms over 143 rows, so about 7ms, and the `definition()` round trips
+  cost slightly more than the shape walks they avoid. **UNVERIFIABLE** (C296): that arm is gone with
+  the rest of the v34 chain; a re-run of the prefill pre-check arm would check it. Nobody has measured
+  what the CAPS are worth. Do not tune them by feel; they decide what the model sees.
+- **`instructPostprocess.ts`: a repair round can die on its own reply's fencing.**
+  `[fngen] request failed: generation contains a code-fence line (unclosed or nested fence in the reply)`
+  discarded a whole round on a live capture, leaving the previous body in the human's file. A rejected
+  round costs a round and says nothing about what to do differently. Worth deciding whether a nested
+  fence can be recovered from rather than refused, on a real capture and not a synthetic one.
+- **The hover recovery runs on FIM's deadline legs too** (`completionProvider.ts:1401` and `:1559`
+  call the same `resolveCrossFileShape`). New cost in FREQUENCY, not kind; latency and dark rate
+  unmeasured on either leg; the degrade is honest-dark. Shipped OPEN in 1.1.0.
+- **Three false refusals in the hover recovery, all in the safe direction:** `r#type` raw idents,
+  `[Node; 1 << BITS]` read as unbalanced generics, and a C-variadic `...` read as an elision marker.
+  Each ADDS recoveries and so moves the surface - each wants its own arm, none can ride along.
+  **UNVERIFIABLE** (C301): the code exists (`src/core/rustHoverRecovery.ts`) but the scrap naming the
+  three refusals is off-box. A re-scan for hover-recovery refusals would check them, cheap enough to
+  fold into whichever arm goes first.
+- **`oracleSurface.ts`: the v30 usage leg has no fallback for a draft that INVENTED a method.**
+  References on a name that does not exist return nothing, and the round proceeds with no windows. The
+  leg is `resolveUsageForRound` at `:1100-1121`, targets filter to `via === "member"`, a references
+  miss gets a channel line and nothing adjacent (`:1097-1098`), and no fallback path exists.
+  Candidates named at ratification: type-level references of the types in play, or a bounded
+  model-emitted observation request answered by the extractors. REASONED, read not run.
+- **`specs.js`: the memberSite/argSite fixtures point at EXISTING calls**, where rust-analyzer renders
+  labels differently than at a bare dot. Rendered-output rows grade a shape the user never types.
+  Audit all languages.
+- **`specs.js`: C#'s knownLeaks (`Equals`, `GetHashCode`, `GetType`, `ToString`) are still declared and
+  unpromoted** (`specs.js:222`). The comment defers to roadmap tracking (`:13-18`) and states "Roslyn
+  hands back object's members at every receiver" (`:220-221`). What remains is the promotion decision.
+- **The E0425 self-reference check:** `let x = s.f(&x, ...)` is wrong with certainty. Built as a text
+  scan and WITHDRAWN: 224 false suppressions across 1.6M sites, zero true positives. Needs scope
+  evidence, not string evidence.
+- **`postprocess.ts`:** `limitScopeByIndentation` lacks same-depth stray-closer gating, and
+  `closersAllExternal` counts brackets inside string/regex literals. v25 moved the scanners into
+  `brackets.ts`; verify against that shape before fixing.
+- **Blocks inside a RENAMED folder do not follow**, and inside a DELETED folder they self-heal to
+  `lost:"deleted"` at the next resolve. VS Code fires the rename/delete events with the folder uri
+  only, never per contained file. Both documented in the handlers. Building for it means walking the
+  workspace on every folder event, which is real cost for a rare gesture.
+- **`contextBlocks.ts`: `isStale` is on no shipped path.** It survives because `blind3-snapshot` binds
+  14 rows to it, and its leg-2 logic lives on inside the re-adoption audit through the shared
+  `canonical` helper. Delete it when those oracles are next re-cut.
+- **`fnGen.ts`: a generation cancelled mid-resolve still mutates the store and still warns.** The
+  resolve runs before the cancellation token is consulted, so cancelling while a closed file is being
+  opened can lose a block and then say "the prompt did not include it" for a prompt that was never
+  sent. Self-consistent, just a surprising sentence to read after pressing Escape.
+- **FIM cache: the key carries no injection fingerprint**, so an edit above the cursor that changes the
+  member set can serve a stale ghost until a keystroke re-keys.
+- **RA/LS queries:** the injection race's loser is used by the gate since v18, but the server work
+  itself cannot be cancelled (see Rejected). Wasted work, note only.
+- **darkSites grows unpruned**, in every language.
+- **The digit-ending receiver guard darkens Go/Python stdlib qualifiers:** `utf8.` and `sha256.` read
+  as float-ish and go dark. Refuse only numeric literals; measure first, the class is invisible to the
+  ledger.
+- **Python's bound p90 is 202-207ms against the 200ms bar**, and the lever is named: a
+  declaration-head parameter list holds brackets open, so the bound reads five lines and retracts to
+  one, serving a truncated `run_in_process(config_path: str, method_name: str,)`. A served-text change
+  with a real correctness price; measure before/after on `session-v25/harness/verify-v25.cjs`
+  (LANGS=python, ~90s). Known trap: the bound's balance is local to the cursor's line, so a `(` opened
+  three lines up is invisible; the `beginsHere` guard is the fix shape.
+- **`crossFileShape.ts`: the bound is split across two files and the second caller inherited the
+  unbounded half.** `resolveCrossFileShape`'s bound is `{D_MAX, N_MAX, B_MAX?}` (`:124-158`) while
+  TOK_MAX lives in `dataShape.ts`'s own `WalkBounds` (`:39-42`). fn-gen wires its bound at
+  `fnGen.ts:2592` via `prefillGatherBound`, and fn-gen is NOT the only caller:
+  `completionProvider.ts:1401` and `:1559` drive the same walk on the FIM legs with `CROSS_FILE_BOUND`,
+  which carries no `B_MAX` and no TOK_MAX. Either fold the bound into the signature or say so where the
+  parameter is declared.
+- **Four one-line wording jobs, each too small for an item.** `firstRun.ts:220`'s decline message is
+  the pattern for all of them. (a) The remote model-missing disable names the model and the host and
+  not the way back: after pulling the model on the remote box, re-enabling needs a settings touch or a
+  window reload and nothing says so. (b) `rustReach.ts` returns on an unreadable `.rs` def file before
+  the module chain is walked, so a readable `lib.rs` that DISPROVES the path is never consulted; walk
+  the chain first and let the def read be a later disproof rather than an early exit. (c) Three copies
+  of a Rust `use`-tree expander exist, and `instructPostprocess.ts:395` is the exported one that also
+  handles `{self}` - fold `rustReach.ts:191` into it on the next touch of either. No behavioural
+  divergence found, but one mechanism, one copy.
+- **Settings honesty, and the serving knobs nobody can reach.** `maxTokens`/`temperature` do not say
+  they are FIM-only. Four fn-gen knobs are declared nowhere in `package.json`, so a user has no remedy
+  for any of them: `maxTokens` (2048), `testMaxTokens` (8192), `numCtx` (16384) and `think` (unset).
+
+  `numCtx` earns its own paragraph, because getting it wrong is INVISIBLE. It bounds the prompt and the
+  generation together, ollama's own default is 2048, and a prompt over that is silently truncated to
+  fit rather than refused. Measured in v34: three prompts carrying 12.9KB, 13.1KB and 15.0KB of
+  injected surface all reported exactly 2050 prompt tokens, no error and no log line, so injected types
+  simply stopped reaching the model. It is coupled to `maxTokens` in a way a user will not guess:
+  raising `num_predict` without raising `num_ctx` makes generation WORSE, because the reply eats the
+  window the prompt needs. Memory cost at the 16GB carve with `num_gpu=30` is 11.9GB at 8192 against
+  12.4GB at 16384, so about half a gigabyte buys the larger window. **UNVERIFIABLE, those three
+  measurements** (C329-C331): the raw runs are gone; they survive as a carve record inside
+  `src/core/ollama.ts:141-159`. Re-running at `num_ctx=2048`, and re-measuring the carve, would check
+  them. The truncation BEHAVIOUR is documented in the same file and is not in question.
+
+  `think` has no setting AND no stated default. Any model that reasons by default is unusable until it
+  is false: `qwen3.6:27b` spent all 2048 output tokens on the trace and every generation was rejected
+  as truncated without emitting code, because reasoning is billed to the same budget as the answer.
+
+  1. Ship `think: false` as a DEFAULT and leave it unexposed. **Recommended for `think`.** No shipped
+     model reasons, and a user who swaps in a reasoning model should not have to discover this knob
+     from a truncation toast.
+  2. Expose `numCtx` as a setting. **Recommended.** Its right value depends on the user's hardware
+     rather than on the product, a smaller box genuinely cannot afford 16384, and the failure mode
+     without it is silent truncation rather than an error the user can act on.
+  3. Expose `maxTokens`/`testMaxTokens` too. **Not recommended.** Their failure mode is a visible
+     `done_reason=length` reject, and v34 already showed the shipped values were the problem rather
+     than the exposure: 512 caused every one of 15 rejections across 189 generations.
+     **UNVERIFIABLE** (C333): that run survives only as a recitation at `src/core/config.ts:51-54`.
+  4. Leave all four as defaults. Today's behaviour. Defensible only while every shipped model behaves
+     like `qwen3-coder:30b`, and that is not a bet worth carrying once someone swaps the tag.
+
+## 5. Dogfood ledgers and Rejected
+
+### Dogfood ledgers - questions only real use answers
+
+Each entry names its measurement. The dark-site evidence lines and `[fim] dropped:` channel lines
+exist to BE the measurement basis.
+
+#### TypeScript
+
+- The member gate suppresses forward references: sketching `this.computeTotals()` before writing it
+  gets dropped. Count wanted `[fim] dropped:` lines; kill switch `column80.fimMemberGate`.
+- A fast-typed new file (imports not yet written) puts the receiver at `any`; injection goes dark and
+  plain FIM invents members. Measure frequency before picking a fix.
+- Aliased imports (`import { X as Y }`) burn the prefill cap with duplicate blocks. Dedupe on resolved
+  identity if real accepts show crowding.
+- The whole-block anchor misses JSDoc-only types.
+- DOM lib names (MouseEvent, HTMLElement) chase lib.dom.d.ts walks. Curate additions from measured
+  noise; `Request` collides with Express, so never a blind blocklist.
+- tsconfig-less JS projects get the env-reason line on every accept. Nag against discoverability;
+  judge on real accepts.
+- Broken solution shells surface the shell's own config error. Honest today.
+- yarn PnP is honest-dark. Fix only if users actually hit it; never a bundled TS.
+
+#### C#
+
+- An invented type/package gets qualify-only. Catalog steering and fuzzy suggestions come later, on
+  evidence.
+- The member gate on a partial Roslyn set could suppress a real member. REASONED only; watch for real
+  suppressions.
+- `qualifyImport` rejects `global::` and generic-arity titles. Safe direction; widen when dogfood
+  produces one.
+- Object-statics noise (Equals, ReferenceEquals) is filtered on the COMPLETION path:
+  `isCsObjectDeclaredMember` keys on the declaring type Roslyn renders into the signature and
+  tier-demotes or withholds (`csExtraction.ts:601-612`, reasoning at `:647-661`;
+  `csLspExtractor.ts:345`). `membersOfType` stays deliberately unfiltered because its descent is
+  syntactic. What is left to watch is whether that asymmetry ever shows up in a prompt.
+- A doc comment that itself demands `throw NotImplementedException` trips the punt marker, and the
+  obedient retry violates the contract. Fix on a real capture. Python shares this class via
+  `raise NotImplementedError`.
+
+#### Python
+
+- Sub-package venvs in a monorepo go unfound; the check falls to system python and likely a
+  missing-imports storm.
+- The repair-round hallucination classifier (pyright names the class) builds only if bare repair leaves
+  member hallucinations standing.
+- A genuinely dark receiver no longer burns the full ~900ms retry: session-v50 bounded the loop
+  (`SETTLE_ALLOWANCE_MS = 120` with a 600ms hover, `crossFileShape.ts:850-852`) on a measurement of
+  77-87% pure cost. **The "zero recovery over 41 cursors" half of that measurement is a fact about a
+  WARM probe and is superseded:** a cold probe over pyright measured 17 re-polled cursors and 2
+  recoveries, both `0/5 -> 5/5` on the same row, so the loop bought back a member list that would
+  otherwise have rendered empty. The loop is KEPT. Whether the bound can go to zero is closed with it.
+- Enum receivers inject a dozen `_name_`/`_value_` internals. Narrow enum-scoped trim only, never a
+  blanket sunder drop.
+- The product transport returned six members with NO signatures for `membersOfType(Tile)`. The contract
+  row calls that half the v15 defect. This is the Python row worth acting on.
+- The dark-site counter counts cold-server transients as dark sites. Telemetry-only harm; add a
+  settled-index guard before trusting the density numbers.
+- `completeMembers` and `membersOfType` disagree on dunders and nested classes. Pin both when fn-gen
+  prefill consumes the answer.
+- `pass`-only and `...`-only bodies are invisible punts. Build a detector only if dogfood delivers one
+  to a human.
+
+#### Go
+
+The ledger starts empty by design: no Go repo of the human's lives on this box yet. All numbers are
+OSS-corpus harness signal (cobra, gin, hugo, pinned clones), never dogfood typing.
+
+- Latency: hugo warm check 1.09s clears the 14.2s re-scope floor by 13x. Re-measure on the first real
+  client repo.
+- `membersOfType` is file-scoped, which costs cobra 24.7% of `Command`'s members (they live across
+  sibling files). Watch whether real Go code pays this in whole-block quality.
+- The injected block cannot name a package-level constructor (`TileFromMorton`); the ratified join
+  contract excludes them. Count whole-block generations that invent a constructor; that count prices
+  the discovery rule.
+- Everything is proven on gopls v0.23.0. The drift canary goes red if the two-rule taxonomy moves;
+  never re-arm on a stale taxonomy.
+
+#### Rust
+
+- Example sourcing misses constructor examples documented on associated functions (a `Type::` query
+  would find them), and the injected example text is never logged, so a weak example cannot be
+  diagnosed.
+- Cross-file impl blocks are invisible to `membersOfType`.
+- The feature-graph scan misses macro-gated modules. Benign; broaden only if needs-feature steering
+  proves out.
+- No rival inline-provider detection: Continue et al. silently win the ghost slot. And no "autocomplete
+  is off" evidence line when disabled. Both get misread as breakage.
+- **Does `Tighten Doc Comment` earn its palette slot?** The command shipped in 2.1.0 and the measured
+  yield is thin: 2 names across 30 Rust targets and 5 across 30 TypeScript. Whether that is worth a
+  gesture is answered by pressing it on real work, not by another census. Count the times it proposes
+  a backtick you keep.
+- **Rust's class-4 enum-variant population is unmeasured.** The backtick proposer's hardest population
+  is a variant name that reads like a type, and nobody has counted how often it occurs in real Rust.
+  Watch for a proposal that backticks a variant.
+- **Does the invented-member gate misfire in Rust?** New in 2026-08-23: Rust joined the gate (S30) and
+  its legal list now carries the keyword and postfix labels the render drops. False suppression on
+  membership measured 0 of 196 real sites before the build, and the arming rule holds the legal-only
+  tail behind a non-empty semantic surface. Watch for a real member being struck, and for `.await`
+  staying available at a Future receiver.
+
+### Rejected - do not reopen without new evidence
+
+- **A first-run lock across extension hosts.** WONTFIX, human ruling 2026-08-21: overengineering for
+  this tool. The defect is real and ~100ms wide - two windows opened together can both show the tier
+  picker, because `globalState` propagates between hosts through a debounced broadcast and `Memento`
+  exposes no change event - and the only honest fix is a lock file under `globalStorageUri` with
+  stale-lock handling, which is machinery a duplicate picker does not justify. The in-process guard is
+  PROVEN inert (built, measured, reverted): one host per window and `Memento.update` commits
+  synchronously, so the existing `get() !== true` already covers every same-host case. Two riders
+  survive for anyone building on `globalState`: cross-host propagation replaces the whole
+  per-extension blob last-write-wins, and a guard that persists "asked" before its flow completes
+  turns asked-twice into never-asked, which is worse. A `KNOWN WRONG` row in
+  `test/blind-v55-p3-firstrun-once.test.cjs` pins today's behaviour.
+- **Cancelling language-server work.** Impossible, not deferred. The provider bridge forwards only
+  declared args and hardcodes `CancellationToken.None`. Confirmed empirically: a pre-cancelled token
+  still bought a full server answer. The only lever on per-keystroke work is to issue less of it.
+- **A Cancel button around the LS phase.** It cannot cancel. Worse than silence.
+- **Constrained decoding as a picker.** Tested on ollama 0.30.11: `grammar` is silently ignored; a
+  JSON-Schema enum works and is a trap. Three of four models (including the product's own) picked a
+  real-but-wrong member. That converts a loud compile error into silent wrong code that passes every
+  gate. Every layer here is a correctness oracle; none is an intent oracle. Output filtering against
+  the real member set is the only legitimate small-model role.
+- **Machine-applicable rustc fixes as a repair rung.** Measured on 34 broken variants: only 3 of 17
+  error codes ever emit MachineApplicable, E0599 carries no suggestion at all, and a MachineApplicable
+  `.try_into().unwrap()` compiles clean then panics at runtime. Re-check passes it. The safety
+  argument is refuted with a demonstration.
+- **Deterministic member picking.** The premise is false: 0 of 1,703 real sites had a single candidate
+  (median 34). Combined rules: 5.3% correct, 63.2% precision, 71% of wins literal name echo. Filter,
+  not picker; that value shipped as the gate.
+- **Ceding member sites to the native widget.** Human call, 2026-07-21: the widget gives a name, the
+  ghost gives the whole statement. Compose, never cede. Shipped as v19.
+- **VS Code diagnostics loopback as the oracle.** Lossy, stale mirror. One-way diagnostics invariant
+  stands.
+- **A confidence signal on a generation.** Rejected because it guesses at output quality, and a product
+  that second-guesses its own answers is not what this is. The distinction that keeps the channel lines
+  legitimate: a channel line reports a MEASURED FACT about what was actually sent (item 43's budget
+  arithmetic is the worked example), never an estimate of how good the answer is.
+- **Small model as a doc-relevance pre-filter.** It filters output only.
+- **docs.rs example sourcing.** Network at runtime breaks the offline invariant.
+- **Blanket crate allowlist.** Wrecked std-correct tasks 8/8 to 0/8.
+- **Test-repair.** A wrong test is a human re-type.
+- **`--nocapture` on the test rung.** A passing test printing `test x ... ok` parses as a bogus case.
+- **Blanket sunder drop in Python.** Hides real `_private` API.
+- **The arity gate leg.** Removed v19 on measurement: dead in three of four languages, and on TS it
+  caught 1 wrong call while suppressing 3 correct ones over 887 generations. Do not reintroduce
+  without measuring all languages.
+- **Widening the E0433 classifier to inject a workspace-resolved type.** Refuted 2026-07-31 on a
+  corrected harness. Of the five rows and eight type names the goal named, two rows were splice
+  artefacts, one row is already covered today as `wrong-item`, one name is a std trait, one is an enum
+  variant, and exactly one (`Ia5String`) is a real injectable type. The proposed mechanism cannot
+  reach it: rust-analyzer's plain `workspace/symbol` is workspace-scoped and returns zero hits for
+  `Ia5String` and for the control `CertificateDer`, and where it does answer it can answer wrong
+  (`ServerConfig` returns two workspace hits when the code needs `rustls::ServerConfig`). The
+  dep-reaching `*` modifier returns 4 to 10 candidates with no disambiguator. Corrected zero-coverage
+  is 8 of 102 rows, and 10 of the 33 residual occurrences are std traits no injection should resolve.
+- **Scanning comments for unbackticked type names.** Measured on two populations, both agree it is a
+  junk generator: 97.7% junk over 6,856 human-written comment lines (5,232 names, 122 real types),
+  reproduced after the harness fix. Superseded by the backtick gesture that shipped in v36.
+  **UNVERIFIABLE** (C411): the census artifact is not on disk, though the same counts are recited at
+  `docs/user-manual.md:163`. A session quoting 97.7% at something else should re-derive it first.
+- **Reordering the prefill tiers.** The v37 scout replayed the item's own row: the doc contributed zero
+  candidates, so imports never beat the doc and there was no ordering bug to fix. The one real
+  ordering effect - rustfmt's alphabetical import order deciding which project type wins - is a symptom
+  of the cap, and the cap arm is measured flat: 4 -> 12 moved 0.8 points, inside the noise floor.
+  **UNVERIFIABLE, the replay** (C412): no item-31 replay artifact survives. `prioritizedTypes` exists
+  (`src/vscode/fnGen.ts:2069`), so re-replaying the row through it would check the zero-candidates
+  finding.
+- **Raising `DATASHAPE_TOTAL_TOK`.** Measured, session-v39 (the 800/600 arm): 61 against 56/56, and
+  banded by actual prompt growth the gain sits on 133 rows the budget never touched (+2.5 of pure
+  variance), while the 46 rows that grew 901B+ paid -0.5 and ate ~38k of the 98.5k added bytes. The
+  render-pass budget shipped in 1.2.0 buys the rescue without the bytes. **UNVERIFIABLE** (C414): no
+  result file survives; `session-v39/` holds only the arm harness, whose header carries the v38
+  baselines 43/42/40. Item 41a's cloud arm proposes to raise a neighbouring budget, so it should
+  re-derive this rather than cite it.
+- **Exempting the walk's own root from the per-walk `TOK_MAX`.** Same session: root drops stayed at 63
+  and starved rows went 21 -> 24. The refutation is written in `src/core/dataShape.ts`.
 
 ## Terms used everywhere
 
 - **FIM / plain continuation**: the small model (1.5b) finishing the line you are typing.
 - **fn-gen**: the big model generating a whole function from its doc comment. "30b" is the install
-  default (`column80.fnGenModel` = `qwen3-coder:30b`, `package.json:366`) and not the definition: the
-  16GB-low-RAM tier serves a 14b instead (`column80.fnGenFallbackModel`, `package.json:402-405`,
-  `src/core/tiers.ts:28-45`), and five non-local backends run fn-gen on cloud models entirely.
+  default (`column80.fnGenModel` = `qwen3-coder:30b`) and not the definition: the 16GB-low-RAM tier
+  serves a 14b instead (`column80.fnGenFallbackModel`, `src/core/tiers.ts:28-45`), and five non-local
+  backends run fn-gen on cloud models entirely.
 - **Ghost**: the grey inline suggestion text.
 - **Member site**: the cursor right after `.` or `::`.
 - **Whole-block site**: the cursor in an empty function body.
@@ -1617,656 +1895,9 @@ against the old ones.
 
 ## The governing principle
 
-The extension is a flow-state tool for a developer doing system-2 thinking. Eyes stay on the
-code. The interaction is a keystroke on a visible diff, and it ends at accept or reject. A
-feature that makes the developer manage the tool fails, regardless of capability.
-
-Split rule: a tuning goes in the ledgers or deferred fixes. A numbered item needs its own goal
-and scout.
-
-## Decisions only the human can make
-
-### Does round-1 generation carry derives, and is 12288 the right floor on Metal?
-
-Two calls left open by session-v34.
-
-**Derives at round 1.** The repair round now reads a type's `#[derive(...)]` line off its definition file
-and injects it; round 1 does not. The failure it comes from: the error was
-`ApiKeysConfig: serde::Deserialize<'de> is not satisfied` while `ApiKeysConfig`'s field list was
-ALREADY in the round-1 prompt. The derive list was the answer and no round-1 block carries one. It is a
-prompt-identity change with its own budget cost, so it wants its own number rather than being folded
-in quietly. **UNVERIFIABLE** (C248): the v34 screenshot row is gone; the same E0277 case is quoted in
-the source (`src/vscode/oracleSurface.ts:2306-2309`) but without the prompt contents, so "the field
-list was already in the round-1 prompt" cannot be read off anything. Restoring v34's goal, or one
-fresh capture, would check it.
-
-**Which serving knobs get settings.** Four of them are declared nowhere in `package.json` and no
-setting overrides any of them. That much is unchanged. "They reach the config from the DEFAULTS only"
-is now stale for two of the four: `maxTokens` and `numCtx` come off the active backend's
-budget-profile cell (`src/vscode/config.ts:181-193`), while `testMaxTokens` and `think` still read
-straight off the default object. The evidence and a recommendation per knob live under Deferred fixes,
-"Settings honesty, and the serving knobs nobody can reach". The short of it: `think` wants a default of
-false, `numCtx` wants a setting because its right value is the user's hardware and its failure mode is
-silent truncation, and the two token budgets want neither.
-
-**`MIN_FNGEN_VRAM_MB` = 12288 on unified memory.** A 16GB Mac reports about 16384 and the human has
-TESTED that it works. But subtract any honest toolchain figure and it falls under the floor - VS Code
-alone measured 4.3GB, so any reserve above 4096 excludes it. REASONED, arithmetic rather than a run.
-That the machine works
-anyway is evidence the 12288 threshold is a discrete-GPU number that does not transfer to Metal, where
-there is no PCIe transfer and offload behaves differently. See `docs/supersessions.md` S11. Wants a
-measurement ON Apple Silicon, not another estimate.
-
-Each blocks a named slice. Sorted by weight.
-
-### The bound refuses ghosts you wanted, and its benefit was never measured
-
-v25's biggest open item. One bound rule (rule 5, the "unsafe tail" rule) serves nothing when it
-fires. Its cost is now measured. Its benefit never was.
-
-- Live example (v26 capture): you type `metadata`, and the product stays silent for five
-  keystrokes in a row.
-- The model produced `.log_id,` every time - exactly the continuation plain FIM exists to serve.
-- Rule 5 dropped every one.
-- Measured cost over 750 real sites: rule 5 fired 16 times, and 11 of those refused text the
-  developer went on to write.
-- Two of the refused ghosts were byte-identical to what the developer typed. **UNVERIFIABLE** (C255):
-  the raw file `measurement-cost.md` points at (`harness/results/cost-v25.json`) is gone from
-  `session-v25/harness/results/`. Re-running `session-v25/harness/cost-v25.cjs` would check it, and
-  that is the same harness the benefit measurement below has to run on anyway.
-- The claimed benefit (fewer broken splices) was inferred from a run WITHOUT rule 5, so it is
-  unmeasured.
-- The work: measure the benefit the same way the cost was measured, on the v25 harness.
-- If it costs more completions than it saves, change rule 5 to retract to a shorter cut instead
-  of refusing.
-- Size: a session, not a night.
-
-### Four look-at-real-ghosts calls from v25
-
-The rules worked as written. The question is how the output feels, and no test settles that.
-
-- **Stacked closers.** A declaration-head ghost can end `start_shard: 0,}}`. Valid code, but it
-  reads broken at the exact moment it must read trustworthy. Alternative: each closer on its own
-  line at its opener's indent.
-- **Unclosed brace.** 191 ghosts now end on an open `{`, leaving an unbalanced brace in the
-  buffer until you type the body. Deliberate; does it feel broken in practice?
-- **Residual whole functions.** 6 multi-line-signature ghosts still serve a whole function. If
-  that violates the "never a whole function" bar, the fix is one predicate in `safeTail`: refuse
-  a cut that crossed a `{` the ghost itself opened.
-- **The floor vs `bar1()`.** The 8-character floor refuses `bar1()`-shaped ghosts. The corpus
-  says the floor is nearly free (7 of 710 refused, 0 correct), but `bar1()` is plausible and
-  useful. Watch dogfood; this is why the floor is a setting.
-
-### The &self render contract (v19 S17)
-
-The injected block renders Rust methods as `partition_by_lod(&self) -> u32`. The live e2e shows
-the model copying the receiver into the call: `s.enroll(&mut self, u64);`, which is not legal
-Rust.
-
-- Two frozen blind files pin the opposite: keep `&self`, because it signals mutability.
-- Strip-vs-keep is a real trade and the two oracles took opposite sides.
-- This blocks the Rust generation-quality fix; the attempted fix is reverted and waiting.
-- A "strip" ruling re-enters through the blind oracles for v15/v18.
-
-### The v20 trio - v26 has landed, so these are answerable now
-
-v26 shipped the lifecycle rebuild (`src/core/scopeLifecycle.ts`, commit `c228487` on today's main),
-which was the stated precondition. Re-check each against the shipped machine rather than against the
-v20 capture. (This block used to cite `4168d8e`, which no longer resolves: the 2026-08-10 leak scrub
-rewrote history. Any bare hash in this file older than that date is suspect the same way.)
-
-- Does a stray unselected request while the widget is open exist in practice? If so it breaks
-  two invariants.
-- Should a Rust snippet/keyword preselect be refused a passive scope? One cheap predicate. The
-  wedge fix shipped, so this may already be dissolved; check before designing it.
-- What do vim-keymap users get instead of the second Escape? Their Escape leaves insert mode
-  instead. Not touched by v26, so this one is certainly still open.
-
-### Go housekeeping
-
-- Install golang.go in your editor and record its gopls version beside the proven v0.23.0. The
-  drift canary is green, 30/30.
-- Pick the GOENV split-brain option: keep GOENV=off, per-knob pins, or hybrid. The divergence
-  log already ships.
-- A third bullet went on 2026-08-16: whether `docs/persona-research.md` gets tracked. It is tracked,
-  so the decision was already made in the tree.
-### Go: two coupled decisions, and Go is not simply "the broken one"
-
-**G1 is closed and has been deleted, 2026-08-16.** It asked whether Go gets field shapes at all, on
-the premise that `GO_PREFILL_LANG` sets no shape hooks and Go inherits Rust's. Both halves shipped:
-`goShapeHooks` is Go's own (`src/core/crossFileShape.ts:613`) with a gopls-shaped `parseGoHoverFields`
-(`src/core/goExtraction.ts:828`, wired in at `crossFileShape.ts:614`), and it is WIRED on the pre-fill
-path (`src/vscode/fnGen.ts:4891`,
-under a comment headed "THE MISSING WIRE" that dates the fix). `goShapeBlock` renders a data-shape
-block through it. The recommended option was option 1 and option 1 is what exists.
-
-That leaves two decisions, not three, and it changes the sequencing advice this block used to give:
-G2 no longer waits on G1.
-
-**G2. What replaces the single-letter skip rule, in the general case?**
-
-`candidateTypesOf` matches `\b([A-Z][A-Za-z0-9_]*)\b`. From `*testing.T` the lowercase `testing` never
-matches, so it yields exactly `["T"]`. The DEFAULT `skipCandidate` is `/^[A-Z]$/`
-(`crossFileShape.ts:476`, `:1025`), so `T` is dropped.
-
-That default is measured safe for Rust: 621 files of `acme-db` declare no single-letter struct, enum,
-trait or union. It is wrong in general for Go. Verified on go1.26.5, `194` single-letter exported
-structs in the standard library, `testing.T` among them at `testing/testing.go:934`, plus `B`, `F`
-and `M`.
-
-**The consequence is already dead for Go, which is why this is a design question and not a defect.**
-`goShapeHooks.skipCandidate` (`crossFileShape.ts:630-638`) is qualifier-aware: it reads the field type
-AS WRITTEN and keeps `T` when a `.` precedes it, so `*testing.T` survives today and the model does get
-`t.Helper()`. The default still drops a bare `T` on any leg that has no Go hooks. So option 2 shipped
-for Go specifically.
-
-1. Carry the qualifier through the pipeline and skip on the QUALIFIED name, everywhere. `testing.T` is
-   a real type; a bare `T` off a generic clause is not. Still the only option that separates the two
-   cases rather than guessing between them, and it would retire the per-language hook.
-2. Leave it as it stands: Go's hook handles Go, and every other language keeps the bare-letter
-   default. Today's behaviour.
-
-Note the blast radius before starting: `candidateTypesOf` is shared by all five languages. This is not
-a Go-local tweak.
-
-**G3. Is a Go import line a valid anchor?**
-
-Rust anchors an imported type at its `use` line and v34 fixed the wrapped-group case. Go cannot work that
-way. `import "testing"` names a package, and the token `T` appears nowhere on it.
-
-1. Resolve Go types by qualified name through gopls workspace-symbol, the way the C# leg already resolves
-   a doc-only collaborator. Recommended if G2 lands, because by then the qualifier is in hand.
-2. Accept that an imported Go type is only anchorable when the signature or body names it. That is
-   today's behaviour and it is honest, just thin.
-
-See also item 28: Python and C# share G3's gap for their own reasons.
-
-- Install golang.go in your editor and record its gopls version beside the proven v0.23.0. The
-  drift canary is green, 30/30.
-
-One block left this section on 2026-08-16: **ratify v33's fourteen superseded rows**. It is answered
-on the record and needed no human sentence. `docs/supersessions.md` S4 says "Fully ratified... the
-human ratified the other fourteen the same day and chose retirement over a re-cut", and the file
-those rows lived in, `test/blind-v32-p2-reanchor.test.cjs`, is deleted. The flip mechanics survive in
-S4's own tables, and `reanchor` still returns `{ moved, lost }` (`src/core/contextBlocks.ts:579`).
-
-### Two v33 surfaces that are correct and may still feel wrong
-
-Both ship as built, both are defensible, and neither is a bug. They need a human who has used them.
-
-- **A refactor across three FILES throws three toasts, not one.** VS Code fires one change event per
-  document and the contract says one toast per event, so the code is right against the contract. The
-  goal's prose said "a refactor that crosses three blocks" throws one, and a cross-file rename
-  crosses three documents. Both readings are defensible; feel it, then rule.
-- **The generate-time warning repeats on every generation while a lost block sits in the panel**,
-  rather than once per loss. It is true every time and the block is one click from gone, but it is
-  the same shape as the constantly-firing stale flag v33 deleted for training the human to ignore
-  it. Fix if it grates: diff the lost id set across resolves and name only new losses.
-
-### Smaller parked calls
-
-- S14: workspaceState identity shapes.
-- The un-nudge reversal path. No longer urgent; the 19-point toast survived v22.
-- S2: string-keyed TS members vs the frozen blind row.
-- S21: the `.:`-seam. Recommendation stands: let dogfood be the next oracle.
-- S55-2: a real fact behind "no language server installed". VS Code collapses "no extension" and
-  "extension up, no symbols here" to one `undefined`; `vscode.extensions.getExtension(id)?.isActive`
-  would split them, and it needs an extension-id registry plus a ruling on alternates (csdevkit vs
-  `ms-dotnettools.csharp`, Pylance vs the Python extension). If built, item 55's `empty-tree` cause
-  becomes reachable and earns its own message.
-- S55-25: v50's own contract oracle rows (`blind-v50-p1-settle.test.cjs` C1-2a/C1-2a2) script the
-  fictional growing cold answer that Q20 re-cut out of the v21 files - and this file was written by
-  the agent that wrote the bound, which is why the bound looked compatible with its own case.
-  Re-cutting a RATIFIED contract oracle is a design call; take v50's contract with you, not just the
-  fixture.
-
-## Deferred fixes - small, do on next touch of the named file
-
-The queue (`docs/queue.md`) was drained by session-v55 and retired to a tombstone on 2026-08-21;
-this file is the one backlog again. Each entry below waits for its trigger - the next touch of the
-named file - not for a slice of its own.
-
-- `fimComment.ts` (the Rust `quotes` set): the CHEAP fix shipped in session-v55 (queue Q17,
-  `5100cdb`) - a literal scan crossing a newline is treated as a phantom - and its cost was measured
-  at zero differences over glommio and a net win on this repo's own TypeScript. What remains is the
-  quote set itself, a v25 contract change that needs its own blind oracle over lifetimes. **The
-  falsification shape moved (S55-22):** the residual the shipped rule cannot reach is NOT the
-  two-line shape three documents used to name (that one now closes, by pairing luck). It is a
-  same-line block comment between the `'"'` char literal and the quote it wrongly pairs with -
-  nothing crosses a newline, so nothing is blanked. Pinned as `A14-2` in
-  `test/adversarial-v55-p14-phantom-literal.test.cjs`; any future entry names that shape or it is
-  testing the wrong thing.
-- `fimComment.ts` (`ledAt`): the comment walk is quadratic in the prefix because `ledAt` does a backward
-  `lastIndexOf("\n")` per hit. 200KB of block comments on one line takes 721ms against 12.6ms for the same
-  bytes with a newline per comment; 977KB on one line takes 17.7s. `harvestBodyComments` in `scaffold.ts`
-  walks the same scanner and is slower still. Real source does not look like this, so it is a line rather
-  than a fix, but v36 put the walk on the repair path where it is awaited before the model call. See
-  `session-v36/scraps.md` S36-2. Same inversion as the row above: no `[DEFECT] D2` marker survives. The
-  row is "KNOWN WRONG: the walk is O(n^2)..." at `adversarial-v36-p1.test.cjs:484`, a live GREEN ratio
-  row (bar 2.5x, `:463-477`) that "goes red when `ledAt` is fixed" (`:482-483`). "Red on purpose" is
-  exactly backwards, and this file's own History records the conversion that made it so.
-- `tightenDocComment.ts:253` logs the cursor cause for every cause (S55-1). The fifth
-  resolver-driven gesture did not inherit item 55's refusal split; it is channel-only and degrades
-  rather than refusing, so no toast lies, but the diagnostic is the same wrong sentence. Routing the
-  cause in changes the `wiring.resolveFunction` seam's type, which is why it waited.
-- `compilerOracle.ts` (the workspace anchor, session-v55 phase 5 residue): the shipped rule is
-  "nearest ancestor declaring `[workspace]`", and a crate an ancestor workspace `exclude`s still
-  anchors at the excluding workspace (S55-8) - measured against cargo 1.96, the excluded crate's
-  diagnostics are crate-relative. Membership is the only exact predicate: read `members`/`exclude`
-  globs or ask `cargo metadata`, which `catalog.ts` already spawns. And the anchor walk has no memo
-  (S55-9): up to two runs per primary span, every ancestor manifest re-read each time, 1.8ms per
-  call against a 202KiB manifest. Any memo shares the catalog memo's invalidation story.
-- The `generateTests` gesture's two SNIPPET write paths sit outside the v55 EOL bundle (S55-10):
-  `createTestFileWithSnippet` (`fnGen.ts:6474`) and the existing-buffer insert (~`:6230`) go through
-  `editor.insertSnippet`, not `applyEdit`. VS Code is BELIEVED to re-join snippet text on
-  `model.getEOL()`, which would make both safe by the platform - REASONED, and this project has been
-  burned by research inverting platform truth, so it needs a live witness in `test-vscode/`: insert
-  an LF snippet into a CRLF document and read back what landed. Also unpinned (S55-11): the preview
-  diff and the splice share one normalised string by ordering only; a row driving both and comparing
-  byte-for-byte closes it.
-- `fnGen.ts` and neighbours, the single-letter type rule (S55-13): five copies now exist
-  (`crossFileShape.ts:1025`, `compilerDirected.ts:491`, `goPrioritizedTypes`, `resolveCallOwners`,
-  `goShapeHooks.skipCandidate`), and two disagree one function apart - `GO_PREFILL_LANG` says a Go
-  `T` is real (186 measured structs) while `goPrioritizedTypes` blind-filters `^[A-Z]$`. Harmless
-  today because Go's owner door is shut; consolidate on next touch. Related, the std filter's
-  refusal line (S55-14): `!/^[A-Z]/` and the stop-set share one "a standard-library type" sentence,
-  so a lowercase workspace container gets a false reason on the channel - split the `||` into two
-  reasons, with rows re-cut. And `oracleSurface.ts:623`'s compiler-named receiver route has no
-  single-letter guard (S55-15): dump `arityReceivers` over a real diagnostic corpus before adding
-  one; no measured server prints a bare `T` yet.
-- The remote arm's small residue, all deliberate (S55-3 to S55-6): a seam that throws makes
-  `buildFnGenService` reject into a hardware-worded message for a remote host; the 2s reachability
-  timer is unref'd and never cleared; `localhost.` (trailing dot), IPv4-mapped IPv6 and
-  `ip6-localhost` still read REMOTE; and `readFnGenConfig()` is read before and after the probe, so
-  an apiBase flip inside that window builds a local tier against a remote base until the next
-  settings rebuild.
-- `budgetProfile.ts` (NOT `fnGen.ts`, which is where this entry used to file it): three prefill bounds
-  are unmeasured numbers. `PREFILL_TYPE_CAP` is 4 (`:119`), `PREFILL_RESOLVE_CAP` is 8 (`:122`) and
-  `PREFILL_PROVENANCE_CAP` is 24 (`:125`). The first predates v34; the other two were picked in v34 to
-  make the provenance backfill possible and to bound the round trips, not from a curve. The one cost that
-  IS measured is the pre-check: prefill median 38ms to 45ms and p90 279ms to 293ms over 143 rows, so
-  about 7ms, and the `definition()` round trips cost slightly more than the shape walks they avoid.
-  **UNVERIFIABLE** (C296): the arm behind that 38-to-45ms / 279-to-293ms pre-check measurement is gone
-  with the rest of the v34 chain. A re-run of the prefill pre-check arm would check it.
-  Nobody has measured what the CAPS are worth. Do not tune them by feel; they decide what the model sees.
-
-- `instructPostprocess.ts`: a repair round can die on its own reply's fencing.
-  `[fngen] request failed: generation contains a code-fence line (unclosed or nested fence in the reply)`
-  discarded a whole round on a live capture, session-v34, leaving the previous body in the human's file.
-  A rejected round costs a round and says nothing about what to do differently. Worth deciding whether a
-  nested fence can be recovered from rather than refused, on a real capture and not a synthetic one.
-
-- The hover recovery runs on FIM's deadline legs too (`completionProvider.ts:1401` and `:1559` call the
-  same `resolveCrossFileShape`). New cost in FREQUENCY, not kind; latency and dark rate unmeasured on
-  either leg; the degrade is honest-dark. Shipped OPEN in 1.1.0. The full write-up was archived on the
-  sessions branch, which the 2026-08-10 scrub removed; the condition above is a code fact and stands
-  without it.
-- Three false refusals in the hover recovery, all in the safe direction: `r#type` raw idents,
-  `[Node; 1 << BITS]` read as unbalanced generics, and a C-variadic `...` read as an elision marker.
-  Each ADDS recoveries and so moves the surface - each wants its own arm, none can ride along.
-  **UNVERIFIABLE** (C301): the recovery code exists (`src/core/rustHoverRecovery.ts`) but the scrap that
-  named the three refusals is off-box. A re-scan for hover-recovery refusals would check them, and it
-  is cheap enough to fold into whichever arm goes first.
-- `oracleSurface.ts` (not `repair.ts`): the v30 usage leg has no fallback for a draft that INVENTED a
-  method. References on a name that does not exist return nothing, and the round proceeds with no
-  windows. The leg is `resolveUsageForRound` at `src/vscode/oracleSurface.ts:1100-1121`, targets
-  filter to `via === "member"`, a references miss gets a channel line and nothing adjacent
-  (`:1097-1098`), and no fallback path exists. `repair.ts` carries only the prompt's `usage` field.
-  Candidates were named when the item was ratified: type-level references of the types in play, or a
-  bounded model-emitted observation request answered by the extractors. REASONED, read not run.
-- `specs.js`: the memberSite/argSite fixtures point at EXISTING calls, where rust-analyzer
-  renders labels differently than at a bare dot. Rendered-output rows grade a shape the user
-  never types. Audit all languages.
-- `specs.js`: C#'s knownLeaks (`Equals`, `GetHashCode`, `GetType`, `ToString`) are still declared and
-  unpromoted (`specs.js:222`). The "cosmetic" justification Rust dogfood refuted is gone from the file:
-  the comment now defers to roadmap tracking (`:13-18`) and states "Roslyn hands back object's members
-  at every receiver" (`:220-221`). The word survives only in the refutation record
-  (`test-vscode/dogfood-rust-render.test.js:23-24`). What remains is the promotion decision itself.
-- The E0425 self-reference check: `let x = s.f(&x, ...)` is wrong with certainty. Built as a
-  text scan and WITHDRAWN: 224 false suppressions across 1.6M sites, zero true positives.
-  Needs scope evidence, not string evidence.
-- `postprocess.ts`: `limitScopeByIndentation` lacks same-depth stray-closer gating, and
-  `closersAllExternal` counts brackets inside string/regex literals. v25 moved the scanners
-  into `brackets.ts`; verify against that shape before fixing.
-- Blocks inside a RENAMED folder do not follow, and inside a DELETED folder they self-heal to
-  `lost:"deleted"` at the next resolve. VS Code fires the rename/delete events with the folder uri
-  only, never per contained file. Both documented in the handlers (v33). Building for it means
-  walking the workspace on every folder event, which is real cost for a rare gesture.
-- `contextBlocks.ts`: `isStale` is now on no shipped path. It survives because `blind3-snapshot`
-  binds 14 rows to it, and its leg-2 logic lives on inside the re-adoption audit through the shared
-  `canonical` helper. Delete it when those oracles are next re-cut.
-- `fnGen.ts`: a generation cancelled mid-resolve still mutates the store and still warns. The
-  resolve runs before the cancellation token is consulted, so cancelling while a closed file is
-  being opened can lose a block and then say "the prompt did not include it" for a prompt that was
-  never sent. Self-consistent, just a surprising sentence to read after pressing Escape.
-- FIM cache: the key carries no injection fingerprint, so an edit above the cursor that changes
-  the member set can serve a stale ghost until a keystroke re-keys.
-- RA/LS queries: the injection race's loser is used by the gate since v18, but the server work
-  itself cannot be cancelled (see Rejected). Wasted work, note only.
-- Settings honesty, and the serving knobs nobody can reach. `maxTokens`/`temperature` do not say they
-  are FIM-only. Four fn-gen knobs reach `FnGenConfig` from the DEFAULTS only and are declared nowhere in
-  `package.json`, so a user has no remedy for any of them: `maxTokens` (2048 since v34),
-  `testMaxTokens` (8192), `numCtx` (16384) and `think` (unset). `readFnGenConfig` passes them straight
-  off `DEFAULT_FNGEN_CONFIG`; the comment above it says sampling knobs stay at core defaults "until a
-  persona needs them", which is the call being reopened here.
-
-  `numCtx` is the one that earns its own paragraph, because getting it wrong is INVISIBLE. It bounds the
-  prompt and the generation together, ollama's own default is 2048, and a prompt over that is silently
-  truncated to fit rather than refused. Measured in v34: three prompts carrying 12.9KB, 13.1KB and 15.0KB
-  of injected surface all reported exactly 2050 prompt tokens, no error and no log line, so injected
-  types simply stopped reaching the model. It is also coupled to `maxTokens` in a way a user will not
-  guess: raising `num_predict` without raising `num_ctx` makes generation WORSE, because the reply eats
-  the window the prompt needs. Memory cost at the 16GB carve with `num_gpu=30` is 11.9GB at 8192 against
-  12.4GB at 16384, so about half a gigabyte buys the larger window. **UNVERIFIABLE, those three
-  measurements** (C329, C330, C331): the raw runs are gone. They survive as a carve record inside the
-  shipped source (`src/core/ollama.ts:141-159`), and a recitation is not the artifact. Re-running at
-  `num_ctx=2048`, and re-measuring the carve, would check them. The truncation BEHAVIOUR is separately
-  documented in the same file and is not in question; the numbers are.
-
-  `think` has no setting AND no stated default. Any model that reasons by default is unusable until it is
-  false: `qwen3.6:27b` spent all 2048 output tokens on the trace and every generation was rejected as
-  truncated without emitting code, because reasoning is billed to the same budget as the answer.
-  Same recitation caveat as above.
-
-  1. Ship `think: false` as a DEFAULT and leave it unexposed. Recommended for `think`. No shipped model
-     reasons, `qwen3-coder:30b` does not, and a user who swaps in a reasoning model should not have to
-     discover this knob from a truncation toast. One test row pins "unset stays unset" today and goes red
-     on purpose.
-  2. Expose `numCtx` as a setting. Recommended. It is the one knob whose right value depends on the
-     user's hardware rather than on the product, a smaller box genuinely cannot afford 16384, and the
-     failure mode without it is silent truncation rather than an error the user can act on.
-  3. Expose `maxTokens`/`testMaxTokens` too. Not recommended. Their failure mode is a visible
-     `done_reason=length` reject, and v34 already showed the shipped values were the problem rather than
-     the exposure: 512 caused every one of 15 rejections across 189 generations. **UNVERIFIABLE**
-     (C333): that run survives only as a recitation at `src/core/config.ts:51-54`. A 512-cap arm
-     re-run would check it.
-  4. Leave all four as defaults. Today's behaviour. Defensible only while every shipped model behaves
-     like `qwen3-coder:30b`, and that is not a bet worth carrying once someone swaps the tag.
-- darkSites grows unpruned, in every language now (v21 S24).
-- The digit-ending receiver guard darkens Go/Python stdlib qualifiers: `utf8.` and `sha256.`
-  read as float-ish and go dark (v23 F21). Refuse only numeric literals; measure first, the
-  class is invisible to the ledger.
-- Python's bound p90 is 202-207ms against the 200ms bar, and the lever is named: a declaration-
-  head parameter list holds brackets open, so the bound reads five lines and retracts to one,
-  serving a truncated `run_in_process(config_path: str, method_name: str,)`. This is a
-  served-text change with a real correctness price; measure before/after on the v25 harness
-  (`session-v25/harness/verify-v25.cjs`, LANGS=python, ~90s - the bare `harness/verify-v25.cjs` path
-  this entry used to give resolves to nothing from the repo root). Known trap: the bound's balance is
-  local to
-  the cursor's line, so a `(` opened three lines up is invisible; the `beginsHere` guard is the
-  fix shape.
-- `crossFileShape.ts`: `resolveCrossFileShape`'s bound is `{D_MAX, N_MAX, B_MAX?}` since session-v51
-  added an opt-in commit-counted per-node fan-out (`:124-158`). TOK_MAX still lives in `dataShape.ts`'s
-  own `WalkBounds` (`:39-42`). The fn-gen caller wires its bound at `fnGen.ts:2592` via
-  `prefillGatherBound` - and fn-gen is NOT the only caller: `completionProvider.ts:1401` and `:1559`
-  drive the same walk on the FIM legs with `CROSS_FILE_BOUND`, which carries no `B_MAX` and no
-  TOK_MAX. So the "harmless while fnGen is the only caller" reasoning has already expired; the second
-  caller arrived and inherited the unbounded fan-out. Either fold the bound into the signature or say
-  so where the parameter is declared.
-- Four one-line wording jobs from session-v56, each too small for an item and each lost with its
-  session folder otherwise. `firstRun.ts:220`'s decline message is the pattern for all of them.
-  (a) The remote model-missing disable names the model and the host and not the way back: after
-  pulling the model on the remote box, re-enabling needs a settings touch or a window reload and
-  nothing says so. (b) `fnGen.ts` around `:1040`, the preview-open discard toast
-  (`the preview could not be opened (${String(err)})`), can still render multi-line; it was outside
-  the three strings item 63 enumerated and takes the same `firstLine` fix item 63's third string got.
-  Item 63 is struck; its record is in `docs/roadmap-history.md`, and it never named a "file-IO trio",
-  which is what this line used to cite. (c) `rustReach.ts` returns on
-  an unreadable `.rs` def file before the module chain is walked, so a readable `lib.rs` that
-  DISPROVES the path is never consulted; walk the chain first and let the def read be a later
-  disproof rather than an early exit. (d) Three copies of a Rust `use`-tree expander now exist, and
-  `instructPostprocess.ts:395` is the exported one that also handles `{self}` - fold
-  `rustReach.ts:191` into it on the next touch of either. No behavioural divergence found today,
-  but the phase-6 commit's own thesis was one mechanism, one copy.
-
-## Dogfood ledgers - questions only real use answers
-
-Each entry names its measurement. The dark-site evidence lines and `[fim] dropped:` channel
-lines exist to BE the measurement basis. Full reasoning lives in git history.
-
-### TypeScript
-
-- The member gate suppresses forward references: sketching `this.computeTotals()` before
-  writing it gets dropped. Count wanted `[fim] dropped:` lines; kill switch
-  `column80.fimMemberGate`.
-- A fast-typed new file (imports not yet written) puts the receiver at `any`; injection goes
-  dark and plain FIM invents members. Measure frequency before picking a fix.
-- Aliased imports (`import { X as Y }`) burn the prefill cap with duplicate blocks. Dedupe on
-  resolved identity if real accepts show crowding.
-- The whole-block anchor misses JSDoc-only types.
-- DOM lib names (MouseEvent, HTMLElement) chase lib.dom.d.ts walks. Curate additions from
-  measured noise; `Request` collides with Express, so never a blind blocklist.
-- tsconfig-less JS projects get the env-reason line on every accept. Nag vs discoverability;
-  judge on real accepts.
-- Broken solution shells surface the shell's own config error. Honest today.
-- yarn PnP is honest-dark. Fix only if users actually hit it; never a bundled TS.
-
-### C#
-
-- An invented type/package gets qualify-only. Catalog steering and fuzzy suggestions come
-  later, on evidence.
-- The member gate on a partial Roslyn set could suppress a real member. REASONED only; watch
-  for real suppressions.
-- `qualifyImport` rejects `global::` and generic-arity titles. Safe direction; widen when
-  dogfood produces one.
-- Object-statics noise (Equals, ReferenceEquals) is filtered on the COMPLETION path now:
-  `isCsObjectDeclaredMember` keys on the declaring type Roslyn renders into the signature and
-  tier-demotes or withholds (`csExtraction.ts:601-612`, reasoning at `:647-661`;
-  `csLspExtractor.ts:345`). `membersOfType` stays deliberately unfiltered because its descent is
-  syntactic. What is left to watch is whether that asymmetry ever shows up in a prompt.
-- A doc comment that itself demands `throw NotImplementedException` trips the punt marker, and
-  the obedient retry violates the contract. Fix on a real capture. Python shares this class via
-  `raise NotImplementedError`.
-
-### Python
-
-- Sub-package venvs in a monorepo go unfound; the check falls to system python and likely a
-  missing-imports storm.
-- The repair-round hallucination classifier (pyright names the class) builds only if bare
-  repair leaves member hallucinations standing.
-- A genuinely dark receiver no longer burns the full ~900ms retry: session-v50 bounded the loop
-  (`SETTLE_ALLOWANCE_MS = 120` with a 600ms hover, `crossFileShape.ts:850-852`), on a measurement of
-  77-87% pure cost with zero recovery over 41 cursors. The comment at `:874-905` says what the bound
-  is and is not: "BOUNDED, NOT TUNED AND NOT DELETED". Whether it can go to zero is item 45's
-  decision, not this ledger's.
-- Enum receivers inject a dozen `_name_`/`_value_` internals. Narrow enum-scoped trim only,
-  never a blanket sunder drop.
-- The product transport returned six members with NO signatures for membersOfType(Tile). The
-  contract row calls that half the v15 defect. This is the Python row worth acting on.
-- The dark-site counter counts cold-server transients as dark sites. Telemetry-only harm; add
-  a settled-index guard before trusting the density numbers.
-- completeMembers and membersOfType disagree on dunders and nested classes. Pin both when
-  fn-gen prefill consumes the answer.
-- `pass`-only and `...`-only bodies are invisible punts. Build a detector only if dogfood
-  delivers one to a human.
-
-### Go
-
-The ledger starts empty by design: no Go repo of the human's lives on this box yet. All numbers
-are OSS-corpus harness signal (cobra, gin, hugo, pinned clones), never dogfood typing.
-
-- Latency: hugo warm check 1.09s clears the 14.2s re-scope floor by 13x. Re-measure on the
-  first real client repo.
-- membersOfType is file-scoped, which costs cobra 24.7% of Command's members (they live across
-  sibling files). Watch whether real Go code pays this in whole-block quality.
-- The injected block cannot name a package-level constructor (`TileFromMorton`); the ratified
-  join contract excludes them. Count whole-block generations that invent a constructor; that
-  count prices the discovery rule.
-- Everything is proven on gopls v0.23.0. The drift canary goes red if the two-rule taxonomy
-  moves; never re-arm on a stale taxonomy.
-
-### Rust
-
-- Example sourcing misses constructor examples documented on associated functions (a `Type::`
-  query would find them), and the injected example text is never logged, so a weak example
-  cannot be diagnosed.
-- Cross-file impl blocks are invisible to membersOfType.
-- The feature-graph scan misses macro-gated modules. Benign; broaden only if needs-feature
-  steering proves out.
-- No rival inline-provider detection: Continue et al. silently win the ghost slot. And no
-  "autocomplete is off" evidence line when disabled. Both get misread as breakage.
-- **Does `Tighten Doc Comment` earn its palette slot?** The command shipped in 2.1.0 and the measured
-  yield is thin: 2 names across 30 Rust targets and 5 across 30 TypeScript. Whether that is worth a
-  gesture is answered by pressing it on real work, not by another census. Count the times it proposes
-  a backtick you keep. (From item 52, struck 2026-08-16.)
-- **Rust's class-4 enum-variant population is unmeasured.** Same origin: the backtick proposer's
-  hardest population is a variant name that reads like a type, and nobody has counted how often it
-  occurs in real Rust. Watch for a proposal that backticks a variant.
-
-Two rows left this ledger on 2026-08-15, both shipped away: the headless transport's two missing
-render fixes (`raLspClient.ts:504-516` now applies `stripRustGenericDefaults` and `isRaBlanketImpl`
-plus the tier stamp, which is the parity claim closed), and manual repair on a clean function giving
-no feedback (`oracleSurface.ts:915-937` runs the refine or logs a named skip reason).
-
-## Tier health - the instrument, not the product
-
-Baselines from 2026-07-25, quiet box, post-reboot, GPU live. Latency rows mean nothing unless
-the box is quiet: under parallel test load the ts row grew seven extra failures.
-
-**Read the counts below as history, not as a baseline you can diff against.** The 2026-07-25 run logs
-are gone (C378, C379, C381, C383, C387): three of the five per-language counts, the parallel-load
-finding and the four-identical-runs record all have no artifact on this box. The named ROWS all still
-exist and can be pointed at; the numbers cannot be checked without re-running the tier per label on a
-quiet box, which is what would settle every one of them at once. Until then a fresh run has nothing
-honest to compare against, and that is the state a section called Tier health should be most
-embarrassed about.
-
-- **ts: 43 passing, 2 failing.** Both failures are named opens: the membersOfType-signatures
-  contract row (tsserver returns empty `detail` 8/8, `contract.test.js:320-342`) and the v17
-  keystroke-cost known-red (`test-vscode/blind-v17-keystroke-cost.test.js`).
-- **go: 44/0.** Matches v23's ship number exactly.
-- **csharp: 44/1.** The floor-and-margin latency row. `test-vscode/budget.test.js` carries two, and
-  the entry never said which: the injection-window row at `:123` and the budget-plus-margin row at
-  `:291`.
-- **rust: 44/4 - NOT a baseline.** Every rust row grades the human's uncommitted play in
-  rust-scratch: the render suite anchors on a line the play annotated, and the snippet setting
-  lives in the same uncommitted settings.json. Baseline only after the fixtures commit.
-- **python: 33/7.** Three documented latency reds, one real (the transport-richness row, see
-  the Python ledger), one teardown race (re-run before reading), one shares the S10 oracle
-  limitation.
-- v26 claims 45 tier fails are environmental (a headless window never opens the widget) with no
-  clean-tree baseline yet. The v26 review owes that number.
-- xvfb-run is absent, so test:vscode:ci cannot run here. CLOSED 2026-07-28: a display is already up
-  on :1, so `DISPLAY=:1 npx vscode-test --config test-vscode/.vscode-test.mjs --label ts` runs the
-  tier directly. Written into `test-vscode/.vscode-test.mjs`, which ships, along with the
-  no-model caveat (an unreachable ollama ends generateFunction on an awaited toast, so a row must
-  fire the command without awaiting it). v33 ran six rows green in all five labels this way.
-- The floor-and-margin rows measure machine load, not defects (RED, RED, GREEN, GREEN across
-  four runs of identical code). Where a count can replace a threshold, use the count.
-- Nothing forces the TIER to run. CI now exists - `.github/workflows/ci.yml` runs typecheck,
-  `test:unit` and build (`:54-57`) - but neither workflow runs the vscode tier; `grep vscode` finds
-  only vsce packaging in `release.yml`. So "there is no CI" is now tier-only, and skipped tests in a
-  suite nobody runs are still just prose.
-- The NVML lesson: the hardware probe reads total VRAM and no health signal, so a broken CUDA
-  stack looks like a small GPU and the product degrades silently. Item 9 is the cheap detector.
-
-## Measurement debt
-
-One harness phase, when the loop next needs proving. The behavioral matrix the builds deferred:
-multi-crate, multi-seed, realistic temperature, negative controls.
-
-- Carries the behaviorally-sound bar: the `bloom_demo() -> true` bar is passed by a constant.
-- Carries the reasonable-subset punt: a plausible 80% implementation with no stub marker.
-- Carries LSP oracle-client hardening.
-- Standing lesson from v25: baselines go stale fast. Two published numbers in one session were
-  right-measurement-wrong-baseline. Always re-run the "before" against the pipeline that
-  actually shipped.
-- The `some`-to-`every` tightening at `test-vscode/gesture.test.js:689`/`:711` (queue Q8) waits on
-  one VS Code tier run. The precondition it has been quoting ("the green-tier run happened,
-  session-v26 run 2") has NO surviving artifact, so it is a recitation. Read the two
-  `provider invocations after each of three arrows` lines the rows already report, in both orders;
-  if every delta is above zero, tighten AND keep the recorded output this time. Do not tighten
-  without the run - a red row nobody executes is how it sits unseen for months.
-- Mixed-zone scoring (from the SQRL analysis, 2026-07-26): the 8-seed A/Bs pool every site, and
-  all-pass/all-fail ties dilute the number. Report the seed-variant sites separately; the
-  variance zone is where the discrimination lives. **UNVERIFIABLE** (C398): the "2 wins, 1 loss, 7
-  ties" shape quoted here is in no surviving artifact - the v22 per-site shapes that did survive are
-  1-3-4, 7-1 and 0-5-3 (`session-v22b/scraps.md:35-36`, `progress.md:190`), and the SQRL analysis is
-  not in the repo. Re-deriving per-site win/loss/tie from the v22 seed rows would check it. The
-  METHOD point stands on its own and does not need the example.
-
-## Rejected - do not reopen without new evidence
-
-- **A first-run lock across extension hosts (queue Q24).** WONTFIX, human ruling 2026-08-21:
-  overengineering for this tool. The defect is real and ~100ms wide - two windows opened together
-  can both show the tier picker, because `globalState` propagates between hosts through a debounced
-  broadcast and `Memento` exposes no change event - and the only honest fix is a lock file under
-  `globalStorageUri` with stale-lock handling, which is machinery a duplicate picker does not
-  justify. The in-process guard is PROVEN inert (built, measured, reverted in session-v55 phase 3):
-  one host per window and `Memento.update` commits synchronously, so the existing `get() !== true`
-  already covers every same-host case. Two riders survive for anyone building on `globalState`:
-  cross-host propagation replaces the whole per-extension blob last-write-wins, and a guard that
-  persists "asked" before its flow completes turns asked-twice into never-asked, which is worse. A
-  `KNOWN WRONG` row in `test/blind-v55-p3-firstrun-once.test.cjs` pins today's behaviour and stays
-  green under this ruling.
-- **Cancelling language-server work.** Impossible, not deferred. The provider bridge forwards
-  only declared args and hardcodes CancellationToken.None. Confirmed empirically: a
-  pre-cancelled token still bought a full server answer. The only lever on per-keystroke work
-  is to issue less of it.
-- **A Cancel button around the LS phase.** It cannot cancel. Worse than silence.
-- **Constrained decoding as a picker.** Tested on ollama 0.30.11: `grammar` is silently
-  ignored; a JSON-Schema enum works and is a trap. Three of four models (including the
-  product's own) picked a real-but-wrong member. That converts a loud compile error into
-  silent wrong code that passes every gate. Every layer here is a correctness oracle; none is
-  an intent oracle. Output filtering against the real member set is the only legitimate
-  small-model role.
-- **Machine-applicable rustc fixes as a repair rung.** Measured on 34 broken variants: only 3
-  of 17 error codes ever emit MachineApplicable, E0599 carries no suggestion at all, and a
-  MachineApplicable `.try_into().unwrap()` compiles clean then panics at runtime. Re-check
-  passes it. The safety argument is refuted with a demonstration.
-- **Deterministic member picking.** The premise is false: 0 of 1,703 real sites had a single
-  candidate (median 34). Combined rules: 5.3% correct, 63.2% precision, 71% of wins literal
-  name echo. Filter, not picker; that value shipped as the gate.
-- **Ceding member sites to the native widget.** Human call, 2026-07-21: the widget gives a
-  name, the ghost gives the whole statement. Compose, never cede. Shipped as v19.
-- **VS Code diagnostics loopback as the oracle.** Lossy, stale mirror. One-way diagnostics
-  invariant stands.
-- **A confidence signal on a generation.** Rejected because it guesses at output quality, and a
-  product that second-guesses its own answers is not what this is. The distinction that keeps the
-  channel lines legitimate: a channel line reports a MEASURED FACT about what was actually sent
-  (item 43's budget arithmetic is the worked example), never an estimate of how good the answer is.
-  Kept here after item 43's rewrite, because that entry was the only place the boundary was written
-  down.
-- **Small model as a doc-relevance pre-filter.** It filters output only.
-- **docs.rs example sourcing.** Network at runtime breaks the offline invariant.
-- **Blanket crate allowlist.** Wrecked std-correct tasks 8/8 to 0/8.
-- **Test-repair.** A wrong test is a human re-type.
-- **`--nocapture` on the test rung.** A passing test printing `test x ... ok` parses as a bogus
-  case.
-- **Blanket sunder drop in Python.** Hides real `_private` API.
-- **The arity gate leg.** Removed v19 on measurement: dead in three of four languages, and on
-  TS it caught 1 wrong call while suppressing 3 correct ones over 887 generations. Do not
-  reintroduce without measuring all languages.
-- **Widening the E0433 classifier to inject a workspace-resolved type (session-v36 item 2).** Refuted
-  2026-07-31 on a corrected harness; the argument is in `session-v36/item2-redecision.md`. Of the five
-  rows and eight type names the goal named, two rows were splice artefacts, one row is already covered
-  today as `wrong-item`, one name is a std trait, one is an enum variant, and exactly one (`Ia5String`) is
-  a real injectable type. The proposed mechanism cannot reach it: rust-analyzer's plain `workspace/symbol`
-  is workspace-scoped and returns zero hits for `Ia5String` and for the control `CertificateDer`, and
-  where it does answer it can answer wrong (`ServerConfig` returns two workspace hits when the code needs
-  `rustls::ServerConfig`). The dep-reaching `*` modifier returns 4 to 10 candidates with no disambiguator.
-  Corrected zero-coverage is 8 of 102 rows, and 10 of the 33 residual occurrences are std traits no
-  injection should resolve.
-- **Scanning comments for unbackticked type names.** Measured on two populations, both agree it is a junk
-  generator: 97.7% junk over 6,856 human-written comment lines (5,232 names, 122 real types), reproduced
-  after the harness fix. Superseded by the backtick gesture that shipped in v36. **UNVERIFIABLE**
-  (C411): the census artifact is not on disk, though the same counts are recited in shipped prose at
-  `docs/user-manual.md:163`. A re-run of the comment census would check it. Nothing here is worth
-  reopening on that basis - the gesture that replaced it works - but a session quoting 97.7% at
-  something else should re-derive it first.
-- **Reordering the prefill tiers (old item 31's fix shape).** The v37 scout replayed the item's own row:
-  the doc contributed zero candidates, so imports never beat the doc and there was no ordering bug to
-  fix. The one real ordering effect - rustfmt's alphabetical import order deciding which project type
-  wins - is a symptom of the cap, and the cap arm is measured flat: 4 -> 12 moved 0.8 points, inside the
-  noise floor (v38 item 3 notes). **UNVERIFIABLE, the replay** (C412): session-v37 keeps its spike
-  outputs but no item-31 replay artifact. `prioritizedTypes` exists (`src/vscode/fnGen.ts:2069`), so
-  re-replaying the item's own row through it would check the zero-candidates finding.
-- **Raising `DATASHAPE_TOTAL_TOK`.** Measured, session-v39 (the 800/600 arm): 61 vs 56/56, and banded by
-  actual prompt growth the gain sits on 133 rows the budget never touched (+2.5 of pure variance), while
-  the 46 rows that grew 901B+ paid -0.5 and ate ~38k of the 98.5k added bytes. The render-pass budget
-  shipped in 1.2.0 buys the rescue without the bytes. **UNVERIFIABLE** (C414): no result file with the
-  61-vs-56/56 pair or the banded analysis survives - `session-v39/` holds only the arm harness, whose
-  header carries the v38 baselines 43/42/40. A re-run of the 800/600 arm would check it. Item 41a's
-  cloud arm proposes to raise a neighbouring budget, so it should re-derive this rather than cite it.
-- **Exempting the walk's own root from the per-walk `TOK_MAX`.** Same session: root drops stayed at 63
-  and starved rows went 21 -> 24. The refutation is written in `src/core/dataShape.ts`.
+The extension is a flow-state tool for a developer doing system-2 thinking. Eyes stay on the code. The
+interaction is a keystroke on a visible diff, and it ends at accept or reject. A feature that makes the
+developer manage the tool fails, regardless of capability.
+
+Split rule: a tuning goes in the ledgers or deferred fixes. A numbered item needs its own goal and
+scout.

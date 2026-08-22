@@ -13,6 +13,12 @@ the channel when it does. Read the gaps below before believing "closed" means mo
 item 67 in particular closed under a ruling that changed what it was asking for, and two model calls
 in the product are deliberately outside it.
 
+Caught up again on 2026-08-23 by session-v59: items **7**, **21**, **22**, **45**, **59**, **60** and
+**61** struck, and item **70** filed. Ten clearance phases plus the register rewrite. Read "The
+session-v59 strikes" below before believing "closed" means more than it does - item 45 closed by
+REVERSING the finding this register had been quoting for two releases, and item 21's premise turned
+out to be false in two of the three languages it named.
+
 Split out of the roadmap on 2026-08-21 by session-v56. Nothing here is an instruction. If a line
 here reads like work, it belongs back in the roadmap as a numbered item, not here.
 
@@ -419,3 +425,283 @@ The three items it gated, now answered:
 Caveat kept: one site, one 9-member solution, one Roslyn version. The MECHANISM is settled - the
 fields are empty at every stage. The FREQUENCY question across big solutions was never reachable from
 a site this small.
+
+## The session-v59 strikes: 7, 21, 22, 45, 59, 60 and 61 (2026-08-23)
+
+Seven items, one session, ten clearance phases. What follows is what closed and - more usefully -
+what each one taught on the way out.
+
+### 45. The latency probe cannot produce a cold row (ANSWERED, and the answer reverses the finding)
+
+**The call: KEEP `membersWithSettle`.** A cold probe was built, it produced the case the loop exists
+for, and the loop recovered surface that would otherwise have rendered empty.
+
+**The register's "41 re-polled cursors, zero recovered" was a fact about a WARM probe**, exactly as
+the 2026-08-16 ruling suspected. It is now superseded. Python, PROVEN over five runs with 7 of 8 rows
+cold and 16 first-touched files per run: **17 re-polled cursors, 2 recovered.** Both recoveries are
+the same cursor and both read `0/5 -> 5/5` - five members with zero signatures, then five of five
+signed one 40ms step later. On runs where the race did not fire, the row rendered the same surface.
+documentSymbol gives the count immediately; what arrives late is signatures.
+
+The three named warming defects are fixed in cold mode only, plus a fourth in the same family the
+contract never named: each language's startup gate loop hammered `roots[0]` up to forty times before
+anything ran, so row 1 of every cold run was the warmest row in the table. Warm mode was re-taken and
+is unmoved - Python p95 2689ms against v50's 2707ms - which is what the ruling required.
+
+**Re-opening a file is not re-cooling it**, and saying otherwise would be the same mistake this phase
+existed to fix. A server that has indexed a file answers warm however often the probe re-opens it. An
+`everOpened` set is kept beside the per-row one for reporting, and every row now prints how many of
+its opens were the first time the process touched that file. Those counts, not the open count, are
+what make a row cold.
+
+**The register was also wrong about TypeScript's zero, and this one is structural.** 20 of 20 rows
+cold, 0 re-polls, 20 of 20 rendered a surface, definition 9-15ms - not a dead server. `TsLsExtractor`
+is an in-process LanguageService reading off disk with `getProgram()` primed at start, **so a
+not-yet-read definition file cannot exist in TypeScript**. TS belongs beside Rust, which has its own
+code-level explanation (`mayRepollHelp` refuses unsigned non-callables, which is every Rust data
+struct), not beside Python. Only Python's zero ever rested on the instrument.
+
+Go's pre-fill gate is not re-read and its red row's standing paragraph does not change: that work was
+conditional on DELETING the loop, and the loop stands. The paragraph lives on inside item 50.
+
+One residue: the corrected comment for `src/core/crossFileShape.ts` never landed, because the file
+carried another agent's in-flight edits and the change was left unstaged. It is a deferred fix now.
+
+### 47 stayed open, and its stated cause is refuted
+
+Not a strike - recorded here because the register carried the wrong diagnosis. Python's pre-fill leg
+is not cross-file `definition()`. Across 11 warm rows: hover **5904ms**, probe settle 2250ms, settle
+sleep 383ms, members 328ms, `definition()` **52ms - 0.58%**. One level down, **18 of 38 hover calls
+were the first ask about a URI and cost 99.7% of all hover time**; the other 20 cost 16ms between
+them. The cost is per-FILE, and it is `pyLspExtractor.ready()`'s unconditional `delay(300)` per URI
+plus a 150ms-granular diagnostics wait. A priced probe-side fix cuts net p95 1940ms -> 1049ms, still
+4.2x the gate, and it widens the cold-index race this same phase proved fires. Handed to the human
+with the number attached.
+
+### 22. Shipped source points at folders a clone does not have
+
+`grep -rn "session-" src --include="*.ts"` returns **0**, from 262 citations across 48 paths outside
+the contended files plus 74 inside them. Test-file path citations went from 328 to 22, all out of
+scope: bare-directory mentions where naming the ignored folder IS the argument, string literals in
+assertion messages, and a `ctx.skip` reason, refused because changing one changes test output.
+
+**4 repointed, 70 deleted in the final tranche; 34 repointed and 252 deleted across the test sweep.**
+Pointer deleted, argument kept, every time. Where deleting a stamp orphaned a phrase that leaned on
+it, the phrase was re-anchored to a thing in the code rather than dropped: "since session-v51" became
+"since the member floor", "session-v34 item 1" became "the root-provenance rule".
+
+**Two new docs, because five source files pointed at contracts that shipped nowhere.**
+`docs/architecture/tdd-language-seam.md` carries all five legs, including Go's `-json`-not-`-v`
+forgery argument and TypeScript's end-anchor-only filter, measured as the OPPOSITE of Go's answer.
+`docs/architecture/tighten-doc-comment.md` carries the 451-name recall run, the warm latency table
+that re-priced tier 2 by two orders of magnitude, and the 32% surface-eviction number. **C# has no
+surviving seam contract anywhere in git history**, so that section says so and records what is
+established in the code and in S26 instead. Roughly 900 lines moved in total.
+
+**Twelve of the thirty-nine distinct cited FILE PATHS did not exist.** The session's own phase-0
+inventory checked that every cited DIRECTORY existed and concluded the fallback would never fire;
+that was wrong at file granularity. The ruled fallback applied, and three comments now say outright
+that their source did not survive. `session-v51/hover-A.txt` recited its whole measurement (20 `pgx`
+roots, 117 types resolved, 31 outside the BFS, 71-76ms hover) so its comment now says it IS the
+record; `session-v31/visual-residual.md` recited NOTHING - it was a bare pointer at manual steps -
+so the comment says the written steps did not survive and invents no substitute.
+
+**One number in a shipped comment was wrong and is corrected.** `config.ts` said "3 of 27 against 3
+of 27" for the receiver-blind repair-usage split, twice. The surviving score file has 8 cases at 3
+repeats per arm - 24 runs, not 27 - reporting 3 (13%) for arms A and C. The same comment's claim that
+"51% of injected windows come from outside the workspace" has **no surviving source**; left as the
+comment's own record and marked unverifiable.
+
+### 21. The cross-file argument-type leg (and the premise that was false)
+
+The by-name workspace-symbol leg lands in TypeScript and Python; C# gets the wrong-tree refusal.
+
+**The rows' real shape was corrected twice.** The goal's "three rows" are two call sites, and each
+site sits inside a `for (const lang of LANGS)` loop where **`LANGS` holds THREE languages, not five**.
+So it was 3 `KNOWN WRONG` rows across 2 sites. Both sites now pass `todo: false` with the
+per-language branch deleted and the original demand applied uniformly. No assertion softened.
+
+**TypeScript and Python have no wrong-tree refusal, and never did.** The register entry, the goal and
+the phase's own contract all said they "already refuse it". They do not: their anchor lands on the
+`import { Tile }` line, OUTSIDE the helper class, so the descent degraded for an unrelated reason and
+looked like a refusal. `blind-v15`'s own green fixture row proves it. Recorded as S28 and carried into
+the register's decisions, because extending the refusal is a ruling rather than a free extension.
+
+**Real language servers graded it, and the live run found a defect the fakes could not.**
+`getNavigateToItems` answers the **whole declaration span, not the name token**, so `export class
+Tile` resolved character 0 - the `export` keyword. `membersOfType` survived by walking the AST, which
+is why the fakes stayed green; `hoverSurface` would not have. That is the
+symbol-providers-do-not-qualify hazard in a second place.
+
+**The C# gap was wider than the review reported: five head shapes, not two.** Probed live against
+Roslyn LS 2.140.9 at eleven cursor positions, the base list, a primary-constructor parameter, a
+generic constraint and an attribute both on its own line and inline all handed back the wrong class's
+members. Two captured facts explain why the old third fact could never fire, and neither would
+survive a hand-built fixture: **Roslyn emits NO constructor child at all for a primary constructor,
+and an attributed class's range STARTS AT THE ATTRIBUTE LINE.** The fix drops the member check
+rather than adding a fourth fact - a correct resolution lands on the type's own name token, and
+everything else inside a container belongs to another declaration - and replaces it with two guards,
+the container name compared at its IDENTIFIER HEAD (so `Box` answers a container Roslyn reports as
+`Box<T>`) and a C# syntax word never being a reference. Both guards are mutation-tested: comparing
+the container name whole instead of at its head reddens both generic-class rows, which is the exact
+false refusal the review warned about, caught by a row rather than by luck.
+
+**The triggering Roslyn state did not reproduce here** - `definition()` answered correctly at all five
+head positions. The commit, the code comment and S28 all say so rather than papering over it. What IS
+live-measured is that the descent hands back the wrong class's members at those cursors.
+
+### 7. Rust has injection and zero enforcement
+
+Rust joins the invented-member gate, and `.await` still works.
+
+**How the two lists were separated.** The prompt's list is UNCHANGED: `semanticMembers` drops the new
+`keyword` kind, so every render, member count, tier stamp and dark-site reason is byte-identical. The
+gate's list is built separately from the raw server answer, adding back the keyword and postfix labels
+the render filter drops. Legal-only members carry no tier and no signature, so nothing can render them
+by accident. The `Future` receiver is handled by splitting a qualified name into head and tail, so
+`await`, `await.insert` and `insert` are all legal. **Splitting only widens, so its worst case is a
+missed catch, never a false suppression** - the right direction for a gate that was turned off for
+false-suppressing.
+
+The arming rule did not move: the legal-only tail rides only behind a NON-EMPTY semantic surface, on
+both transports. A keyword-only answer arms nothing, pinned as its own row - without it, a receiver
+the server bound nothing on would gate against 20 postfix names and reject every real member.
+
+**Red-before-green in BOTH directions, and never both red at once.** Ungated, direction 1 red:
+`add_tile_by_morton appears nowhere in the receiver's 25-item answer`. Naively gated with ONE list,
+direction 1 goes green and direction 2 goes red: `a bare .await is the completion this gate ate last
+time`. With the full fix: 15/15. That is the regression a one-test session would have re-shipped,
+caught in the act.
+
+**A real rust-analyzer graded it**, driven twice - raw stdio LSP, then the shipped extractor - over a
+crate with a struct and the `impl Future` an `async fn` returns. Plain struct receiver: **25 items**,
+6 members and **19 postfix snippets**, and NO `await`. Future receiver: **28 items**, every member
+relabelled `await.<member>` and demoted, plus `await` as a lone Keyword item. That keyword is the one
+the old code dropped, which is exactly how a gated Rust ate `.await`.
+
+Neither contract trap was claimed. No false suppression on membership was found, and no claim is made
+that the motivating capture would have been caught by this gate. Two residues went to the register:
+the gate judging a dotted lead on its head alone (S59-7, a decision) and the headless rig's
+capability gap (S59-8, measurement debt).
+
+### 59. The Rust and C# test rungs filtered by substring
+
+A test rung scoped to one function now runs exactly that function's tests in both broken languages.
+
+**Rust.** `enclosingModulePath` resolves the `mod` chain around the marked region;
+`generatedTestNames` returns `widget_checks::add` rather than `add`, and `buildTestCommand` emits
+`--exact` past the `--` separator ONLY when every filter is a full path. A bare name keeps the
+substring filter, so the half-fix that selects zero tests cannot happen.
+
+**The brief said to extend `findCfgTestModule` and the agent refused, with a measurement.** That
+function finds the FIRST `#[cfg(test)]` in the file and knows nothing about enclosing modules, while
+`cargo test -- --list` prints `geometry::widget_checks::add` - the enclosing `mod` is part of the
+libtest path. Resolving from the marked region's own position gets both segments.
+
+**And then the review found the regression that reasoning had missed.** `enclosingModulePath` scans
+only the file's own text, so the segment a file contributes BY BEING a module is invisible. The path
+came out full-SHAPED and wrong, the qualification check passed, `--exact` rode along, and libtest
+matched nothing: `--exact widget_checks::add` -> 0 passed, 2 filtered out, where the correct
+`geometry::widget_checks::add` -> 1 passed. **Before the phase the rung over-selected, which is the
+safe direction. After it, zero.** Every Rust fixture wrote `src/lib.rs`, which is why the falsifier
+missed it - fixture fidelity again.
+
+The fix: prefix a name only when a walk from the `--lib` target's root file actually REACHES the file;
+otherwise answer bare and let the substring filter stand. Over-selection is the safe direction and
+this makes the fallback explicit rather than accidental. The new graded fixture leaves the crate root
+on purpose: one crate, six layouts, twelve live tests, five of six outside `src/lib.rs`, every
+expected path read off `cargo test --lib -- --list` before any assertion was written. Because twelve
+tests are live, a wrong path selects zero and a substring filter selects twelve, so `=== 1` catches
+both directions.
+
+**C#.** `csEnclosingTypePath` resolves namespace plus type chain; `~` becomes `=` only when every name
+is fully qualified. Nested types join with `+`, MEASURED not assumed: `=Ns.Outer.Inner.Add` matches
+nothing, `=Ns.Outer+Inner.Add` matches one. Two deliberate refusals - a generic test method and a
+generic enclosing type keep bare names and hold the whole command on `~`, because the CLR name form is
+unmeasured here and a wrong exact name selects zero.
+
+Raw identifiers, driven: cargo strips `r#` for the FILE name (`mod r#match;` -> `src/match.rs`) while
+PRINTING it in the path, and keeps it on raw test fn names. `namespace @namespace` driven on dotnet:
+`=VerbChecks.Add` matches nothing, `=namespace.VerbChecks.Add` passes. Both handled.
+
+Real toolchains graded all of it: cargo 1.96.0 and dotnet 10.0.111. Contract narrowing is S26.
+
+### 60. Two C# string constructs the re-indent scanner could not see
+
+The C# re-indent scanner no longer emits CS8999. `CsStrCtx` gains a third variant: a raw string
+carries its `$` count and a real `holeDepth`, and `$"` becomes `kind: "interp"` pushed by one shared
+opener. `csRawTextStep` scans raw TEXT for whichever comes first, the closing fence or a hole opened
+by a run of `dollars` braces - scanning for the fence alone WAS the defect.
+
+**Three C# semantics were driven against dotnet BEFORE the code was written** rather than reasoned
+from the spec: `{{` is not an escape at one dollar (CS9006); a `$"` hole may span lines since C# 11,
+which is why it needs a stack context and not an inline skip; and a line beginning inside a raw hole
+is exempt from the closing delimiter's whitespace rule.
+
+**Then the review found the fix had opened the shape next door, and it was worse than reported.** The
+first pass kept `//` and `/* */` unreadable inside a hole on a stated ground that dotnet 10.0.111
+disproves, so an `@"` inside a comment inside a raw hole opened a phantom verbatim context: the
+pre-phase scanner's output compiled and the new one's did not, and on a plain `$"` body a string's
+VALUE moved. One root, one fix - **a hole is C# and takes C# comments** - and the `!inHole` gate on
+both comment branches is deleted. Measured: three shapes were the new regression and **two predate
+it**, the second pre-existing case being a `"""` run in a comment inside a raw hole. Both pre-existing
+cases are now closed, and a row pins the attribution PER CASE, so the boundary is executable rather
+than prose.
+
+**A mutation check caught a hollow row**, and later a second one caught a hollow claim. The first cut
+of one row survived a mutation clamping `dollars` to 1 - the shape could not produce the case it
+claimed to test. And the review's instruction to "pin the measured 70809" would have shipped another
+hidden-boundary number: that count was a fact about the test's own JUNK token list, which had no bare
+`@`, no bare `$`, and none of `$$`/`@@`/`$@`/`@$`. Adding them immediately produced a divergence with
+no `$"` in it. The row now pins exact counts per configuration over 1,155,900 bodies:
+`856 / 211 / 1005 / 1005 / 0 / 60951` across `(none) / @" / $@" / @$" / """ / $"""`, **64,028 total,
+435 of them carrying no `$"` at all**. A mutant deleting the `$"`-still-open pop moves the total to
+105,375 and reddens exactly that row, naming each config that moved. Contract narrowing is S24.
+
+### 61. The Rust measurement arm was dead
+
+The Rust arm loads and runs. `session-complxity-research/spikes/lib-cargo.cjs` was rewritten from the
+contract read off every `store.` call site in the arm runner. **403/403 rows dry in 71.3s**, and a
+no-op round trip splicing all 403 rows with their own bytes came back byte-identical.
+
+Three deliberate departures from the deleted file. The `STUDY_ROOT` fallback to the old sandbox is
+gone - that directory still exists, so the default was a stale corpus waiting to be graded, and unset
+is now fatal. Only place-at-column ships; shift-by throws, and that matters: **218 of the 403 rows
+carry a real four-space indent, so a shift-by would have moved half the corpus with `cargo check`
+staying green through it.** And S40-2 is carried in at the real defect site, where `makeDoc`'s
+`languageId` no longer defaults.
+
+No number was published from the arm. Restoring the instrument was the deliverable.
+
+### The process lesson, sharpened: a shared git index makes `git add <path>` unsafe too
+
+Six agents committing to one worktree produced repeated cross-staging - seven sightings in one
+session. **No content was lost, and that was verified rather than taken on report:** every file from
+the commit that went unreachable is byte-identical in HEAD, checked file by file, and
+`docs/supersessions.md` was independently confirmed at 32 entries, S13 through S32 in order.
+
+The standing rule bans `git add -A`. That is not sufficient, and this session proved it three ways:
+
+1. A shared index can already hold another agent's work when you stage. One phase caught this and
+   backed out; another did not, twice.
+2. **`git add <explicit path>` is not protection when the whole FILE is contended.** The hazard is the
+   file, not the pathspec - two agents appending to `docs/supersessions.md` collide no matter how
+   precisely each names it.
+3. **`git reset --soft HEAD~1` is unsafe.** Another agent may have committed on top since you last
+   looked. One attempt to undo a bookkeeping error destroyed a different agent's commit instead;
+   restored with `git reset --mixed <hash>`, every worktree byte survived. Resolve the hash first,
+   check it is yours, and reset to a hash rather than to a relative ref.
+
+Even verify-then-stage is not enough: one commit carries seven files that are not its own because
+another agent staged in the gap between the verification and `git commit`. The check has to be inside
+the same plumbing call as the commit, or the commit has to name its paths.
+
+The working answer is `git apply --cached` on a filtered hunk set, which two phases used successfully
+- one of them dropping the single behavioural hunk another agent had added mid-sweep to a file whose
+commit had to be comment-only. The structural answer is a worktree per agent.
+
+**History is NOT being rewritten to fix this.** The content is complete and correct, the branch is
+linear, and the human merges it. Two commit messages under-describe their contents: `6d5effc` says
+the last four shipped files stop citing ghost folders and also carries phase 9's declaration-head
+refusal in full, and `7ad0dd0` says the toast cause/consequence split and also carries
+`fnGenService.ts`'s comment sweep.
