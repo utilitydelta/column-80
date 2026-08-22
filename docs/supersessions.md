@@ -970,3 +970,60 @@ what happened, and hand over the provider's own words everywhere else.
 **Pinned by.** `test/blind-v58-p7-http-status-classes.test.cjs` and
 `test/adversarial-v58-p7.test.cjs`, whose unlisted-status rows were re-cut to pin that the
 provider's reason survives to the screen - the property whose absence was the defect.
+
+## S25. Two surfaces stop keeping their own failure wording
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 1, which closes S58-7 and S58-13.
+Flagged here because it spends a deferral one contract ruled deliberately, and it collapses a
+two-outcome row in another contract down to one.
+
+**What changed.** `translateServiceReject` and `generationFailedToast` moved out of
+`src/vscode/fnGen.ts` into `src/vscode/failureToast.ts`, a leaf beside `toastText.ts`. Two surfaces
+that could not reach them now do:
+
+- The model download toast (`offerModelPull`, `src/vscode/firstRun.ts`) renders the class sentence
+  for a classified `HttpStatusError` instead of `Column 80: the download failed - <transport text>`.
+- The tighten gesture's proposer-failure warning (`src/vscode/tightenDocComment.ts`) leads with the
+  class sentence instead of `Column 80: the model could not be reached, so no type names were
+  offered.` Its second clause, `The re-wrap needs no model.`, is unchanged and rides on both
+  branches.
+
+An UNCLASSIFIED failure keeps each surface's existing wording byte for byte on both, which is S23's
+ruling applied one layer out.
+
+**Why the old behaviour was wrong.** The download path already threw the typed class; nothing on it
+could ask what the class meant, so `Ollama 503 Service Unavailable: {"error":...}` reached the
+screen with the provider's JSON in it. The tighten gesture answered a 401, a 429 and a 503 alike
+with "the model could not be reached", which is false for all three: the server was reached and it
+refused.
+
+**What phase 7 of session-v58 deferred, and this spends.** Amendment A3 ruled the pull asymmetry a
+deliberate deferral and `test/adversarial-v58-p7.test.cjs` pinned it as a FINDING row - F2 asserted
+`firstRun.ts` does NOT reach the translator, F3 the same for `tightenDocComment.ts`. Both rows are
+inverted here: they pin the closure and carry the old assertion in their failure message, because a
+row that pins a fix should say what the fix was for.
+
+**One narrowing that is not a wording change.** The download surface asks about the typed status
+ONLY (`err instanceof HttpStatusError`), not about the whole translator. Every row the later
+text-matching passes can reach is a generation reject - "the model's reply contained no usable
+code, so nothing was written" - and none of those sentences is true of a download. `pullModel`'s
+in-stream throw carries server-chosen text under no payload-carrier head, so routing the whole
+translator onto that surface would let a hostile registry pick the sentence by putting a marker in
+its error field. A status is a number the transport read off the response, and a body cannot forge
+it. The tighten gesture takes the whole translator: every throw that reaches it comes from a
+transport, and every transport throw carries an anchor or a carrier head.
+
+**A row that lost a disjunction.** `C7 [pull toast]` in
+`test/blind-v58-p7-http-status-classes.test.cjs` accepted EITHER the baseline's wording or a clean
+one-line class sentence, because that contract deliberately did not decide whether the pull would
+gain class sentences. This phase decided it, so the row was re-cut to pin the one outcome that
+ships - a disjunction that still accepts the baseline cannot catch a revert to raw JSON.
+
+**A ride-along, not a supersession.** `Column 80: generation discarded — ${why}.`
+(`src/vscode/fnGen.ts`) takes `firstLine`. Five of its six reasons are product prose; the
+preview-open branch interpolates a caught error, and a stack in a notification renders as a wall of
+rows. No channel pointer, because that reason is never written to the channel.
+
+**Pinned by.** `test/impl-v59-p1-one-sentence-surfaces.test.cjs`, whose row 8 drives one
+`HttpStatusError` through all three surfaces and asserts the same sentence body reaches each, plus
+rows 3, 5b, 7 and 10 for the four unchanged branches.

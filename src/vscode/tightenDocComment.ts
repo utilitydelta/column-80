@@ -41,6 +41,10 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { withDocumentEol } from "./eol";
 import { firstLine, tierDisabledToast } from "./toastText";
+// The failure translator, a leaf beside `toastText.ts`. This file may not take
+// a runtime edge to `fnGen.ts`, which registers it, and that is exactly why the
+// table had to move out of there before this gesture could read it.
+import { translateServiceReject } from "./failureToast";
 
 import { InstructGenerateFn } from "../core/ollama";
 import { FnGenConfig } from "../core/config";
@@ -282,8 +286,19 @@ export async function tightenDocComment(
   if (proposed.failed) {
     // Ship condition 8, and the review found this one silent: an unreachable
     // model used to leave a channel line and nothing on the surface. The
-    // gesture still does its other half, so this warns rather than refuses.
-    warn("Column 80: the model could not be reached, so no type names were offered. The re-wrap needs no model.");
+    // gesture still does its other half, so this warns rather than refuses -
+    // which is what the second clause says, and it is true whichever cause
+    // fired, so it survives both branches.
+    //
+    // The first clause is the translator's when the throw carried a class, and
+    // the old sentence otherwise. "Could not be reached" is the right sentence
+    // for a dead socket and a lie about a 401; S20's ruling is that no class
+    // means no crafted sentence, and here the unclassified answer is the one
+    // this surface already had.
+    warn(
+      `${proposed.reject ?? "Column 80: the model could not be reached, so no type names were offered."}` +
+        " The re-wrap needs no model.",
+    );
   } else if (spans.length === 0) {
     log("[tighten] the proposer named no spans");
   }
@@ -569,7 +584,7 @@ async function runProposer(
   log: (line: string) => void,
   wiring: TightenWiring,
   deps: TightenDeps,
-): Promise<{ spans: ReturnType<typeof parseProposerReply>; failed: boolean }> {
+): Promise<{ spans: ReturnType<typeof parseProposerReply>; failed: boolean; reject?: string }> {
   const config = (deps.config ?? readFnGenConfig)();
   const prompt = assembleProposerPrompt({ prose, languageId });
   const controller = new AbortController();
@@ -592,7 +607,12 @@ async function runProposer(
     reply = result.text;
   } catch (err) {
     log(`[tighten] the proposer round failed (${String(err)}); no backticks are proposed`);
-    return { spans: [], failed: true };
+    // WHAT HAPPENED, not what the surface guessed. The caller used to answer
+    // every throw with "the model could not be reached", which is false for the
+    // three statuses that reach here most: a 401, a 429 and a 503 were all
+    // REACHED, and refused. The crafted sentence rides out beside the flag so
+    // the warn site stays the only place that composes user words.
+    return { spans: [], failed: true, reject: translateServiceReject(err) };
   }
   const spans = parseProposerReply(reply, prose);
   log(`[tighten] proposer model=${wiring.modelTag()} named ${spans.length} span${spans.length === 1 ? "" : "s"}`);

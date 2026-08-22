@@ -677,7 +677,9 @@ test("CLEAN [s20/four failures, four causes]: each user reads their own reason",
  *  marker added later without a payload-carrier thought is caught by this row
  *  rather than in the field. */
 function serviceMarkers() {
-  const src = readSrc("vscode", "fnGen.ts");
+  // session-v59 phase 1 lifted the table into its own leaf module. The parse
+  // below is unchanged; only the file it reads moved.
+  const src = readSrc("vscode", "failureToast.ts");
   const start = src.indexOf("const SERVICE_REJECT_TOASTS");
   assert.ok(start > 0, "harness: SERVICE_REJECT_TOASTS moved or was renamed");
   const end = src.indexOf("\n];", start);
@@ -744,7 +746,7 @@ test("CLEAN [forgery/the head is a payload carrier both ways]: listed explicitly
   // the broader "Cloud ". The duplication is deliberate (the diff says so), and
   // what matters is that removing either one leaves the route shut. Checked
   // structurally, because behaviour cannot tell the two entries apart.
-  const src = readSrc("vscode", "fnGen.ts");
+  const src = readSrc("vscode", "failureToast.ts");
   const start = src.indexOf("const PAYLOAD_CARRIERS");
   const block = src.slice(start, src.indexOf("\n];", start));
   const heads = [...block.matchAll(/^\s*"((?:[^"\\]|\\.)*)",/gm)].map((m) => JSON.parse(`"${m[1]}"`));

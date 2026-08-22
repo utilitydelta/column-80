@@ -13,6 +13,13 @@ import { TIER_TABLE, TierId, TierRow, TierSelection, applyTier, computeTier, tie
 import { isRemoteApiBase } from "../core/config";
 import { readCloudConfig, readConfig, readFnGenConfig, readTierConfig } from "./config";
 import { firstLine } from "./toastText";
+// The failure translator, a leaf beside `toastText.ts`. `pullModel` throws the
+// same `HttpStatusError` the generation transports throw, so the download toast
+// is a RENDERING problem only: the class was already known here, and nothing on
+// this path could ask what it meant while the table lived inside `fnGen.ts`.
+// The record is `docs/supersessions.md` S24.
+import { translateServiceReject } from "./failureToast";
+import { HttpStatusError } from "../core/errorBound";
 
 // First-run tier flow, the modelPull pattern ported from the
 // human-replay-vscode-extension's src/modelPull.ts (same author): detect
@@ -314,8 +321,26 @@ export async function offerModelPull(
     // separate `[http-body] ollama-pull <status> ...` line the transport writes
     // when the body arrives, which holds the raw server response up to the cap
     // (roadmap item 69, ruled 2026-08-22). The toast stays one line.
+    // A CLASSIFIED status gets the same sentence every other surface gives it.
+    // The four classes are 401, 403, 429 and any 5xx, and for all four the raw
+    // message this used to interpolate is the provider's own JSON envelope -
+    // `Ollama 503 Service Unavailable: {"error":...}` reached the screen. An
+    // unclassified status has no class sentence by S20's ruling, and there the
+    // provider's message IS the next action (a 404 names the missing model), so
+    // that branch keeps today's wording byte for byte.
+    //
+    // ONLY THE TYPED CLASS IS ASKED ABOUT, and that is a narrowing rather than
+    // caution. `translateServiceReject`'s later passes match TEXT, and every
+    // row they can match is a generation reject - "the model's reply contained
+    // no usable code, so nothing was written". None of those sentences is true
+    // of a download, and `pullModel`'s in-stream throw (`ollama.ts`, the
+    // `evt.error` line) carries server-chosen text under no payload-carrier
+    // head, so a hostile registry could pick one by putting the marker in its
+    // error field. A status is a number the transport read off the response and
+    // nothing in a body can forge it.
     void vscode.window.showWarningMessage(
-      `Column 80: the download failed - ${firstLine(errorText(err))}. The full message is in the output channel.`,
+      (err instanceof HttpStatusError ? translateServiceReject(err) : undefined) ??
+        `Column 80: the download failed - ${firstLine(errorText(err))}. The full message is in the output channel.`,
     );
     return false;
   }

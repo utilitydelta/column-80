@@ -1202,7 +1202,12 @@ test("CLEAN [firstRun end to end]: a 500 on a ratified pull puts the raw body on
     !lines[failIdx].includes(body),
     "precondition: the [carve] line carries the BOUNDED copy - that is the failure item 69 closes",
   );
-  const toast = (globalThis.__C80_WARNINGS__ || []).find((m) => /download failed/.test(String(m)));
+  // RE-CUT, session-v59 phase 1. The locator used to be `/download failed/`,
+  // which was the whole toast's opening. A 500 is a classified status now and
+  // the download surface draws the same crafted sentence every other surface
+  // draws for it, so those two words are gone. What this row was ever about is
+  // the pointer, and the class sentence still carries it.
+  const toast = (globalThis.__C80_WARNINGS__ || []).find((m) => /^Column 80: /.test(String(m)));
   assert.ok(toast && /output channel/.test(String(toast)), `the toast still points at the channel: ${toast}`);
   void t;
 });

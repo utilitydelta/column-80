@@ -1374,29 +1374,43 @@ async function drivePull(M, status, body) {
   return { landed, lines, warns };
 }
 
-btest("C7 [pull toast]: REGRESSION - the pull user sees the old sentence, or a clean class one", async () => {
+// RE-CUT, session-v59 phase 1. This row was written with TWO acceptable
+// outcomes because phase 7's contract deliberately did not decide whether the
+// pull would gain class sentences: it pinned "unchanged from the baseline, OR a
+// clean one-line house-voice sentence with no JSON", so that whichever way the
+// build went, an UNNOTICED move would still be caught.
+//
+// Phase 1 of session-v59 decided it. The download surface draws the class
+// sentence, and the row that accepts either answer can no longer catch a revert
+// to the baseline's raw JSON - the disjunction would swallow it. So the row now
+// pins the one outcome that shipped. The old wording is above; what it was
+// guarding against is unchanged.
+btest("C7 [pull toast]: the download toast IS the class sentence, not the baseline's raw JSON", async () => {
   const now = await drivePull(NOW, 503, HOSTILE);
   const before = await drivePull(BASE_P6, 503, HOSTILE);
   assert.strictEqual(now.landed, false, "the pull must report failure");
   assert.strictEqual(now.warns.length, 1, `firstRun.ts must still show exactly one toast, got ${now.warns.length}`);
   assert.strictEqual(before.warns.length, 1, `harness: ${BASE_P6_REF} must show one too, got ${before.warns.length}`);
   const t = now.warns[0];
-  const unchanged = t === before.warns[0];
-  const cleanClass = t.startsWith("Column 80: ") && !t.includes("\n") && !JSON_TOKENS.some((x) => t.includes(x));
   console.error(
-    "\nC7 [pull toast] the build went: %s\n  now : %s\n  %s: %s\n",
-    unchanged ? "UNCHANGED (the pull keeps firstRun's own wording)" : "CHANGED (the pull gained a sentence)",
+    "\nC7 [pull toast]\n  now : %s\n  %s: %s\n",
     show(t),
     BASE_P6_REF,
     show(before.warns[0]),
   );
-  assert.ok(
-    unchanged || cleanClass,
-    "C7: the pull's throw is byte-identical to the generate site's, so a change to the typed error reaches " +
-      "firstRun.ts whether or not the phase meant it to. Two outcomes are acceptable: the pull toast is " +
-      `byte-identical to ${BASE_P6_REF}'s, or it is a clean one-line house-voice sentence with no JSON. ` +
-      `This is neither.\n  now : ${show(t)}\n  ${BASE_P6_REF}: ${show(before.warns[0])}`,
+  // The generate arm's own answer for the same status, asked of the translator
+  // directly. A literal here would be a second copy of the sentence to keep in
+  // step, which is the failure item 66 closed.
+  const want = NOW.translateServiceReject(new NOW.HttpStatusError("ollama", 503, "Ollama 503 x"));
+  assert.notStrictEqual(want, undefined, "PRECONDITION: 503 is a classified status");
+  assert.strictEqual(
+    t,
+    want,
+    `C7: the pull's throw is byte-identical to the generate site's, so the two surfaces must speak with ` +
+      `one voice.\n  now : ${show(t)}\n  want: ${show(want)}`,
   );
+  assert.notStrictEqual(t, before.warns[0], `C7: and it is no longer ${BASE_P6_REF}'s wording`);
+  assert.ok(!t.includes("\n") && !JSON_TOKENS.some((x) => t.includes(x)), `C7: one line, no JSON: ${show(t)}`);
 });
 
 btest("C7 [pull channel]: REGRESSION - the pull's own channel lines survive", async () => {

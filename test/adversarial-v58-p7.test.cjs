@@ -980,7 +980,15 @@ btest("F1 [pull]: REGRESSION - the pull throw is byte-identical and the pull cha
   assert.ok(now.lines.some((l) => l.includes("ollama-pull") && l.includes("503")), "F1: PRECONDITION - the [http-body] line fired");
 });
 
-btest("F2 [FINDING, ruled A3]: the pull path throws a class whose sentence nothing renders", async () => {
+// F2 AND F3 ARE INVERTED, session-v59 phase 1. Both were written as FINDING
+// rows: they asserted that `firstRun.ts` and `tightenDocComment.ts` could NOT
+// see the translator, and each held while that was the shipped truth. Phase 1
+// lifted the table into `src/vscode/failureToast.ts` and wired both surfaces to
+// it, so the two rows now pin the closure instead of the defect. The old
+// assertions are kept in the messages below, because a row that pins a fix
+// should say what the fix was for.
+
+btest("F2 [CLOSED, was FINDING ruled A3]: the pull path renders the sentence its own throw qualifies for", async () => {
   const body = JSON.stringify({ error: "server busy" });
   const { now } = await drivePair(ARMS[1], "pull503", jsonStatus(503, body));
   assert.ok(now.err instanceof NOW.HttpStatusError, "PRECONDITION: pullModel throws the typed class too");
@@ -991,29 +999,28 @@ btest("F2 [FINDING, ruled A3]: the pull path throws a class whose sentence nothi
   );
   const firstRunSource = fs.readFileSync(path.join(ROOT, "src/vscode/firstRun.ts"), "utf8");
   assert.ok(
-    !/translateServiceReject|generationFailedToast|httpStatusSentence/.test(firstRunSource),
-    "F2: firstRun.ts does not reach the translator, so the sentence the pull's own throw now qualifies " +
-      "for is unreachable on that path. A3 rules this a deliberate deferral; the residue is that the " +
-      "class is thrown at a fourth site purely to keep the message identical, and the download toast " +
-      "still puts the provider's JSON on screen.",
+    /translateServiceReject/.test(firstRunSource),
+    "F2: firstRun.ts reaches the translator now. It did not when this row was written, and the " +
+      "residue A3 accepted was that the class was thrown at a fourth site purely to keep the message " +
+      "identical while the download toast put the provider's JSON on screen.",
   );
-  // What the download user actually reads, built the way firstRun.ts builds it.
-  const pullToast = `Column 80: the download failed - ${String(now.err.message).split("\n")[0]}. The full message is in the output channel.`;
-  assert.ok(pullToast.includes('{"error"'), `F2: raw JSON, on screen, after this phase. Got ${show(pullToast)}`);
+  assert.ok(
+    !sentenceFor(503).includes('{"error"'),
+    `F2: and what the download user reads carries no JSON. Got ${show(sentenceFor(503))}`,
+  );
 });
 
-btest("F3 [FINDING, recorded S58-7]: a fourth model surface states a false cause for these statuses", () => {
+btest("F3 [CLOSED, was FINDING recorded S58-7]: the fourth model surface stops stating a false cause", () => {
   const tighten = fs.readFileSync(path.join(ROOT, "src/vscode/tightenDocComment.ts"), "utf8");
   assert.ok(
     tighten.includes("the model could not be reached, so no type names were offered"),
-    "PRECONDITION: the tighten gesture has its own hardcoded transport-failure sentence",
+    "PRECONDITION: the unclassified branch keeps the gesture's own sentence - no class, no craft",
   );
   assert.ok(
-    !/translateServiceReject|httpStatusSentence|HttpStatusError/.test(tighten),
-    "F3: the tighten gesture catches EVERY transport failure in one place and says the model could " +
-      "not be reached. A 401 was reached and refused the key; a 429 was reached and throttled. The " +
-      "sentences phase 7 just wrote are the right words for both and that surface cannot see them. " +
-      "A3 records the pull asymmetry; this one is not recorded anywhere.",
+    /translateServiceReject/.test(tighten),
+    "F3: the tighten gesture used to catch EVERY transport failure in one place and say the model " +
+      "could not be reached. A 401 was reached and refused the key; a 429 was reached and throttled. " +
+      "That surface can see the class sentences now.",
   );
 });
 

@@ -432,7 +432,10 @@ test("G1 [harness/two bundles]: the branch point and the working tree both build
     `${BASE_REF} already carries the structural pass; the baseline ref must be re-pinned to the commit before it`,
   );
   assert.ok(
-    fs.readFileSync(path.join(ROOT, "src/vscode/fnGen.ts"), "utf8").includes("CLAUDE_CODE_SENTENCES"),
+    // In the working tree the pass lives in `src/vscode/failureToast.ts`;
+    // session-v59 phase 1 lifted it out of fnGen.ts. `baseSource` above still
+    // reads the branch point's fnGen.ts, which is where it was then.
+    fs.readFileSync(path.join(ROOT, "src/vscode/failureToast.ts"), "utf8").includes("CLAUDE_CODE_SENTENCES"),
     "the working tree must carry the structural pass or there is nothing here to review",
   );
 });

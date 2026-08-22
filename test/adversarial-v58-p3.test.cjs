@@ -776,7 +776,10 @@ test("CLEAN [marker/no over-match]: neither new marker swallows another product 
 });
 
 test("CLEAN [marker/coupling]: each marker is the literal head of its throw in src", () => {
-  const table = readSrc("vscode", "fnGen.ts");
+  // The table moved to its own leaf in session-v59 phase 1 so the download
+  // toast and the tighten gesture could reach it. Same markers, same file to
+  // read, one directory entry along.
+  const table = readSrc("vscode", "failureToast.ts");
   for (const [file, marker] of [
     ["core/ollama.ts", "Ollama: the stream ended before its done frame"],
     ["core/cloudInstruct.ts", "Cloud: the stream ended before any terminal signal"],
