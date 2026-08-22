@@ -1,8 +1,8 @@
 // Blind oracle, session-v59 phase 1: "one throw class, one sentence, on every
-// surface". Contract: session-v59/contract-phase1.md. Written BEFORE the change,
-// against the CONTRACT and nothing else. No implementation of
-// translateServiceReject, generationFailedToast, offerModelPull's catch or
-// runProposer's catch was read while writing this file.
+// surface". Written BEFORE the change, against that phase's CONTRACT and
+// nothing else. No implementation of translateServiceReject,
+// generationFailedToast, offerModelPull's catch or runProposer's catch was read
+// while writing this file.
 //
 // ===========================================================================
 // WHAT THIS FILE PINS
@@ -823,37 +823,93 @@ for (const status of CLASSIFIED) {
         `  pull    : ${show(s.pullSentence)}`,
     );
 
-    // (c) and (d), the two surfaces the contract calls defects, judged TOGETHER
-    //     and reported together. Asserting them one after the other hides the
-    //     second behind the first, and a builder reading this row wants to know
-    //     how many surfaces are still short, not just the first one found.
-    const missing = [];
-    if (!s.pullToasts.some((t) => t.message.includes(s.genSentence))) {
-      missing.push([
-        "(c) the model download toast",
-        "contract defect 1: the download toast renders the raw transport text, and the server's JSON " +
-          "reaches the user",
-        s.pullToasts.map((t) => t.message).join("\n            @@@ "),
-      ]);
-    }
-    if (!s.tightenToasts.some((t) => t.message.includes(s.genSentence))) {
-      missing.push([
-        "(d) the tighten warning",
-        "contract defect 2: a 401, a 429 and a 503 all draw one sentence built from String(err), and the " +
-          "words are wrong for all three - the server WAS reached, and it refused",
-        s.tightenToasts.map((t) => t.message).join("\n            @@@ "),
-      ]);
+    // (c) and (d). RE-CUT 2026-08-23, and the reason is the whole point of the
+    // row, so it is written here rather than in a commit nobody reads next to
+    // the code.
+    //
+    // These two clauses used to assert that the WHOLE generation sentence is a
+    // substring of the other two surfaces' toasts. That is what
+    // contract-phase1.md demanded, this file was written blind against it, and
+    // the demand was WRONG. Session-v59's batched adversarial review drove the
+    // consequence: the tighten gesture does not stop at its warning - it goes on
+    // through its gates and applies the re-wrap - so carrying the generation
+    // sentence whole made the product say "so nothing was written" in the same
+    // notification that announced the write, with "The re-wrap needs no model."
+    // beside it making the contradiction explicit. The download toast told the
+    // user to run a gesture, for a click on Download.
+    //
+    // So the contract narrowed (S31, NOT YET RATIFIED) and this row narrows with
+    // it - and it gets STRICTER, not looser. The old clause asked one question,
+    // "is the sentence in there". This asks three, and the second and third are
+    // new: the three surfaces must SHARE their diagnosis, each must then say what
+    // actually happened HERE, and neither of the other two may repeat the
+    // generation arm's consequence. A build that reverts to one sentence
+    // everywhere now fails on the third question, which the old clause could not
+    // even ask.
+    //
+    // Nothing below is typed out of a spec. The shared half is the three
+    // surfaces' own longest common prefix, and the generation arm's consequence
+    // is what remains of ITS sentence after that prefix. Both are read off the
+    // product, which is the discipline the rest of this file keeps.
+    const surfaces = [
+      ["(c) the model download toast", s.pullToasts.map((t) => t.message)],
+      ["(d) the tighten warning", s.tightenToasts.map((t) => t.message)],
+    ];
+    const bearer = (texts) => texts.find((t) => t.startsWith("Column 80: ")) ?? texts[0] ?? "";
+    const common = surfaces.reduce((acc, [, texts]) => sharedHead(acc, bearer(texts)), s.genSentence);
+
+    // The diagnosis has to be a real claim about what went wrong. "Column 80: "
+    // is 11 characters every toast carries, so a build that shared nothing else
+    // would satisfy a bare "they have a common prefix" check on the brand alone.
+    assert.ok(
+      common.length > "Column 80: ".length + 12,
+      `C1(c/d) PRECONDITION: the three surfaces share only ${show(common)} at ${status}, which is the ` +
+        "brand and no diagnosis. One throw class must still produce one DIAGNOSIS everywhere; only the " +
+        "consequence and the retry are allowed to differ by surface.\n" +
+        `  gesture : ${show(s.genSentence)}\n` +
+        surfaces.map(([label, texts]) => `  ${label}: ${show(texts.join(" | "))}`).join("\n"),
+    );
+
+    const genConsequence = s.genSentence.slice(common.length).trim();
+    const wrong = [];
+    for (const [label, texts] of surfaces) {
+      const text = bearer(texts);
+      if (!text.includes(common)) {
+        wrong.push([label, "the shared diagnosis is missing, so this surface disagrees about what happened", text]);
+      } else if (genConsequence !== "" && text.includes(genConsequence)) {
+        wrong.push([
+          label,
+          `it repeats the GENERATION arm's consequence, ${show(genConsequence)}, which is not true here - ` +
+            "this is the defect the review drove, and the reason the contract narrowed",
+          text,
+        ]);
+      } else if (text.trim() === common.trim()) {
+        wrong.push([label, "it carries the diagnosis and then says nothing about what happened HERE", text]);
+      }
     }
     assert.equal(
-      missing.length,
+      wrong.length,
       0,
-      `C1: "for a given HttpStatusError, the crafted sentence that translateServiceReject returns appears ` +
-        `in the toast text of all three surfaces." At ${status}, ${missing.length} of the 2 surfaces past ` +
-        `the gesture do not carry it.\n` +
-        `  sentence  : ${show(s.genSentence)}\n` +
-        missing.map(([label, why, text]) => `  ${label}\n      why : ${why}\n      saw : ${show(text)}`).join("\n"),
+      `C1: one throw class, one DIAGNOSIS on all three surfaces, and each surface's own consequence. At ` +
+        `${status}, ${wrong.length} of the 2 surfaces past the gesture are wrong.\n` +
+        `  shared diagnosis : ${show(common)}\n` +
+        `  gesture says then: ${show(genConsequence)}\n` +
+        wrong.map(([label, why, text]) => `  ${label}\n      why : ${why}\n      saw : ${show(text)}`).join("\n"),
     );
   });
+}
+
+/** The longest common prefix of two strings, cut back to a word boundary.
+ *
+ *  Cut back because a raw prefix can end mid-word: "rate limiting these
+ *  requests, so nothing" and "...so no type names" share up to "so no", and a
+ *  diagnosis that ends inside a word is not a claim anybody can read. */
+function sharedHead(a, b) {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  const cut = a.slice(0, i);
+  const lastSpace = cut.lastIndexOf(" ");
+  return lastSpace === -1 ? cut : cut.slice(0, lastSpace);
 }
 
 // ===========================================================================
