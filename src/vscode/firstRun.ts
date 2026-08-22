@@ -19,7 +19,7 @@ import { firstLine } from "./toastText";
 // this path could ask what it meant while the table lived inside `fnGen.ts`.
 // The record is `docs/supersessions.md` S24.
 import { translateServiceReject } from "./failureToast";
-import { HttpStatusError } from "../core/errorBound";
+import { escapeBreaks, HttpStatusError } from "../core/errorBound";
 
 // First-run tier flow, the modelPull pattern ported from the
 // human-replay-vscode-extension's src/modelPull.ts (same author): detect
@@ -314,7 +314,13 @@ export async function offerModelPull(
       output.appendLine(`[carve] pull cancelled model=${model}`);
       return false;
     }
-    output.appendLine(`[carve] pull failed model=${model}: ${errorText(err)}`);
+    // ESCAPED. This sink IS a real `OutputChannel`, which renders one row per
+    // line break, and the tail of the transport's throw is the registry's own
+    // 500 body - so unescaped, a hostile registry writes its own `[carve]` rows
+    // beside the product's (scrap S58-2). The escape runs outside the 400-char
+    // bound below, so a break-heavy body renders up to about six times that on
+    // one row; the whole raw copy is on the `[http-body]` line anyway.
+    output.appendLine(`[carve] pull failed model=${model}: ${escapeBreaks(errorText(err))}`);
     // The channel line above carries the BOUNDED error, the same 400 chars the
     // toast shortens: `errorText` reads a message the transport already bounded
     // (roadmap item 63). What makes the toast's closing sentence true is the

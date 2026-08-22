@@ -313,10 +313,28 @@ test("every in-200 server string that reaches a user surface goes through the bo
       );
     }
   }
+  // RE-READ, session-v59 phase 2. The count used to be three - the generate
+  // error, the pull error, and the pull status - all coerced with `String()`.
+  // The two ERROR sites now take `providerReason` for the reason the anthropic
+  // note below gives, which is the same fix one arm over (scrap S58-9), so the
+  // `String()` count is one and the shape of what is asserted has to say which
+  // site is which rather than count them all together.
+  //
+  // WHAT THIS ROW IS ABOUT IS UNCHANGED: every in-200 server string that
+  // reaches a user surface passes a bound. It is now pinned per site, which is
+  // stricter than the total ever was - a swap that moved a site from one
+  // coercion to the other used to keep the count at three.
+  assert.strictEqual(
+    (ollama.match(/boundBody\(providerReason\(evt\.error\)\)/g) ?? []).length,
+    2,
+    "ollama.ts's two in-200 ERROR sites - the generate reader and the pull reader - both bound the " +
+      "provider's own reason. The pull path shares the generate path's coercion and moves with it.",
+  );
   assert.strictEqual(
     (ollama.match(/boundBody\(String\(/g) ?? []).length,
-    3,
-    "ollama.ts has exactly three in-200 sites: the generate error, the pull error, and the pull status",
+    1,
+    "the pull STATUS phrase is the one site left on String(): it is a progress message rather than " +
+      "an error, so `providerReason`'s message/type chain has nothing to read. It is still bounded.",
   );
   // session-v58 phase 4: the coercion inside the bound moved from
   // `String(evt.error?.message ?? evt.error?.type ?? "unknown")` to

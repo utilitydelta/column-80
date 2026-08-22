@@ -99,6 +99,15 @@ identity defaults, waiting on measured cells.
 | `ERROR_BODY_CHARS` | 400 | `src/core/errorBound.ts` | how much server-controlled text survives into a thrown error message, and so into a notification | JUDGEMENT CALL, from session-v56 and re-homed by session-v57. Sized for a glance at a notification, against the `{"error":"..."}` shape these APIs actually send. The measurement behind it is the failure, not the value: a 500 with a 100KB body reached a toast at 102437 characters |
 | `CHANNEL_BODY_CHARS` | 16384 | `src/core/errorBound.ts` | how much of the RAW server body the output channel keeps, logged at the transport before the toast's bound runs | JUDGEMENT CALL, and the code says so. Forty times the toast's budget because the two surfaces are different products: the toast is read at a glance, the channel is the only diagnostic a no-telemetry product will ever have, and roadmap item 69's ruling (2026-08-22) is "starve the toast, never the channel". 16 KiB holds any real error envelope whole and the head of an HTML error page, and refuses the megabyte. IT BOUNDS THE RENDERED ROW, which is the surface it is named for: the channel copy escapes its line breaks so a server cannot write its own channel rows, and the escape runs BEFORE the cap so the escape budget is charged against it. That order was got wrong once and the measurement is why it changed - bounding first left the row six times the cap, because LF and CR cost two characters to escape but U+2028, U+2029 and NEL cost six, and a 16385-char all-U+2028 body rendered as a 98372-char row. The cost of the fix, stated: on a body carrying breaks the elision note counts escaped characters while the line's stated length counts what the server sent, so the two are in different units; on a body without breaks, which is every real error envelope, they agree exactly. NOTHING MEASURED THE VALUE: no corpus of real provider error bodies exists on this box, so the size distribution this cap is meant to clear is unknown. THE ARM THAT WOULD EARN IT: log raw body lengths across a month of real failures on all four backends and read the p99 |
 
+The cut-stream line (`cutStreamLine`, same file, session-v59) has **no cap of its own** and that is the
+decision, not an omission. It reuses `CHANNEL_BODY_CHARS` through `boundChannel`, so the channel has one
+answer to "how much of the server's words do you keep" instead of two numbers a reader has to hold apart.
+A second constant would have to be justified against the first, and there is nothing to justify it with:
+a partial reply is model output already bounded by `num_predict`, so the cap almost never binds, and when
+it does the failure it guards is identical - a misbehaving server on a UI surface. It takes the same
+escape-then-bound order for the same reason, and it matters more here: model output carries line breaks
+by construction, where an error envelope usually does not.
+
 ## The tighten command
 
 | constant | value | home | gates | verdict |

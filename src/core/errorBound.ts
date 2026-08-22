@@ -239,6 +239,37 @@ export function channelBodyLine(transport: string, status: number, raw: string):
   return `[http-body] ${transport} ${status} server body (${raw.length} chars): ${boundChannel(escapeBreaks(raw))}`;
 }
 
+/** The channel's record of how far a CUT stream got.
+ *
+ *  A stream that ends without its terminal frame throws, and until session-v59
+ *  the partial reply the server had already delivered was discarded at that
+ *  moment: the text was local to the reader and the throw carried none of it.
+ *  What reached the channel said the stream was cut and nothing about how far it
+ *  got, so a server that died after two tokens and one that died three lines
+ *  from the closing brace produced identical output. Those are different faults
+ *  (scrap S58-6).
+ *
+ *  ITS OWN TAG, and not `[http-body]`. A cut stream is not a non-ok response:
+ *  the status was 200, there was never an error body, and a reader filtering
+ *  for HTTP failures should not find these. Same reason `channelBodyLine`
+ *  refuses the transport's own accounting tag.
+ *
+ *  WRITTEN EVEN WHEN NOTHING ARRIVED, and the zero case is the most diagnostic
+ *  one: "the server answered 200 and then said nothing" is a fault a line
+ *  written only when there is text to write cannot express.
+ *
+ *  THE CAP IS `boundChannel`, reused rather than a second number invented, so
+ *  the channel has one answer to how much of the server's words it keeps.
+ *  A partial reply is model output that a truncation cut short, so it is
+ *  already bounded by num_predict and the cap almost never binds; when it does,
+ *  the elision marker is what tells a cut copy from a whole one. Escape first
+ *  and bound second, for the reason spelled out at `channelBodyLine` - and it
+ *  matters more here, because model output carries line breaks by construction
+ *  where an error envelope usually does not. */
+export function cutStreamLine(transport: string, partial: string): string {
+  return `[cut-stream] ${transport} partial reply (${partial.length} chars): ${boundChannel(escapeBreaks(partial))}`;
+}
+
 /** What the channel says when the body could not be read at all.
  *
  *  Distinct from a body that really arrived, because the two want opposite next
@@ -258,13 +289,18 @@ export function channelUnreadLine(transport: string, status: number): string {
  *  are escaped in turn, and `a\r\nb` comes out as the two escapes side by side
  *  rather than losing one to the other.
  *
- *  This is the set `firstLine` in `src/vscode/toastText.ts` is being widened to
- *  in the same session (roadmap item 69's third shape); until that lands, the
- *  toast rule still splits on `\n` alone and the two sets differ. VT and FF are
+ *  The same five `LINE_BREAKS` in `src/vscode/toastText.ts` cuts a toast on
+ *  (roadmap item 69's third shape, landed session-v58 phase 2). VT and FF are
  *  deliberately absent from both: VS Code's text model does not break a row on
  *  them. If they are ever added to one set they belong in the other on the same
- *  day. */
-function escapeBreaks(s: string): string {
+ *  day.
+ *
+ *  EXPORTED because a channel line is not only written here. Any surface that
+ *  interpolates server-controlled text into one `log()` call needs this, or the
+ *  server writes its own rows wearing the product's tags - which is how the
+ *  anthropic arm's per-round accounting line came to be forgeable while
+ *  `channelBodyLine` on the same failure was not. */
+export function escapeBreaks(s: string): string {
   return s
     .replace(/\r/g, "\\r")
     .replace(/\n/g, "\\n")

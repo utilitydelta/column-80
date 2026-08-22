@@ -26,7 +26,15 @@
 import { usageEvidence } from "./cacheEvidence";
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, channelBodyLine, channelUnreadLine, HttpStatusError, providerReason, readBody } from "./errorBound";
+import {
+  boundBody,
+  channelBodyLine,
+  channelUnreadLine,
+  escapeBreaks,
+  HttpStatusError,
+  providerReason,
+  readBody,
+} from "./errorBound";
 
 export interface AnthropicInstructConfig {
   /** Resolved endpoint root: the `anthropic` preset's baseUrl or the user's
@@ -95,16 +103,29 @@ async function runRound(
   } catch (err) {
     // An abort is the user's own cancellation, not a failure of the round.
     if (!params.signal.aborted) {
-      config.log?.(`[anthropic] model=${params.model} round=failed reason=${firstLine(err)}`);
+      config.log?.(`[anthropic] model=${params.model} round=failed reason=${channelReason(err)}`);
     }
     throw err;
   }
 }
 
-/** The first line of a failure, capped. A provider error body can be a whole
- *  JSON document, and this line is read in an output channel. */
-function firstLine(err: unknown): string {
-  const line = String(err instanceof Error ? err.message : err).trim().split("\n")[0] ?? "";
+/** A failure rendered as exactly ONE channel row, capped. A provider error body
+ *  can be a whole JSON document, and this line is read in an output channel.
+ *
+ *  ESCAPE FIRST, CAP SECOND, and both halves matter. It used to cut at the
+ *  first `"\n"`, which is not the break set `OutputChannel.appendLine` renders
+ *  rows on: a bare CR, U+2028, U+2029 or NEL in the server's body survived the
+ *  cut, reached `log()` inside one call and came out as TWO rows, the second
+ *  one server-authored and wearing this line's per-round accounting tag
+ *  (session-v59 phase 2, driven through a real socket). Escaping rather than
+ *  cutting also keeps the rest of a multi-line reason, which the cut threw
+ *  away for no gain - the cap is what keeps the row short.
+ *
+ *  The order is phase 1 of session-v58's measured ruling: a cap applied before
+ *  the escape bounds the wrong string, and U+2028 costs six characters per
+ *  escape, so the rendered row can exceed the cap several times over. */
+function channelReason(err: unknown): string {
+  const line = escapeBreaks(String(err instanceof Error ? err.message : err).trim());
   return line.length > 200 ? line.slice(0, 200) + "..." : line;
 }
 

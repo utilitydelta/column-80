@@ -12,6 +12,7 @@
 
 import { FimConfig } from "./config";
 import { FimGenerateFn, generateFim } from "./ollama";
+import { escapeBreaks } from "./errorBound";
 import { CompletionCache, WALK_WINDOW } from "./cache";
 import { BoundOutcome, contentLines, postprocessBounded } from "./postprocess";
 import { boundReached, endsOnBlockOpener, sealCut, MAX_BOUND_LINES } from "./fimBound";
@@ -299,9 +300,19 @@ export class CompletionService {
    *  is a keystroke the user watched produce no ghost with no way to tell a
    *  superseded request from a cancelled one from a dead model, and a dogfood
    *  report that says "I arrowed and got nothing" is undiagnosable without it.
-   *  One shape (`no ghost:`) so the whole class greps as one. */
+   *  One shape (`no ghost:`) so the whole class greps as one.
+   *
+   *  THE ESCAPE LIVES HERE, not at the callers, because this is the choke point
+   *  the shape is named for. Most reasons are constants this file authored and
+   *  the escape is the identity on them; ONE is not - the abort-after-failure
+   *  branch interpolates the transport's thrown message, whose tail is the
+   *  server's own 500 body. Unescaped, that body writes its own `[fim]`-tagged
+   *  channel row (scrap S58-2, found by driving a real socket at this file
+   *  rather than by reading it: the goal for that work named the two
+   *  `request failed` sites and not this one). A future caller that interpolates
+   *  something server-controlled is covered without having to know. */
   private noGhost(reason: string): undefined {
-    this.log?.(`[fim] no ghost: ${reason}`);
+    this.log?.(`[fim] no ghost: ${escapeBreaks(reason)}`);
     return undefined;
   }
 
@@ -581,6 +592,12 @@ export class CompletionService {
           maxTokens,
           temperature: this.config.temperature,
           signal: controller.signal,
+          // The transport's own evidence sink, for the RAW server body on an
+          // HTTP failure. One object serves the primary AND the alternates, so
+          // a manual call whose runs all fail writes one raw-body line per run
+          // - the accepted cost of wiring the sink at all (see the field's own
+          // note on FimGenerateParams).
+          log: this.log,
           // Spread-when-bounded, so an exempt or member call carries no
           // `stopWhen` key at all and its stream loop is the one it always was.
           // The stop ends the READ, which releases the connection and stops
@@ -608,7 +625,10 @@ export class CompletionService {
           // cancelled call is unchanged. Log here: after the abort, the
           // outer catch reads the signal as cancellation and stays silent.
           if (!controller.signal.aborted) {
-            this.log?.(`[fim] request failed: ${String(err)}`);
+            // Escaped: the tail of the transport's throw is the server's own
+            // body, and `OutputChannel.appendLine` renders one row per line
+            // break. See the sibling site in the outer catch below.
+            this.log?.(`[fim] request failed: ${escapeBreaks(String(err))}`);
             controller.abort();
           }
           throw err;
@@ -1107,7 +1127,14 @@ export class CompletionService {
         // Abort is cancellation; anything else (server down, model missing)
         // degrades to "no suggestion" rather than surfacing per keystroke.
         if (!controller.signal.aborted) {
-          this.log?.(`[fim] request failed: ${String(err)}`);
+          // ESCAPED, for the reason `channelBodyLine` escapes: a non-ok body
+          // reaches this line inside the transport's throw, and an unescaped
+          // break lets the server write its own `[fim]`-tagged channel row
+          // (scrap S58-2). The escape runs outside the 400-char bound the
+          // transport already applied, so a break-heavy body renders up to
+          // about six times that on one row - well under CHANNEL_BODY_CHARS,
+          // and re-bounding here would cut the message.
+          this.log?.(`[fim] request failed: ${escapeBreaks(String(err))}`);
           return undefined;
         }
         // A generation that FAILED aborts the controller on its way out (see the

@@ -669,7 +669,7 @@ test("CLEAN [channelBodyLine]: the six-times overshoot is closed - no break buys
 // does with a non-ok response, and this is the same throw statement.
 // ===========================================================================
 
-test.skip("DEFERRED S58-1 [ollama-fim]: the FIM caller of the same throw site writes no raw-body line", async () => {
+test("WAS DEFERRED S58-1 [ollama-fim]: the FIM caller of the same throw site writes no raw-body line", async () => {
   const srv = await serve(plain(500, "fim-body-the-channel-never-sees"));
   const lines = [];
   let err;

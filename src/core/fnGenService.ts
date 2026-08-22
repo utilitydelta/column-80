@@ -40,6 +40,7 @@ import {
 } from "./instructPostprocess";
 import { FunctionSpan } from "./span";
 import { LogFn } from "./completionService";
+import { escapeBreaks } from "./errorBound";
 
 export interface FnGenRequest {
   signature: string;
@@ -529,7 +530,18 @@ export class FnGenService {
           this.log?.("[fngen] aborted");
           return undefined;
         }
-        this.log?.(`[fngen] request failed: ${String(err)}`);
+        // ESCAPED, and this is the only one of the six `[fngen] request failed`
+        // lines that needs it. The other five interpolate a `msg` this file
+        // authored; this one interpolates the transport's throw, whose tail is
+        // the server's own body. `OutputChannel.appendLine` renders one row per
+        // line break, so unescaped it lets a 500 body write its own channel
+        // rows wearing this tag (scrap S58-2).
+        //
+        // The escape runs OUTSIDE the 400-char bound the transport already
+        // applied, so a body of nothing but U+2028 renders about six times that
+        // - roughly 2400 chars on one row, an order under CHANNEL_BODY_CHARS.
+        // Re-bounding here would cut the message the toast shows.
+        this.log?.(`[fngen] request failed: ${escapeBreaks(String(err))}`);
         throw err;
       }
       if (controller.signal.aborted) {

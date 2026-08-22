@@ -1046,41 +1046,60 @@ btest("H1 [property]: instanceof does not cross a bundle boundary, and productio
 // X - ADJACENT. Found while driving phase 7's forgery row; not phase 7's code.
 // ===========================================================================
 
-btest("X1 [FINDING, recorded S58-9]: the ollama in-stream error path never got providerReason", async () => {
+// RE-CUT, session-v59 phase 2. This row was a FINDING: it pinned the defect it
+// had just discovered, so it would stay green until someone fixed it. S58-9 was
+// taken up and the fix landed, so the row is now a GUARD on the closed hole,
+// asserting the opposite of what it used to.
+//
+// The drive is unchanged, and it keeps its own red-before-green: `drivePair`
+// runs the SAME socket against the working tree and against a worktree of the
+// branch point, so every row below shows the old behaviour beside the new one.
+// A fix nobody can see failing is a fix that comes back.
+btest("X1 [WAS A FINDING, S58-9]: the ollama in-stream error path renders the provider's reason", async () => {
   const src = fs.readFileSync(path.join(ROOT, "src/core/ollama.ts"), "utf8");
   assert.ok(
-    src.includes("`Ollama error: ${boundBody(String(evt.error))}`"),
-    "PRECONDITION: the ollama arm still renders its in-stream error with String()",
+    !src.includes("`Ollama error: ${boundBody(String(evt.error))}`"),
+    "X1: the String() coercion is gone from the ollama in-stream site",
   );
   const object = (_req, res) => {
     res.writeHead(200, { "Content-Type": "application/x-ndjson" });
     res.end(`${JSON.stringify({ error: { type: "rate_limit", message: "slow down" } })}\n`);
   };
-  const { now } = await drivePair(ARMS[0], "instream-object", object);
+  const { now, old } = await drivePair(ARMS[0], "instream-object", object);
   assert.ok(!now.ok, "PRECONDITION: it threw");
   assert.ok(
-    now.err.message.includes("[object Object]"),
-    `X1: an object envelope renders as a placeholder and the provider's reason is thrown away, which ` +
-      `is the failure roadmap item 67 closed on the other two arms. errorBound.ts exports ` +
-      `providerReason for exactly this and this call site does not use it.\n  got: ${show(now.err.message)}`,
+    old.err.message.includes("[object Object]"),
+    `X1: PRECONDITION - the branch point really did render the placeholder. Without this the row ` +
+      `below cannot tell a fix from a test that never had anything to catch.\n  got: ${show(old.err.message)}`,
+  );
+  assert.ok(
+    now.err.message.includes("slow down"),
+    `X1: an object envelope must carry the provider's own reason. It used to render [object Object] ` +
+      `and throw the reason away, which is the failure roadmap item 67 closed on the other two arms ` +
+      `first.\n  got: ${show(now.err.message)}`,
   );
 
-  // Worse: `String()` on the shape the providerReason doc names can THROW, from
-  // inside the reader, carrying no marker the translation table can see.
+  // Worse: `String()` on the shape the providerReason doc names could THROW,
+  // from inside the reader, carrying no marker the translation table can see.
   const hostileToString = (_req, res) => {
     res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-    res.end(`${JSON.stringify({ error: { toString: 1 } })}\n`);
+    res.end(`${JSON.stringify({ error: { toString: 1, message: "the real reason" } })}\n`);
   };
   const bad = await drivePair(ARMS[0], "instream-tostring", hostileToString);
   assert.ok(!bad.now.ok, "X1: PRECONDITION - it threw");
   assert.ok(
-    /Cannot convert object to primitive value/.test(bad.now.err.message),
-    `X1: plain JSON from a server puts a raw TypeError on the gesture's catch-all, with no Ollama ` +
-      `marker on it at all.\n  got: ${show(bad.now.err.message)}`,
+    /Cannot convert object to primitive value/.test(bad.old.err.message),
+    `X1: PRECONDITION - the branch point really did raise the TypeError out of the reader.\n  got: ` +
+      `${show(bad.old.err.message)}`,
   );
   assert.ok(
-    toastNow(bad.now.err).includes("Cannot convert object to primitive value"),
-    `X1: and it reaches the screen. Got ${show(toastNow(bad.now.err))}`,
+    !/Cannot convert object to primitive value/.test(bad.now.err.message),
+    `X1: plain JSON from a server used to put a raw TypeError on the gesture's catch-all, with no ` +
+      `Ollama marker on it at all.\n  got: ${show(bad.now.err.message)}`,
+  );
+  assert.ok(
+    !toastNow(bad.now.err).includes("Cannot convert object to primitive value"),
+    `X1: and it used to reach the screen. Got ${show(toastNow(bad.now.err))}`,
   );
 });
 

@@ -11,7 +11,15 @@
  * TTFT is measurable per request — the warm-latency oracle depends on it.
  */
 
-import { boundBody, channelBodyLine, channelUnreadLine, HttpStatusError, readBody } from "./errorBound";
+import {
+  boundBody,
+  channelBodyLine,
+  channelUnreadLine,
+  cutStreamLine,
+  HttpStatusError,
+  providerReason,
+  readBody,
+} from "./errorBound";
 
 export interface FimGenerateParams {
   apiBase: string;
@@ -28,6 +36,23 @@ export interface FimGenerateParams {
    *  measured for (p50 300ms to 141ms, p90 716ms to 173ms), so this is not a
    *  cosmetic early return. */
   stopWhen?: (textSoFar: string) => boolean;
+  /** Evidence sink, the same one `InstructGenerateParams` declares and for the
+   *  same reason: the shared `streamGenerate` writes the RAW server body here on
+   *  an HTTP failure, before the 400-char bound builds the throw.
+   *
+   *  It was absent until session-v59, and the absence was invisible: one throw
+   *  statement with two callers, only one of them passing a sink, so an audit
+   *  walking throw sites reported the site as wired while an ollama 500 during
+   *  FIM left nothing on the channel at all (scrap S58-1).
+   *
+   *  THE COST, accepted rather than discovered later: this is the per-keystroke
+   *  path, so a server failing every keystroke now writes up to
+   *  `CHANNEL_BODY_CHARS` per failure instead of the 400-char bounded copy. The
+   *  channel is the only diagnostic surface a no-telemetry product has, and a
+   *  FIM path that fails every keystroke is a broken server the user needs to
+   *  see - which is the same trade roadmap item 69 already ruled for the
+   *  instruct arms. */
+  log?: (line: string) => void;
 }
 
 export interface FimGenerateResult {
@@ -43,7 +68,12 @@ export type FimGenerateFn = (params: FimGenerateParams) => Promise<FimGenerateRe
 
 interface StreamEvent {
   response?: string;
-  error?: string;
+  /** A failure delivered INSIDE a 200. `unknown`, because that is the truth:
+   *  this field is declared here and guaranteed by nobody. ollama documents a
+   *  string and sends `{"message":...}` objects, and the type promising `string`
+   *  is what made `String()` look safe at the read (scrap S58-9).
+   *  `providerReason` in `errorBound.ts` is the only thing that reads it. */
+  error?: unknown;
   done?: boolean;
   done_reason?: string;
 }
@@ -114,6 +144,7 @@ export async function generateFim(params: FimGenerateParams): Promise<FimGenerat
     // watching a deliberate gesture, so the failure reads completely
     // differently there. Filed separately rather than folded in.
     FIM_SILENCE,
+    params.log,
   );
   // done_reason is not surfaced for FIM: a suggestion cut at num_predict is
   // still a usable infill prefix, unlike a truncated function body.
@@ -251,6 +282,12 @@ export async function generateInstruct(
     if (params.signal.aborted) {
       throw abortError();
     }
+    // How far the server got, before the throw discards it. INSTRUCT ONLY: the
+    // FIM reader shares `streamGenerate` and a per-keystroke channel write of
+    // partial ghosts is a different cost question, so this lives at the
+    // instruct caller rather than in the shared reader (the same boundary the
+    // FIM sink draws).
+    params.log?.(cutStreamLine("ollama", result.text));
     throw new Error("Ollama: the stream ended before its done frame, so the reply is incomplete");
   }
   // The four DECLARED fields, spelled out. `sawDone` is this function's to
@@ -448,10 +485,21 @@ async function streamGenerate(
         // A 200 whose stream carries its failure inside the JSON. This never
         // passed through an HTTP error body, so the bound never saw it, and the
         // string is ONE line, which is how a toast correctly bounded to one line
-        // came to be 100KB wide (roadmap item 63). String() because the wire is
-        // untrusted: the field is typed string and a server may still send an
-        // object, and boundBody takes a string.
-        throw new Error(`Ollama error: ${boundBody(String(evt.error))}`);
+        // came to be 100KB wide (roadmap item 63).
+        //
+        // `providerReason` and not `String()`, which is what this was until
+        // session-v59. The field is DECLARED string here and guaranteed by
+        // nobody, and `String()` got two things wrong on shapes ollama really
+        // sends: `{"error":{"message":"upstream overloaded"}}` rendered
+        // `Ollama error: [object Object]`, throwing away the only part that
+        // says what happened, and plain JSON carrying a non-callable
+        // `toString` made `String()` itself raise a TypeError out of the
+        // reader - unmarked, so the toast translation could not classify it and
+        // the catch-all put JS internals on screen. Same fix, same helper, as
+        // the cloud and Anthropic arms took in session-v58 phase 4 (scrap
+        // S58-9). A plain string comes back unchanged, so the ordinary case is
+        // byte-identical.
+        throw new Error(`Ollama error: ${boundBody(providerReason(evt.error))}`);
       }
       if (evt.response) {
         if (ttftMs === undefined) {
@@ -585,7 +633,9 @@ export const hasModel = (models: string[], model: string): boolean =>
 /** One line of ollama's streaming pull response. */
 export interface PullEvent {
   status?: string;
-  error?: string;
+  /** Declared here, guaranteed by nobody - see `StreamEvent.error`. The pull
+   *  path shares the generate path's coercion and moves with it. */
+  error?: unknown;
   digest?: string;
   total?: number;
   completed?: number;
@@ -677,9 +727,10 @@ export async function pullModel(
     }
     const evt = JSON.parse(line) as PullEvent;
     if (evt.error) {
-      // Same shape as the generate path above: a failure inside a 200, on one
-      // line, straight into a toast.
-      throw new Error(boundBody(String(evt.error)));
+      // Same shape as the generate path above, and it moves with it: a failure
+      // inside a 200, on one line, straight into a toast. The coercion is
+      // `providerReason` for the reasons spelled out at the generate site.
+      throw new Error(boundBody(providerReason(evt.error)));
     }
     // The status phrase is server-controlled too, and it goes to a progress
     // notification rather than an error, so no catch-all shortens it either.

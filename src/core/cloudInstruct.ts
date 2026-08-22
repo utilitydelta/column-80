@@ -21,7 +21,15 @@
 
 import { InstructGenerateFn, InstructGenerateParams, InstructGenerateResult } from "./ollama";
 
-import { boundBody, channelBodyLine, channelUnreadLine, HttpStatusError, providerReason, readBody } from "./errorBound";
+import {
+  boundBody,
+  channelBodyLine,
+  channelUnreadLine,
+  cutStreamLine,
+  HttpStatusError,
+  providerReason,
+  readBody,
+} from "./errorBound";
 
 export interface CloudProvider {
   id: string;
@@ -288,6 +296,10 @@ async function streamChat(
     if (params.signal.aborted) {
       throw abortError();
     }
+    // How far the provider got, before the throw discards it. Word for word the
+    // local arm's treatment, through the same renderer: one format, so a
+    // support reader does not have to learn two (scrap S58-6).
+    config.log?.(cutStreamLine("cloud", text));
     throw new Error("Cloud: the stream ended before any terminal signal, so the reply is incomplete");
   }
 

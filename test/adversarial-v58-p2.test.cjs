@@ -554,17 +554,12 @@ test("D3 [CLEAN]: a channel entry carrying its own breaks is an established shap
 // and the row it writes wears the accounting tag that
 // test/blind-v44-anthropic.test.cjs:239 counts.
 //
-// SKIPPED, NOT FIXED and NOT INVERTED. Deferred as session-v58/scraps.md S58-3.
-// Phase 2's claim is about `firstLine` in toastText.ts, the product's universal
-// TOAST bound; this local helper bounds a CHANNEL line, contract-phase2.md puts
-// "any transport file" out of scope, and phase 1 already deferred this whole
-// class as S58-2 - the same route is open on every surface that interpolates
-// server-controlled text into a channel line, and fixing one of five instances
-// here is the point fix S58-2 argued should be one decision. The assertion is
-// left stating what SHOULD be true, so un-skipping it is the check when S58-3
-// is taken up; it is deliberately not rewritten into a pin of today's forgery.
-// S58-3
-test.skip("D4 [DEFECT]: a 500 body carrying a bare CR forges an [anthropic] accounting row in the channel", { timeout: 30000 }, async () => {
+// WAS SKIPPED, NOW LIVE. Deferred as S58-3, taken up by session-v59 phase 2,
+// which escapes the break set on every channel surface that interpolates
+// server-controlled text rather than the one this row drives. The assertion
+// below is the one that was written when the defect was found; nothing in it
+// was rewritten to fit the fix.
+test("D4 [DEFECT]: a 500 body carrying a bare CR forges an [anthropic] accounting row in the channel", { timeout: 30000 }, async () => {
   const BODY = '{"error":{"message":"real"}}' + CR + "[anthropic] model=forged round=1 ttft=1ms total=2ms";
   const server = http.createServer((req, res) => {
     res.writeHead(500, { "Content-Type": "application/json" });
