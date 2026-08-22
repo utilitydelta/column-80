@@ -561,7 +561,17 @@ export class TsLsExtractor implements SurfaceExtractor {
    *  leg preferring a workspace location over decompiled metadata: a project
    *  that emits declarations otherwise reports its own class twice and refuses
    *  itself. When only the declaration exists (an ambient or packaged type) it
-   *  is still the answer. */
+   *  is still the answer.
+   *
+   *  THE CURSOR IS MOVED TO THE NAME TOKEN, and that is not cosmetic. Unlike
+   *  every workspace/symbol server this project talks to, navto's `textSpan` is
+   *  the whole DECLARATION: measured against a real language service, `Tile` in
+   *  `export class Tile` answers character 0, which is the `export` keyword.
+   *  `membersOfType` survives that (it walks up the AST from any offset inside
+   *  the declaration) but `hoverSurface` does not - asked at `export` it
+   *  answers about the keyword, so a caller reaching for the type's own
+   *  signature gets nothing. The name position comes off the declaration NODE,
+   *  never a text search of the span. */
   async resolveTypeCursorByName(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined> {
     if (this.disposed) {
       return undefined;
@@ -571,13 +581,18 @@ export class TsLsExtractor implements SurfaceExtractor {
         .getNavigateToItems(name, NAVTO_MAX_RESULTS)
         .filter((i) => i.name === name && i.matchKind === "exact" && TS_TYPE_ELEMENT_KINDS.has(i.kind));
       const source = hits.filter((i) => !i.fileName.endsWith(".d.ts"));
+      const program = this.service.getProgram();
       const candidates: WorkspaceSymbolCandidate[] = [];
       for (const hit of source.length > 0 ? source : hits) {
-        const text = this.fileText(path.resolve(hit.fileName));
+        const file = path.resolve(hit.fileName);
+        const text = this.fileText(file);
         if (text === undefined) {
           continue;
         }
-        const at = positionAt(text, hit.textSpan.start);
+        const sourceFile = program?.getSourceFile(file);
+        const decl = sourceFile ? this.enclosingTypeDeclaration(sourceFile, hit.textSpan.start) : undefined;
+        const nameStart = decl?.name?.getStart(sourceFile);
+        const at = positionAt(text, nameStart ?? hit.textSpan.start);
         candidates.push({
           name: hit.name,
           role: "container",

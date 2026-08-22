@@ -1200,6 +1200,23 @@ in every language, bodies carrying the original demand with the per-language bra
 leg landed and before they were re-cut; that red is recorded in the phase report. Each of the six
 guards above was mutated and killed exactly the row that names it.
 
+**Graded live, and the live run found a defect the fakes could not.** Both new legs were driven
+against real servers: a real TypeScript language service in process, and a real
+`pyright-langserver`. TypeScript resolved `Tile`, resolved an `interface`, and refused a same-named
+`function`. Pyright resolved `Tile` to the name token and refused the four fuzzy non-type hits it
+returned alongside it.
+
+The defect: `getNavigateToItems` does NOT answer the name token the way every workspace/symbol
+server does. Its `textSpan` is the whole declaration, so `export class Tile` resolved character 0 -
+the `export` keyword. `membersOfType` survived it by walking up the AST, which is why no fake
+caught it, and `hoverSurface` would not have. The cursor is now taken from the declaration NODE's
+name. This is the `symbol-providers-do-not-qualify` hazard in a second place: navto is not
+workspace/symbol, and assuming one shape for both was wrong.
+
+One rig fact, not a product one: pyright answers `workspace/symbol` with `[]` until some project
+file has been opened. In the editor the user's buffer is always open; in a headless measurement it
+reads as a dark leg. Recorded on the method.
+
 ## S29. The anthropic round line stops taking "the first line" and takes the whole message, escaped
 
 **NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 2, which closes S58-1, S58-2, S58-3,

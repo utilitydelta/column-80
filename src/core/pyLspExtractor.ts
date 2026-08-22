@@ -591,7 +591,19 @@ export class PyLspExtractor implements SurfaceExtractor {
    *  Pyright answers a stub and its implementation at the same position often
    *  enough that the selection collapses identical positions first; two
    *  genuinely different classes stay ambiguous, and ambiguous means nothing
-   *  resolves. */
+   *  resolves.
+   *
+   *  MEASURED LIVE against a real pyright-langserver, and one property of it is
+   *  a rig fact worth stating: pyright answers `workspace/symbol` with `[]`
+   *  until some file in the project has been opened, and answers the full fuzzy
+   *  list immediately after. Every other primitive here opens its own file
+   *  first; this one has no uri to open, so a resolution asked before anything
+   *  else resolves nothing. That is invisible in the editor, where the user's
+   *  buffer is open by definition, and it is exactly the shape that makes a
+   *  headless measurement read as "the leg is dark" when the instrument simply
+   *  never armed it. Once open, `location.range` IS the name token and the hit
+   *  list carries the enclosing scope in `containerName` (`Tile`,
+   *  `Fim.TileSite`), empty for a top-level class. */
   async resolveTypeCursorByName(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined> {
     try {
       const candidates = workspaceSymbolCandidates(
