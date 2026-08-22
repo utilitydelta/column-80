@@ -339,6 +339,12 @@ is missing entirely" exception rather than a rewording; or stop claiming the cha
 cheap to type but is one sentence shared by every unknown-error toast, the pull-failure toast, and
 the blind rows that pin all of them. The choice is a product call about who the channel is for.
 
+**RULED 2026-08-22: log the raw body to the channel.** Each transport logs the unshortened server
+response before the bound is applied, under a generous kilobyte-scale cap (not the toast's 400
+chars) with a truncation note when it cuts. The channel is the only diagnostic surface a
+no-telemetry product will ever have; starve the toast, never the channel. This also settles which
+way `firstRun.ts:309-310`'s stale comment gets reworded.
+
 **Two repair toasts render a compiler diagnostic whole.** `src/vscode/oracleSurface.ts:975` (repair
 give-up) and `:1613` (refine introduced errors) interpolate a `Diagnostic.message` with no
 `firstLine`, and `src/core/tsOracle.ts:371` builds that message with `current.message += "\n" + line`
@@ -815,6 +821,15 @@ kills a generation the user asked for. FIM's 60s/20s were reasoned from local mo
 `docs/constants.md` records the 60s as a judgement call. Neither number was chosen for a hosted
 endpoint, where a reasoning model can legitimately send nothing for a long time before its first
 token. That is the inherited-constants trap again.
+
+**RULED 2026-08-22: NO watchdog on fn-gen, on any backend.** Users run different hardware, so any
+silence bound is a guess about someone else's machine, and a wrong guess kills a generation the
+user asked for. The answer to a hung server is user cancellation: the build instead audits and
+strengthens the cancel affordance - the in-flight state must be visible for as long as it lasts,
+and cancel must be one obvious action away (the human suggested Escape, and a click on a status-bar
+item, as candidate surfaces; check what exists before adding). Do not reopen the watchdog without
+new evidence. The terminal-event and error-frame halves of this item are untouched by the ruling:
+detecting a stream that ENDED wrong needs no timing numbers.
 
 The terminal-event half wants a real endpoint first: `handleLine` already tolerates providers that
 omit `[DONE]`, and a hard requirement would turn a working provider red.
@@ -1839,29 +1854,24 @@ Rust.
 - This blocks the Rust generation-quality fix; the attempted fix is reverted and waiting.
 - A "strip" ruling re-enters through the blind oracles for v15/v18.
 
-### Commit the gesture fixtures (v21 S7b)
+### Commit the gesture fixtures (v21 S7b) - DONE 2026-08-22
 
-The tier's gesture rows grade the dogfood repos' working trees, and ALL FIVE repos carry uncommitted
-edits.
+All five scratch repos committed clean, byte for byte, after a full diff review (rust ac86ba8,
+ts 9ab11bd, csharp 9e735e9, python 229fc92, go 288c52b). The loose edits were authored fixtures,
+not junk: the shared-prefix enroll family and the v30 repair-receiver chain in every language.
+Two patches of dogfood residue (non-compiling ghost-accept lines in rust and python gesture
+sites) were committed AS the baseline on purpose - the tier anchors by exact-string search in
+those files, so clean them only with a tier re-run in hand. Residue: the five repos have NO git
+remote, so a fresh machine still cannot run the tier; the trees are merely pinned. Move this
+entry to history on the next roadmap pass.
 
-- Re-counted 2026-08-15 (`git status --porcelain` in each): rust-scratch 7 dirty entries, ts-scratch
-  5, csharp-scratch 9, python-scratch 7, go-scratch 3. "go-scratch is clean" was true when this was
-  filed and is false now, so the tier has no clean-tree row at all.
-- Consequence 1: every gesture row measures one machine's uncommitted state.
-- Consequence 2: a fresh clone cannot run the tier at all.
-- Consequence 3: the rust tier row has no baseline (see Tier health).
-- The v23 leak fix removed the reason to fear committing.
-- Your own experiments may be among the edits; review before committing.
+### TS order-gate ratification (v22) - RATIFIED 2026-08-22
 
-### TS order-gate ratification (v22)
-
-Arm C (methods-first prompt ordering) shipped for all languages, but its TS result needs a yes.
-
-- On TS, method recall dipped 2 points - mostly ties, on a 15-site corpus the scout called too
-  small.
-- Arm C also collapsed comment-led ghosts on TS from 66.7% to 6.7%, which dwarfs the dip.
-- Recommendation on record: keep arm C for TS.
-- Say yes, or order the untested def-first-plus-terminator TS branch.
+The human said yes: arm C (methods-first prompt ordering) stays for TypeScript as shipped. The
+comment-led ghost collapse (66.7% to 6.7%) dwarfs the 2-point recall dip on a corpus too small to
+see 2 points, and the untested def-first-plus-terminator TS branch is not ordered - reopen only on
+a real dogfood complaint, not a re-measurement. Move this entry to history on the next roadmap
+pass.
 
 ### The v20 trio - v26 has landed, so these are answerable now
 
@@ -1877,15 +1887,13 @@ rewrote history. Any bare hash in this file older than that date is suspect the 
 - What do vim-keymap users get instead of the second Escape? Their Escape leaves insert mode
   instead. Not touched by v26, so this one is certainly still open.
 
-### Answer the rust-analyzer snippet nudge on the dogfood machine
+### Answer the rust-analyzer snippet nudge on the dogfood machine - ANSWERED 2026-08-22
 
-With rust-analyzer's `fill_arguments` snippet setting on, the widget's selected text is a
-rendered argument list, not a bare name. The ghost has nothing to extend, so it stops
-re-rendering while you arrow.
-
-- The product's nudge fired (`live=fill_arguments`) and sits unanswered.
-- Accepting it makes selections bare names on this machine today.
-- The shipped lifecycle handles snippets-on either way, because gopls has no such nudge.
+The answer was sitting uncommitted in rust-scratch's `.vscode/settings.json` and is now committed
+(ac86ba8): `rust-analyzer.completion.callable.snippets: "none"`, with the reasoning written above
+the setting - "none" is what makes the arrowing half of the sticky-selection gesture visible in
+Rust, at the cost of losing tabbable placeholders whose parameter names get overwritten anyway.
+Move this entry to history on the next roadmap pass.
 
 ### Go housekeeping
 

@@ -722,8 +722,9 @@ It does not bind on an ordinary gesture. The phase-2 blind oracle
 
 ## S18. Only a PRE-CONSENT discard reaches the FIM channel
 
-**NOT YET RATIFIED. Amended 2026-08-21 in the session-v56 phase 3 review loop-back (finding MED,
-triaged DO, commit `e0bc0f1`). Flagged here because it narrows the written contract's own wording.**
+**RATIFIED 2026-08-22 by the human, as shipped.** Amended 2026-08-21 in the session-v56 phase 3
+review loop-back (finding MED, triaged DO, commit `e0bc0f1`). Flagged here because it narrows the
+written contract's own wording.
 
 **What changed.** `session-v56/contract-phase3.md` says a discard in a `source: "fim"` session goes
 to the channel instead of a toast. `present()` has SIX discard causes and the first cut routed all
@@ -751,8 +752,10 @@ gained rows for editor-refused-toasts-everywhere and for both refine evidence li
 
 ## S19. `UND_ERR_*` narrows to `UND_ERR_CONNECT_TIMEOUT` alone
 
-**NOT YET RATIFIED. Narrowed 2026-08-21 in the session-v56 phase 5 review loop-back (finding MED 3,
-triaged DO, commit `37d0440`). Flagged here because it narrows the written contract's own wording.**
+**RATIFIED 2026-08-22 by the human, strict version: `UND_ERR_HEADERS_TIMEOUT` stays excluded.** The
+"isn't running" toast carries a Start button, so it must be provable, and an accepted connection
+disproves it. Narrowed 2026-08-21 in the session-v56 phase 5 review loop-back (finding MED 3,
+triaged DO, commit `37d0440`). Flagged here because it narrows the written contract's own wording.
 
 **What changed.** `session-v56/contract-phase5.md` clause 2 says `isServerUnreachable` recognises
 undici's `UND_ERR_*` codes, and the implementation matched the whole prefix. `UNREACHABLE_CODES`
@@ -788,9 +791,10 @@ connect-timeout-yes / socket-and-headers-no pair.
 
 ## S20. Anthropic's in-stream error frame is not a silent server
 
-**NOT YET RATIFIED. Narrowed 2026-08-21 in the session-v57 phase 4 review loop-back (finding HIGH 1,
-triaged DO). Flagged here because it narrows the written contract's own wording, and because the
-wording it narrows came from a roadmap entry rather than from a phase.**
+**RATIFIED 2026-08-22 by the human, as shipped.** Narrowed 2026-08-21 in the session-v57 phase 4
+review loop-back (finding HIGH 1, triaged DO). Flagged here because it narrows the written
+contract's own wording, and because the wording it narrows came from a roadmap entry rather than
+from a phase.
 
 **What changed.** `session-v57/contract-phase4.md` clause 1 listed five throws that must all produce
 one sentence, and roadmap item 66 named the same five. Reading that clause today finds four and a
