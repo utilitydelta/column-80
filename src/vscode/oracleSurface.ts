@@ -144,13 +144,13 @@ export interface PostAcceptContext {
    *  carries no context, exactly as before. Every entry point passes the same
    *  shared store's live reader.
    *
-   *  ASYNC since session-v33, and the asynchrony is the feature: the reader
+   *  ASYNC, and the asynchrony is the feature: the reader
    *  slices each block out of the document as it reads NOW, which means opening
    *  a file no editor has open. A repair round happens later than the
    *  generation that led to it, so "later" is exactly when its blocks should be
    *  read. */
   readContextBlocks?: () => Promise<ContextBlock[]>;
-  /** The refine gesture (session-v29 item 3), MANUAL ONLY. Set by
+  /** The refine gesture, MANUAL ONLY. Set by
    *  `column80.repairFunction` and by nothing else: an automatic post-accept
    *  check that comes back green still ends at `why=clean`, silently, exactly as
    *  it always has. The human said "if the user initiates the repair command",
@@ -176,12 +176,12 @@ export interface PostAcceptContext {
       extraCursors?: ReadonlyMap<string, SourceCursor>;
     },
   ) => Promise<string | undefined>;
-  /** The call-owner resolver (`resolveCallOwners`, fnGen.ts), session-v30 item
-   *  1. Injected through the same seam and for the same reason as
-   *  `resolveSpanSurface`. Absent means a repair round discloses only the types
-   *  the span NAMES, which is the pre-v30 behaviour and the whole defect: the
-   *  receiver of a chained call is named nowhere, so its parameter list never
-   *  reached the prompt and the model deleted the call it was asked to fix. */
+  /** The call-owner resolver (`resolveCallOwners`, fnGen.ts). Injected through
+   *  the same seam and for the same reason as `resolveSpanSurface`. Absent
+   *  means a repair round discloses only the types the span NAMES, which is
+   *  the pre-v30 behaviour and the whole defect: the receiver of a chained call
+   *  is named nowhere, so its parameter list never reached the prompt and the
+   *  model deleted the call it was asked to fix. */
   resolveCallOwners?: (
     extractor: SurfaceExtractor,
     document: vscode.TextDocument,
@@ -624,10 +624,10 @@ async function executeSession(
         // spells it: the reader reduces it per language.
         excludeName: resolved.symbolName,
       });
-      // The fifth source, session-v30 item 1: the types that OWN the member
-      // calls the span makes. Everything the span NAMES is above; a call's
-      // receiver is named nowhere, and in the capture that is exactly the type
-      // whose parameter list the round needed.
+      // The fifth source: the types that OWN the member calls the span makes.
+      // Everything the span NAMES is above; a call's receiver is named nowhere,
+      // and in the capture that is exactly the type whose parameter list the
+      // round needed.
       //
       // Ordered by proximity to the first eligible diagnostic, because budget
       // spent nearest the error is budget spent well and because the scout
@@ -717,7 +717,10 @@ async function executeSession(
         // The operand-mismatch steer. Disclosure alone was measured insufficient
         // here: given CS0019 naming both operand types, plus the whole member
         // list of each, the model returned its input unchanged ten runs out of
-        // ten (session-v28/measure-p1-rounds.md). What it was never told is
+        // ten. That run's own file did not survive the session it was made in, so
+        // this comment is its only record; the surviving evidence for the same
+        // thesis is in docs/architecture/compiler-oracle.md, "Disclosure alone is
+        // not enough". What it was never told is
         // which member in scope answers the type the compiler named, and that is
         // a fact the resolved graph already holds.
         const steers: string[] = [];
@@ -740,10 +743,10 @@ async function executeSession(
           surface = disclosed.length > 0 ? `${combined}\n\n${firmInstructionFor(disclosed.map((d) => d.name))}` : combined;
         }
       }
-      // The usage leg, session-v30 item 2. Last of the resolvers, because it is
-      // the one whose budget is spent against a prompt the surface legs have
-      // already filled, and because a terminal steer must not carry examples of
-      // calling a crate that is not a dependency yet.
+      // The usage leg. Last of the resolvers, because it is the one whose
+      // budget is spent against a prompt the surface legs have already filled,
+      // and because a terminal steer must not carry examples of calling a crate
+      // that is not a dependency yet.
       if (!terminalSteer && readOracleConfig().repairUsageWindows) {
         usage = await resolveUsageForRound(ctx, resolved, callTargets, log);
       }
@@ -801,7 +804,7 @@ async function executeSession(
     // could not be cancelled at all: the spinner spun, the status bar was
     // empty, and the cancel command said "nothing in flight". Roadmap
     // item 67's ruling replaced the watchdog with cancellation, and this is the
-    // path a user reaches by ACCEPTING a generation (session-v58 phase 5).
+    // path a user reaches by ACCEPTING a generation.
     const controller = new AbortController();
     const claim = ctx.inFlight?.begin(`Repairing ${resolved.symbolName}`, controller);
     let result;
@@ -1043,7 +1046,7 @@ async function executeSession(
 }
 
 /**
- * The call-owner leg of a repair round, session-v30 item 1.
+ * The call-owner leg of a repair round.
  *
  * `refineTargets` already finds every member call in a span with document
  * coordinates, over comment- and string-masked text, with the junk sets applied.
@@ -1138,7 +1141,7 @@ async function resolveOwnersForRound(
 }
 
 /**
- * The usage leg of a repair round, session-v30 item 2.
+ * The usage leg of a repair round.
  *
  * The machinery is the refine round's, shipped since v29 and unchanged:
  * `refineTargets`, `extractor.references`, `usageSitesOutsideSpan`,
@@ -1266,26 +1269,30 @@ const REFINE_LINES_AFTER = 2;
 // defends a latency bar this path does not sit behind, and the fn-gen
 // mini-spike this gesture descends from injected three windows as a context
 // block and moved pooled method recall 22.0% to 47.7%. Not a measured
-// optimum; measure-p4.md carries what it actually cost.
+// optimum, and the run that carried what it actually cost did not survive the
+// session it was made in.
 const refineCharBudget = (ctx: PostAcceptContext, log: (line: string) => void): number =>
-  // THE LIVE STOP, not a pin (session-v48 phase 1 loop-back, defect 5). An
-  // earlier cut pinned this to `shipped` and said the contract required it; it
-  // does not. contract-phase1.md's "what must NOT change" list carves OUT
-  // exactly what `surfaceCap` and `refineTotalChars` already derive from the
-  // aggregate budget, and this is one of the two. A developer who sets
-  // `frontier` because their model has the room has no second setting for the
-  // repair prompt and no channel line saying it stayed at the local-30B point,
-  // so a pin here is a silent refusal of the thing they asked for.
+  // THE LIVE STOP, not a pin. An earlier cut pinned this to `shipped` and said
+  // the contract required it; it does not. That contract's "what must NOT
+  // change" list carves OUT exactly what `surfaceCap` and `refineTotalChars`
+  // already derive from the aggregate budget, and this is one of the two. The
+  // list is reproduced in docs/constants.md under "The prompt-versus-window
+  // arbitration". A
+  // developer who sets `frontier` because their model has the room has no
+  // second setting for the repair prompt and no channel line saying it stayed
+  // at the local-30B point, so a pin here is a silent refusal of the thing they
+  // asked for.
   budgetProfileFor(fnGenModelClass(log), ctx.document.languageId, injectedContextStop(log)).refineTotalChars;
 
 /**
  * The refine round: what the manual repair gesture does when the build is
  * already clean.
  *
- * Ordering is the load-bearing part, and it diverges from goal.md's wording on
- * purpose (see the AMENDMENT at the end of session-v29/goal.md). goal.md asks
- * for "a refine that introduces an error is refused with the reason, not
- * proposed", which needs the candidate CHECKED before the human sees it. Both
+ * Ordering is the load-bearing part, and it diverges on purpose from what the
+ * feature was originally asked for. That amendment's own file did not survive
+ * the session it was made in, so this comment is its only record. The ask was
+ * "a refine that introduces an error is refused with the reason, not proposed",
+ * which needs the candidate CHECKED before the human sees it. Both
  * ways to do that break a named product invariant: checking it means writing the
  * candidate to disk for the real compiler (the consented-write invariant says
  * two, and only two, code paths write to a document), and reading the language
@@ -2292,8 +2299,8 @@ function unclassifiedNoSurface(
     log(
       `[repair] surface none for ${codeOf(d)}: ` +
         // A diagnostic that classified and then resolved nothing reaches the
-        // harvest queue too (session-v35 item 3), so this line must not tell the
-        // reader no rule matched when one did. Its own leg's account leads.
+        // harvest queue too, so this line must not tell the reader no rule
+        // matched when one did. Its own leg's account leads.
         `${lead ?? `no ${document.languageId} classifier rule matched`}, and a terminal steer ` +
         `returned before the diagnostic harvest could run` +
         (lang.harvestTypes === undefined ? " (this language has no harvest)" : ""),
@@ -2302,8 +2309,8 @@ function unclassifiedNoSurface(
 }
 
 /** One harvested name resolved to a definition block, or a REASON it produced
- *  nothing (session-v34 item 2). Never throws; the reason is always populated on
- *  a miss, because a silent miss here is the exact failure item 3 closes.
+ *  nothing. Never throws; the reason is always populated on a miss, because a
+ *  silent miss here is the exact failure this leg exists to close.
  *
  *  Depth 1 and the same renderer as the classified field path, deliberately. The
  *  two highest-value codes this leg exists for both want the definition itself
@@ -2529,11 +2536,11 @@ interface RepairSurfaceLang {
     memberCap: number,
   ) => Promise<string | undefined>;
   /** The type names this language's diagnostic NAMES, for the diagnostics its
-   *  classifier has no rule for (session-v34 item 2). Absent means the language
-   *  keeps the classifier-only behaviour: rustc quotes with backticks, C# and
-   *  TypeScript with apostrophes, and their classifiers already read their own
-   *  message shapes, so one harvest cannot serve all five. Rust fills it because
-   *  Rust is where the 16-of-28 measurement was taken. */
+   *  classifier has no rule for. Absent means the language keeps the
+   *  classifier-only behaviour: rustc quotes with backticks, C# and TypeScript
+   *  with apostrophes, and their classifiers already read their own message
+   *  shapes, so one harvest cannot serve all five. Rust fills it because Rust
+   *  is where the 16-of-28 measurement was taken. */
   harvestTypes?: (d: Diagnostic) => string[];
   /** Is a harvested type's DEFINITION one the model already knows, so nothing
    *  should be rendered for it? Item 1's rule on the repair round, or the same
@@ -2952,20 +2959,20 @@ export async function resolveSurfaceInjection(
   // A type another leg already disclosed is skipped rather than rendered twice.
   const alreadyDisclosed = (type: string): boolean => opts?.skipTypes?.has(type) === true;
 
-  // Every diagnostic that reaches here and produces no surface, with the reason
-  // (session-v34 item 3). This resolver returning `undefined` in silence is how
-  // item 2's gap survived two sessions: 16 of 28 real diagnostics fell outside
-  // the classifier, `surfaceBytes` was 0 on 8 of 9 measured repair rounds, and
+  // Every diagnostic that reaches here and produces no surface, with the
+  // reason. This resolver returning `undefined` in silence is how the harvest
+  // gap went unnoticed for so long: 16 of 28 real diagnostics fell outside the
+  // classifier, `surfaceBytes` was 0 on 8 of 9 measured repair rounds, and
   // nothing on any channel said so. A code that lands here is the next gap, and
-  // it should take minutes to find rather than a session.
+  // it should take minutes to find rather than days.
   const noSurface: { code: string; reason: string }[] = [];
   const codeOf = (d: Diagnostic): string => d.code ?? "no-code";
   // One line per diagnostic that bought nothing. Called before EVERY exit, not
   // just the ordinary one: the two terminal steers below `return` out of the loop
   // mid-collection, and a reason discarded on the way out is the same silence
-  // item 3 exists to end. Per-diagnostic rather than one summary line, because
-  // the CODE is what tells a reader which rule to write next and four codes can
-  // have four different reasons.
+  // this accounting exists to end. Per-diagnostic rather than one summary line,
+  // because the CODE is what tells a reader which rule to write next and four
+  // codes can have four different reasons.
   const flushNoSurface = (): void => {
     for (const n of noSurface) {
       log(`[repair] surface none for ${n.code}: ${n.reason}`);
@@ -2973,23 +2980,23 @@ export async function resolveSurfaceInjection(
     noSurface.length = 0;
   };
 
-  // The diagnostics held for the harvest pass below (session-v34 item 2). They
-  // run AFTER every classified block so a compiler-named receiver always wins
-  // the cap over a harvested name: the classifier knows WHICH role the type
-  // plays in the error and the harvest only knows the error mentioned it.
+  // The diagnostics held for the harvest pass below. They run AFTER every
+  // classified block so a compiler-named receiver always wins the cap over a
+  // harvested name: the classifier knows WHICH role the type plays in the error
+  // and the harvest only knows the error mentioned it.
   //
   // Two ways in, and `lead` is which. Absent, the classifier had NO rule, which
-  // is item 2's original population. Present, a rule matched and its member leg
-  // then resolved NOTHING (session-v35 item 3), and the string is that leg's own
-  // account of itself. Carried per diagnostic because every verdict sentence
-  // below opens with it, and "no classifier rule matched" is simply false for a
+  // is the harvest's original population. Present, a rule matched and its
+  // member leg then resolved NOTHING, and the string is that leg's own account
+  // of itself. Carried per diagnostic because every verdict sentence below
+  // opens with it, and "no classifier rule matched" is simply false for a
   // diagnostic that classified.
   const unclassified: { d: Diagnostic; lead?: string }[] = [];
   // Fall-throughs are held in their OWN queue and harvested after every genuine
-  // no-rule diagnostic (session-v35 item 3, review D3). Pushed onto
-  // `unclassified` they interleave ahead of later no-rule entries, and under
-  // the surface cap a fall-through then takes a slot a no-rule harvest used to get -
-  // measured turning a row that got a surface into a row that got none. The
+  // no-rule diagnostic. Pushed onto `unclassified` they interleave ahead of
+  // later no-rule entries, and under the surface cap a fall-through then takes
+  // a slot a no-rule harvest used to get - measured turning a row that got a
+  // surface into a row that got none. The
   // priority this file already states runs classifier-named ahead of harvested;
   // a name whose own leg resolved nothing is weaker still, so it goes last.
   const fellThrough: { d: Diagnostic; lead?: string }[] = [];
@@ -3169,10 +3176,10 @@ export async function resolveSurfaceInjection(
           inScope(typeOrCrate);
         }
       } else {
-        // FALL THROUGH to the harvest (session-v35 item 3). A rule matched and
-        // then resolved nothing, and before this that was the end of the road:
-        // the round went out with no surface at all while the name the harvest
-        // wanted sat in the diagnostic's own message. Captured on
+        // FALL THROUGH to the harvest. A rule matched and then resolved
+        // nothing, and before this that was the end of the road: the round went
+        // out with no surface at all while the name the harvest wanted sat in
+        // the diagnostic's own message. Captured on
         // `error[E0433]: cannot find \`EcdsaKeyPair\` in \`rcgen\`` - classified
         // `wrong-item` on crate `rcgen`, the member leg resolved nothing for
         // `rcgen`, and `[repair] surface EMPTY`.
@@ -3180,8 +3187,8 @@ export async function resolveSurfaceInjection(
         // The reason becomes the harvest's opening clause WHEN the harvest also
         // comes back empty, so a row that fails twice reports both failures.
         // When the harvest succeeds the verdict is never pushed and this leg's
-        // account does NOT reach the channel (review D5) - one of v34 item 3's
-        // newly-lit exits goes dark again on exactly the rows that ended well.
+        // account does NOT reach the channel - one of the exits this accounting
+        // newly lit goes dark again on exactly the rows that ended well.
         // That is the deliberate trade: an injected surface is reported by its
         // own `surface injected class=harvest` line, and a round that produced
         // a surface is not the round anyone is debugging. The harvest's
@@ -3200,11 +3207,11 @@ export async function resolveSurfaceInjection(
     void _exhaustive;
   }
 
-  // THE HARVEST PASS (session-v34 item 2). Sixteen of 28 real diagnostics fall
-  // outside the classifier, and every one of them used to leave here having
-  // injected nothing. The diagnostic already named the type; this resolves the
-  // name and injects the definition, which replaces a code-by-code table with a
-  // rule. The v6 principle holds: every byte still traces to a rustc diagnostic.
+  // THE HARVEST PASS. Sixteen of 28 real diagnostics fall outside the
+  // classifier, and every one of them used to leave here having injected
+  // nothing. The diagnostic already named the type; this resolves the name and
+  // injects the definition, which replaces a code-by-code table with a rule.
+  // The v6 principle holds: every byte still traces to a rustc diagnostic.
   for (const { d, lead = NO_RULE } of [...unclassified, ...fellThrough]) {
     const names = lang.harvestTypes?.(d) ?? [];
     if (names.length === 0) {

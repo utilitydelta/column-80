@@ -104,7 +104,7 @@ export type HallucinationClass =
   // long)'`), so the receiver is free. Rust, TypeScript and pyright name no type
   // at all, and Go's `want` list is the parameter list rather than a signature,
   // so its receiver is not in the message either. Those four resolve the
-  // receiver through session-v30 item 1's disclosure leg.
+  // receiver through the call-owner disclosure leg instead.
   | { kind: "arity-mismatch"; member: string; type?: string; cursor: CursorPosition };
 
 /** The catalog + cfg-scan context that turns an E0433 `cannot find X in Y` from
@@ -436,7 +436,7 @@ export function unresolvedNameCursor(diagnostic: Diagnostic): CursorPosition | u
 }
 
 /** The type names a diagnostic NAMES, harvested from its message and its span
- *  labels (session-v34 item 2).
+ *  labels.
  *
  *  The classifier above is a code-by-code table and it recognises seven rustc
  *  codes. Across 25 real compile failures 16 of 28 diagnostics fell outside it,
@@ -962,14 +962,13 @@ export function assembleSurfacePayload(input: {
   omitInstruction?: boolean;
 }): string {
   const tail = input.omitInstruction ? "" : `\n\n${firmInstructionFor([input.typeOrCrate])}`;
-  // THE GATE (session-v41 phase 3), at the ONE render seam every example
-  // block passes - fn-gen's pre-fill and the repair surface both assemble
-  // here. An example whose code never names the type it would be headed with
-  // is refused, so no caller can reach the "(from its docs, this compiles)"
-  // sentence with code that does not: the payload falls to the signatures
-  // branch, or to "" when nothing else exists. Callers may pre-check with the
-  // same predicate for their own accounting; this is the line no block
-  // crosses.
+  // THE GATE, at the ONE render seam every example block passes - fn-gen's
+  // pre-fill and the repair surface both assemble here. An example whose code
+  // never names the type it would be headed with is refused, so no caller can
+  // reach the "(from its docs, this compiles)" sentence with code that does
+  // not: the payload falls to the signatures branch, or to "" when nothing
+  // else exists. Callers may pre-check with the same predicate for their own
+  // accounting; this is the line no block crosses.
   const example =
     input.example !== undefined && exampleNamesItsType(input.typeOrCrate, input.example)
       ? input.example
@@ -1103,20 +1102,19 @@ export function typesNamedIn(
  *  is a false positive and the backtick is what separates the two. Measured on
  *  6,856 human-written comment lines: an unbackticked PascalCase scan is 97.7%
  *  junk, and under a type cap that binds, junk does not merely waste bytes, it
- *  evicts real types (session-v36 goal, "Scanning comments for unbackticked
- *  type names").
+ *  evicts real types.
  *
  *  Extracted from `typesNamedIn`'s doc leg so the BODY-comment gesture is
  *  literally the same rule pointed at a second source rather than a second
  *  regex free to drift from it. Callers apply their own stop set and dedup;
  *  this returns what the text says.
  *
- *  THE RULE INSIDE THE SPAN, ratified 2026-08-02 (session-v37 item 1). v36
- *  required the ENTIRE span to be one identifier or a `::` path, and that rule
- *  is invisible for the shapes developers actually type. Playing the developer
- *  over 5,514 real functions, `` `IsCa Yes` `` scored 0% in Go and C#; the
- *  nonzero Rust figures were other legs recovering the name by accident, not
- *  the gesture working.
+ *  THE RULE INSIDE THE SPAN, ratified 2026-08-02. The rule before it required
+ *  the ENTIRE span to be one identifier or a `::` path, and that is invisible
+ *  for the shapes developers actually type. Playing the developer over 5,514
+ *  real functions, `` `IsCa Yes` `` scored 0% in Go and C#; the nonzero Rust
+ *  figures were other legs recovering the name by accident, not the gesture
+ *  working.
  *
  *  The first cut split the span on commas and brackets and took each part's
  *  leading identifier. An adversarial review then measured how the five
@@ -1162,9 +1160,10 @@ export function typesNamedIn(
  *      cobra+gin+hugo go      13 names at 30.8%  ->   28 at 35.7%
  *      contoso        c#       0 backticked doc spans in the corpus
  *
- *  Frozen as a fixture in `test/fixtures/v37-doc-spans.json`, harvested by
- *  `session-v37/harvest-doc-spans.cjs` through the product's own
- *  `tsDocCommentAbove` and `csDocCommentAbove` rather than a line-prefix scan,
+ *  Frozen as a fixture in `test/fixtures/v37-doc-spans.json`. The harvester
+ *  itself did not survive the session it was written in; what it did is the part
+ *  that matters. It read through the product's own `tsDocCommentAbove` and
+ *  `csDocCommentAbove` rather than a line-prefix scan,
  *  which is a distinction that mattered: the prefix version could not see the
  *  plain `//` run that is the dominant TypeScript doc shape, and scanned Go for
  *  a `///` marker Go never writes. */

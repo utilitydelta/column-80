@@ -497,7 +497,7 @@ export function csWholeBlockSite(prefix: string): WholeBlockSite | undefined {
     // The function being written is not a type in play, even when its own doc
     // mentions it in backticks - "`Compute` returns a `LocationFactor`" is the
     // near-universal doc convention, and `Compute` is the method the cursor is
-    // inside, not a collaborator to inject (session-v21 goal item 8 / §3c).
+    // inside, not a collaborator to inject.
     if (t === name) {
       continue;
     }
@@ -977,9 +977,9 @@ const WHOLE_BLOCK_HEADER = "types in play (use these real names, do not invent):
  *  write about it, and a def line of `enum Atlas.LodBand` says nothing a model
  *  can type.
  *
- *  This exists because of a live capture (session-v28, the human's own dogfood
- *  run). At an empty `RegionLodCount(List<Tile>)` body the block disclosed
- *  `Band : LodBand` and no variant, so the 1.5b could not write
+ *  This exists because of a live capture from a real dogfood run. At an empty
+ *  `RegionLodCount(List<Tile>)` body the block disclosed `Band : LodBand` and
+ *  no variant, so the 1.5b could not write
  *  `tile.Band == LodBand.Regional` and invented `tile.IsRegional()` instead.
  *  Same law as the repair leg's: what the model cannot see, it makes up. The
  *  variants were already in the resolved graph; only the render dropped them. */
@@ -1042,13 +1042,13 @@ export function renderWholeBlockInjection(
     return undefined;
   }
 
-  // ---- Render (arm C, session-v22 "What ships"). The block, top (furthest from the
-  // cursor) to bottom (adjacent to the cursor line): HEADER; METHODS FIRST grouped by
-  // owning type under a `TypeName:` anchor (each method line tail-drops); DEFS LAST,
-  // each brace-safe-truncated so a def bigger than the budget contributes its fields
-  // instead of vanishing whole; a TERMINATOR line that ENDS the list, so the model
-  // writes code rather than continuing the comment block (scout: the single largest
-  // lever - 100% -> 0% comment-lead at the pathological sites).
+  // ---- Render (arm C). The block, top (furthest from the cursor) to bottom (adjacent
+  // to the cursor line): HEADER; METHODS FIRST grouped by owning type under a
+  // `TypeName:` anchor (each method line tail-drops); DEFS LAST, each brace-safe-
+  // truncated so a def bigger than the budget contributes its fields instead of
+  // vanishing whole; a TERMINATOR line that ENDS the list, so the model writes code
+  // rather than continuing the comment block (scout: the single largest lever - 100%
+  // -> 0% comment-lead at the pathological sites).
   const renderedLen = (l: string) => (l.length > 0 ? lineComment.length + 1 + l.length : lineComment.length);
   const TERMINATOR = "end of type info - the body follows:";
   // Reserve the terminator up front so it always lands adjacent to the cursor line;
@@ -1061,7 +1061,8 @@ export function renderWholeBlockInjection(
   // A CLOSED set is reserved ahead of the roots' open member lists, the way the
   // terminator is, so a long open list cannot starve it. Order is untouched: the
   // roots still render first, because what sits nearest the cursor is what the
-  // model reaches for (session-v27/measure-ordering.md), and the reservation
+  // model reaches for (docs/architecture/surface-injection.md, "Member
+  // ordering"), and the reservation
   // decides only what SURVIVES a tight budget, not what comes first.
   //
   // The reservation holds only while the closed set is the SMALL thing this rule

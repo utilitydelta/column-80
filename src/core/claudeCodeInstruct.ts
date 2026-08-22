@@ -16,8 +16,8 @@
  * explicit provider setting - the same trust category as the cloud providers.
  * See ARCHITECTURE.md ("What this is NOT" / the offline invariant).
  *
- * Three traps, all PROVEN live against claude 2.1.224 on 2026-08-08 (the
- * recordings are in session-v43/); every one of them is load-bearing:
+ * Three traps, all PROVEN live against claude 2.1.224 on 2026-08-08; every one
+ * of them is load-bearing:
  *
  * 1. FENCE: the reply arrives wrapped in a ```lang fence DESPITE an explicit
  *    no-fences instruction in the prompt, and instructPostprocess REJECTS a
@@ -75,10 +75,10 @@ export interface ClaudeCodeInstructConfig {
   timeoutMs?: number;
 }
 
-/** Every failure reason this backend can name. The rig that will drive it
- *  (session-v44) branches on these: `serving-failure` aborts a run rather than
- *  recording a row, because a throttled CLI is a fact about the hour, not about
- *  the model. */
+/** Every failure reason this backend can name. Split this finely so a
+ *  measurement rig can branch on them: `serving-failure` must abort a run
+ *  rather than record a row, because a throttled CLI is a fact about the hour,
+ *  not about the model. */
 export type ClaudeCodeFailureReason =
   | "binary-missing"
   | "bad-cwd"

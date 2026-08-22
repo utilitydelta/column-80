@@ -18,7 +18,9 @@
  * prompt with "Call ONLY methods and constructors of `X` that appear in the API
  * surface above". The prompt shows a list rust-analyzer has itself marked
  * incomplete, and then forbids everything not on it. Measured on the acme
- * corpus (session-v39/goal.md): 324 injected blocks carried a list cut across 63
+ * corpus, in a measurement whose own file did not survive the session that made
+ * it, so this comment is its record: 324 injected blocks carried a list cut
+ * across 63
  * distinct types, and `ServerMeta` hid `compression: CompressionMeta`, so
  * `CompressionMeta` was never resolved at all — the cut prunes the walk's graph,
  * not just one line.
@@ -582,9 +584,9 @@ function normalize(text: string): string {
     .trim();
 }
 
-// MEMOIZING the two scrubs per source file was tried in session-v39 and REFUTED
-// on the corpus. The argument was that a walk resolves several types out of one
-// definition file in a row, so each pays an O(file) scrub twice. Measured over the
+// MEMOIZING the two scrubs per source file was tried and REFUTED on the corpus.
+// The argument was that a walk resolves several types out of one definition file
+// in a row, so each pays an O(file) scrub twice. Measured over the
 // 237-row prefill arm the mean `injectMs` moved 140.0 -> 139.4, which is noise:
 // the types in one prompt mostly come from different files. A mutable cache in a
 // module documented as pure, for nothing measurable, is a worse trade than the
@@ -596,7 +598,7 @@ function normalize(text: string): string {
  *  {path}")]`, and each of them can carry a brace, a paren or a comma that would
  *  otherwise be read as structure.
  *
- *  EXPORTED for the enclosing-impl scan in fnGen (session-v41 phase 3): any
+ *  EXPORTED for the enclosing-impl scan in fnGen: any
  *  scope decision made by counting braces over raw Rust is wrong the moment a
  *  string literal carries one, and this scrub is the repo's one shared answer
  *  to that. */

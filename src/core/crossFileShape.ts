@@ -93,9 +93,8 @@ export interface DerivedType {
    *  answer. Nothing else edits it.
    *
    *  This cite named a symbol that has never existed anywhere in `src/`. The
-   *  phantom stood until session-v55 phase 12, the phase that had to follow it.
-   *  The dead name is not repeated here: a phantom spelled in a comment is what
-   *  a grep finds. */
+   *  dead name is not repeated here: a phantom spelled in a comment is what a
+   *  grep finds. */
   signature: string;
   fields: Array<{ name: string; typeName: string }>;
   /** A Rust enum's VARIANT PAYLOAD types, one entry per (variant, payload text)
@@ -123,7 +122,7 @@ export interface DerivedType {
    *  it reads as a member the type does not have. The walk already names every
    *  type it drops; this is the same promise one level down, for the members of
    *  a type it kept. Without it a 38-member Python class ships 31 members and
-   *  nothing anywhere says which seven went (session-v49 phase 3). */
+   *  nothing anywhere says which seven went. */
   cappedMembers?: Array<{ name: string; cause: "count" | "budget" | "unusable" }>;
   /** The URI of the file the type is DEFINED in (from `definition()`). Feeds the
    *  import-path hint so a blind test imports the type from where it lives
@@ -150,7 +149,8 @@ export interface CrossFileBound {
    *  can prove its renderer will never use a child past it. OPT-IN, and absent
    *  means the gather queues every field candidate, unchanged.
    *
-   *  WHY IT EXISTS, measured (session-v51 phase 2, `session-v51/hover-A.txt`).
+   *  WHY IT EXISTS, measured (docs/architecture/surface-injection.md, "The hover
+ *  fan-out").
    *  The gather buys one `definition()`, one hover and one `documentSymbol` per
    *  collaborator. `walkDataShape`, which renders the block, walks at most
    *  `B_MAX` distinct local field types per node - so on the real Go corpus 31
@@ -436,14 +436,13 @@ function candidateTypesOf(typeName: string, std: Set<string> = STD_TYPE_NAMES): 
 export interface CrossFileShapeHooks {
   /** A type's named fields, with the type AS WRITTEN, in declaration order.
    *
-   *  WIDENED (session-v49 phase 2) from `parseHoverFields(signature)`. The old
-   *  shape could only see the def-site HOVER, which is the right source for
-   *  Rust, TypeScript and Go and is useless for the other two: a Roslyn class
-   *  hover is the class head and nothing else, and a pyright class hover is
-   *  `(class) Foo`. Both of those languages DO have their fields — structured,
-   *  on `members`, which the walk has already resolved by the time it asks this
-   *  question — so the hole was the SHAPE OF THE SEAM rather than a missing
-   *  parser.
+   *  WIDENED from `parseHoverFields(signature)`. The old shape could only see
+   *  the def-site HOVER, which is the right source for Rust, TypeScript and Go
+   *  and is useless for the other two: a Roslyn class hover is the class head
+   *  and nothing else, and a pyright class hover is `(class) Foo`. Both of those
+   *  languages DO have their fields — structured, on `members`, which the walk
+   *  has already resolved by the time it asks this question — so the hole was
+   *  the SHAPE OF THE SEAM rather than a missing parser.
    *
    *  Three sources, and a language takes whichever one actually carries the
    *  answer: the hover (Rust, TypeScript, Go), the resolved MEMBERS (C#, and
@@ -548,9 +547,9 @@ export const tsShapeHooks: CrossFileShapeHooks = {
  *  The fields were never missing. They arrive structured on `membersOfType`,
  *  written Name : Type with a `declLine` and a `selectionRange` on the name
  *  token, and they have shipped as member lines all along. What blocked the edge
- *  was the SHAPE OF THE SEAM, which session-v49 phase 2 widened: `parseFields`
- *  now sees the resolved members, so C# reads the type off each field member's
- *  own signature.
+ *  was the SHAPE OF THE SEAM, since widened: `parseFields` now sees the
+ *  resolved members, so C# reads the type off each field member's own
+ *  signature.
  *
  *  This buys C# a RENDER and a bound, not new REACH — `signatureRefTypes` below
  *  already mines those same rendered strings for type names and already reaches
@@ -559,10 +558,9 @@ export const tsShapeHooks: CrossFileShapeHooks = {
 export const csShapeHooks: CrossFileShapeHooks = {
   parseFields: (_signature, members) => csFieldsFromMembers(members),
   fieldTypeCursor: csFieldTypeCursor,
-  // The hover head plus a body synthesised from the derived fields
-  // (session-v50 phase 2). It used to be the head alone, which is all a Roslyn
-  // hover carries, and that is why C# derived its fields and then had nothing
-  // to print them in.
+  // The hover head plus a body synthesised from the derived fields. It used to
+  // be the head alone, which is all a Roslyn hover carries, and that is why C#
+  // derived its fields and then had nothing to print them in.
   renderDef: csRenderDerivedDef,
   stdTypeNames: CS_STD_TYPE_NAMES,
   // C# has no field body to walk, so its collaborator graph is projected through
@@ -609,11 +607,11 @@ export const PY_STD_TYPE_NAMES = new Set([
  *  pyright hover, so Python gets its own empty field parser rather than falling to
  *  the Rust default. */
 export const pyShapeHooks: CrossFileShapeHooks = {
-  // THE FIELD LEG IS LIT (session-v50 phase 3). It answered `[]` for as long as
-  // the seam could only see a hover, and that was correct for its input: a
-  // pyright class hover is `(class) Foo`. The fields were never missing, they
-  // arrive on `membersOfType` with their types bought by the transport's hover
-  // fan-out, which is the seam session-v49 widened.
+  // THE FIELD LEG IS LIT. It answered `[]` for as long as the seam could only
+  // see a hover, and that was correct for its input: a pyright class hover is
+  // `(class) Foo`. The fields were never missing, they arrive on
+  // `membersOfType` with their types bought by the transport's hover fan-out,
+  // and the widened seam is what reads them.
   parseFields: (_signature, members) => pyFieldsFromMembers(members),
   fieldTypeCursor: pyFieldTypeCursor,
   bodyLineRange: pyClassBodyLineRange,
@@ -658,11 +656,11 @@ export const pyShapeHooks: CrossFileShapeHooks = {
  *  corpus: `cobra.Command` hovers at 8363 bytes and elides to 1944, `gin.Engine`
  *  4255 to 811. Nothing in a prompt reads a byte offset.
  *
- *  THE FIELD LEG IS NOW LIT (session-v49 phase 1), and the two functions that
- *  light it are Go's own. It ran the Rust defaults, byte for byte, and derived
- *  nothing: Go's hover writes Name Type where the Rust parser wants
- *  name: Type, so `fields` came back empty, the walk had no edges to follow,
- *  and Go emitted ONE TYPE, ALWAYS — dark, not wrong. `parseGoHoverFields`
+ *  THE FIELD LEG IS NOW LIT, and the two functions that light it are Go's own.
+ *  It ran the Rust defaults, byte for byte, and derived nothing: Go's hover
+ *  writes Name Type where the Rust parser wants name: Type, so `fields` came
+ *  back empty, the walk had no edges to follow, and Go emitted ONE TYPE,
+ *  ALWAYS — dark, not wrong. `parseGoHoverFields`
  *  reads the declaration out of the RIGHT fence (gopls emits several, and one of
  *  the others is a synthesised promoted-field table shaped almost exactly like a
  *  struct body), and `goFieldTypeCursor` anchors the hop on a field line that
@@ -683,14 +681,14 @@ export const goShapeHooks: CrossFileShapeHooks = {
     // Rust default synthesizes `struct X { }` here, which for Go would be an
     // invented declaration in another language's syntax.
     t.signature.length > 0 ? goElideDef(t.signature).text : `type ${t.name}`,
-  // GO'S OWN STOP SET, and it was Rust's until session-v49 phase 1 lit the field
-  // leg and a blind oracle measured what that cost. STD_TYPE_NAMES is Vec,
-  // Box, Option, Rc, Arc, Cow, PathBuf — 37 names, not one of them
-  // Go. `sync.Mutex` was skipped only because Rust happens to declare a Mutex
-  // too; `context.Context` and `time.Time` each bought a full definition() round
-  // trip and then landed on the drop list. Harmless while the field leg was dark
-  // and pure wasted latency the moment it was not, on the two type names that
-  // appear in more Go structs than any others.
+  // GO'S OWN STOP SET. It used to be Rust's, until the field leg lit and a
+  // blind oracle measured what that cost. STD_TYPE_NAMES is Vec, Box, Option,
+  // Rc, Arc, Cow, PathBuf — 37 names, not one of them Go. `sync.Mutex` was
+  // skipped only because Rust happens to declare a Mutex too; `context.Context`
+  // and `time.Time` each bought a full definition() round trip and then landed
+  // on the drop list. Harmless while the field leg was dark and pure wasted
+  // latency the moment it was not, on the two type names that appear in more Go
+  // structs than any others.
   stdTypeNames: GO_STD_TYPE_NAMES,
   skipCandidate: (name, fieldType) => {
     if (!/^[A-Z]$/.test(name)) {
@@ -816,7 +814,7 @@ function fieldTypeCursor(
 // where `parseEnumVariantPayloads` reads the recovered signature, which is folded
 // to one line per variant. Anchoring on the declaration line alone therefore
 // dropped every wide payload: parsed, never anchored, which the contract's own
-// standard calls not a fix (session-v55 phase 12 triage, review claim 3).
+// standard calls not a fix.
 function variantPayloadCursor(
   lines: string[],
   range: { open: number; close: number },
@@ -943,12 +941,11 @@ async function safe<T>(p: Promise<T>): Promise<T | undefined> {
 // struct is not read as an unresolved miss. undefined only after the buffer
 // stays unresolved past the window (a genuine non-struct / unresolved edge).
 //
-// BOUNDED BY THE GESTURE'S HOVER ALLOWANCE (session-v50 phase 1). 12 x 50ms is
-// 600ms per TYPE, which is five times the member loop this phase was sent to
-// kill, and it was charged per type with no ceiling anywhere above it: a gesture
-// resolving 8 candidates could spend 4.8s here. One type's patience is unchanged
-// - the first type to need the full 600ms still gets it - and the gesture cannot
-// spend it more than once.
+// BOUNDED BY THE GESTURE'S HOVER ALLOWANCE. 12 x 50ms is 600ms per TYPE, which
+// is five times the member loop below, and it was charged per type with no
+// ceiling anywhere above it: a gesture resolving 8 candidates could spend 4.8s
+// here. One type's patience is unchanged - the first type to need the full
+// 600ms still gets it - and the gesture cannot spend it more than once.
 async function hoverWithSettle(
   extractor: SurfaceExtractor,
   cursor: SourceCursor,
@@ -1000,8 +997,8 @@ export const freshSettleAllowance = (): SettleAllowance => ({
 // itself resolved (hover succeeded), retry briefly; an empty result after the
 // window is the honest "no file-local members" (e.g. a field-only struct).
 //
-// THE LOOP IS BOUNDED, NOT TUNED AND NOT DELETED (session-v50 phase 1), because
-// measured on real corpora it was almost all cost and almost no recovery:
+// THE LOOP IS BOUNDED, NOT TUNED AND NOT DELETED, because measured on real
+// corpora it was almost all cost and almost no recovery:
 //
 //   Go   (v42-corpus/pgx, gopls)   3879ms of a 5043ms run was this loop. 77%.
 //   C#   (Contoso dotnet, Roslyn)  1269ms of a 1463ms run. 87%.
@@ -1016,7 +1013,8 @@ export const freshSettleAllowance = (): SettleAllowance => ({
 // built first and then removed, and why is worth keeping: it ended the loop when
 // a re-poll returned the same member count and the same signed count as the
 // answer before it. That is precisely the v21 case at its MEASURED shape.
-// `session-v21/surface-p3b.md` §1b recorded a cold `membersOfType` answering
+// docs/architecture/surface-injection.md, "The cold cross-file walk", records
+// a cold `membersOfType` answering
 // **11 members with 1 signed** in 52ms against a 50ms fan-out budget, warming to
 // 7 rendered. The count is complete from the first answer, because documentSymbol
 // is cheap; what is missing is SIGNATURES, and a server still cold 40ms later is
@@ -1037,6 +1035,17 @@ export const freshSettleAllowance = (): SettleAllowance => ({
 // pre-opens and settles every file cannot; "no server on this box did it today"
 // is not "no server does it", and this project has already put a HIGH regression
 // back by deleting a guard whose case a review called unreachable.
+//
+// KEPT ON COLD EVIDENCE, and the "zero recovered" number above no longer argues
+// for deletion. A probe that opens one root per file, reserves its liveness
+// cursor off the timed population and never pre-settles anything DOES produce
+// the case. On pyright over the two private Python repos, five cold runs of the
+// same eight rows re-polled 17 cursors and 2 of them recovered: one collaborator
+// answered 5 members with 0 signatures, and one 40ms step later answered 5 of 5
+// signed. The runs where the same cursor answered signed immediately rendered
+// the identical surface, so the re-poll bought back a member list that would
+// otherwise have rendered empty. The case is a race, it fires on some runs and
+// not others, and that is exactly what a warm corpus cannot show.
 //
 // The re-poll only ever fires when nothing renders AND a re-poll could plausibly
 // change that: the set is empty, OR an UNSIGNED callable member is pending its
@@ -1149,7 +1158,9 @@ export async function resolveCrossFileShape(
   // qualifier-aware rule, reading the field type AS WRITTEN (see there). Go's
   // field leg is dark today - `parseStructHoverFields` wants Rust's `name: type`
   // and a gopls hover writes `name type` - so the rule guards a door rather than
-  // a live path; see session-v30/scraps.md.
+  // a live path. docs/roadmap.md G2 carries the general case and the blast
+  // radius: `candidateTypesOf` is shared by all five languages, so this is not a
+  // Go-local tweak.
   const skipCandidate = hooks?.skipCandidate ?? ((name: string) => /^[A-Z]$/.test(name));
   const enumMemberLine = hooks?.enumMemberLine;
   const types = new Map<string, DerivedType>();
@@ -1209,8 +1220,11 @@ export async function resolveCrossFileShape(
   // The queue is different: a name reaches it out of a FIELD's generic argument
   // list, where a single letter is a type parameter and nothing else.
   //
-  // The root hole is real and is scoped in session-v30/scraps.md: it belongs
-  // where `localTypeNames` is in scope, not here.
+  // The root hole is real: it belongs where `localTypeNames` is in scope, not
+  // here. The scrap that scoped it did not survive its session, so this comment
+  // is the record; docs/roadmap.md tracks the follow-on under S55-15, which asks
+  // for `arityReceivers` dumped over a real diagnostic corpus before any
+  // single-letter guard is added.
 
   // `viaAlias` marks an entry queued by the tier-2 alias chase. It carries two
   // rules the other edges do not: the target's def must pass the sysroot
@@ -1358,8 +1372,7 @@ export async function resolveCrossFileShape(
       // member line is not: at best it is a bare name, at worst it is
       // `CONTINENTAL: Literal[0]`, which names the value and not the way to
       // reach it. This is the hole the v38 enum gate exists for - a repair round
-      // once saw LodBand named and never learned a single variant
-      // (session-v28 live replay).
+      // once saw LodBand named and never learned a single variant.
       //
       // THE GATE USED TO BE `methods.length === 0`, and that was a proxy that
       // stopped holding. It assumed an enum always renders nothing, which is
@@ -1470,7 +1483,7 @@ export async function resolveCrossFileShape(
     // wants `name: Type` at brace depth zero and no variant writes one, so
     // before this every Rust enum contributed zero edges and its payload types
     // were never resolved - the graph stopping at one hop in the place
-    // data-oriented Rust puts its structure (session-v55 phase 12, queue Q13).
+    // data-oriented Rust puts its structure.
     //
     // Read off the RECOVERED signature for the same reason `fields` is: the
     // payloads restored by `recoverElidedSurface` are the only ones a hover with
@@ -1503,13 +1516,13 @@ export async function resolveCrossFileShape(
     types.set(name, emittedType);
 
     if (depth >= bound.D_MAX) {
-      // AT THE DEPTH FRONTIER, AND IT IS NAMED NOW (session-v50 phase 2).
+      // AT THE DEPTH FRONTIER, AND IT IS NAMED NOW.
       //
       // Every edge from here is refused by the bound, and until this it was
       // refused SILENTLY: the type was neither emitted nor added to `dropped`,
       // so a reader of the channel could not tell "no collaborator there" from
-      // "a collaborator we chose not to expand". Measured on the real C# graph
-      // in the session-v48 scout: `JobStatus` sits at
+      // "a collaborator we chose not to expand". Measured on the real C# graph:
+      // `JobStatus` sits at
       // `CustomerSite -> DpmMonitor -> RetroJob -> JobStatus`, depth 3, and it
       // is an ENUM, which is the exact shape the v38 enum gate exists for -
       // a repair round once saw a type named and never learned a variant.

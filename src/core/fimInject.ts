@@ -125,7 +125,7 @@ export function memberReceiverName(prefix: string): string | undefined {
  *  Why the site is worth a surface at all: at `t.Band == ` the 1.5b wrote
  *  ` Band.Regional).Count();`, a value that does not exist, and with the type
  *  merely NAMED in a scoped comment it wrote ` == LodBand.Regional).Count();`
- *  (session-v28 goal item 3, three captures). An enum is a closed set, so the
+ *  (three captures). An enum is a closed set, so the
  *  variant list is both small and complete, the highest-precision surface in
  *  the product. */
 export interface EnumRhsSite {
@@ -974,7 +974,8 @@ export function renderFimCandidates(
   lineComment: string = "//",
   argTypes: ReadonlyArray<FimArgType> = [],
 ): string | undefined {
-  // Arm D (session-v27/measure-ordering.md): at an EMPTY partial the block
+  // Arm D (docs/architecture/surface-injection.md, "Member ordering"): at an
+  // EMPTY partial the block
   // carries only the server's own-relevance tier; tier-1 blanket members leave
   // the BLOCK and nothing else — the enforcement set is the caller's and
   // always carries every name, every tier. Measured over 44 real Rust member

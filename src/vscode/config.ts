@@ -87,15 +87,16 @@ export interface OracleConfig {
    *  human-selects), and degrades silently to v1 repair when rust-analyzer is
    *  not answering. Off returns the exact v1 behaviour. */
   injectionEnabled: boolean;
-  /** session-v30 item 2: run the refine round's reference leg inside a REPAIR
+  /** Roadmap item: run the refine round's reference leg inside a REPAIR
    *  round, so a round with a compiler error can see how the repo already calls
    *  the members it is fixing.
    *
    *  Defaults OFF, and that is the arm's verdict rather than caution.
-   *  `session-v30/measure-p5.md`: over 16 real cases from `acme-db`, 192
-   *  runs, usage scored 24 of 48 against the control's 23 and 3 of 27 against 3
-   *  of 27 on the receiver-blind cases the session exists for, while costing the
-   *  winning arm six passes and 2.6 seconds of median latency. The mechanism it
+   *  docs/architecture/compiler-oracle.md, "The repair usage-window arm": over
+   *  16 real cases from `acme-db`, 192 runs, usage scored 24 of 48 against the
+   *  control's 23 and 3 of 24 against 3 of 24 on the receiver-blind cases the
+   *  leg exists for, while costing the winning arm six passes and 2.6 seconds of
+   *  median latency. The mechanism it
    *  loses on is visible on the channel: 51% of injected windows come from
    *  outside the workspace, and the leg spends its whole budget on `borrow` and
    *  `map_err` before it reaches the failing call.
@@ -106,8 +107,9 @@ export interface OracleConfig {
   /** v29 item 2: at a member site whose name the buffer already spells, inject
    *  real call sites of that member under the signature block. Its own switch
    *  rather than a corner of `injectionEnabled`, because it is a separate bet
-   *  with its own arms (`session-v29/measure-p3.md`: 8 of 40 type-wrong
-   *  continuations down to 3) and its own way of being wrong (a window carries
+   *  with its own arms (docs/architecture/fim-completion.md, "Usage windows at
+   *  a member site": 8 of 40 type-wrong continuations down to 3) and its own way
+   *  of being wrong (a window carries
    *  another call site's locals and the model reaches for them). Defaults on,
    *  the way every measured injection here does. */
   usageExamples: boolean;
@@ -122,13 +124,13 @@ export function readOracleConfig(): OracleConfig {
     repairEnabled: c.get<boolean>("repairEnabled", true),
     injectionEnabled: c.get<boolean>("compilerDirectedInjection", true),
     usageExamples: c.get<boolean>("fimUsageExamples", true),
-    // OFF by default because it LOST its arm. session-v30 item 2 put the
-    // refine round's reference leg inside a repair round; measured over 16 real
-    // cases from acme-db it scored 24 of 48 against the control's 23, 3 of
-    // 27 against 3 of 27 on the cases the session exists for, and it cost the
-    // winning arm six passes and 2.6s of median latency. The switch stays so the
-    // leg can be re-armed after the window selection is fixed (51% of injected
-    // windows landed outside the workspace); it does not stay on.
+    // OFF by default because it LOST its arm. Putting the refine round's
+    // reference leg inside a repair round, measured over 16 real cases from
+    // acme-db, scored 24 of 48 against the control's 23, and 3 of 24 against
+    // 3 of 24 on the receiver-blind cases the leg exists for; it cost the
+    // winning arm six passes and 2.6s of median latency. The switch stays so
+    // the leg can be re-armed after the window selection is fixed (51% of
+    // injected windows landed outside the workspace); it does not stay on.
     repairUsageWindows: c.get<boolean>("repairUsageWindows", false),
   };
 }

@@ -2,7 +2,7 @@ import { separatorRunAt } from "./fimInject";
 
 // The scope/sticky/window/revert decision as one pure machine, extracted from
 // the vscode provider so a table test can drive it without an editor. The rule
-// it enforces (session-v26): a scope is a loan, not a transfer - whatever
+// it enforces: a scope is a loan, not a transfer - whatever
 // happens to the scoped request, served, dropped, or never servable, the site
 // hands back to the unscoped completion. The vscode layer is plumbing over
 // this module: it translates editor types into the events below, owns the one
@@ -89,8 +89,9 @@ interface HeldScope {
    *  developer has the ghost in front of them, not time the model spent
    *  thinking. UNIFORM across preselected and arrowed members: the human's
    *  dictated gesture puts the same 1.5s window on "whatever the last one was
-   *  run" (session-v26/journeys/member-dot-flow.md, decided 2026-07-26,
-   *  superseding v20's indefinite hold for arrowed choices). */
+   *  run" (decided 2026-07-26, superseding the earlier indefinite hold for
+   *  arrowed choices; the journey and the ruling are in
+   *  docs/architecture/vscode-layer.md, "The member-dot journey"). */
   deadline?: number;
 }
 

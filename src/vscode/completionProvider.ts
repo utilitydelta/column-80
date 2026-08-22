@@ -352,7 +352,8 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     // Consumed before every gate below it, whatever they decide. The flag
     // disowns ONE request, the re-render the provider itself asked for, and
     // leaving it armed for a later request silently downgrades a fan-out the
-    // user did ask for. session-v20/scraps.md filed that against the enabled
+    // user did ask for. docs/architecture/fim-completion.md, "The one-request
+    // downgrade flag", files that against the enabled
     // gate and named this fix; v29 added a second early return, which is the
     // reason it is now taken.
     const providerTriggered = this.downgradeNextManual;
@@ -448,7 +449,8 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     const extractor = registered && oracleConfig.injectionEnabled ? registered : undefined;
     // The usage leg's own switch, separate from `injectionEnabled` because it is
     // a different bet: injection is the v2 thesis and this is one measured leg
-    // on top of it, with its own arms in `session-v29/measure-p3.md` and its own
+    // on top of it, with its own arms in docs/architecture/fim-completion.md,
+    // "Usage windows at a member site", and its own
     // way of being wrong (a window carries another call site's locals).
     const usageOn = oracleConfig.usageExamples;
 
@@ -678,8 +680,8 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
         // later request's window; the member name is the attribution.
         if (scope !== undefined && members.length > 0) {
           // The selection's raw sortText, when the scoped member is in our
-          // resolved surface: the session-v26 clone() preselect mystery took
-          // three eliminations because the server's own ranking verdict was
+          // resolved surface: the clone() preselect mystery took three
+          // eliminations because the server's own ranking verdict was
           // invisible; now the next mystery arrives with its answer attached.
           // A member the blanket table dropped never reaches this surface, so
           // its line carries no sortText — the drop itself is the answer there.

@@ -45,12 +45,14 @@ export interface CompletionMember {
    *  server emitted (rust-analyzer's sortText family, Python's dunder shape,
    *  Roslyn's object-declared rendering), never a hand-written own-vs-trait
    *  name list: a plain viaTrait test would demote a human's domain trait
-   *  impls along with the noise (session-v27/goal.md). */
+   *  impls along with the noise. The capture that forced the rule, the
+ *  per-language discriminators and the arm results are in
+ *  docs/architecture/surface-injection.md, "Member ordering". */
   tier?: 0 | 1;
   /** The provider's RAW sortText, carried as ranking EVIDENCE only — the
    *  scope-surface log line prints it so the next preselect/ranking mystery
-   *  arrives with its own answer (the clone() mystery of session-v26 took
-   *  three eliminations to close because this was invisible). Never a
+   *  arrives with its own answer (the clone() mystery took three eliminations
+   *  to close because this was invisible). Never a
    *  classifier: `tier` is the classifier, this is the observable it was
    *  derived from. Rust transports stamp it; others may. */
   sortText?: string;
@@ -64,12 +66,12 @@ export interface CompletionMember {
    *  of a type's 38 members is the silent-truncation failure this codebase keeps
    *  removing. Absent means the member's signature status is its own.
    *
-   *  THREE CAUSES, not two (session-v50 phase 3, v49 S49-13). `budget` used to
-   *  cover two different things: a hover that never answered inside the wall
-   *  clock, and a hover that answered INSTANTLY with text the language's builder
-   *  then refused (unparseable, or naming another symbol). Measured in v49: 5
-   *  members, an instant hover returning text that names nobody, all 5 reported
-   *  as `budget` with the clock never involved. Nothing vanished silently, so it
+   *  THREE CAUSES, not two. `budget` used to cover two different things: a
+   *  hover that never answered inside the wall clock, and a hover that answered
+   *  INSTANTLY with text the language's builder then refused (unparseable, or
+   *  naming another symbol). Measured: 5 members, an instant hover returning
+   *  text that names nobody, all 5 reported as `budget` with the clock never
+   *  involved. Nothing vanished silently, so it
    *  was a label rather than a hole, but it sends a reader to the fan-out budget
    *  when the dial that matters is the builder. `unusable` is that case. */
   capped?: "count" | "budget" | "unusable";
@@ -391,9 +393,9 @@ export interface SurfaceExtractor {
    *  can read its surface. Picks the EXACT-name TYPE (class/struct/interface/
    *  enum/record), preferring a workspace (non-metadata) location; undefined when
    *  no such type exists (a partial/overloaded/non-type hit is never accepted).
-   *  The C# and Go transports implement it (session-v40 item 2 added Go's, over
-   *  gopls's workspace/symbol — same shape, cheaper hint resolution, since
-   *  gopls's containerName is already a real import path); absent means the
+   *  The C# and Go transports implement it (Go's rides gopls's
+   *  workspace/symbol — same shape, cheaper hint resolution, since gopls's
+   *  containerName is already a real import path); absent means the
    *  language has no workspace-symbol fallback and the caller degrades to the
    *  per-file cursor. */
   resolveTypeCursorByName?(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined>;
@@ -454,7 +456,8 @@ const UNIVERSAL_TRAITS = new Set([
 
 /** rust-analyzer's own relevance verdict, read off the completion item's
  *  sortText FAMILY: the leading hex digit, never exact values. The harvest
- *  over 44 real member sites (session-v27/measure-ordering.md) shows two
+ *  over 44 real member sites (docs/architecture/surface-injection.md,
+ *  "Member ordering") shows two
  *  families — `7fffff**` spanning `7fffffd9`-`7fffffff` (own members, with
  *  type-matched fields BOOSTED below the neutral value) and `8000000*`
  *  spanning `80000000`-`8000000b` (penalized: blanket impls, needs-import,
@@ -1264,7 +1267,7 @@ export function selectSoleTypeCursor(
  *  size for Python. At 8, that cost fit the window; but 8 also CAPPED THE SURFACE
  *  at eight lines, and a 16-member type in play showed only half of itself. That
  *  surface cap was never the server's - it was ours, and it leaked the cost
- *  control into what the block was allowed to say (session-v21 goal item 8 / §2).
+ *  control into what the block was allowed to say.
  *
  *  Raising it to 32 unbinds the surface without moving the latency bound: the
  *  50ms fan-out budget still races every ask, so a cold TypeScript walk still
@@ -1310,9 +1313,11 @@ export const HOVER_SIGNATURE_CAP = 32;
  *  still competes with whatever the editor asks for next.
  *
  *  MEASURED, and it does not hold on the one server that can be driven here.
- *  `session-v51/probe/count-cap-cost.cjs` runs two alternating arms against a
- *  real pyright, timing the NEXT request (a hover in a different file) that
- *  lands the instant a fan-out returns:
+ *  A probe runs two alternating arms against a real pyright, timing the NEXT
+ *  request (a hover in a different file) that lands the instant a fan-out
+ *  returns. Its design and full table are in
+ *  docs/architecture/surface-injection.md, "Does a count cap buy the server
+ *  anything a time cap does not?":
  *
  *    class            arm      fan-out   next request (median / p95 / max)
  *    GraphEngine, 38  cap 4      1ms       0ms / 1ms / 1ms
@@ -1391,9 +1396,9 @@ export interface HoverBackfillOptions {
 
 /** The one place a transport turns its two optional `membersOfType` arguments
  *  into fan-out options. Four transports would otherwise each spell the same
- *  three-way merge, and a fifth added later would spell it differently: the
- *  session-v50 report has two separate defects whose whole cause was one leg
- *  being wired slightly unlike its siblings.
+ *  three-way merge, and a fifth added later would spell it differently. Two
+ *  separate defects have already been traced back to one leg being wired
+ *  slightly unlike its siblings.
  *
  *  Absent stays absent, never a written-in default, so `membersWithHoverSignatures`
  *  keeps deciding what a missing option means. */
@@ -1442,11 +1447,11 @@ export async function membersWithHoverSignatures(
   // descent order this lets declaration order decide the whole surface: a type
   // whose fields are declared before its methods spends every slot on fields and
   // renders no callable, which is the inverse of what a "how to build one" block
-  // is for (session-v21 goal item 8 / §1a). So the slots are dealt round-robin
-  // between callables and the rest, and neither kind can be wholly starved while
-  // the other has takers. For a type with <= cap unsigned members every eligible
-  // member is asked regardless of kind, so this is a no-op below the cap and only
-  // bites when the cap actually binds.
+  // is for. So the slots are dealt round-robin between callables and the rest,
+  // and neither kind can be wholly starved while the other has takers. For a
+  // type with <= cap unsigned members every eligible member is asked regardless
+  // of kind, so this is a no-op below the cap and only bites when the cap
+  // actually binds.
   const eligible: number[] = [];
   for (let i = 0; i < members.length; i++) {
     if (members[i].signature === undefined && positionOf(kept[i].symbol) !== undefined) {
@@ -1767,10 +1772,10 @@ function isRustExampleFence(infoString: string): boolean {
 }
 
 /** Does this usage-example code actually NAME the type its block is headed
- *  with? The census (session-v41 spike-2, restated under this predicate): 40
- *  of 49 injected example blocks never do, and every one of them shipped under
- *  a header claiming to demonstrate the type - a false sentence in a prompt
- *  whose other blocks say "do not invent".
+ *  with? The census, restated under this predicate: 40 of 49 injected example
+ *  blocks never do, and every one of them shipped under a header claiming to
+ *  demonstrate the type - a false sentence in a prompt whose other blocks say
+ *  "do not invent".
  *
  *  The match unit is the headed type's LAST PATH SEGMENT with generic args
  *  stripped (`cache::ShardCache<V>` -> `ShardCache`; a literal `ShardCache<V>`

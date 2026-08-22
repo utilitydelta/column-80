@@ -249,10 +249,10 @@ export interface RepairPromptInput {
    *  signatures) for a hallucination-class round. Prepended as its own section
    *  when present; absent keeps the repair prompt byte-identical to v1. */
   surface?: string;
-  /** session-v30 item 2: the rendered usage sections, real call sites of the
-   *  members this span calls, from the repo's own reference provider.
+  /** The rendered usage sections, real call sites of the members this span
+   *  calls, from the repo's own reference provider.
    *
-   *  Until v30 this leg was structurally out of reach of a repair round. Repair
+   *  This leg used to be structurally out of reach of a repair round. Repair
    *  and refine are the same command and mutually exclusive branches of one
    *  decision (`src/vscode/oracleSurface.ts`): errors present runs rounds with
    *  span types plus diagnostic-keyed blocks and NO usage windows; a clean build
@@ -476,10 +476,9 @@ export class RepairSession {
     // Routing on (source, round). FIM output crosses to the 30b once; after
     // that the failing text IS 30b output, so round 2 is self-repair. For
     // fngen there is no bigger model to cross to, so round 2 is granted only
-    // when the errors are STILL FALLING (session-v35 item 2). It used to end
-    // flat at round 1, which quit with the count dropping: the capture went 12
-    // errors, then 2, then 1, and stopped, and the human read the file to find
-    // out.
+    // when the errors are STILL FALLING. It used to end flat at round 1, which
+    // quit with the count dropping: the capture went 12 errors, then 2, then 1,
+    // and stopped, and the human read the file to find out.
     //
     // This does NOT raise the cap. The cap branch above is structural and runs
     // first, so this only grants the round the table already refused.
@@ -489,11 +488,12 @@ export class RepairSession {
     // for one different error counts as progress here, and whether it should is
     // not settled by this corpus, which records counts and not per-round codes.
     //
-    // MEASURED before it was granted, on all 156 compile-failure rows of
-    // `session-complxity-research/data/v34-after.json` re-run through
-    // `16-repair.cjs --gestures 2` (a fresh session per press against the body
-    // the last one left, which is the gesture a developer can already perform by
-    // hand). 30 rows fell without clearing; a second round CLEARED 3 of them,
+    // MEASURED before it was granted, on all 156 compile-failure rows of the
+    // complexity study's own corpus, re-run with two repair gestures per row (a
+    // fresh session per press against the body the last one left, which is the
+    // gesture a developer can already perform by hand). Neither the corpus file
+    // nor the runner survived that session, so the numbers below are their only
+    // record. 30 rows fell without clearing; a second round CLEARED 3 of them,
     // exactly the one-in-ten the goal set as the bar, at a median 8.3s. Three
     // more fell further without clearing and three got worse.
     //

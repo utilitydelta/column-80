@@ -4,9 +4,8 @@
  *
  * The FIM leg has had this gate since v18 (ghostNamesMember, fimInject.ts) and
  * repair had none, so repair output faced only the compiler. The capture that
- * proved it (session-v28 goal item 1, capture B round 2): with nothing
- * disclosed the model invented `tile.LodBand`, the round cap ran out, and the
- * invention stayed in the human's file.
+ * proved it: with nothing disclosed the model invented `tile.LodBand`, the
+ * round cap ran out, and the invention stayed in the human's file.
  *
  * Both legs below refuse on RESOLVED EVIDENCE and nothing else. A refusal costs
  * the human a round and leaves them where they started, so neither leg may fire
@@ -91,8 +90,9 @@ export interface DisclosedType {
    *  members does NOT clear it. Nested types, extension members, generic
    *  statics and partial declarations all add names a member walk never sees,
    *  and claiming completeness anyway refuses correct repairs: four classes,
-   *  each measured (session-v28/triage-p1.md). What does clear it is a CLOSED
-   *  set, which today means an enum's variants. */
+   *  each measured (docs/architecture/compiler-oracle.md, "Why only a CLOSED
+   *  set may refuse"). What does clear it is a CLOSED set, which today means an
+   *  enum's variants. */
   complete: boolean;
   /** The rendered member lines the prompt actually showed, verbatim. `members`
    *  is the names read out of these; the lines themselves carry the TYPES,
