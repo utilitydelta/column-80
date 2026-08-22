@@ -6724,7 +6724,10 @@ export function registerFnGen(
         await document.save();
       }
       const testFileText = sameFile ? document.getText() : safeReadFile(placement.targetPath) ?? "";
-      const testNames = lang.generatedTestNames(testFileText, resolved.symbolName);
+      // The placement rides along because a test name is not always spelled in
+      // full inside the file: Rust's libtest path starts with the segment the
+      // FILE contributes, which only the crate layout knows.
+      const testNames = lang.generatedTestNames(testFileText, resolved.symbolName, { placement, deps: tddDeps });
       if (testNames.length === 0) {
         void vscode.window.showInformationMessage(
           `Column 80: no generated tests for ${resolved.symbolName} — run "Generate Tests (TDD)" first.`,

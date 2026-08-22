@@ -1143,11 +1143,43 @@ which it did not before.
 shape was ratified at filing time; what needs a call is that two BYTE-FROZEN command contracts and
 one seam's documented output shape move with it.
 
-**What changed.** `generatedTestNames` returns FILTERS, not bare names. Rust's carry the enclosing
-`mod` path (`widget_checks::add`), resolved from the marked region's own position; C#'s carry
-namespace and class (`Falsifier.Widgets.WidgetChecks.Add`, `Ns.Outer+Inner.Add` when the class is
-nested). `buildTestCommand` then emits `--exact` past the `--` separator, and `buildCsCommand`
-switches `FullyQualifiedName~` to `FullyQualifiedName=`.
+**Read the amendment first.** The entry as originally filed shipped a REGRESSION: on the crate
+layout Rust actually uses, the rung it describes selected ZERO tests. Corrected below, in "What the
+first cut got wrong".
+
+**What changed.** `generatedTestNames` returns FILTERS, not bare names. Rust's carry the full
+libtest path (`geometry::widget_checks::add`); C#'s carry namespace and class
+(`Falsifier.Widgets.WidgetChecks.Add`, `Ns.Outer+Inner.Add` when the class is nested).
+`buildTestCommand` then emits `--exact` past the `--` separator, and `buildCsCommand` switches
+`FullyQualifiedName~` to `FullyQualifiedName=`.
+
+**What the first cut got wrong, and the correction.** The first cut resolved Rust's path from the
+marked region's own position in the file's TEXT, and that is not the whole path. A libtest path also
+starts with the segment the FILE contributes by being a module, and no amount of reading the file
+shows it. Rust puts a function's tests in the function's own file, so every crate whose code is not
+in `src/lib.rs` - the normal layout - got a full-SHAPED path missing its head, `--exact` rode along,
+and the rung selected nothing. Driven, cargo 1.96, `src/lib.rs` holding `pub mod geometry;` and the
+tests in `src/geometry.rs`: `-- add` ran 2 of 2, `--exact widget_checks::add` ran 0 of 2, `--exact
+geometry::widget_checks::add` ran 1. **Before this entry the rung over-selected; after its first cut
+it selected nothing, which the entry itself calls strictly worse.**
+
+Two more names dropped the same way and produced the same zero. A raw-identifier module (`mod
+r#match`) was not matched by the head regex at all, so its brace was counted and no segment pushed;
+cargo KEEPS the `r#` (`r#match::widget_checks::add: test`). And `namespace @namespace` was dropped
+on the C# side, where the class alone still satisfied the fully-qualified shape check, so `=` fired
+at a name no assembly holds: on dotnet 10.0.111 `=namespace.VerbChecks.Add` selects one test and
+`=VerbChecks.Add` matches none.
+
+**The rule the first cut was missing.** A qualification check must prove a name is COMPLETE, not
+that it is dotted or colon-separated. `generatedTestNames` now takes the placement and walks `mod`
+declarations from the `--lib` target's root file, and prefixes a name only when that walk reaches
+the file. `foo.rs`, `foo/mod.rs`, `#[path]`, nesting and raw identifiers all resolve; a file the
+walk never reaches, a crate with no lib target, a file two declarations both route to, and a call
+with no placement at all answer BARE, which keeps the substring filter. The shape check in
+`buildTestCommand` is a floor under a hand-built name, not the gate.
+
+The seam's `generatedTestNames` gains an optional third parameter carrying the placement. C#, Go,
+TypeScript and Python ignore it: each reads its whole qualified name out of the file.
 
 **Why the old behaviour was wrong.** Both filters were SUBSTRING matches, so a rung scoped to one
 generated function ran a neighbour's tests and could report the neighbour's red under the named
@@ -1178,6 +1210,15 @@ tests whose names are strict prefixes (`add`/`add_more`, `Add`/`AddMore`), in a 
 that are NOT the defaults, both FAILING so the runner names whichever it selected. Before the fix
 each graded row read 2 selected; after, 1, and it is the named one. The live rows skip under
 `SKIP_LIVE=1`, so the gate runs their shape and a human runs their grade.
+
+**Why that falsifier missed the regression, which is the durable lesson.** Every Rust fixture in
+that file wrote `src/lib.rs`, and the row titled "an enclosing `mod` is part of the libtest path"
+asserted a shape over an INLINE `pub mod geometry { … }`. The graded row never left the crate root,
+so the one segment the build got wrong was the one segment no fixture had. A graded row now drives
+six layouts in ONE crate - `src/geometry.rs`, `src/geometry/deep.rs`, `src/shapes/mod.rs`, a
+`#[path]` module, a raw-identifier file module and a raw-identifier inline module - with twelve live
+tests, so a wrong path selects zero and a substring filter selects twelve. Only the resolved path
+selects one. A second graded row drives `namespace @namespace` against real dotnet.
 
 ## S27. A cancelled tighten round is not a failed one, and it ends the gesture
 

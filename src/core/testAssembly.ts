@@ -7,6 +7,7 @@
  *    developer's tests; idempotent regeneration via a distinctive marker).
  */
 
+import * as path from "path";
 import { StructFieldShape, renderBlankValue } from "./tabstop";
 
 export interface BlankTestModule {
@@ -736,9 +737,15 @@ function findCfgTestModule(text: string): { open: number; close: number } | unde
 }
 
 /** A `mod <name>` head with the delimiter that follows it: `{` opens an inline
- *  module, `;` is a declaration whose body lives in another file. Sticky, so the
- *  scan below never slices the source to match. */
-const MOD_HEAD = /mod\s+(\w+)\s*([{;])/y;
+ *  module, `;` is a declaration whose body lives in another file.
+ *
+ *  The `r#` is captured rather than skipped, because libtest KEEPS it: measured
+ *  on cargo 1.96, `mod r#match` lists as `r#match::widget_checks::add` and
+ *  `--exact match::widget_checks::add` selects zero. Dropping the head left the
+ *  brace counted and no segment pushed, which is the silent-zero shape.
+ *
+ *  Sticky, so the scan below never slices the source to match. */
+const MOD_HEAD = /mod\s+(r#)?(\w+)\s*([{;])/y;
 
 function isIdentChar(c: string): boolean {
   return /[A-Za-z0-9_]/.test(c);
@@ -756,9 +763,12 @@ function isIdentChar(c: string): boolean {
  *
  * Resolved from the REGION's own position rather than from the first
  * `#[cfg(test)]` in the file: the region is what the filter names, so its
- * enclosing modules are the only ones certain to be on the path. Empty means
- * nothing encloses it, and the caller must then stay on substring filters — a
- * wrong path selects nothing, which is worse than over-selecting.
+ * enclosing modules are the only ones certain to be on the path.
+ *
+ * This is the INNER half of the path only. The segment a file contributes by
+ * BEING a module is not in the file's own text, and `rustModulePath` is what
+ * resolves it. Treating this alone as a full path is what shipped a rung that
+ * selected zero on every crate whose code is not in `src/lib.rs`.
  */
 export function enclosingModulePath(text: string, index: number): string[] {
   const stack: Array<{ name: string; depth: number }> = [];
@@ -789,9 +799,9 @@ export function enclosingModulePath(text: string, index: number): string[] {
       MOD_HEAD.lastIndex = i;
       const m = MOD_HEAD.exec(text);
       if (m !== null) {
-        if (m[2] === "{") {
+        if (m[3] === "{") {
           depth++;
-          stack.push({ name: m[1], depth });
+          stack.push({ name: (m[1] ?? "") + m[2], depth });
         }
         i = MOD_HEAD.lastIndex;
         continue;
@@ -800,6 +810,213 @@ export function enclosingModulePath(text: string, index: number): string[] {
     i++;
   }
   return stack.map((e) => e.name);
+}
+
+// ===========================================================================
+// The segment a FILE contributes, which its own text never states
+// ===========================================================================
+
+/** The crate filesystem `rustModulePath` walks, injected so the resolver stays
+ *  a function of a filesystem it is handed rather than of the real one. */
+export interface CrateFiles {
+  readFile(p: string): string | undefined;
+  fileExists(p: string): boolean;
+}
+
+/** Where the marked region lives, and which crate it lives in. */
+export interface RustTestNameContext {
+  /** Absolute path of the file holding the marked region. */
+  filePath: string;
+  /** The crate directory: the one holding Cargo.toml. */
+  crateRoot: string;
+  files: CrateFiles;
+}
+
+/** `#[path = "…"]` moves a module's file. Captured across the whole file up
+ *  front, then matched to the `mod` head it precedes. */
+const PATH_ATTR = /#\s*\[\s*path\s*=\s*"([^"]*)"\s*\]/g;
+
+/** What may sit between a `#[path]` attribute and the `mod` it applies to:
+ *  whitespace and a visibility. Anything else means the attribute belongs to
+ *  something other than this module. */
+const ATTR_TO_MOD_GAP = /^\s*(?:pub\s*(?:\([^)]*\)\s*)?)?$/;
+
+/** A crate is walked file by file; the cap is a floor under a pathological
+ *  tree, not a real limit. Hitting it answers "unresolved", which falls back
+ *  to the substring filter. */
+const CRATE_WALK_FILE_CAP = 512;
+
+interface ModDecl {
+  /** The segment libtest prints, `r#` kept. */
+  name: string;
+  /** The file stem rustc looks up, `r#` stripped: `mod r#match;` is `match.rs`,
+   *  measured on cargo 1.96. */
+  fileStem: string;
+  /** Inline `mod` names enclosing the declaration, outermost first. Each one is
+   *  both a path segment and a directory level. */
+  ancestry: string[];
+  pathAttr?: string;
+}
+
+function pathAttrFor(text: string, modStart: number, attrs: Array<{ end: number; value: string }>): string | undefined {
+  for (let k = attrs.length - 1; k >= 0; k--) {
+    const attr = attrs[k];
+    if (attr.end > modStart) {
+      continue;
+    }
+    return ATTR_TO_MOD_GAP.test(text.slice(attr.end, modStart)) ? attr.value : undefined;
+  }
+  return undefined;
+}
+
+/** Every `mod <name>;` in `text`, each with the inline `mod` chain around it. */
+function modDeclarations(text: string): ModDecl[] {
+  const attrs: Array<{ end: number; value: string }> = [];
+  PATH_ATTR.lastIndex = 0;
+  for (let a = PATH_ATTR.exec(text); a !== null; a = PATH_ATTR.exec(text)) {
+    attrs.push({ end: a.index + a[0].length, value: a[1] });
+  }
+  const out: ModDecl[] = [];
+  const stack: Array<{ name: string; depth: number }> = [];
+  let depth = 0;
+  let i = 0;
+  while (i < text.length) {
+    const skipped = skipLiteralOrComment(text, i);
+    if (skipped > i) {
+      i = skipped;
+      continue;
+    }
+    const c = text[i];
+    if (c === "{") {
+      depth++;
+      i++;
+      continue;
+    }
+    if (c === "}") {
+      while (stack.length > 0 && stack[stack.length - 1].depth >= depth) {
+        stack.pop();
+      }
+      depth--;
+      i++;
+      continue;
+    }
+    if (c === "m" && !isIdentChar(text[i - 1] ?? "")) {
+      MOD_HEAD.lastIndex = i;
+      const m = MOD_HEAD.exec(text);
+      if (m !== null) {
+        const name = (m[1] ?? "") + m[2];
+        if (m[3] === "{") {
+          depth++;
+          stack.push({ name, depth });
+        } else {
+          out.push({ name, fileStem: m[2], ancestry: stack.map((e) => e.name), pathAttr: pathAttrFor(text, i, attrs) });
+        }
+        i = MOD_HEAD.lastIndex;
+        continue;
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+/** Where a module's OWN children live: `foo.rs` and `foo/mod.rs` both own the
+ *  directory `foo/`. */
+function childDirOf(file: string): string {
+  const dir = path.dirname(file);
+  const base = path.basename(file);
+  return base === "mod.rs" ? dir : path.join(dir, base.replace(/\.rs$/, ""));
+}
+
+function resolveModFile(baseDir: string, fileDir: string, decl: ModDecl, files: CrateFiles): string | undefined {
+  const candidates =
+    decl.pathAttr === undefined
+      ? [path.join(baseDir, `${decl.fileStem}.rs`), path.join(baseDir, decl.fileStem, "mod.rs")]
+      : [path.resolve(baseDir, decl.pathAttr), path.resolve(fileDir, decl.pathAttr)];
+  const hit = candidates.find((c) => files.fileExists(c));
+  return hit === undefined ? undefined : path.resolve(hit);
+}
+
+/** Cargo's default lib target is `src/lib.rs`; a `[lib]` section may move it. */
+function libPathFromManifest(manifest: string): string | undefined {
+  const section = /^[ \t]*\[lib\][ \t]*$/m.exec(manifest);
+  if (section === null) {
+    return undefined;
+  }
+  const rest = manifest.slice(section.index + section[0].length);
+  const next = rest.search(/^[ \t]*\[/m);
+  const body = next === -1 ? rest : rest.slice(0, next);
+  const declared = /^[ \t]*path[ \t]*=[ \t]*"([^"]*)"/m.exec(body);
+  return declared === null ? undefined : declared[1];
+}
+
+function libTargetOf(crateRoot: string, files: CrateFiles): string | undefined {
+  const manifest = files.readFile(path.join(crateRoot, "Cargo.toml"));
+  const declared = manifest === undefined ? undefined : libPathFromManifest(manifest);
+  const candidate = declared === undefined ? path.join(crateRoot, "src", "lib.rs") : path.resolve(crateRoot, declared);
+  return files.fileExists(candidate) ? path.resolve(candidate) : undefined;
+}
+
+/**
+ * The module path of a FILE inside a crate, outermost first: the `["geometry"]`
+ * that makes `src/geometry.rs`'s tests list as `geometry::widget_checks::add`.
+ *
+ * Rust puts a function's tests in the function's own file, so this is the normal
+ * layout and not an edge case. Nothing in the file's text says which module it
+ * is; only the crate root's `mod` declarations do. Reading the text alone
+ * produced a full-SHAPED path missing its head, `--exact` rode along, and the
+ * rung selected ZERO — worse than the substring filter it replaced.
+ *
+ * Resolved by walking `mod` declarations from the `--lib` target's root file,
+ * which is where `cargo test --lib` starts too. `foo.rs`, `foo/mod.rs`,
+ * `#[path]` and raw identifiers are all measured against cargo 1.96.
+ *
+ * undefined means NOT PROVEN, and the caller must then keep the substring
+ * filter: a file the walk never reached, a crate with no lib target, or a file
+ * two declarations both route to. Over-selecting adds a red the human can read;
+ * selecting nothing reads as a passing rung with nothing in it.
+ */
+export function rustModulePath(ctx: RustTestNameContext): string[] | undefined {
+  const target = path.resolve(ctx.filePath);
+  const libRoot = libTargetOf(ctx.crateRoot, ctx.files);
+  if (libRoot === undefined) {
+    return undefined;
+  }
+  if (libRoot === target) {
+    return [];
+  }
+  const matches: string[][] = [];
+  const seen = new Set<string>([libRoot]);
+  const queue = [{ file: libRoot, dir: path.dirname(libRoot), modPath: [] as string[] }];
+  let read = 0;
+  while (queue.length > 0 && read < CRATE_WALK_FILE_CAP) {
+    const node = queue.shift() as { file: string; dir: string; modPath: string[] };
+    const text = ctx.files.readFile(node.file);
+    read++;
+    if (text === undefined) {
+      continue;
+    }
+    for (const decl of modDeclarations(text)) {
+      const baseDir = path.join(node.dir, ...decl.ancestry);
+      const child = resolveModFile(baseDir, node.dir, decl, ctx.files);
+      if (child === undefined) {
+        continue;
+      }
+      const modPath = [...node.modPath, ...decl.ancestry, decl.name];
+      if (child === target) {
+        matches.push(modPath);
+        continue;
+      }
+      if (seen.has(child)) {
+        continue;
+      }
+      seen.add(child);
+      queue.push({ file: child, dir: childDirOf(child), modPath });
+    }
+  }
+  // Two routes to one file means two candidate paths and no way to pick; one
+  // of them would select zero. Ambiguity falls back like unreachability does.
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 // One indent level inside `mod tests { … }`; the generated fns are normalized to
@@ -865,13 +1082,20 @@ export function testMarkers(markerId: string, prefix = "//"): { begin: string; e
  * tests, so a red never blames the whole crate's tests on this implementation.
  * Empty when no marked region exists (no generated tests yet).
  *
- * Each name carries the enclosing `mod` path (`widget_checks::add`), because
- * that is the only string `--exact` matches; without it the rung is a SUBSTRING
- * filter and `add` also runs `add_more`. A region nothing encloses yields the
- * bare name, and `buildTestCommand` then keeps the substring filter rather than
- * pairing `--exact` with a name it cannot match.
+ * A name is prefixed with its libtest path (`geometry::widget_checks::add`)
+ * only when that path is PROVEN COMPLETE, because `--exact` matches the whole
+ * path and nothing less. Completeness has two halves and needs both: the `mod`
+ * chain inside the file, and the segment the file itself contributes, which
+ * comes from `ctx` and cannot be read out of the text. No `ctx`, an unresolved
+ * crate layout, or nothing enclosing the region all yield BARE names, and
+ * `buildTestCommand` then keeps the substring filter rather than pairing
+ * `--exact` with a name libtest will not match.
+ *
+ * Full SHAPE is not completeness. Shipping a check that only asked whether the
+ * name was colon-separated is what made this rung select zero tests on every
+ * crate laid out the normal way.
  */
-export function generatedTestNames(fileText: string, markerId: string): string[] {
+export function generatedTestNames(fileText: string, markerId: string, ctx?: RustTestNameContext): string[] {
   const { begin, end } = testMarkers(markerId);
   const bi = fileText.indexOf(begin);
   if (bi === -1) {
@@ -882,9 +1106,23 @@ export function generatedTestNames(fileText: string, markerId: string): string[]
     return [];
   }
   const region = fileText.slice(bi + begin.length, ei);
-  const modPath = enclosingModulePath(fileText, bi);
-  const prefix = modPath.length === 0 ? "" : `${modPath.join("::")}::`;
-  return [...region.matchAll(/\bfn\s+(\w+)/g)].map((m) => prefix + m[1]);
+  // libtest keeps the `r#` on a raw test name too: `fn r#fn` lists as `r#fn`.
+  const bare = [...region.matchAll(/\bfn\s+(r#)?(\w+)/g)].map((m) => (m[1] ?? "") + m[2]);
+  const prefix = libtestPathPrefix(fileText, bi, ctx);
+  return prefix === undefined ? bare : bare.map((n) => prefix + n);
+}
+
+/** The proven part of a libtest path, or undefined when it is not proven. */
+function libtestPathPrefix(fileText: string, regionStart: number, ctx?: RustTestNameContext): string | undefined {
+  if (ctx === undefined) {
+    return undefined;
+  }
+  const fileSegments = rustModulePath(ctx);
+  if (fileSegments === undefined) {
+    return undefined;
+  }
+  const segments = [...fileSegments, ...enclosingModulePath(fileText, regionStart)];
+  return segments.length === 0 ? undefined : `${segments.join("::")}::`;
 }
 
 /**

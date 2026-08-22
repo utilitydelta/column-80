@@ -2124,8 +2124,20 @@ const CS_NOT_A_TYPE_NAME = new Set([
   "default",
 ]);
 
-/** A namespace or type head. Sticky, so the scan never slices the source. */
-const CS_SCOPE_HEAD = /(namespace|class|struct|record|interface)\s+([A-Za-z_][\w.]*)/y;
+/** A namespace or type head. Every dotted segment may be ESCAPED (`@class`),
+ *  which is how a C# identifier collides with a keyword and stays legal.
+ *  Sticky, so the scan never slices the source. */
+const CS_SCOPE_HEAD = /(namespace|class|struct|record|interface)\s+(@?[A-Za-z_]\w*(?:\.@?[A-Za-z_]\w*)*)/y;
+
+/** `@` is SOURCE syntax and the CLR never sees it, so VSTest spells
+ *  `namespace @namespace` as `namespace`. Measured on dotnet 10.0.111:
+ *  `=namespace.VerbChecks.Add` selects one test, `=VerbChecks.Add` matches
+ *  nothing. A head that could not read the escape dropped the namespace, the
+ *  class alone still looked qualified, and `=` fired at a name no assembly
+ *  holds — the silent-zero shape again. */
+function csUnescapeName(name: string): string {
+  return name.replace(/(^|\.)@/g, "$1");
+}
 
 /**
  * The FULLY-QUALIFIED name of the type enclosing `index`, the way VSTest spells
@@ -2187,8 +2199,11 @@ export function csEnclosingTypePath(text: string, index: number): string | undef
     if (/[a-z]/.test(c) && !isIdentChar(text[i - 1] ?? "")) {
       CS_SCOPE_HEAD.lastIndex = i;
       const m = CS_SCOPE_HEAD.exec(text);
+      // Tested on the RAW capture: `where T : class where U : struct` leaves a
+      // bare `where` that is a constraint, while `@where` is a real type named
+      // `where` and the escape is what says so.
       if (m !== null && !CS_NOT_A_TYPE_NAME.has(m[2])) {
-        pending = { kind: m[1], name: m[2], generic: text[CS_SCOPE_HEAD.lastIndex] === "<" };
+        pending = { kind: m[1], name: csUnescapeName(m[2]), generic: text[CS_SCOPE_HEAD.lastIndex] === "<" };
         i = CS_SCOPE_HEAD.lastIndex;
         continue;
       }

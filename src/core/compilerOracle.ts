@@ -1029,14 +1029,20 @@ export interface TestCommandOptions {
  * that fixes that matches libtest's FULL path and nothing else: measured on
  * cargo 1.96, `--exact add` against a bare `fn` name selects ZERO tests, and a
  * command that selects nothing reads as a passing rung with nothing in it —
- * strictly worse than over-selecting. So the flag is emitted only when EVERY
- * filter is a full path, which is what `generatedTestNames` produces once the
- * enclosing `mod` chain resolves. A bare name keeps the substring filter.
+ * strictly worse than over-selecting.
+ *
+ * COMPLETENESS is decided upstream, by `generatedTestNames`, which prefixes a
+ * name only when it has proven the whole path. This function sees strings and
+ * cannot tell a complete path from a truncated one — a shape check here that
+ * asked only "is it colon-separated" is exactly what let a rung emit `--exact`
+ * over a path missing its file segment and select zero on the normal crate
+ * layout. The check below is a floor under a hand-built name, not the gate.
  */
 /** A libtest path with at least one module segment and a real name at the end.
  *  `tests::` is deliberately NOT one: it is the whole-module substring filter,
- *  and `--exact tests::` matches no test at all. */
-const LIBTEST_FULL_PATH = /^\w+(?:::\w+)+$/;
+ *  and `--exact tests::` matches no test at all. Raw identifiers keep their
+ *  `r#`, because libtest prints them that way. */
+const LIBTEST_FULL_PATH = /^(?:r#)?\w+(?:::(?:r#)?\w+)+$/;
 
 export function buildTestCommand(
   crateRoot: string,

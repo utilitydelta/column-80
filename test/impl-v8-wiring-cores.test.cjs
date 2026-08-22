@@ -20,6 +20,19 @@ export { planTestInsertion, generatedTestNames } from "../src/core/testAssembly"
 const { buildTestCommand, planTestInsertion, generatedTestNames } = mod;
 test.after(cleanup);
 
+/** A one-file crate whose root IS the file under test, so it contributes no
+ *  module segment of its own and the enclosing `mod` chain is the whole libtest
+ *  path. Handed in rather than assumed: a file's own segment is not in its text,
+ *  and without a crate to walk the reader cannot prove a path is complete. */
+const crateCtx = (text) => ({
+  filePath: "/w/src/lib.rs",
+  crateRoot: "/w",
+  files: {
+    fileExists: (p) => p === "/w/Cargo.toml" || p === "/w/src/lib.rs",
+    readFile: (p) => (p === "/w/Cargo.toml" ? '[package]\nname = "w"\n' : p === "/w/src/lib.rs" ? text : undefined),
+  },
+});
+
 // ---- buildTestCommand: array of filters -----------------------------------
 
 test("buildTestCommand puts an array of test-name filters PAST `--`, which is the only way libtest ever sees more than one", () => {
@@ -56,12 +69,25 @@ mod tests {
 }`;
   const plan = planTestInsertion("pub fn kth_largest() {}\n", genModule, { markerId: "kth_largest" });
   const fileText = "pub fn kth_largest() {}\n" + plan.text;
-  const names = generatedTestNames(fileText, "kth_largest");
   // INVERTED by item 59. The names used to come back bare, and bare names are
   // what forced the rung onto SUBSTRING filters, where `add` also runs
   // `add_more`. They now carry the enclosing `mod` path, which is the only
   // string `--exact` matches.
+  //
+  // RE-CUT after the first cut of that inversion shipped a REGRESSION. It read
+  // the `mod` chain out of the file's text alone and called that a full path.
+  // A libtest path also starts with the segment the FILE contributes by being a
+  // module, and no amount of reading the file shows it — so on the normal crate
+  // layout the rung emitted `--exact widget_checks::add` where cargo wanted
+  // `geometry::widget_checks::add` and selected ZERO tests. The crate is handed
+  // in now, and a text-only call answers bare on purpose.
+  const names = generatedTestNames(fileText, "kth_largest", crateCtx(fileText));
   assert.deepStrictEqual(names, ["tests::kth_happy", "tests::kth_edge"], "exactly this fn's generated test names");
+  assert.deepStrictEqual(
+    generatedTestNames(fileText, "kth_largest"),
+    ["kth_happy", "kth_edge"],
+    "no crate to walk means the path cannot be proven complete, and an unproven path stays on substring",
+  );
 });
 
 // ---- the two halves joined, with REAL names --------------------------------
@@ -75,8 +101,12 @@ test("FIXTURE FIDELITY: the names generatedTestNames really produces carry the e
   // The names now carry the resolved `mod` path, so exactness is reachable and
   // the rung stops running `add_more` when it was scoped to `add`.
   //
-  // The fidelity demand is unchanged: drive the REAL function, because a
-  // hand-written fixture cannot tell a resolved path from a hard-coded one.
+  // The fidelity demand is unchanged, and the first cut of the inversion is
+  // what proved it: every fixture here writes the crate ROOT, so nothing
+  // exercised the segment a file contributes by being a module, and a rung that
+  // selected ZERO on the normal Rust layout shipped green. `crateCtx` names the
+  // file as the root deliberately — the layouts that do NOT are graded against
+  // real cargo in test/impl-v59-p4-scoped-rung.test.cjs.
   const genModule = `#[cfg(test)]
 mod tests {
     use super::*;
@@ -87,7 +117,8 @@ mod tests {
 }`;
   const src = "pub fn add(a: i32, b: i32) -> i32 { a + b }\n";
   const plan = planTestInsertion(src, genModule, { markerId: "add" });
-  const names = generatedTestNames(src + plan.text, "add");
+  const fileText = src + plan.text;
+  const names = generatedTestNames(fileText, "add", crateCtx(fileText));
 
   assert.deepStrictEqual(names, ["tests::add_returns_sum", "tests::add_handles_zero"], "full libtest paths — this is the real shape");
   assert.ok(names.every((n) => n.includes("::")), "if this ever fails the product went back to bare names and --exact must go with them");
@@ -143,6 +174,6 @@ test("generatedTestNames scopes by markerId — a different fn's region is not r
   const genA = `#[cfg(test)]\nmod tests {\n    #[test]\n    fn a_one() {}\n}`;
   const planA = planTestInsertion("fn a(){}\nfn b(){}\n", genA, { markerId: "a" });
   const file = "fn a(){}\nfn b(){}\n" + planA.text;
-  assert.deepStrictEqual(generatedTestNames(file, "a"), ["tests::a_one"]);
-  assert.deepStrictEqual(generatedTestNames(file, "b"), [], "fn b has no marked region");
+  assert.deepStrictEqual(generatedTestNames(file, "a", crateCtx(file)), ["tests::a_one"]);
+  assert.deepStrictEqual(generatedTestNames(file, "b", crateCtx(file)), [], "fn b has no marked region");
 });

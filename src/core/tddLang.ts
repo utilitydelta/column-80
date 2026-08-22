@@ -29,6 +29,7 @@ import {
   parseLibtestOutput,
 } from "./compilerOracle";
 import {
+  RustTestNameContext,
   TestInsertionPlan,
   escapeSnippetLiteral,
   generatedTestNames,
@@ -238,6 +239,13 @@ export const REAL_TDD_DEPS: Required<Omit<TddDeps, "log">> = {
   },
 };
 
+/** Where the marked region sits in the PROJECT, for a language whose test names
+ *  are not fully spelled inside the file. */
+export interface TestNameContext {
+  placement: TestPlacement;
+  deps?: TddDeps;
+}
+
 export function fileExistsOf(deps?: TddDeps): (p: string) => boolean {
   return deps?.fileExists ?? REAL_TDD_DEPS.fileExists;
 }
@@ -410,8 +418,19 @@ export interface TddLang {
   readonly markerPrefix: string;
 
   /** Names of the tests previously generated for markerId, for scoping the
-   *  rung to exactly this function's tests. */
-  generatedTestNames(fileText: string, markerId: string): string[];
+   *  rung to exactly this function's tests.
+   *
+   *  `ctx` carries the PROJECT facts a file's text cannot show. Rust is the
+   *  case: a `.rs` file's own module segment comes from where the file sits
+   *  under the crate root, and every libtest path inside the file starts with
+   *  it. Additive, so C#, Go, TypeScript and Python ignore it — each of those
+   *  reads its whole qualified name out of the file.
+   *
+   *  Absent means the language cannot prove a name is COMPLETE and must return
+   *  bare names, which keeps the rung on a substring filter. Over-selecting adds
+   *  a red the human can read; an exact filter over a truncated name selects
+   *  nothing and reads as a passing rung. */
+  generatedTestNames(fileText: string, markerId: string, ctx?: TestNameContext): string[];
 
   /** Go requires `Test` plus an uppercase letter or the runner ignores the
    *  function. undefined = no constraint. */
@@ -641,6 +660,19 @@ function asRustTestModule(generatedTests: string): string {
     : `mod tests {\n${generatedTests}\n}`;
 }
 
+/** Rust's placement already holds both facts the module walk needs: the file
+ *  the region is in, and the crate it belongs to. */
+function rustNameContext(ctx?: TestNameContext): RustTestNameContext | undefined {
+  if (ctx === undefined) {
+    return undefined;
+  }
+  return {
+    filePath: ctx.placement.targetPath,
+    crateRoot: ctx.placement.runRoot,
+    files: { readFile: readFileOf(ctx.deps), fileExists: fileExistsOf(ctx.deps) },
+  };
+}
+
 const RUST_TDD_LANG: TddLang = {
   languageId: "rust",
   displayName: "Rust",
@@ -680,7 +712,9 @@ const RUST_TDD_LANG: TddLang = {
 
   markerPrefix: "//",
 
-  generatedTestNames,
+  generatedTestNames(fileText, markerId, ctx) {
+    return generatedTestNames(fileText, markerId, rustNameContext(ctx));
+  },
 
   classifyTestability,
 

@@ -62,6 +62,19 @@ const placementAt = (runRoot) => ({
   runRoot,
 });
 
+/** The crate context `generatedTestNames` needs before it will prefix a name.
+ *  The file under test IS the crate root, so it contributes no segment of its
+ *  own and the enclosing `mod` chain is the whole libtest path. Without a
+ *  context the names come back bare, because a file's own module segment is
+ *  not in its text and an incomplete path paired with `--exact` selects zero. */
+const nameCtx = (text) => ({
+  placement: placementAt("/w"),
+  deps: {
+    fileExists: (p) => CRATE.includes(p),
+    readFile: (p) => (p === "/w/Cargo.toml" ? '[package]\nname = "w"\n' : p === "/w/src/lib.rs" ? text : undefined),
+  },
+});
+
 // ---- 1. the registry -----------------------------------------------------
 
 test("tddLangFor('rust') resolves, and carries the language's own name for a refusal", () => {
@@ -148,7 +161,11 @@ test("scaffold takes BARE test functions too, and the fn heads survive into the 
   assert.ok(plan.text.includes("fn t_happy"), "the fn head is the test name the rung filters on");
   assert.ok(plan.text.includes("fn t_zero"));
   assert.ok(plan.text.includes("#[cfg(test)]") && plan.text.includes("use super::*;"), "the shipped Rust wrapper");
-  assert.deepStrictEqual(rust().generatedTestNames(plan.text, "widen"), ["tests::t_happy", "tests::t_zero"], "and the rung can read them back");
+  assert.deepStrictEqual(
+    rust().generatedTestNames(plan.text, "widen", nameCtx(plan.text)),
+    ["tests::t_happy", "tests::t_zero"],
+    "and the rung can read them back",
+  );
 });
 
 test("scaffold passes an ALREADY-WRAPPED module straight through, byte for byte", () => {
@@ -242,9 +259,21 @@ test("generatedTestNames routes to the shipped reader, so the rung stays scoped 
   // Item 59: the names carry the enclosing `mod`, which is the only string
   // `--exact` matches. Bare names are what forced the rung onto substring
   // filters, where a rung scoped to `add` also ran `add_more`.
-  assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen"), ["tests::t_happy", "tests::t_zero"]);
-  assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen"), generatedTestNames(fileText, "widen"));
-  assert.deepStrictEqual(rust().generatedTestNames(fileText, "other"), [], "an unmarked id has no generated tests");
+  //
+  // The context is load-bearing, not decoration. A libtest path also starts
+  // with the segment the FILE contributes, which its text never states, so
+  // without a crate to resolve against the reader cannot prove the path is
+  // complete and answers bare — the honest fallback, and the second half of
+  // the same seam.
+  const ctx = nameCtx(fileText);
+  assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen", ctx), ["tests::t_happy", "tests::t_zero"]);
+  assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen", ctx), generatedTestNames(fileText, "widen", ctx.deps && {
+    filePath: ctx.placement.targetPath,
+    crateRoot: ctx.placement.runRoot,
+    files: ctx.deps,
+  }));
+  assert.deepStrictEqual(rust().generatedTestNames(fileText, "widen"), ["t_happy", "t_zero"], "no crate, no proof, no prefix");
+  assert.deepStrictEqual(rust().generatedTestNames(fileText, "other", ctx), [], "an unmarked id has no generated tests");
 });
 
 test("renderBlankValue routes to the shipped renderer, including the startHole the caller numbers from", () => {
