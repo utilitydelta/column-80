@@ -83,11 +83,11 @@ export interface Candidate {
  * respelled it".
  *
  * A `plural` MATCH DOES NOT HAVE THAT EQUALITY, and the first version of this
- * phase let it auto-apply (session-v52 adversarial, promoted HIGH). `client
- * sets` folds to `clientsets`; `ClientSet` folds to `clientset`. The strip is a
- * guess about English, not a respelling of what was said, and a repo holding
- * both `Plan` and `Plane`, or `Stat` and `State`, is a repo where the guess can
- * be wrong about which one the developer meant.
+ * phase let it auto-apply (caught by adversarial review, promoted HIGH).
+ * `client sets` folds to `clientsets`; `ClientSet` folds to `clientset`. The
+ * strip is a guess about English, not a respelling of what was said, and a
+ * repo holding both `Plan` and `Plane`, or `Stat` and `State`, is a repo where
+ * the guess can be wrong about which one the developer meant.
  *
  * CONTRACT AMENDMENT 17 DOES NOT CHANGE THIS. It made the retry try both strips
  * and let the identifier set decide, which turned the `Plan`/`Plane` case from a
@@ -127,9 +127,9 @@ const WORD_RUN = /[A-Za-z0-9_]+/g;
  * is empty.
  *
  * The fold is ASCII-only on purpose, and the fallback is what stops that
- * decision leaking into the eviction guarantee (session-v52 adversarial
- * defect 3). Python, C#, TypeScript and Rust all accept a CJK, Cyrillic or
- * Greek type identifier, and every one of those folds to the empty string. With
+ * decision leaking into the eviction guarantee (found by adversarial review).
+ * Python, C#, TypeScript and Rust all accept a CJK, Cyrillic or Greek type
+ * identifier, and every one of those folds to the empty string. With
  * the empty key skipped, a candidate that was LITERALLY the string in
  * `rendered` came back class 4 and was proposed - the exact eviction the phase
  * exists to prevent. `____` did the same.
@@ -304,7 +304,8 @@ function usable(candidate: unknown): Candidate | undefined {
  * a class, source order. This orders the PROPOSAL LIST and never the prose.
  *
  * THE GATE APPLIES THE PRE-FILL'S OWN REFUSALS FIRST, and it exists because it
- * did not (`session-v52/census-delta.md`). A proposal for a name the pre-fill
+ * did not (the delta census, docs/architecture/tighten-doc-comment.md). A
+ * proposal for a name the pre-fill
  * discards is strictly worse than no proposal: the developer accepts it, their
  * comment changes, a capped slot is spent carrying it, and the pre-fill throws
  * it away the moment it is backticked. Two refusals, both read from the pre-fill

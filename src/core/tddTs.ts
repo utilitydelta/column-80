@@ -1,5 +1,5 @@
 /**
- * The TypeScript leg of the TDD language seam (session-v31 phase 3), registered
+ * The TypeScript leg of the TDD language seam, registered
  * for `typescript`, `typescriptreact`, `javascript` and `javascriptreact`.
  *
  * TypeScript is the first leg that reaches the unit under test through an
@@ -18,7 +18,8 @@
  * leg to manufacture survivors is a decision for the human, not a change to make
  * here.
  *
- * Never imports vscode (the src/core rule). Contract: session-v31/contract-ts.md.
+ * Never imports vscode (the src/core rule).
+ * Contract: docs/architecture/tdd-language-seam.md.
  */
 
 import * as fs from "fs";

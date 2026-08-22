@@ -68,10 +68,10 @@ export type GoCommandRunner = (
 export type GoTextReader = (uri: string) => string | undefined;
 
 /** Dispatches a workspace-symbol QUERY (not a cursor) and yields the raw
- *  vscode-shaped SymbolInformation[]; the by-name resolution leg's transport
- *  (session-v40 item 2's anchor leg), the CsSymbolRunner sibling. Optional on
- *  the extractor: an absent runner means no workspace-symbol fallback
- *  (resolveTypeCursorByName then resolves nothing). */
+ *  vscode-shaped SymbolInformation[]; the by-name resolution leg's transport,
+ *  the CsSymbolRunner sibling. Optional on the extractor: an absent runner
+ *  means no workspace-symbol fallback (resolveTypeCursorByName then resolves
+ *  nothing). */
 export type GoSymbolRunner = (query: string) => Promise<unknown>;
 
 const COMPLETION_COMMAND = "vscode.executeCompletionItemProvider";
@@ -295,12 +295,12 @@ export class GoCommandExtractor implements SurfaceExtractor {
   }
 
   // The workspace-symbol resolution leg: a bare type NAME -> the cursor at its
-  // definition's name token, via vscode.executeWorkspaceSymbolProvider —
-  // session-v40 item 2, the CsCommandExtractor sibling. gopls's containerName
-  // is a real Go import PATH (proven live against the headless transport, same
-  // gopls engine), so resolveGoTypeCursorWithHint disambiguates by direct
-  // comparison, never a hover fan-out. An absent runSymbol degrades to
-  // undefined without dispatching anything.
+  // definition's name token, via vscode.executeWorkspaceSymbolProvider — the
+  // CsCommandExtractor sibling. gopls's containerName is a real Go import PATH
+  // (proven live against the headless transport, same gopls engine), so
+  // resolveGoTypeCursorWithHint disambiguates by direct comparison, never a
+  // hover fan-out. An absent runSymbol degrades to undefined without
+  // dispatching anything.
   async resolveTypeCursorByName(name: string, hint?: TypeNameHint): Promise<SourceCursor | undefined> {
     if (!this.runSymbol) {
       return undefined;

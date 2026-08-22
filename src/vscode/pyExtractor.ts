@@ -305,10 +305,10 @@ export class PyCommandExtractor implements SurfaceExtractor {
     // (src/core/pyLspExtractor.ts) runs the SAME backfill against pyright — it
     // used to be described here as owning its own signature path and owned
     // none, which left every headless Python member set signature-free and
-    // every headless Python surface empty (session-v49 phase 0). The Python
-    // role table keeps class-body attributes (Variable) and treats a function as
-    // a non-container, so a method's body-locals are structurally excluded from
-    // the class's member set (the locals filter).
+    // every headless Python surface empty. The Python role table keeps
+    // class-body attributes (Variable) and treats a function as a non-container,
+    // so a method's body-locals are structurally excluded from the class's
+    // member set (the locals filter).
     //
     // Pylance answers documentSymbol with `detail: ""` on every member, the same
     // gap tsserver has and measured the same way. `__init__` is the member that

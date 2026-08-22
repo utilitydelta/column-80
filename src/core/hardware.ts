@@ -19,7 +19,7 @@ export type ProbeCommandFn = (command: string, args: string[]) => Promise<ProbeC
 
 /** What the toolchain needs while the model is resident, in MB, on a machine
  *  where the two come out of the SAME pool. REPORTED, never subtracted from the
- *  model's budget (session-v34 item 4, and see the refutation below).
+ *  model's budget (and see the refutation below).
  *
  *  The tier table's numbers are a discrete-GPU model, where VRAM is dedicated
  *  and the editor's memory is somebody else's problem. On unified memory that is
@@ -220,11 +220,11 @@ export async function probeHardware(opts?: ProbeHardwareOptions): Promise<Hardwa
   // capacity so tier auto-select enables function generation instead of falling to
   // the no-GPU honesty path.
   //
-  // NET OF THE TOOLCHAIN (session-v34 item 4). What the model may have is what is
-  // LEFT, not what exists: rust-analyzer and VS Code are resident the whole time
-  // and cargo joins them immediately after every generation, out of the same pool.
-  // Reporting the full total is what made the tier table promise memory the
-  // compiler check then could not get.
+  // NET OF THE TOOLCHAIN. What the model may have is what is LEFT, not what
+  // exists: rust-analyzer and VS Code are resident the whole time and cargo joins
+  // them immediately after every generation, out of the same pool. Reporting the
+  // full total is what made the tier table promise memory the compiler check
+  // then could not get.
   //
   // Deliberately NOT a toast telling the human to raise `iogpu.wired_limit_mb`.
   // Raising it lets the GPU wire memory the toolchain then cannot get, which

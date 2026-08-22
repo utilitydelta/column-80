@@ -1,12 +1,12 @@
 /**
  * The span's types-in-play, for a repair round.
  *
- * The defect this closes (session-v28 goal item 1, two live captures): the
- * repair surface followed the DIAGNOSTIC's one named type per round, so a span
- * whose fix needs two types never saw both, and a diagnostic class the
- * classifier did not know injected nothing at all. Disclosure follows the
- * question, not the diagnostic: what the model is asked to repair is the SPAN,
- * so the span is what names the types.
+ * The defect this closes, from two live captures: the repair surface followed
+ * the DIAGNOSTIC's one named type per round, so a span whose fix needs two
+ * types never saw both, and a diagnostic class the classifier did not know
+ * injected nothing at all. Disclosure follows the question, not the
+ * diagnostic: what the model is asked to repair is the SPAN, so the span is
+ * what names the types.
  *
  * Pure, offline, never throws. The per-language signature legs are the ones the
  * FIM whole-block detector already uses (fimWholeBlock.ts); what is new here is
@@ -44,8 +44,7 @@ export interface SpanTypesInput {
    *  target is never its own collaborator: a body comment or a doc comment that
    *  backticks the name of the thing being repaired would otherwise resolve it
    *  and spend a slot of a cap, which under a cap is an eviction of something
-   *  real (session-v36 `[RECORD] E6`, measured on C# and reproducing in all five
-   *  languages).
+   *  real (measured on C# and reproducing in all five languages).
    *
    *  Raw, as `ResolvedFunction.symbolName` holds it - the reduction to a bare
    *  name is this reader's job, because both callers have the symbol provider's
@@ -82,10 +81,10 @@ const PRELUDE_VALUES = new Set(["Some", "None", "Ok", "Err", "Self"]);
  *  about `U1` there is cheap.
  *
  *  Named and exported so the other write path can see the rule rather than
- *  re-derive it. session-v36 froze "an ALL-CAPS name is a constant, not a type"
- *  as a claim about NAMES, which binds both paths; repair honoured it and fn-gen
- *  did not for a whole session (session-v37 scraps S37-2), because the rule lived
- *  inside one function's filter loop where nothing else could reach it. */
+ *  re-derive it. "An ALL-CAPS name is a constant, not a type" is a claim about
+ *  NAMES, which binds both paths; repair honoured it and fn-gen did not,
+ *  because the rule lived inside one function's filter loop where nothing else
+ *  could reach it. */
 export function isShoutedName(name: string): boolean {
   return /^[A-Z][A-Z0-9_]*$/.test(name);
 }
@@ -109,9 +108,9 @@ export function isAllCapsConstant(name: string): boolean {
 }
 
 /** The names this language treats as standard library, and therefore not worth
- *  a resolver round trip. Exported for the call-owner leg (session-v30 item 1),
- *  which resolves the type that OWNS a call and gets `Vec`, `Duration` and
- *  `PathBuf` as readily as it gets a repo type. */
+ *  a resolver round trip. Exported for the call-owner leg, which resolves the
+ *  type that OWNS a call and gets `Vec`, `Duration` and `PathBuf` as readily as
+ *  it gets a repo type. */
 export function stopNamesFor(languageId: string): ReadonlySet<string> {
   if (TS_LANGUAGE_IDS.has(languageId)) {
     return TS_STD_TYPE_NAMES;
@@ -142,7 +141,7 @@ export function stopNamesFor(languageId: string): ReadonlySet<string> {
  * The census measured what the difference costs: 29 of Rust's 109 class-4
  * instances were those five words, proposed to a developer who accepts them and
  * gets nothing, because the pre-fill throws each one away the moment it is
- * backticked (`session-v52/census-delta.md`).
+ * backticked (the delta census, docs/architecture/tighten-doc-comment.md).
  *
  * ONE SOURCE, read by both. `fnGen.ts`'s five comment legs call this rather than
  * naming a set each, so the gate and the pre-fill cannot drift again. The values
@@ -401,18 +400,17 @@ export function pathQualifiersIn(signature: string): Set<string> {
 }
 
 // ---------------------------------------------------------------------------
-// session-v40 item 2's candidate leg: a type named only through an import-
-// QUALIFIED selector (`pkg.Type`, `Namespace.Type`) in the signature, doc or
-// body — the leg typesFromUses / tsTypesFromImports cannot have, because a
-// Rust `use` / TS `import` clause spells the type name and a Go import spells
-// a package PATH, a C# `using` a NAMESPACE. Neither ever contains a type
-// name, so the file's import block only answers a narrower question here: is
-// a qualifier the code actually wrote a REAL one. That is what tells
-// `cobra.Command` (a package selector) from `resp.StatusCode` (a local
-// variable's field) or `Newtonsoft.Json.Linq.JObject` from three segments of
-// ordinary prose — text alone cannot, and admitting every capitalized dotted
-// chain would readmit exactly the noise the comment-scan work spent a session
-// refusing.
+// The candidate leg: a type named only through an import-QUALIFIED selector
+// (`pkg.Type`, `Namespace.Type`) in the signature, doc or body — the leg
+// typesFromUses / tsTypesFromImports cannot have, because a Rust `use` / TS
+// `import` clause spells the type name and a Go import spells a package PATH,
+// a C# `using` a NAMESPACE. Neither ever contains a type name, so the file's
+// import block only answers a narrower question here: is a qualifier the code
+// actually wrote a REAL one. That is what tells `cobra.Command` (a package
+// selector) from `resp.StatusCode` (a local variable's field) or
+// `Newtonsoft.Json.Linq.JObject` from three segments of ordinary prose — text
+// alone cannot, and admitting every capitalized dotted chain would readmit
+// exactly the noise the comment-scan work spent a session refusing.
 //
 // Unqualified names are explicitly out of scope: goTypesInPlay / typesNamedIn
 // / referencedLocalSymbols already cover a bare mention (including, for Go, a
@@ -424,14 +422,15 @@ export function pathQualifiersIn(signature: string): Set<string> {
 
 const GO_QUALIFIED_USAGE = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Z][A-Za-z0-9_]*)\b/g;
 
-// session-v40 phase 3's adversarial review (test/review-v40-p3-qualified-usage-
-// adversarial.test.cjs): a real import name is not proof that a given
-// `pkg.Name` occurrence actually resolves to the package — a local variable
-// or parameter can shadow the import identifier (`strings := MyLocalType{}`
-// then `strings.Foo` names the LOCAL value's field, not the `strings`
-// package's `Foo`). This is a candidate-gathering leg with an existing "can't
-// confidently tell, don't surface it" convention (the no-matching-import
-// case above); shadowing gets the same treatment, not real scope resolution.
+// An adversarial review pinned this
+// (test/review-v40-p3-qualified-usage-adversarial.test.cjs): a real import
+// name is not proof that a given `pkg.Name` occurrence actually resolves to
+// the package — a local variable or parameter can shadow the import
+// identifier (`strings := MyLocalType{}` then `strings.Foo` names the LOCAL
+// value's field, not the `strings` package's `Foo`). This is a
+// candidate-gathering leg with an existing "can't confidently tell, don't
+// surface it" convention (the no-matching-import case above); shadowing gets
+// the same treatment, not real scope resolution.
 // Deliberately conservative and whole-body (not just text ahead of the
 // occurrence): a missed real candidate here is a wash against this leg's
 // zero pre-session baseline, while mining a shadowed name is a regression —
@@ -460,14 +459,13 @@ function goQualifierIsLocal(qualifier: string, text: string): boolean {
 }
 
 /** The types named only through a real package selector (`cobra.Command`) in
- *  the signature, doc comment and body — session-v40 item 2's Go candidate
- *  leg. `fullText` supplies the file's own import block
- *  (`goImportedPackageNames`); a qualifier that names no real import (a local
- *  variable, a struct field holder) never admits its selector's tail as a
- *  candidate — and neither does one that DOES name a real import but is
- *  locally shadowed at some point in the signature/body (`goQualifierIsLocal`).
- *  Pure, first-seen order, GO_STD_TYPE_NAMES excluded like every other Go
- *  leg. */
+ *  the signature, doc comment and body — the Go candidate leg. `fullText`
+ *  supplies the file's own import block (`goImportedPackageNames`); a
+ *  qualifier that names no real import (a local variable, a struct field
+ *  holder) never admits its selector's tail as a candidate — and neither does
+ *  one that DOES name a real import but is locally shadowed at some point in
+ *  the signature/body (`goQualifierIsLocal`). Pure, first-seen order,
+ *  GO_STD_TYPE_NAMES excluded like every other Go leg. */
 export function goTypesFromQualifiedUsage(
   signature: string,
   docComment: string | undefined,
@@ -543,15 +541,15 @@ function csQualifierIsLocal(qualifier: string, text: string): boolean {
 
 /** The types named only through a fully-qualified reference
  *  (`Newtonsoft.Json.Linq.JObject`) in the signature, doc comment and body —
- *  session-v40 item 2's C# candidate leg. `fullText` supplies the file's own
- *  plain `using` namespaces (`csUsingNamespaces`); a dotted chain is walked
- *  segment by segment and admits the FIRST segment after the longest prefix
- *  that matches a real `using` — so `Newtonsoft.Json.Linq.JObject.Parse(x)`
- *  still yields `JObject`, not the method call one segment further in, and a
- *  chain matching no `using` at all (an ordinary member-access chain on a
- *  local) admits nothing. A chain whose LEADING segment is locally shadowed
- *  (`csQualifierIsLocal` — a var/parameter/field sharing the namespace's
- *  first segment name) is refused the same way. Pure, first-seen order,
+ *  the C# candidate leg. `fullText` supplies the file's own plain `using`
+ *  namespaces (`csUsingNamespaces`); a dotted chain is walked segment by
+ *  segment and admits the FIRST segment after the longest prefix that matches
+ *  a real `using` — so `Newtonsoft.Json.Linq.JObject.Parse(x)` still yields
+ *  `JObject`, not the method call one segment further in, and a chain matching
+ *  no `using` at all (an ordinary member-access chain on a local) admits
+ *  nothing. A chain whose LEADING segment is locally shadowed
+ *  (`csQualifierIsLocal` — a var/parameter/field sharing the namespace's first
+ *  segment name) is refused the same way. Pure, first-seen order,
  *  CS_STD_TYPE_NAMES excluded like every other C# leg. */
 export function csTypesFromQualifiedUsage(
   signature: string,
@@ -680,9 +678,9 @@ export function spanTypesInPlay(input: SpanTypesInput): string[] {
   const stop = stopNamesFor(input.languageId);
   // The target's own name, reduced to what a prose leg can match. Both legs
   // below already take an `excludeName` and both were being handed `undefined`;
-  // this is the wire, not a new rule. `resolvePrefill` has had it since
-  // session-v29 (`fnGen.ts:2524` hands `resolved.symbolName` to
-  // `lang.candidates`), applied to these same two legs and no others.
+  // this is the wire, not a new rule. `resolvePrefill` already has it
+  // (`fnGen.ts:2524` hands `resolved.symbolName` to `lang.candidates`),
+  // applied to these same two legs and no others.
   //
   // GO IS REDUCED HERE and the other four are not, because gopls names a method
   // symbol `(*Stripe).Summarize`. The exclusion inside both legs is

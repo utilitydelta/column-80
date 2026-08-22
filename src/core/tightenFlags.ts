@@ -22,10 +22,12 @@
  * Both halves are measured against 17,774 real doc-comment blocks in five
  * languages (this repo's `src/**`, celeriant, Go's `net`, CPython),
  * not against the fixtures alone. The undefined-term flag ships under an
- * explicit gate from `session-v52/triage-p4.md`: under 1% of real blocks may
- * fire, because a flag that fires on ordinary English is a flag a developer
- * learns to ignore. It measures 0.7%. `objectHead` carries the rule and the
- * three rates behind it; do not loosen it without re-running that corpus.
+ * explicit gate: under 1% of real blocks may fire, because a flag that fires on
+ * ordinary English is a flag a developer learns to ignore. It measures 0.7%,
+ * down from the 8.0% the first port fired at. `objectHead` carries the rule and
+ * the three rates behind it; do not loosen it without re-running that corpus.
+ * The gate, the 8.0% baseline and the narrowing are recorded in
+ * docs/architecture/tighten-doc-comment.md.
  */
 
 // The fold is phase 2's, imported and not re-implemented. `resolved` is filled
@@ -36,10 +38,12 @@ import { foldName as fold } from "./spokenName";
 // --------------------------------------------------------------- restatement
 
 /**
- * The restatement stop list, COPIED from `session-v52/spikes/detector.cjs`, not
- * re-derived. The scout validated that instrument against three known cases
- * before believing its corpus numbers, and a stop list rewritten here would
- * throw that validation away while looking identical in review.
+ * The restatement stop list, COPIED from the scout's detector, not re-derived.
+ * The scout validated that instrument against three known cases before
+ * believing its corpus numbers, and a stop list rewritten here would throw that
+ * validation away while looking identical in review. The port was checked over
+ * 20,681 inputs with zero disagreements; see
+ * docs/architecture/tighten-doc-comment.md.
  */
 const STOP: ReadonlySet<string> = new Set(
   (
@@ -129,9 +133,10 @@ export interface RestatementReport {
    * and "a comment in another language" is a presentation decision, and putting
    * a number on it in this module would be a guess dressed as a measurement.
    *
-   * Real Unicode tokenisation is DEFERRED (`session-v52/scraps.md`, S52-7): it
-   * needs a segmentation strategy for languages with no spaces and it changes
-   * every containment figure the scout validated. This is the honesty half, and
+   * Real Unicode tokenisation is DEFERRED (docs/architecture/tighten-doc-comment.md,
+   * "the tokeniser cannot see CJK or accented Latin"): it needs a segmentation
+   * strategy for languages with no spaces and it changes every containment
+   * figure the scout validated. This is the honesty half, and
    * it is honest only if something reads it.
    */
   unmeasured: number;
@@ -810,8 +815,8 @@ export function findUndefinedTerms(input: UndefinedTermInput): UndefinedTerm[] {
  * `src/vscode/tightenDocComment.ts` needs it to answer a different question -
  * "is this single-word span an ordinary word rather than a type name?" - and a
  * chatty model reply used to buy nine workspace-symbol queries for `the` and
- * `a` (session-v52 phase 5 adversarial, defect 8). Exported rather than copied,
- * because a second stop list in a second file is two lists that drift. Nothing
+ * `a` (found by adversarial review). Exported rather than copied, because a
+ * second stop list in a second file is two lists that drift. Nothing
  * in this module's own behaviour changes: it is the same object.
  */
 export { ENGLISH as ORDINARY_ENGLISH };

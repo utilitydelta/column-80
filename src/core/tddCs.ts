@@ -1,5 +1,5 @@
 /**
- * The C# leg of the TDD language seam (session-v31 phase 5, the last one).
+ * The C# leg of the TDD language seam, the last one built.
  *
  * The goal calls this the hardest leg and expected it to argue with the design.
  * It does, and four things make it unlike the four legs before it:
@@ -26,7 +26,10 @@
  *     exactly as specified (Amendment 1). RELAXING A LEG TO MANUFACTURE
  *     SURVIVORS IS A DECISION FOR THE HUMAN, not a change to make here.
  *
- * Never imports vscode (the src/core rule). Contract: session-v31/contract-cs.md.
+ * Never imports vscode (the src/core rule). No contract file for C# survived
+ * the build; this module's own comments are the primary source, and
+ * docs/architecture/tdd-language-seam.md records that and what is established
+ * elsewhere.
  */
 
 import * as os from "os";

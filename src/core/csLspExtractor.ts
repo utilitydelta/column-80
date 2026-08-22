@@ -204,10 +204,10 @@ export class CsLspExtractor implements SurfaceExtractor {
    *  IDEMPOTENT, AND THAT IS NOT TIDINESS. A second `didOpen` for a document
    *  Roslyn already holds is not ignored and is not a degrade: Roslyn asserts on
    *  it (`didOpen received for … which is already open`, LspWorkspaceManager.cs
-   *  line 109) and the process dies on SIGABRT. Measured live while taking the
-   *  session-v49 phase 0 C# baseline — the server aborted mid-run and every
-   *  subsequent row recorded "nothing resolved" in 0ms, which reads as a very
-   *  fast product and is a corpse (`server-death-looks-like-a-product-answer`).
+   *  line 109) and the process dies on SIGABRT. Measured live while taking a C#
+   *  baseline — the server aborted mid-run and every subsequent row recorded
+   *  "nothing resolved" in 0ms, which reads as a very fast product and is a
+   *  corpse (`server-death-looks-like-a-product-answer`).
    *
    *  The collision is structural rather than careless. `ensureOpen` opens a
    *  document LAZILY the first time any request touches it, so a caller keeping
@@ -547,7 +547,7 @@ export class CsLspExtractor implements SurfaceExtractor {
    *  It exists because the measurement rig has no vscode command API, and
    *  `resolvePrefill`'s RECEIVER leg reads `resolved.symbols` and degrades to
    *  nothing without it - which is how every arm this project has run measured a
-   *  dark receiver leg while the channel said nothing (session-v47).
+   *  dark receiver leg while the channel said nothing.
    *
    *  KIND NUMBERING IS THE LSP'S, not vscode's; the two differ by one. */
   async documentSymbolsForTest(uri: string): Promise<unknown> {

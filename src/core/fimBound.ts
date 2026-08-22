@@ -10,7 +10,8 @@
  * wrong. Bounding costs no correctness in any of 15 cells.
  *
  * The line, statement and construct rules are the arms of spike 8
- * (`session-v25/harness/run-spike8-bounds.cjs`); the numbers quoted here were
+ * (docs/architecture/fim-completion.md, "The plain-continuation bound");
+ * the numbers quoted here were
  * measured against exactly these shapes, so the tables are not widened without
  * measuring again.
  *

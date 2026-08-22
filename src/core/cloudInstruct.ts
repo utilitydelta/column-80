@@ -203,13 +203,13 @@ async function streamChat(
     // provider had said it was overloaded (roadmap item 67, third hole).
     //
     // NO CRAFTED SENTENCE, and that is the ruling rather than an omission
-    // (docs/supersessions.md S20, ratified 2026-08-22, extended to this arm by
-    // session-v58's goal). This is a GENERIC provider envelope: a rate limit,
-    // a refused key and a malformed request all arrive through it. Session-v57
-    // drove all three on the Anthropic arm and found a crafted sentence telling
-    // a user with a bad key to check a server that was fine. The provider's own
-    // message is the actionable half; what a crafted sentence would remove is
-    // the only part that says what happened.
+    // (docs/supersessions.md S20, ratified 2026-08-22, extended to this arm).
+    // This is a GENERIC provider envelope: a rate limit, a refused key and a
+    // malformed request all arrive through it. All three were driven on the
+    // Anthropic arm, and the crafted sentence told a user with a bad key to
+    // check a server that was fine. The provider's own message is the
+    // actionable half; what a crafted sentence would remove is the only part
+    // that says what happened.
     //
     // Deliberately word-for-word the Anthropic arm's shape. One event, one
     // wording, across the two transports that can raise it.
@@ -275,9 +275,8 @@ async function streamChat(
   // already tolerates providers that omit it and a hard requirement would turn
   // a working provider red. The cost is stated rather than hidden: a provider
   // that sends NEITHER signal goes red here, and nothing in this repo has
-  // watched a real cloud endpoint finish a stream. That is an accepted risk
-  // (session-v58 contract-phase3, falsifier 5), and the thing that would settle
-  // it is one drive against a real endpoint.
+  // watched a real cloud endpoint finish a stream. That is an accepted risk,
+  // and the thing that would settle it is one drive against a real endpoint.
   //
   // Before this, the reader broke on `done` without asking whether the stream
   // had finished, and a socket closed after two content deltas resolved as a

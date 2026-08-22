@@ -10,8 +10,7 @@
  *
  * Two write paths existed with no shared helper (the generate/repair splice and
  * the tighten write), and that is exactly how the second one came to exist
- * without one. A third and fourth path insert snippets rather than edits; see
- * session-v55 scraps.
+ * without one. A third and fourth path insert snippets rather than edits.
  */
 import * as vscode from "vscode";
 

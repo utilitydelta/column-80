@@ -134,11 +134,11 @@ export function deriveUsePath(
  * resolvable remains.
  *
  * The file-tree path is corrected by `rustReach.reachableSegments` before it is
- * rendered (session-v56 phase 6, item 56): measured against real `rustc`, 35 of
- * the 38 failing derived stdlib lines were E0603 module-is-private, printed
- * under a header that says the imports are already defined. The walk is the SAME
- * one the Tighten gesture's import row uses, asked with a different policy for
- * the unproven case — see `UnprovenPolicy`, and the note at the call below.
+ * rendered (roadmap item 56): measured against real `rustc`, 35 of the 38
+ * failing derived stdlib lines were E0603 module-is-private, printed under a
+ * header that says the imports are already defined. The walk is the SAME one
+ * the Tighten gesture's import row uses, asked with a different policy for the
+ * unproven case — see `UnprovenPolicy`, and the note at the call below.
  */
 export function renderImportHint(
   types: Array<{ name: string; defPath: string }>,

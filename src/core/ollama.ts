@@ -40,10 +40,10 @@ export interface FimGenerateParams {
    *  same reason: the shared `streamGenerate` writes the RAW server body here on
    *  an HTTP failure, before the 400-char bound builds the throw.
    *
-   *  It was absent until session-v59, and the absence was invisible: one throw
-   *  statement with two callers, only one of them passing a sink, so an audit
-   *  walking throw sites reported the site as wired while an ollama 500 during
-   *  FIM left nothing on the channel at all (scrap S58-1).
+   *  It used to be absent, and the absence was invisible: one throw statement
+   *  with two callers, only one of them passing a sink, so an audit walking
+   *  throw sites reported the site as wired while an ollama 500 during FIM left
+   *  nothing on the channel at all (scrap S58-1).
    *
    *  THE COST, accepted rather than discovered later: this is the per-keystroke
    *  path, so a server failing every keystroke now writes up to
@@ -487,18 +487,17 @@ async function streamGenerate(
         // string is ONE line, which is how a toast correctly bounded to one line
         // came to be 100KB wide (roadmap item 63).
         //
-        // `providerReason` and not `String()`, which is what this was until
-        // session-v59. The field is DECLARED string here and guaranteed by
-        // nobody, and `String()` got two things wrong on shapes ollama really
-        // sends: `{"error":{"message":"upstream overloaded"}}` rendered
+        // `providerReason` and not `String()`, which is what this used to be.
+        // The field is DECLARED string here and guaranteed by nobody, and
+        // `String()` got two things wrong on shapes ollama really sends:
+        // `{"error":{"message":"upstream overloaded"}}` rendered
         // `Ollama error: [object Object]`, throwing away the only part that
         // says what happened, and plain JSON carrying a non-callable
         // `toString` made `String()` itself raise a TypeError out of the
         // reader - unmarked, so the toast translation could not classify it and
         // the catch-all put JS internals on screen. Same fix, same helper, as
-        // the cloud and Anthropic arms took in session-v58 phase 4 (scrap
-        // S58-9). A plain string comes back unchanged, so the ordinary case is
-        // byte-identical.
+        // the cloud and Anthropic arms took (scrap S58-9). A plain string comes
+        // back unchanged, so the ordinary case is byte-identical.
         throw new Error(`Ollama error: ${boundBody(providerReason(evt.error))}`);
       }
       if (evt.response) {

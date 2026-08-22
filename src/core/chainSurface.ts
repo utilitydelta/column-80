@@ -2,7 +2,8 @@
  * The chain-surface cache: once-per-workspace signatures for the members a
  * provider's resolve cap can never reach.
  *
- * Why it exists (measured, session-v27/measure-chains.md): Roslyn serves 115
+ * Why it exists (measured; docs/architecture/surface-injection.md, "The C#
+ * chain surface", carries all five languages): Roslyn serves 115
  * items at a `List<Tile>.` receiver with zero signature data on any unresolved
  * item, and `Where<>` sits at position 113 of the provider's order. The
  * resolve cap (MEMBER_RESOLVE_CAP = 32) resolves the HEAD of that order, so

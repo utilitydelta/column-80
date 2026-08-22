@@ -98,8 +98,8 @@ export interface WorkspaceSymbolHit {
  * the same concept (`ReadError` against `read_error`). It does NOT clear all of
  * them in every language - Go's exported/unexported convention puts `Options`
  * and `options` on one key with a type on both sides - and those reach the
- * ambiguity refusal instead. See `session-v52/ratify-measurements.md` for the
- * per-language table.
+ * ambiguity refusal instead. The per-language fold-collision table is in
+ * docs/architecture/tighten-doc-comment.md.
  *
  * Wider than `fnGen.ts`'s per-language type-target sets ON PURPOSE. Those decide
  * what a generator may splice a body into, so a C# interface is excluded there
@@ -410,12 +410,11 @@ function externCrateName(
  * a `pub use`. So the chain is walked, each `mod` declaration is read, and a
  * private segment sends this looking for the re-export before it refuses.
  *
- * The walk itself is `reachableSegments` in `rustReach.ts`. It moved there in
- * session-v56 phase 6 so the fn-gen pre-fill's import hint could use the SAME
- * mechanism rather than a second copy of it; this row asks with
- * `unproven: "refuse"`, which is the v55-ratified behaviour of this gesture,
- * unchanged. `deriveUsePath` still derives the FILE path and is still not
- * changed here.
+ * The walk itself is `reachableSegments` in `rustReach.ts`. It moved there so
+ * the fn-gen pre-fill's import hint could use the SAME mechanism rather than a
+ * second copy of it; this row asks with `unproven: "refuse"`, which is the
+ * ratified behaviour of this gesture, unchanged. `deriveUsePath` still derives
+ * the FILE path and is still not changed here.
  */
 function rustImport(hit: WorkspaceSymbolHit, defPath: string, targetPath: string, d: SafeDeps): ImportRow | undefined {
   const usePath = deriveUsePath(defPath, targetPath, {

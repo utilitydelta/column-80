@@ -255,11 +255,10 @@ const defaultManifestStamp: ManifestStampFn = (crateRoot) => {
  *  triple is for tests. The triple resolution shares the
  *  injected runCommand so it is testable headless.
  *
- *  MEMOIZED PER CRATE ROOT since session-v55 phase 22 (queue Q4). Before it,
- *  every unresolved-crate accept re-spawned `cargo metadata` for the same
- *  unchanged project - the catalog is steering payload for a hallucinated crate
- *  name, so a developer hitting that error twice in a row paid twice for an
- *  answer that could not have moved.
+ *  MEMOIZED PER CRATE ROOT. Before that, every unresolved-crate accept
+ *  re-spawned `cargo metadata` for the same unchanged project - the catalog is
+ *  steering payload for a hallucinated crate name, so a developer hitting that
+ *  error twice in a row paid twice for an answer that could not have moved.
  *
  *  Invalidated on the MANIFEST, not on time: a stamp of `Cargo.toml`'s size and
  *  mtime is taken on every call, and a changed stamp re-spawns. That is the

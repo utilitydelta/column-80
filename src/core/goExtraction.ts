@@ -10,7 +10,7 @@
  *    `NewStripe().Enroll`). Drop both; what remains is the complete member
  *    set (proven through embedded promotion, interface receivers,
  *    same-package unexported, third-party and stdlib on a broken unsaved
- *    buffer — gopls v0.23.0, session-v23 scout).
+ *    buffer — gopls v0.23.0).
  *
  * 2. THE RECEIVER-SIBLING JOIN (goMembersFromDocumentSymbols): gopls names
  *    methods as TOP-LEVEL `(*Widget).Resize` documentSymbols, not children
@@ -288,14 +288,14 @@ function rangeContains(
 
 // ---------------------------------------------------------------------------
 // The workspace-symbol resolution leg: a bare type NAME -> the cursor at its
-// definition's name token, session-v40 item 2's anchor half. gopls's
-// workspace/symbol answers the same shape Roslyn's does for C# (proven live
-// against cobra: querying "Command" returns the struct at command.go:53,
-// kind 23, first of 100 fuzzy hits) — but its containerName is NOT a display
-// string the way Roslyn's is. It is the real Go import PATH
-// ("github.com/spf13/cobra"), so unlike selectCsTypeCursor this never needs a
-// hover round trip to disambiguate: the containerName already IS the thing a
-// hint would otherwise be spent recovering.
+// definition's name token, the anchor half. gopls's workspace/symbol answers
+// the same shape Roslyn's does for C# (proven live against cobra: querying
+// "Command" returns the struct at command.go:53, kind 23, first of 100 fuzzy
+// hits) — but its containerName is NOT a display string the way Roslyn's is. It
+// is the real Go import PATH ("github.com/spf13/cobra"), so unlike
+// selectCsTypeCursor this never needs a hover round trip to disambiguate: the
+// containerName already IS the thing a hint would otherwise be spent
+// recovering.
 // ---------------------------------------------------------------------------
 
 /** One workspace/symbol hit reduced to what the by-name resolution leg needs.
@@ -385,11 +385,11 @@ export function resolveGoTypeCursorWithHint(
 }
 
 // ---------------------------------------------------------------------------
-// The Go import block, parsed once and read two ways: session-v40 item 2's
-// candidate half wants the local QUALIFIER a `pkg.Type` selector could mean
-// (goImportedPackageNames); the anchor half above wants the real PACKAGE PATH
-// a hint's own import block can reach (goImportedPackagePaths). One walk,
-// both readers, so they can never disagree about what a file imports.
+// The Go import block, parsed once and read two ways: the candidate half wants
+// the local QUALIFIER a `pkg.Type` selector could mean (goImportedPackageNames);
+// the anchor half above wants the real PACKAGE PATH a hint's own import block
+// can reach (goImportedPackagePaths). One walk, both readers, so they can never
+// disagree about what a file imports.
 // ---------------------------------------------------------------------------
 
 /** One import spec: the local alias if the source wrote one explicitly, and
@@ -799,8 +799,8 @@ function goStructDeclBlock(signature: string): string | undefined {
  *  knows how to handle, and it is what keeps this parser from claiming a shape
  *  for a type whose shape it cannot read.
  *
- *  WHAT IT SKIPS, each one a real shape from a real capture (session-v48
- *  capture-go-hovers.json, gopls v0.23.0 over pgx):
+ *  WHAT IT SKIPS, each one a real shape from a real capture (gopls v0.23.0 over
+ *  pgx):
  *
  *   - `type Conn struct { // size=304 (0x130), class=320 (0x140)` - gopls's
  *     layout chrome, which sits AFTER the opening brace on the header line and

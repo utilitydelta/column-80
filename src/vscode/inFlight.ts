@@ -39,8 +39,8 @@ export const CANCEL_COMMAND = "column80.cancelGeneration";
  *  NAME ONLY, deliberately. `firstRun.ts`'s private `isAbort` also runs
  *  `/abort/i` over the whole message, which means a server whose error body
  *  says "aborted upstream" is classified as a user cancellation and the failure
- *  disappears with no toast at all (session-v57 scrap S57-3). A new check must
- *  not copy that: the name is the reliable signal, the message is the server's.
+ *  disappears with no toast at all. A new check must not copy that: the name
+ *  is the reliable signal, the message is the server's.
  *
  *  `DOMException` with `name === "AbortError"` is what `fetch` rejects with, and
  *  what the transports' own `abortError()` helpers construct. */

@@ -524,11 +524,11 @@ export class PyLspExtractor implements SurfaceExtractor {
    *  leg goes dark silently, and the rig reports an empty surface as if the
    *  product had produced one.
    *
-   *  Measured on the session-v51 Python corpus: 71 of 80 product-source rows sit
-   *  inside a class, against 2 whose signature names a corpus type. The receiver
-   *  is the leg that carries Python, and it was the leg no Python row could
-   *  exercise. Same three lines as the C# and TypeScript transports carry, added
-   *  for the same reason and after the same symptom.
+   *  Measured on the Python corpus: 71 of 80 product-source rows sit inside a
+   *  class, against 2 whose signature names a corpus type. The receiver is the
+   *  leg that carries Python, and it was the leg no Python row could exercise.
+   *  Same three lines as the C# and TypeScript transports carry, added for the
+   *  same reason and after the same symptom.
    *
    *  KIND NUMBERING IS THE LSP'S, not vscode's; the two differ by one, and every
    *  transport's accessor answers in the LSP's so one translation in the rig
@@ -558,11 +558,11 @@ export class PyLspExtractor implements SurfaceExtractor {
     // name and no signature, and `renderMemberSignatures` drops every one. The
     // type resolves and its surface is empty.
     //
-    // Measured, live, on `mcp-graph-engine` while taking the session-v49 phase 0
-    // baseline: membersOfType(GraphEngine) answered 38 members and the walk
-    // rendered 0, on 7 of 7 real classes. That is not a Python fact - the
-    // PRODUCT transport (src/vscode/pyExtractor.ts) has always backfilled
-    // through this same helper, against Pylance's identical empty `detail`.
+    // Measured, live, on `mcp-graph-engine` while taking a baseline:
+    // membersOfType(GraphEngine) answered 38 members and the walk rendered 0,
+    // on 7 of 7 real classes. That is not a Python fact - the PRODUCT
+    // transport (src/vscode/pyExtractor.ts) has always backfilled through this
+    // same helper, against Pylance's identical empty `detail`.
     // This class had the comment "the headless transport owns its own signature
     // path" written about it and owned no such path.
     //

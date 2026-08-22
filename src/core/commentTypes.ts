@@ -33,7 +33,7 @@ import { CommentSyntax, commentSyntaxFor, nextComment } from "./fimComment";
  *  every comment inside that run is gone - the whole backtick gesture goes
  *  silently dead for a body that handles a quote character, which is every
  *  parser, escaper, CSV writer and JSON writer. C# and Go carry `'` and get it
- *  right (session-v36 `[RECORD]` C2 is the control).
+ *  right.
  *
  *  THE CHEAP FIX, and it is the one ratified rather than the right one. The
  *  right fix is the quote set in `commentSyntaxFor`, which is a v25 contract
@@ -77,7 +77,7 @@ function withoutPhantomLiterals(code: string, syntax: CommentSyntax): string {
     // doc opener is tested before the quote that starts it, or Python's `"""`
     // reads as a quote and this pass blanks the first character of a docstring.
     // Measured: without this the unterminated-docstring shape loses every name
-    // in it, which is three rows of session-v55 phase 11's oracle.
+    // in it, which is three rows of the blind oracle.
     const doc = syntax.doc.find((d) => code.startsWith(d, i));
     if (doc !== undefined) {
       const close = code.indexOf(doc, i + doc.length);

@@ -1,5 +1,5 @@
 /**
- * The Python leg of the TDD language seam (session-v31 phase 4).
+ * The Python leg of the TDD language seam.
  *
  * Python is the leg that can be validated END TO END on real code: 7 of 89
  * functions in `mcp-graph-engine/src` survive the classifier, level with the
@@ -24,7 +24,8 @@
  *     survivors. And Python has no build step, so a syntax error in the generated
  *     file arrives as a COLLECTION ERROR, which is `environmentError`.
  *
- * Never imports vscode (the src/core rule). Contract: session-v31/contract-py.md.
+ * Never imports vscode (the src/core rule).
+ * Contract: docs/architecture/tdd-language-seam.md.
  */
 
 import * as os from "os";

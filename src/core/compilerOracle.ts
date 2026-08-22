@@ -1178,12 +1178,12 @@ export interface TestRunTarget {
  * rejects only when the spawn itself fails. When the test binary never ran (a
  * compile/link failure — no libtest lines), `buildError` carries the stderr.
  *
- * DELIBERATE (session-v31 phase 1): the goal permitted either keeping this
- * file-path shape or replacing it with a placement-taking one. Both ship. This
- * signature is unchanged and every shipped call site is untouched — it resolves
- * the root the way it always did and hands off to runTestOracleAt, which is the
- * single implementation. Languages whose run root is not the source file's
- * project call runTestOracleAt directly. Two entry points, one body, so the Rust
+ * DELIBERATE: the design permitted either keeping this file-path shape or
+ * replacing it with a placement-taking one. Both ship. This signature is
+ * unchanged and every shipped call site is untouched — it resolves the root the
+ * way it always did and hands off to runTestOracleAt, which is the single
+ * implementation. Languages whose run root is not the source file's project
+ * call runTestOracleAt directly. Two entry points, one body, so the Rust
  * command stays byte-identical.
  */
 export async function runTestOracle(

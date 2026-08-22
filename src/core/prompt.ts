@@ -5,9 +5,9 @@
  * hidden system message. Deterministic: same input, same bytes.
  */
 
-/** 1-based inclusive line range. It is the block's IDENTITY since session-v33,
- *  not a label: `resolveForPrompt` slices exactly these lines out of the live
- *  document to build the payload. It renders in the prompt as a label too. */
+/** 1-based inclusive line range. It is the block's IDENTITY, not a label:
+ *  `resolveForPrompt` slices exactly these lines out of the live document to
+ *  build the payload. It renders in the prompt as a label too. */
 export interface ContextBlockRange {
   startLine: number;
   endLine: number;
@@ -307,8 +307,8 @@ function typeInstruction(languageId: string | undefined, kind: TypeGenKind): str
 export function renderContextBlock(block: ContextBlock): string {
   const text = block.text.endsWith("\n") ? block.text : block.text + "\n";
   // A staged block is a live selection out of some document, so a human can
-  // stage a fence INTO it (session-v33 made the text live; the panel is not
-  // asked). Adapting here is the whole of queue entry Q14.
+  // stage a fence INTO it (the text is live; the panel is not asked). Adapting
+  // here is the whole of queue entry Q14.
   const fence = fenceFor(text);
   return `Context: ${block.uri}#L${block.range.startLine}-L${block.range.endLine}\n${fence}\n${text}${fence}`;
 }
@@ -317,11 +317,11 @@ export function renderContextBlock(block: ContextBlock): string {
  * The context blocks as one prompt HEAD: every assembler leads with these
  * bytes, in this order, joined the way sections are joined.
  *
- * It exists because session-v44 sends this head to Claude Code as its own
- * cached turn, and the transport verifies that the prompt it was handed
- * actually STARTS with it before splitting anything. Two renderings of the
- * same blocks that differed by one byte would silently turn every fork into a
- * whole-prompt round; one function means they cannot differ.
+ * It exists because the Claude Code backend sends this head as its own cached
+ * turn, and the transport verifies that the prompt it was handed actually
+ * STARTS with it before splitting anything. Two renderings of the same blocks
+ * that differed by one byte would silently turn every fork into a whole-prompt
+ * round; one function means they cannot differ.
  *
  * Empty for no blocks, and callers append the separator themselves, so the
  * assembled prompts keep their exact prior bytes.
@@ -333,9 +333,9 @@ export function renderContextPrefix(blocks: readonly ContextBlock[] | undefined)
 /** Sections are separated by a blank line, everywhere, on every assembler. */
 export const SECTION_SEPARATOR = "\n\n";
 
-/** Which of the three arbitration parts a section's bytes belong to
- *  (session-v48 phase 2). `developer` is untouchable, `injected` is the only
- *  part that shrinks, `fixed` is irreducible. */
+/** Which of the three arbitration parts a section's bytes belong to.
+ *  `developer` is untouchable, `injected` is the only part that shrinks,
+ *  `fixed` is irreducible. */
 type PromptPart = "developer" | "injected" | "fixed";
 
 /** One assembled section with the part it is charged to. */
@@ -435,9 +435,8 @@ export function assembleFnGenPrompt(input: FnGenPromptInput): string {
 }
 
 /**
- * The same prompt, counted instead of joined: whose bytes are whose
- * (session-v48 phase 2). Feeds the window arbitration in
- * `src/core/promptBudget.ts`.
+ * The same prompt, counted instead of joined: whose bytes are whose. Feeds the
+ * window arbitration in `src/core/promptBudget.ts`.
  *
  * EXACT ON CHARACTERS, and the only proxy downstream is chars-to-tokens:
  * `developerChars + injectedChars + fixedChars === assembleFnGenPrompt(input).length`

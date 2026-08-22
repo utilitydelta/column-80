@@ -15,7 +15,7 @@
  *
  * Never imports vscode (the src/core rule).
  *
- * Contract: session-v31/contract-seam.md.
+ * Contract: docs/architecture/tdd-language-seam.md.
  */
 
 import { execFileSync } from "child_process";

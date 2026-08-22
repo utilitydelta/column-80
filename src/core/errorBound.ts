@@ -7,11 +7,11 @@
  * can take it without an import cycle, and so can anything that grows the same
  * need later.
  *
- * Why it is here rather than in ollama.ts, where it was born: session-v56
- * bounded the ollama arm and left byte-identical unbounded copies in the other
- * two. A misbehaving Anthropic or cloud endpoint answering a 500 with 100KB of
- * HTML put the whole 100KB in front of the user, on ONE line, where the toast's
- * own first-line rule cannot shorten it (roadmap item 63).
+ * Why it is here rather than in ollama.ts, where it was born: bounding the
+ * ollama arm alone left byte-identical unbounded copies in the other two. A
+ * misbehaving Anthropic or cloud endpoint answering a 500 with 100KB of HTML put
+ * the whole 100KB in front of the user, on ONE line, where the toast's own
+ * first-line rule cannot shorten it (roadmap item 63).
  */
 
 /** How much of a server-controlled string survives into an error message. The
@@ -120,7 +120,7 @@ export class HttpStatusError extends Error {
  *  object.
  *
  *  THREE THINGS THIS GETS RIGHT THAT `String(x.message ?? x.type ?? "unknown")`
- *  GOT WRONG, each measured by the session-v58 phase-4 review:
+ *  GOT WRONG, each one measured:
  *
  *  1. A bare string envelope, `{"error":"upstream overloaded"}`, has no
  *     `.message`, so the old chain fell through to "unknown" and threw the
@@ -186,12 +186,12 @@ function jsonOf(v: unknown): string | undefined {
 
 /** The channel's record of what a server actually answered.
  *
- *  The toast says "The full message is in the output channel". Between
- *  session-v56 and session-v57 that stopped being true: the bound moved to the
- *  read, so the channel's copy WAS the toast's copy and a 102400-char body left
- *  467 characters behind on the Anthropic arm and 463 on the cloud one. This
- *  line is what makes the sentence true again, and it is written at the
- *  transport, at the moment the body arrives, BEFORE `boundBody` runs.
+ *  The toast says "The full message is in the output channel". That stopped
+ *  being true once, when the bound moved to the read: the channel's copy WAS the
+ *  toast's copy and a 102400-char body left 467 characters behind on the
+ *  Anthropic arm and 463 on the cloud one. This line is what makes the sentence
+ *  true again, and it is written at the transport, at the moment the body
+ *  arrives, BEFORE `boundBody` runs.
  *
  *  The raw length is stated separately from the text so the channel says how
  *  much the server sent even when the cap has eaten most of it.
@@ -241,13 +241,13 @@ export function channelBodyLine(transport: string, status: number, raw: string):
 
 /** The channel's record of how far a CUT stream got.
  *
- *  A stream that ends without its terminal frame throws, and until session-v59
- *  the partial reply the server had already delivered was discarded at that
- *  moment: the text was local to the reader and the throw carried none of it.
- *  What reached the channel said the stream was cut and nothing about how far it
- *  got, so a server that died after two tokens and one that died three lines
- *  from the closing brace produced identical output. Those are different faults
- *  (scrap S58-6).
+ *  A stream that ends without its terminal frame throws, and the partial reply
+ *  the server had already delivered used to be discarded at that moment: the
+ *  text was local to the reader and the throw carried none of it. What reached
+ *  the channel said the stream was cut and nothing about how far it got, so a
+ *  server that died after two tokens and one that died three lines from the
+ *  closing brace produced identical output. Those are different faults (scrap
+ *  S58-6).
  *
  *  ITS OWN TAG, and not `[http-body]`. A cut stream is not a non-ok response:
  *  the status was 200, there was never an error body, and a reader filtering
@@ -290,10 +290,9 @@ export function channelUnreadLine(transport: string, status: number): string {
  *  rather than losing one to the other.
  *
  *  The same five `LINE_BREAKS` in `src/vscode/toastText.ts` cuts a toast on
- *  (roadmap item 69's third shape, landed session-v58 phase 2). VT and FF are
- *  deliberately absent from both: VS Code's text model does not break a row on
- *  them. If they are ever added to one set they belong in the other on the same
- *  day.
+ *  (roadmap item 69's third shape). VT and FF are deliberately absent from
+ *  both: VS Code's text model does not break a row on them. If they are ever
+ *  added to one set they belong in the other on the same day.
  *
  *  EXPORTED because a channel line is not only written here. Any surface that
  *  interpolates server-controlled text into one `log()` call needs this, or the
@@ -344,8 +343,7 @@ export async function readBody(res: Response): Promise<{ read: true; text: strin
  *
  *  The order is load bearing. The channel must see the body before the toast's
  *  bound does, or the toast's "the full message is in the output channel" is a
- *  promise with nothing behind it - which is what it was between session-v56
- *  and session-v57.
+ *  promise with nothing behind it - which is what it once was.
  *
  *  Both readers stay exported: they are the leaf's tested definitions and
  *  `test/impl-v57-p1-shared-bound.test.cjs` pins their behaviour on a torn and

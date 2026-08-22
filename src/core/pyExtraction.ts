@@ -183,7 +183,7 @@ export function pyEnumBaseDecl(defLines: readonly string[], typeName: string): b
 }
 
 // ---------------------------------------------------------------------------
-// THE PYTHON FIELD LEG (session-v50 phase 3).
+// THE PYTHON FIELD LEG.
 //
 // Python is the only one of the five that loses the field TYPE and not just the
 // edge. pyright fills `detail` on nothing, so a field arrives as a bare name and

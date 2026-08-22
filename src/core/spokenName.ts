@@ -24,8 +24,9 @@
  * `tightenClassify.ts` owns the rule and every `Proposal` carries its answer.
  *
  * Collision risk, measured over the celeriant-db Rust corpus at commit 487f8c1
- * (2026-08-08, `git archive HEAD` so the count is reproducible;
- * `session-v52/spikes/casefold.cjs`): 4,863 declared symbols, 3,798 distinct
+ * (2026-08-08, `git archive HEAD` so the count is reproducible; the run is
+ * recorded in docs/architecture/tighten-doc-comment.md): 4,863 declared
+ * symbols, 3,798 distinct
  * fold keys, 37 of them (0.97%) carrying more than one spelling.
  *
  * THE CLAIM THAT MATTERS IS NARROWER AND STRONGER than the one the first draft
@@ -40,8 +41,8 @@
  * THE FOLD COMPARES, THE SWEEP QUERIES. A workspace symbol provider is a query
  * API, not a dump, so a fold key is useless to it. `identifierVariants` is what
  * you hand the provider: the spellings the five languages actually use,
- * bounded and deterministic. Ported from `session-v52/spikes/variants.cjs`,
- * which recovered 100% of the 543 declared type names in that corpus at 487f8c1
+ * bounded and deterministic. Ported from the scout's variant generator, which
+ * recovered 100% of the 543 declared type names in that corpus at 487f8c1
  * - a number to DISCOUNT, because the spoken form it swept with was derived by
  * splitting each identifier on its own humps, so the generator was measured as
  * the inverse of the splitter.

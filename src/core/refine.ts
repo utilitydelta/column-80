@@ -482,8 +482,8 @@ export interface RefinePromptInput {
    *  `bodyIndent` for a body-only span. Same field, same meaning and the same
    *  reason as `RepairPromptInput.spanIndent` - refine is the THIRD path that
    *  shows a model file-indented code and then places its reply, so it walked
-   *  the body one level deeper per press exactly as repair did. Found by review,
-   *  session-v35 item 1. */
+   *  the body one level deeper per press exactly as repair did. Found by
+   *  review. */
   spanIndent?: string;
   /** The doc comment's own column. Same field, same reason as
    *  `RepairPromptInput.docIndent`: a bodyOnly target's docstring is already

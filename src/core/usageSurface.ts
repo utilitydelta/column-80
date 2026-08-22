@@ -3,7 +3,8 @@
  * on, injected under the signature block so the model copies the repo's own
  * call shape.
  *
- * Measured before it was built (`session-v29/measure-p3.md`), 40 real member
+ * Measured before it was built (docs/architecture/fim-completion.md, "Usage
+ * windows at a member site"), 40 real member
  * sites in acme-db, scored by rust-analyzer's own diagnostics on the served
  * line: signatures alone leave 8 of 40 continuations type-wrong, signatures plus
  * usage windows leave 3. The failures it removes are arity and operand type

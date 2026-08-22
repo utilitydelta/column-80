@@ -1,6 +1,6 @@
 /**
- * The prompt-versus-window arbitration (session-v48 phase 2,
- * session-v48/contract-phase2.md; roadmap item 43).
+ * The prompt-versus-window arbitration (roadmap item 43). The contract this was
+ * built to is in docs/constants.md, "The prompt-versus-window arbitration".
  *
  * THE DEFECT THIS EXISTS FOR. `GEN_NUM_CTX` bounds the prompt AND the
  * generation together, and past it ollama silently truncates the prompt to fit,

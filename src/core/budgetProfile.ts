@@ -1,5 +1,6 @@
-// The derivation seam for the fn-gen injection path's tuning constants
-// [session-v46/contract-phase0b.md]. Every number here was inherited from a
+// The derivation seam for the fn-gen injection path's tuning constants; the
+// contract it was built to is in docs/constants.md, "The derivation seam's
+// contract". Every number here was inherited from a
 // local-30B tuning pass and now also gates cloud models, so the constants
 // become derivations of (model class, language) with IDENTITY defaults: at the
 // shipped values every derived number equals the constant it replaced, and a
@@ -97,7 +98,7 @@ export const CS_BUDGET_FACTOR = 1;
 export const CS_DATASHAPE_TOTAL_TOK = DATASHAPE_TOTAL_TOK * CS_BUDGET_FACTOR;
 
 // ---------------------------------------------------------------------------
-// The context dial (session-v48 phase 1, contract-phase1.md).
+// The context dial.
 //
 // THE TRAP THIS TABLE EXISTS TO AVOID: three of the four numbers make the
 // fourth inert. Measured before the build, against the shipped `walkDataShape`
@@ -173,7 +174,8 @@ export interface ContextBounds {
 // Roughly three times the root count gives breadth somewhere to go.
 //
 // EVERY NUMBER BELOW EXCEPT THE `shipped` ROW IS A JUDGMENT CALL with its
-// reasoning in session-v48/goal.md, not a measured optimum. There are hundreds
+// reasoning in docs/constants.md, "Why the context stop is a dial and not a
+// measured constant", not a measured optimum. There are hundreds
 // of models a developer might point this at and no measured curve generalises
 // across that space, which is why this is a dial rather than a constant.
 const CONTEXT_STOP_TABLE: Readonly<Record<ContextStop, ContextBounds>> = {

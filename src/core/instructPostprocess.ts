@@ -24,10 +24,10 @@ function fenceRun(trimmed: string): { char: string; len: number } | undefined {
  * from undefined (no fence). Callers that treat empty output as a failure
  * must check for "" themselves; the fn-gen service's empty-rejects path does.
  *
- * FENCE RUNS ARE HONOURED SINCE session-v38. An opener is a run of three or
- * more; a closer is a bare run of the SAME character whose length is 3 OR equal
- * to the opener's. Until session-v38 the closer was `trimmed.slice(0, 3)`, so
- * only a run of exactly three ever closed anything.
+ * FENCE RUNS ARE HONOURED. An opener is a run of three or more; a closer is a
+ * bare run of the SAME character whose length is 3 OR equal to the opener's.
+ * The closer used to be `trimmed.slice(0, 3)`, so only a run of exactly three
+ * ever closed anything.
  *
  * THE MEASUREMENT. 32 of 198 repair rows died in `fnGenService`'s code-fence
  * guard: 16.2% of that population refused by the product's own postprocess

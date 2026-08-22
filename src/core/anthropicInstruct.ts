@@ -117,13 +117,13 @@ async function runRound(
  *  rows on: a bare CR, U+2028, U+2029 or NEL in the server's body survived the
  *  cut, reached `log()` inside one call and came out as TWO rows, the second
  *  one server-authored and wearing this line's per-round accounting tag
- *  (session-v59 phase 2, driven through a real socket). Escaping rather than
- *  cutting also keeps the rest of a multi-line reason, which the cut threw
- *  away for no gain - the cap is what keeps the row short.
+ *  (driven through a real socket). Escaping rather than cutting also keeps the
+ *  rest of a multi-line reason, which the cut threw away for no gain - the cap
+ *  is what keeps the row short.
  *
- *  The order is phase 1 of session-v58's measured ruling: a cap applied before
- *  the escape bounds the wrong string, and U+2028 costs six characters per
- *  escape, so the rendered row can exceed the cap several times over. */
+ *  The order is a measured ruling: a cap applied before the escape bounds the
+ *  wrong string, and U+2028 costs six characters per escape, so the rendered
+ *  row can exceed the cap several times over. */
 function channelReason(err: unknown): string {
   const line = escapeBreaks(String(err instanceof Error ? err.message : err).trim());
   return line.length > 200 ? line.slice(0, 200) + "..." : line;
@@ -242,10 +242,10 @@ async function streamMessages(
       //
       // NOT a stream cut, and roadmap item 66 said it was. This frame is
       // Anthropic's GENERIC in-stream error envelope: a rate limit, an invalid
-      // key and a malformed request all arrive through it. Session-v57's phase-4
-      // review drove all three and found them being told "the model server went
-      // silent mid-reply - check the server", which is the wrong cause and the
-      // wrong remedy, with the real reason taken off the screen. So this site
+      // key and a malformed request all arrive through it. Review drove all
+      // three and found them being told "the model server went silent
+      // mid-reply - check the server", which is the wrong cause and the wrong
+      // remedy, with the real reason taken off the screen. So this site
       // gets no crafted sentence and keeps the provider's own message, which is
       // the actionable half; what it loses is the API vocabulary, which is what
       // "stream error" was. The wording is deliberately plain so the catch-all

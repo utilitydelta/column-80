@@ -81,8 +81,8 @@ export function createGoTextReader(): GoTextReader {
 
 /** The product Go workspace-symbol runner: dispatch a bare NAME query against
  *  the user's running gopls (via the golang.go extension) via
- *  vscode.executeWorkspaceSymbolProvider, for the by-name resolution leg
- *  (session-v40 item 2's anchor leg) — the createCsSymbolRunner sibling. */
+ *  vscode.executeWorkspaceSymbolProvider, for the by-name resolution leg — the
+ *  createCsSymbolRunner sibling. */
 export function createGoSymbolRunner(): GoSymbolRunner {
   return (query) =>
     Promise.resolve(vscode.commands.executeCommand("vscode.executeWorkspaceSymbolProvider", query));

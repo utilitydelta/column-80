@@ -1,5 +1,5 @@
 /**
- * The Go leg of the TDD language seam (session-v31 phase 2).
+ * The Go leg of the TDD language seam.
  *
  * Go is the near miss on Rust's same-file design: the tests live in a SIBLING
  * `foo_test.go` that declares the SAME package as the code under test, so it
@@ -11,7 +11,8 @@
  * The rung is stdlib `testing`, the only guaranteed framework of the five: no
  * detection, no install, nothing to look for.
  *
- * Never imports vscode (the src/core rule). Contract: session-v31/contract-go.md.
+ * Never imports vscode (the src/core rule).
+ * Contract: docs/architecture/tdd-language-seam.md.
  */
 
 import * as path from "path";

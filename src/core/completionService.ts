@@ -796,7 +796,8 @@ export class CompletionService {
           //
           // Two other legs were built here and withdrawn. A self-reference check
           // measured 224 false suppressions on 1.6M real member sites against no
-          // true positive (`session-v18/triage-p4.md`). An arity leg - does each
+          // true positive (docs/architecture/fim-completion.md, "The own-binding
+          // suppression leg"). An arity leg - does each
           // call carry an argument count some signature accepts - was measured in
           // v19 and removed: it parsed only TypeScript's name-first render, so it
           // was dead in C#, Python and Rust, and on TypeScript it suppressed

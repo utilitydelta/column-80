@@ -59,9 +59,9 @@ export interface WalkResult {
    *  guaranteed NOT also emitted. */
   dropped: string[];
   /** The SAME names as `dropped`, in the same order, each with the cap that did
-   *  it (session-v48 phase 3). A drop line that names types without naming what
-   *  dropped them tells the developer something is missing and nothing about
-   *  which way to turn the dial. */
+   *  it. A drop line that names types without naming what dropped them tells
+   *  the developer something is missing and nothing about which way to turn the
+   *  dial. */
   droppedBy: DroppedType[];
 }
 
@@ -116,8 +116,8 @@ export interface DroppedType {
 export interface SharedWalkState {
   visited: Set<string>;
   remainingChars: number;
-  /** OPTIONAL, session-v48 phase 3: where every walk sharing this state records
-   *  the types it dropped entirely, so ONE gesture can report ONE list.
+  /** OPTIONAL: where every walk sharing this state records the types it dropped
+   *  entirely, so ONE gesture can report ONE list.
    *
    *  Present means "collect"; absent means the walk records nothing, which is
    *  what the FIM whole-block path does - it has no channel of its own to put a
@@ -128,8 +128,8 @@ export interface SharedWalkState {
    *  actually bound travels with it (review D3), and the LAST walk to lose a
    *  name overwrites the earlier attribution (review D4). */
   droppedBy?: Map<string, DroppedType>;
-  /** OPTIONAL, session-v50 phase 2: the types that have already been given a
-   *  MEMBER block in this prompt. A second set, and it has to be second.
+  /** OPTIONAL: the types that have already been given a MEMBER block in this
+   *  prompt. A second set, and it has to be second.
    *
    *  `visited` above dedups DATA SHAPES: a type whose fields one walk rendered
    *  must not have them rendered again by a sibling walk. C# is the only language
@@ -140,18 +140,18 @@ export interface SharedWalkState {
    *  that as "already given a member block", so a type's shape shipped and its
    *  members vanished. Caught by `blind-v34-stdlib-provenance` item 1 point 6. */
   memberBlocks?: Set<string>;
-  /** OPTIONAL, session-v51 phase 0: what this prompt's member blocks are priced
-   *  at, so a data-shape block can never be paid for with one. Present for C#
-   *  alone, because C# alone renders member blocks out of this aggregate; Go's
-   *  member half and Python's never touch it and neither can lose a member list
-   *  to a shape block.
+  /** OPTIONAL: what this prompt's member blocks are priced at, so a data-shape
+   *  block can never be paid for with one. Present for C# alone, because C#
+   *  alone renders member blocks out of this aggregate; Go's member half and
+   *  Python's never touch it and neither can lose a member list to a shape
+   *  block.
    *
    *  Set once by `resolvePrefill` before the render loop, because the aggregate
    *  is spent ACROSS ROOTS - a reservation taken inside a renderer arrives after
-   *  earlier roots have already taken the budget, which is the version
-   *  session-v50 built and reverted. `own` is rewritten per candidate, and
-   *  `reserve` is decremented by that same number once the candidate's member
-   *  render has happened.
+   *  earlier roots have already taken the budget, which is the version that was
+   *  built and reverted. `own` is rewritten per candidate, and `reserve` is
+   *  decremented by that same number once the candidate's member render has
+   *  happened.
    *
    *  Absent means no floor, which is every other language and every other caller
    *  of `walkDataShape`. */
@@ -272,10 +272,10 @@ export function parseBraceDef(
  *  existing caller - FIM's own flat "\n".join(out) - already relies on).
  *  A caller that joins defs with something WIDER (`walkDataShape`'s two-char
  *  `SEP`) must pass that width here, or its own declared budget silently stops
- *  matching what it actually renders (session-v40 review finding 2). When
- *  passed, `total` on return is also corrected to the EXACT real joined
- *  length (not the +1-per-line-conservative estimate every other caller gets),
- *  so a caller charging a shared aggregate by `total` charges it precisely.
+ *  matching what it actually renders. When passed, `total` on return is also
+ *  corrected to the EXACT real joined length (not the +1-per-line-conservative
+ *  estimate every other caller gets), so a caller charging a shared aggregate by
+ *  `total` charges it precisely.
  *
  *  `preferWholeFirst` (v40, OPTIONAL, default false - every existing caller is
  *  unaffected) processes `defs` in TWO passes instead of one: pass 1 commits,
@@ -555,13 +555,13 @@ export function walkDataShape(
   // requirement enforced once, after the fact, instead of per def during
   // discovery.
   //
-  // Exempting the ROOT from this cap was tried in session-v39 and REFUTED on
-  // the corpus: it moved nothing (the walk still dropped its own root on 63 of
-  // 237 rows) and made starvation slightly worse (21 rows to 24), because the
-  // binding ceiling is the SHARED per-prompt budget, not the per-walk one. A
-  // root let past its own cap just spends the shared budget the next walk
-  // needed - v40 does not reopen that: the root competes for render-time
-  // truncation exactly like every other def here, with no exemption from it.
+  // Exempting the ROOT from this cap was tried and REFUTED on the corpus: it
+  // moved nothing (the walk still dropped its own root on 63 of 237 rows) and
+  // made starvation slightly worse (21 rows to 24), because the binding ceiling
+  // is the SHARED per-prompt budget, not the per-walk one. A root let past its
+  // own cap just spends the shared budget the next walk needed - v40 does not
+  // reopen that: the root competes for render-time truncation exactly like every
+  // other def here, with no exemption from it.
   //
   // Allocation order (v40 review fix): `renderDefsWithinBudget` is called with
   // `preferWholeFirst=true`, so a def that fits WHOLE (the root very often
@@ -675,10 +675,10 @@ export function walkDataShape(
   const droppedBy: DroppedType[] = [...byName.values()];
   const dropped = droppedBy.map((d) => d.name);
 
-  // The per-GESTURE ledger (session-v48 phase 3), when the caller asked for one.
-  // Written after `keptNames` exists so a type an EARLIER sibling walk dropped
-  // and this one emitted leaves the ledger: the developer is owed the types that
-  // reached no block ANYWHERE in the prompt, not a list of near misses.
+  // The per-GESTURE ledger, when the caller asked for one. Written after
+  // `keptNames` exists so a type an EARLIER sibling walk dropped and this one
+  // emitted leaves the ledger: the developer is owed the types that reached no
+  // block ANYWHERE in the prompt, not a list of near misses.
   //
   // The write is LAST-WINS across walks too (review D4), for the same reason it
   // is within one: whichever walk lost the name most recently is the one whose

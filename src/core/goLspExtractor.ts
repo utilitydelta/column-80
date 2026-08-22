@@ -373,11 +373,11 @@ export class GoLspExtractor implements SurfaceExtractor {
   }
 
   // The workspace-symbol resolution leg: a bare type NAME -> the cursor at its
-  // definition's name token, session-v40 item 2. Proven live against gopls
-  // (querying "Command" over the cobra corpus returns the struct at
-  // command.go:53, kind 23, first of 100 fuzzy hits — the same shape Roslyn's
-  // workspace/symbol returns for C#). location.range is the NAME token, so
-  // the returned cursor feeds membersOfType / resolveCrossFileShape directly.
+  // definition's name token. Proven live against gopls (querying "Command" over
+  // the cobra corpus returns the struct at command.go:53, kind 23, first of 100
+  // fuzzy hits — the same shape Roslyn's workspace/symbol returns for C#).
+  // location.range is the NAME token, so the returned cursor feeds
+  // membersOfType / resolveCrossFileShape directly.
   // Narrowing lives in goExtraction's resolveGoTypeCursorWithHint, which reads
   // containerName as the real Go import PATH gopls reports it as — unlike
   // Roslyn's display-string containerName, that never needs a hover to

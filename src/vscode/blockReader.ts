@@ -1,8 +1,7 @@
 /**
  * The payload reader: a context block's uri, to whatever those lines read NOW.
  * `ContextBlockStore.resolveForPrompt` takes exactly this function, and it is
- * the whole of session-v33's "the model gets what the lines say now" at the
- * vscode layer.
+ * the whole of "the model gets what the lines say now" at the vscode layer.
  *
  * vscode-free ON PURPOSE, the same discipline documentSchemes.ts keeps. The two
  * functions below are the entire dependency, so the reader is unit-testable

@@ -549,7 +549,7 @@ function isTsPrimitiveArm(arm: string): boolean {
  *  Such a type has no members of its own. A member walk on it resolves the
  *  underlying primitive's prototype and nothing else: `SuppressionKind` returns
  *  57 members, `toString(): string` through `fontcolor(color: string): string`
- *  down to `matchAll`, every one of them `String`'s (session-v37 spike 10). The
+ *  down to `matchAll`, every one of them `String`'s, measured on a spike. The
  *  def line already carries the whole truth, so the member list is pure cost —
  *  measured at 736 bytes for the first MEMBER_CAP of them, about what a whole
  *  real type is budgeted, for nothing.

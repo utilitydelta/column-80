@@ -58,8 +58,8 @@ export function selectionLineRange(s: SelectionShape): ContextBlockRange {
  * symbol the AST picked rather than a selection the human dragged.
  *
  * `firstLine` is what `attachRunStart` answered for the symbol, NOT
- * `symbol.range.start.line`. That distinction is the whole of session-v32 scout
- * finding 4: the symbol range carries the doc comment in Rust and drops it in
+ * `symbol.range.start.line`. That distinction is the whole point, and it was
+ * measured: the symbol range carries the doc comment in Rust and drops it in
  * the other four servers, so anchoring on `range.start` ships a gesture that
  * produces a documented block in Rust and an undocumented one everywhere else,
  * on the same-looking code.
@@ -90,22 +90,22 @@ export interface BlockBound {
  * `chain` arrives INNERMOST FIRST, the order the provider returns it in. Two
  * rules decide it, and they are the only two that need code:
  *
- * - Nothing outside `bound` qualifies. The top of every chain is the whole FILE
- *   (session-v32 scout finding 5), so a walk that runs to the end of the chain
- *   silently includes the entire file. When the enclosing symbol IS the whole
- *   file the two coincide and taking the node is the same answer.
+ * - Nothing outside `bound` qualifies. The top of every chain is the whole
+ *   FILE, so a walk that runs to the end of the chain silently includes the
+ *   entire file. When the enclosing symbol IS the whole file the two coincide
+ *   and taking the node is the same answer.
  * - The answer is the innermost MULTI-LINE node. A one-line node is a statement
  *   or a token, never a block: the measured chains put `panic("not
  *   implemented")` and `return a + b` at that depth on all five servers.
  *
- * The other two traps finding 5 named need no code of their own, and saying so
- * beats carrying checks that look load-bearing and are not. rust-analyzer's
- * zero-width first node has `startLine === endLine`, so the multi-line rule
- * already excludes it. The near-duplicate neighbours every server emits differ
- * only by leading whitespace, so they share a LINE span; the innermost of the
- * pair is reached first and returned, and its twin is never considered. Both
- * traps come back the moment a caller wants single-line blocks, which is why
- * they are written down here rather than forgotten.
+ * The other two traps the same measurement named need no code of their own,
+ * and saying so beats carrying checks that look load-bearing and are not.
+ * rust-analyzer's zero-width first node has `startLine === endLine`, so the
+ * multi-line rule already excludes it. The near-duplicate neighbours every
+ * server emits differ only by leading whitespace, so they share a LINE span;
+ * the innermost of the pair is reached first and returned, and its twin is
+ * never considered. Both traps come back the moment a caller wants single-line
+ * blocks, which is why they are written down here rather than forgotten.
  *
  * Pure: neither argument is mutated, and the result is a COPY, so a caller
  * writing to it cannot reach back into the chain.

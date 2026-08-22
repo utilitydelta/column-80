@@ -14,12 +14,12 @@
  *  `\r`.
  *
  *  VT and FF are deliberately absent, and the honest reason is that the six
- *  above were ruled for session-v58 and these two were not. The rationale that
- *  used to sit here - "VS Code's text model does not break a row on them" -
- *  cited the wrong renderer: this set bounds a NOTIFICATION, which is DOM. Under
- *  UAX#14 both VT and FF are mandatory breaks, and in CSS the two separators
- *  here are forced breaks while NEL, which the set includes, is not. Nobody has
- *  watched a real notification to find out which it actually breaks on.
+ *  above were ruled and these two were not. The rationale that used to sit
+ *  here - "VS Code's text model does not break a row on them" - cited the
+ *  wrong renderer: this set bounds a NOTIFICATION, which is DOM. Under UAX#14
+ *  both VT and FF are mandatory breaks, and in CSS the two separators here are
+ *  forced breaks while NEL, which the set includes, is not. Nobody has watched
+ *  a real notification to find out which it actually breaks on.
  *
  *  `escapeBreaks` in `src/core/errorBound.ts` names the same five, and the two
  *  must move together if either ever moves. If a drive ever shows VT or FF

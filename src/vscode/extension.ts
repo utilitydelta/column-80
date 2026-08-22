@@ -95,8 +95,10 @@ export function activate(context: vscode.ExtensionContext): void {
       // trigger here re-renders the very scoped ghost the expiry exists to
       // replace, with the unscoped answer parked at index 1 behind Alt+]
       // (VS Code 1.130, inlineCompletionsSource.ts L672-686 /
-      // inlineCompletionsModel.ts L553-570; live-verified,
-      // session-v26/review-p34.md finding 1). Hiding first leaves nothing to
+      // inlineCompletionsModel.ts L553-570; live-verified - the full source
+      // chain and the live arm table are in docs/architecture/vscode-layer.md,
+      // "The explicit trigger preserves the drawn item"). Hiding first leaves
+      // nothing to
       // preserve. Two costs, both owned: with a ghost on screen the hide
       // files a real REJECTED end-of-life for it - defensible, the window
       // elapsed without a Tab, which is as close to a rejection as this

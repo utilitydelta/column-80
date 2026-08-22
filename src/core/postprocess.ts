@@ -296,7 +296,8 @@ export function dropDuplicatedHead(text: string, suffix: string): string {
     // from `}` and the threshold floors at 1, so the bare fuzzy judgement
     // deleted the exact correct separator at 4 of 47 real scoped member
     // sites, 16% of the lone-separator class
-    // (session-v26/measure-emptyserve.md). Two shapes are exempt:
+    // (docs/architecture/fim-completion.md, "The empty-serve separator").
+    // Two shapes are exempt:
     //
     //  - The ghost shares no character with the suffix line's leading closer
     //    run (the maximal leading run over `)]};,`). Nothing is duplicated,

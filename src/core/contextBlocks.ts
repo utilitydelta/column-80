@@ -4,12 +4,12 @@
  * dumb by design - no auto-inclusion, no retrieval, no ranking. The store
  * holds exactly what the human added, in the order they added it.
  *
- * The identity claim is: the lines you chose, AS THEY READ NOW. session-v33
- * reversed the older claim ("the snapshot you saw is the snapshot the model
- * gets") on purpose: a block over a function you are still writing has to
- * carry the implementation you just typed into it, or the human is generating
- * against text that no longer exists. The trade is reproducibility of the exact
- * bytes, which the panel showing live text is what keeps inspectable.
+ * The identity claim is: the lines you chose, AS THEY READ NOW. That reversed
+ * the older claim ("the snapshot you saw is the snapshot the model gets") on
+ * purpose: a block over a function you are still writing has to carry the
+ * implementation you just typed into it, or the human is generating against
+ * text that no longer exists. The trade is reproducibility of the exact bytes,
+ * which the panel showing live text is what keeps inspectable.
  *
  * The zero-tolerance guarantee hangs on consumption discipline: prompt
  * assembly reads the live list at generate time, never a copy captured
@@ -284,9 +284,9 @@ function canonical(text: string): string {
 }
 
 /**
- * "Has the source changed since the snapshot" was the v32 question, and
- * session-v33 reversed the claim it served: there is no snapshot any more, and
- * a block whose text changed is the feature rather than the warning. So this
+ * "Has the source changed since the snapshot" was the older question, and the
+ * claim it served has been reversed: there is no snapshot any more, and a
+ * block whose text changed is the feature rather than the warning. So this
  * has exactly one job left, and it is LEG 2: does the recorded range still
  * slice to the last known text, under a rule that forgives CRLF and a trailing
  * newline because editors disagree about both and neither means the source
@@ -365,8 +365,8 @@ export interface ReanchorReport {
  * answer order-independent, and it has to be: the changes were measured
  * arriving in DESCENDING document order, the reverse of how they were
  * submitted, and one `replace` from outside the editor arrives as a delete and
- * an insert (session-v32 finding 6, session-v33 finding 6). Nothing here may
- * depend on the order, so the observations stop mattering.
+ * an insert. Nothing here may depend on the order, so the observations stop
+ * mattering.
  *
  * Four cases per change, and there is deliberately no fifth: a change that
  * crosses a boundary is REFUSED rather than clamped to whatever survived. The
@@ -493,10 +493,10 @@ export class ContextBlockStore {
    *
    * Advancing `addedAtVersion` is not optional, and it happens per EVENT rather
    * than per change: one event carries N changes and bumps the document version
-   * ONCE (session-v32 finding 6, reconfirmed by v33 finding 6). An entry whose
-   * range did NOT move still gets the new version, because the document's
-   * version bumped and the version is what says how recently anyone could
-   * honestly claim the range was exact.
+   * ONCE, measured and then reconfirmed. An entry whose range did NOT move
+   * still gets the new version, because the document's version bumped and the
+   * version is what says how recently anyone could honestly claim the range was
+   * exact.
    *
    * A lost entry keeps its range and its text so the panel can still say where
    * the block used to be, and is then skipped by every later event: lost is

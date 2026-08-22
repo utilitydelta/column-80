@@ -161,8 +161,8 @@ const WORD_CHAR = /[A-Za-z0-9_]/;
  *
  * A bare `indexOf` is what let the reply `shard mem cache` claim the middle of
  * the human's own word: prose `the walker will reshard mem cache entries`
- * becomes `` the walker will re`ShardMemCache` entries `` (session-v52 phase 5
- * adversarial, defect 2). Standing rule 1 says no leg composes a word, and this
+ * becomes `` the walker will re`ShardMemCache` entries `` (found by
+ * adversarial review). Standing rule 1 says no leg composes a word, and this
  * is the line that makes it true of the proposer, which is where "the proposer
  * cannot write" is guaranteed. A downstream check can only notice afterwards.
  *

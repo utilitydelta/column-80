@@ -85,9 +85,9 @@ function lspMemberKind(kind: unknown): MemberKind | undefined {
 // DISTINCT from the vscode enum the product transport uses (which is 0-indexed):
 // LSP Struct=23, Enum=10, Method=6, Field=8, Function=12. impl blocks carry no
 // dedicated kind and are matched by name in membersFromDocumentSymbols.
-/** Exported for the measurement rig only (session-v47): the rig translates a
- *  raw LSP symbol tree into the vscode shape `resolvePrefill` expects, and
- *  CHECKS its translation against this table rather than trusting it. */
+/** Exported for the measurement rig only: the rig translates a raw LSP symbol
+ *  tree into the vscode shape `resolvePrefill` expects, and CHECKS its
+ *  translation against this table rather than trusting it. */
 export function lspSymbolRole(kind: unknown): SymbolRole {
   switch (kind) {
     case 23: // Struct
@@ -476,7 +476,7 @@ export class RaLspExtractor implements SurfaceExtractor {
    *  It exists because the measurement rig has no vscode command API, and
    *  `resolvePrefill`'s RECEIVER leg reads `resolved.symbols` and degrades to
    *  nothing without it - which is how every arm this project has run measured a
-   *  dark receiver leg while the channel said nothing (session-v47).
+   *  dark receiver leg while the channel said nothing.
    *
    *  KIND NUMBERING IS THE LSP'S, not vscode's; the two differ by one. */
   async documentSymbolsForTest(uri: string): Promise<unknown> {

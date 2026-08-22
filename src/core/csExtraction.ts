@@ -244,12 +244,12 @@ const CS_USING_IMPORT = /^[ \t]*(?:global[ \t]+)?using[ \t]+(?!static\b)([A-Za-z
 const CS_NAMESPACE_DECLARATION = /^[ \t]*namespace[ \t]+([A-Za-z_][A-Za-z0-9_.]*)/gm;
 
 /** The plain (non-alias, non-`static`) `using` namespaces this file imports —
- *  session-v40 item 2's candidate leg reads this to tell a real fully-
- *  qualified reference (`Newtonsoft.Json.Linq.JObject`, this file `using`s
- *  `Newtonsoft.Json.Linq`) from a look-alike dotted chain that names no
- *  import at all. Reuses CS_USING_IMPORT rather than a second parse of the
- *  same line shape — csFileReachesContainer already trusts it for the
- *  by-name resolution leg's own hint disambiguation. */
+ *  the candidate leg reads this to tell a real fully-qualified reference
+ *  (`Newtonsoft.Json.Linq.JObject`, this file `using`s `Newtonsoft.Json.Linq`)
+ *  from a look-alike dotted chain that names no import at all. Reuses
+ *  CS_USING_IMPORT rather than a second parse of the same line shape —
+ *  csFileReachesContainer already trusts it for the by-name resolution leg's
+ *  own hint disambiguation. */
 export function csUsingNamespaces(fullText: string): Set<string> {
   const out = new Set<string>();
   for (const m of fullText.matchAll(CS_USING_IMPORT)) {
@@ -514,13 +514,12 @@ function csFileReachesContainer(container: string, fileText: string): boolean {
  *  List<Stripe>.Add(Stripe item)` names it outright; extension heads name
  *  `IEnumerable<Stripe>` and lose the vote to the instance majority).
  *
- *  This is the chain cache's namespace discriminator (session-v27
- *  triage-p3.md finding 1): a warm absorbed at a `List<Tile>` receiver served
- *  Tile-substituted signatures at a `List<Stripe>` site — 78 of 79 fills
- *  wrong at the measured second receiver — so entries only serve where the
- *  receiver type matches. A tie or no evidence returns undefined, and the
- *  caller then neither fills nor warms: the honest degrade is a dark site,
- *  never a guessed namespace. */
+ *  This is the chain cache's namespace discriminator: a warm absorbed at a
+ *  `List<Tile>` receiver served Tile-substituted signatures at a `List<Stripe>`
+ *  site — 78 of 79 fills wrong at the measured second receiver — so entries
+ *  only serve where the receiver type matches. A tie or no evidence returns
+ *  undefined, and the caller then neither fills nor warms: the honest degrade
+ *  is a dark site, never a guessed namespace. */
 export function csReceiverType(members: ReadonlyArray<CompletionMember>): string | undefined {
   const counts = new Map<string, number>();
   for (const member of members) {
@@ -1119,9 +1118,8 @@ export function csShapeGraphBlock(
       // that reaches the same type sheds nothing from it (an earlier walk has
       // already claimed its def, so no def is rendered for it twice) and prints
       // its whole member list, out of a budget the first root was released from.
-      // Measured by the session-v51 phase 0 review: a 4-field collaborator
-      // shared by eight roots was paid for twice, and the tail root lost the
-      // member list it had.
+      // Measured at review: a 4-field collaborator shared by eight roots was
+      // paid for twice, and the tail root lost the member list it had.
       //
       // Marking it costs nothing it would have rendered: the block this loop
       // would have emitted is empty either way.
@@ -1225,8 +1223,8 @@ interface CsLineScan {
   /** The open string contexts, innermost LAST. Empty means ordinary code.
    *
    *  A STACK rather than the flag set this used to be (`verbatim`,
-   *  `verbatimInterp`, `holeDepth`, `raw`), and session-v55 phase 13 measured
-   *  why a flag pair would not have been enough. C# nests string contexts
+   *  `verbatimInterp`, `holeDepth`, `raw`), and the measurement showed why a
+   *  flag pair would not have been enough. C# nests string contexts
    *  through interpolation holes, and three shapes were wrong:
    *
    *  - a `@"..."` opened inside a hole was read with REGULAR string rules, so
@@ -1612,7 +1610,7 @@ export function dedentCsBody(code: string, known?: string): string {
 }
 
 /** A C# type's fields, derived from its RESOLVED MEMBERS rather than from its
- *  hover — the C# leg of the widened `parseFields` seam (session-v49 phase 2).
+ *  hover — the C# leg of the widened `parseFields` seam.
  *
  *  Roslyn writes a member as Name : Type, so the type is everything after the
  *  first ` : `. Only `field` members contribute: a method's signature carries a
@@ -1623,7 +1621,7 @@ export function dedentCsBody(code: string, known?: string): string {
  *  A member with no signature yields nothing rather than a guess. An enum's
  *  variants arrive exactly that way, which is why an enum contributes no fields
  *  here and keeps its own `enumMemberLine` spelling instead. */
-/** A C# type's DEF as the data-shape block prints it (session-v50 phase 2).
+/** A C# type's DEF as the data-shape block prints it.
  *
  *  A Roslyn class hover is `class Contoso.DataModel.RetroJob` and stops there, so
  *  until now C# had nothing to render but a head. The fields exist, they arrive
