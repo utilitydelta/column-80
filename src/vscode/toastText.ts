@@ -13,9 +13,18 @@
  *  `\r\n` worked by accident before this, because `trim()` eats the trailing
  *  `\r`.
  *
- *  VT and FF are deliberately absent: VS Code's text model does not break a row
- *  on them. `escapeBreaks` in `src/core/errorBound.ts` names the same five for
- *  the same reason, and the two must move together if either ever moves. */
+ *  VT and FF are deliberately absent, and the honest reason is that the six
+ *  above were ruled for session-v58 and these two were not. The rationale that
+ *  used to sit here - "VS Code's text model does not break a row on them" -
+ *  cited the wrong renderer: this set bounds a NOTIFICATION, which is DOM. Under
+ *  UAX#14 both VT and FF are mandatory breaks, and in CSS the two separators
+ *  here are forced breaks while NEL, which the set includes, is not. Nobody has
+ *  watched a real notification to find out which it actually breaks on.
+ *
+ *  `escapeBreaks` in `src/core/errorBound.ts` names the same five, and the two
+ *  must move together if either ever moves. If a drive ever shows VT or FF
+ *  breaking a notification row, both sets are wrong and so is every channel line
+ *  phase 1 escaped. */
 const LINE_BREAKS = /\r\n|[\n\r\u2028\u2029\u0085]/;
 
 /** The first non-blank line of a multi-line message, for a one-line toast.

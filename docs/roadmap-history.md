@@ -7,6 +7,12 @@ without a human, and the disposition of the old session scraps.
 Caught up again on 2026-08-21 by session-v57: items **63** and **66** struck, both closed in one
 pass the way their entries asked for. See the gaps below.
 
+Caught up again on 2026-08-22 by session-v58: items **69**, **67** and **68** struck, all three
+closed. That session was about what the product SAYS when a transport fails, and what it keeps in
+the channel when it does. Read the gaps below before believing "closed" means more than it does -
+item 67 in particular closed under a ruling that changed what it was asking for, and two model calls
+in the product are deliberately outside it.
+
 Split out of the roadmap on 2026-08-21 by session-v56. Nothing here is an instruction. If a line
 here reads like work, it belongs back in the roadmap as a numbered item, not here.
 
@@ -258,6 +264,135 @@ fn-gen backend can detect a hung server at all. And the sentence is about wordin
 the Anthropic client tracks a terminal event, so a stream cut in half resolves as a successful short
 generation on the local and cloud clients and reaches no sentence at all. Those two holes plus the
 claude-code backend having no rows became items 67 and 68)
+
+## Human decisions settled on 2026-08-22, moved here from the roadmap
+
+Each of these said "move this entry to history on the next roadmap pass" and this is that pass.
+
+**Commit the gesture fixtures (v21 S7b) - DONE.** All five scratch repos committed clean, byte for
+byte, after a full diff review (rust `ac86ba8`, ts `9ab11bd`, csharp `9e735e9`, python `229fc92`,
+go `288c52b`). The loose edits were authored fixtures rather than junk: the shared-prefix enroll
+family and the v30 repair-receiver chain in every language. Two patches of dogfood residue,
+non-compiling ghost-accept lines in the rust and python gesture sites, were committed AS the
+baseline on purpose, because the tier anchors by exact-string search in those files - clean them
+only with a tier re-run in hand. **Residue that outlives the entry:** the five repos have no git
+remote, so a fresh machine still cannot run the tier. The trees are pinned, not portable.
+
+**TS order-gate ratification (v22) - RATIFIED.** Arm C, methods-first prompt ordering, stays for
+TypeScript as shipped. The comment-led ghost collapse (66.7% to 6.7%) dwarfs the two-point recall
+dip on a corpus too small to see two points. The untested def-first-plus-terminator TS branch is not
+ordered. Reopen on a real dogfood complaint, not on a re-measurement.
+
+**The rust-analyzer snippet nudge - ANSWERED.** The answer was sitting uncommitted in
+rust-scratch's `.vscode/settings.json` and is committed now (`ac86ba8`):
+`rust-analyzer.completion.callable.snippets: "none"`, with the reasoning written above the setting.
+"none" is what makes the arrowing half of the sticky-selection gesture visible in Rust, at the cost
+of tabbable placeholders whose parameter names get overwritten anyway.
+
+## The session-v58 strikes: 69, 67 and 68 (2026-08-22)
+
+Three items, one session, one subject: a transport fails and the product has to say something true
+about it. All three are gaps in the numbering now. What follows is what closed, and - more usefully
+- what did not.
+
+### 69. Three toasts still promise or print something they should not
+
+All three shapes closed.
+
+The channel pointer is true again. Every unknown-error toast ends "The full message is in the output
+channel", and since session-v57 moved the bound into `errorBound.ts` that had been false whenever a
+server body ran over budget: both surfaces got the same 400 characters. Each HTTP transport now
+reads its body once, writes the raw copy to the channel, then bounds the same string for the throw.
+The cap is 16 KiB and `docs/constants.md` records it as a judgement call with nothing measuring it.
+
+The two repair toasts render one line. A `tsc` assignability error is multi-line by construction -
+`tsOracle` appends an elaboration line per row - and both surfaces interpolated it whole. Both go
+through one helper now, and both gained a channel line carrying the whole diagnostic. Neither had
+one: session-v57's S57-6 recorded that the refine path already did, and it was wrong, that line is a
+seventy-character-per-error digest.
+
+`firstLine` cuts the full line-break set. It split on `\n` alone, so a bare CR, U+2028, U+2029 and
+NEL all survived the product's universal toast bound. Widening it moved no existing row.
+
+**The gap.** The elision marker is forgeable in both directions and every OTHER channel surface
+still carries unescaped line breaks, so a server can still write its own channel rows on three of
+them. That is `session-v58/scraps.md` S58-2, and the measurement trap under it is the more valuable
+half: a test sink collects one array element per `log()` call while `OutputChannel.appendLine`
+renders one row per break, so every line-counting row in the suite measures a different thing from
+what a user sees.
+
+### 67. No fn-gen backend can tell that a stream died mid-reply
+
+Closed, and the item changed shape under a ruling before it did.
+
+The item asked for a silence watchdog. The human ruled against one on 2026-08-22: users run
+different hardware, so any silence bound is a guess about someone else's machine and a wrong guess
+kills a generation they asked for. What shipped instead is the cancel affordance - a status-bar item
+that appears while work is in flight and survives the progress notification being dismissed, and a
+palette command behind it with no default keybinding.
+
+The terminal-event half shipped as asked. The local arm throws when its reader ends without a `done`
+frame; the cloud arm throws when it ends with neither a `finish_reason` nor a `[DONE]`. Both speak
+the sentence the class already owned. A half function is no longer proposed as a finished one.
+
+The cloud error frame is read. A 200 carrying `data: {"error":...}` used to be parsed, matched
+against nothing and dropped, and the user was told the model produced nothing usable while the
+provider had said it was overloaded.
+
+**Three things to know before reading "closed" as done.** The signal that decides a cut is tracked
+in a reader FIM shares, and spent only on the instruct path - a cut ghost costs a keystroke, a cut
+function costs a wrong answer. The cloud rule is a disjunction, so a provider sending neither
+terminal signal goes red, and that risk is accepted rather than solved because nothing in this repo
+has watched a real cloud endpoint finish a stream. And the ruling is met for fn-gen only: the model
+pull (S58-10) still keeps its cancel inside a dismissable notification, and the tighten proposer
+(S58-11) builds an `AbortController` that nothing ever aborts.
+
+That last one is the shape worth remembering. A controller can exist, be passed to a transport, and
+have no abort path at all - so a source pin for `new AbortController()` proves nothing, and any
+future check on cancellation must assert the path.
+
+### 68. The claude-code backend has no translated failures, and neither does the HTTP-status class
+
+Closed, both halves, through one structural pass that reads what a failure IS rather than what its
+message says.
+
+**This entry was wrong in four ways, and every one of them would have misbuilt the phase.** Recorded
+here because the register's audited drift rate is 30% and this is what that looks like from inside:
+
+1. It said the Claude Code failure field is `kind`. It is `reason`.
+2. It named five values. There were ten, and there are eleven now. A switch written from the entry
+   falls through on half of them.
+3. It put the translator in `src/core/fnGen.ts`. There is no such file; it is `src/vscode/fnGen.ts`.
+4. It said two throws interpolate CLI text. Six did - and the pair it quoted was not the pair its own
+   falsification test named. Its falsifier says "a claude-code exit and a 429"; the 429 case is two
+   other lines entirely. A phase built from the entry would have wrapped the two it named, left the
+   case its own test demanded still broken, and passed that test.
+
+The pass also closed a hole nobody had claimed. These messages matched no payload-carrier head, so
+they reached the substring pass - and a CLI printing another failure's words drew that failure's
+sentence.
+
+**The gap.** The download toast still shows raw provider JSON while the three generation arms
+stopped (S58-13), and the tighten gesture answers every transport failure with "the model could not
+be reached", including the ones that were reached and refused (S58-7). Both want the same fix: the
+reject table lifted into a leaf that all three surfaces can import.
+
+### What the three of them taught, which is worth more than the three
+
+Five crafted sentences in one session turned out worse than the raw text they replaced. Session-v57's
+S20 sent a user with a bad key to check a server that was fine. A coercion turned a provider's
+"upstream overloaded" into "unknown". Two sentences named settings this product does not contribute.
+A status fallback deleted "model not found, try pulling it first" and left the number 404. And a
+throttling sentence named a key the local backend does not have.
+
+Every one is the same act: the product asserting a next action it does not know. Craft a sentence
+where the product has established what happened. Hand over the provider's own words everywhere else.
+That is written up with its evidence as `docs/supersessions.md` S23, and aye, it is the one thing
+from this session most likely to save the next one.
+
+**Nothing here has been driven against a real provider.** Every status, every mid-reply cut and every
+error frame came from a fake server on localhost. That gap is unchanged from session-v57 and it is
+the same gap that let S20 ship wrong in the first place.
 
 ## Settled without a human: S22 (2026-08-08)
 

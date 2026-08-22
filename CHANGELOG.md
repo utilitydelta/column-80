@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+The output channel keeps what the server actually said. Every unknown-error notification ends "The
+full message is in the output channel", and that had quietly stopped being true: once the width
+bound moved into one place, both surfaces got the same 400 characters and the channel had nothing
+the toast did not. Each backend now writes the server's raw answer to the channel the moment it
+arrives, before anything shortens it, up to 16 KiB with a note when it cuts.
+
+A compiler diagnostic is one line in a notification and all of it in the channel. A TypeScript
+assignability error is multi-line by construction, and the two repair notifications interpolated it
+whole, so a normal type error filled the corner of your screen. Both are one line now, both point at
+the channel, and the refine notification keeps its "undo it with the editor's own undo" clause,
+which is the half you act on.
+
+A reply that dies halfway is no longer offered to you as a finished function. Only one of the three
+backends could tell that a stream had ended early; the other two returned whatever text had arrived
+and the service accepted it. All three notice now, and all three say the same thing.
+
+When a provider puts its failure inside a successful response, you read the provider's reason. A 200
+carrying an error frame was parsed, matched nothing, and vanished - so you were told the model
+produced nothing usable while the provider was saying it was overloaded.
+
+You can stop a generation that is going nowhere. Cancelling lived inside the progress notification,
+so dismissing that notification took the only way out with it and left the work running against a
+server that had stopped answering. There is a status-bar item now for as long as work is in flight,
+naming what it belongs to; clicking it cancels, and it does not go away when you dismiss the
+notification. There is a `Column 80: Cancel Generation` command behind it, with no default key
+binding - bind it to whatever you like, and the item's tooltip says so. Repair and refine rounds
+are cancellable too, which they never were.
+
+The Claude Code backend explains itself. It put the CLI's own output straight into notifications,
+so you read `Claude Code exited 1: Error: connection closed`. It now says whether you need to log
+in, whether the backend could not start and why, whether the provider is throttling, or whether the
+CLI failed and the channel has the rest. The CLI's words go to the channel, not to your screen. This
+also fixes something nobody had noticed: a Claude Code failure could be reported to you in a
+completely different failure's words, if the CLI happened to print them.
+
+An HTTP status says what to do about it. A 401, a 429 and a 503 are three different problems and all
+three used to arrive as a wall of the provider's JSON. Now: the key was refused, the provider is
+throttling, the provider is having trouble - each with what to do next, and the provider's own JSON
+in the channel where it belongs.
+
+Where the product does not recognise a status, it says nothing clever. An unrecognised status keeps
+showing you the provider's own message, because that message is usually the answer: a 404 tells you
+the model is not pulled, a 400 tells you the prompt was too long. A tidy sentence with a number in
+it would have been worse.
+
 A misbehaving server can no longer flood a notification on any backend. The last release bounded the
 local path and left the Anthropic and cloud clients with byte-identical unbounded copies, so a 500
 with a 100KB body put the whole 100KB in a toast: measured at 102437 characters. The bound is one
