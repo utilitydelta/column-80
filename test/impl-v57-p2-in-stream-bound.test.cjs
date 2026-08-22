@@ -330,11 +330,26 @@ test("every in-200 server string that reaches a user surface goes through the bo
     "ollama.ts's two in-200 ERROR sites - the generate reader and the pull reader - both bound the " +
       "provider's own reason. The pull path shares the generate path's coercion and moves with it.",
   );
+  // RE-READ AGAIN, session-v59 phase 2 fix round. This used to require exactly
+  // ONE `boundBody(String(` - the pull STATUS phrase, left on `String()` on the
+  // ground that `providerReason`'s message/type chain has nothing to read on a
+  // progress string. That reasoning was about WHICH coercion, not about
+  // whether: `String()` on a `JSON.parse` product THROWS, and driven mid-pull
+  // through a real socket `{"status":{"toString":1}}` raised a TypeError out of
+  // the read loop into the download's catch with no marker to classify. The
+  // phrase now takes `displayText`, which cannot throw and renders a structure
+  // as JSON rather than `[object Object]`.
   assert.strictEqual(
     (ollama.match(/boundBody\(String\(/g) ?? []).length,
+    0,
+    "no in-200 server value reaches `String()`. Every one of them is a JSON.parse product, and " +
+      "`String()` on a structure whose `toString` is not callable throws where the failure cannot " +
+      "be classified.",
+  );
+  assert.strictEqual(
+    (ollama.match(/boundBody\(displayText\(evt\.status\)\)/g) ?? []).length,
     1,
-    "the pull STATUS phrase is the one site left on String(): it is a progress message rather than " +
-      "an error, so `providerReason`'s message/type chain has nothing to read. It is still bounded.",
+    "the pull STATUS phrase is bounded and coerced without a throw site.",
   );
   // session-v58 phase 4: the coercion inside the bound moved from
   // `String(evt.error?.message ?? evt.error?.type ?? "unknown")` to

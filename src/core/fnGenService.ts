@@ -40,7 +40,7 @@ import {
 } from "./instructPostprocess";
 import { FunctionSpan } from "./span";
 import { LogFn } from "./completionService";
-import { escapeBreaks } from "./errorBound";
+import { escapeBreaks, firstChannelRow } from "./errorBound";
 
 export interface FnGenRequest {
   signature: string;
@@ -761,7 +761,23 @@ function utf8ByteLength(s: string): number {
 
 // The offered text's first non-blank line, trimmed and capped, so the reject
 // evidence stays one log line whatever the model returned.
+//
+// THE CUT IS `firstChannelRow` AND NOT `split("\n")`, because the text here is
+// the MODEL'S OWN OUTPUT and this is the accept/reject accounting line. A body
+// carrying a bare CR, U+2028, U+2029 or NEL got its tail past the old cut and
+// `appendLine` rendered it as rows, so a model writing `[fngen] outcome=accept`
+// inside its function body inflated the accept count of every capture and every
+// rig run (driven through a real socket; the postprocess normalises CRLF and
+// drops what follows the function, so those two shapes never arrived).
+//
+// A CUT RATHER THAN AN ESCAPE, which is the opposite of the ruling one file
+// over at `anthropicInstruct.ts`'s `channelReason` (S29). There the payload is a
+// provider's reason and the tail carries its words, so throwing the tail away
+// cost real evidence. Here the payload is a function body whose FIRST LINE is
+// the whole diagnostic - the signature the reader compares against the one that
+// was asked for - and the rest is indented code that would spend the cap
+// rendering `\n` markers.
 function firstOfferedLine(text: string): string {
-  const line = text.split("\n").find((l) => l.trim().length > 0)?.trim() ?? "";
+  const line = firstChannelRow(text);
   return line.length > 160 ? `${line.slice(0, 160)}...` : line;
 }

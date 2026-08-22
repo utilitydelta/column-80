@@ -138,9 +138,16 @@ export class HttpStatusError extends Error {
  *     never calls `String()` on anything but a primitive.
  *
  *  A structure with nothing scalar in it renders as JSON rather than
- *  `[object Object]`: the field names are worth more than the placeholder, and
- *  `JSON.stringify` escapes line breaks, so the result is always one line and
- *  can never widen a toast. Callers still bound it. */
+ *  `[object Object]`: the field names are worth more than the placeholder.
+ *
+ *  THE RESULT IS NOT ONE LINE, and this docblock said it was until 2026-08-23.
+ *  The claim rested on `JSON.stringify` escaping line breaks; it escapes LF and
+ *  CR and leaves U+2028, U+2029 and NEL alone, and the scalar path above hands
+ *  a server's string back with every break in it untouched. Nothing forges a
+ *  channel row on that today only because every consumer escapes or cuts on the
+ *  full five-break set. A caller writing this into a channel row calls
+ *  `escapeBreaks` on it; a caller putting it in a toast is already cut by
+ *  `toastText`. Callers still bound it too. */
 export function providerReason(error: unknown): string {
   const structured = error !== null && typeof error === "object";
   const rec = structured ? (error as { message?: unknown; type?: unknown }) : undefined;
@@ -306,6 +313,61 @@ export function escapeBreaks(s: string): string {
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029")
     .replace(/\u0085/g, "\\u0085");
+}
+
+/** The same five breaks as a splitter, for a surface that CUTS rather than
+ *  escapes. CRLF leads the alternation so the pair is consumed once and does
+ *  not leave an empty segment behind. */
+const LINE_BREAKS = /\r\n|[\n\r\u2028\u2029\u0085]/;
+
+/** The first non-blank line of a string, cut on the break set the channel
+ *  RENDERS rows on, so the result is one row by construction.
+ *
+ *  For a surface that wants the head of a value and not the whole of it. A
+ *  channel line interpolating server or model text has two honest shapes: keep
+ *  it all with `escapeBreaks` and let the cap decide the length, or take the
+ *  first line and say so. `split("\n")` is neither - it looks like the second
+ *  and is not, because a bare CR, U+2028, U+2029 or NEL survives the cut and
+ *  `appendLine` then renders the tail as rows of its own, authored by whoever
+ *  sent the text. That is how the `[fngen] outcome=` accounting line came to be
+ *  forgeable by the model's own generated body while the diagnostic lines
+ *  around it were not.
+ *
+ *  Blank lines are skipped rather than returned, so a value that opens with a
+ *  break still yields its first words. */
+export function firstChannelRow(s: string): string {
+  return s.split(LINE_BREAKS).find((l) => l.trim().length > 0)?.trim() ?? "";
+}
+
+/** Any value rendered for display, with no way to throw.
+ *
+ *  `String(x)` on a `JSON.parse` product is a THROW SITE, not a coercion:
+ *  `{"toString":1}` gives ToPrimitive a non-callable `toString`, it falls to
+ *  `Object.prototype.valueOf`, gets an object back and raises. That was live on
+ *  the model download's progress phrase, where the TypeError escaped the line
+ *  handler, the read loop and the transport into the download's catch carrying
+ *  no marker the translation table could classify - a hostile or merely broken
+ *  registry killing a download with a progress event.
+ *
+ *  The other half is `[object Object]`, which tells the user nothing. A
+ *  structure renders as JSON here for the same reason `providerReason` does it:
+ *  the field names are worth more than the placeholder.
+ *
+ *  NOT `providerReason`, and the difference is the point. That one reads
+ *  `.message` and `.type` because it is looking for a provider's error reason.
+ *  A progress phrase has no such chain to read and no "unknown" to fall back
+ *  to - absent is the empty string, which is what the call site meant by
+ *  `?? ""` before this existed. */
+export function displayText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "object" || typeof value === "function") {
+    return jsonOf(value) ?? "[unrenderable]";
+  }
+  // Every remaining type is a primitive, and `String` on a primitive - symbols
+  // included - cannot throw.
+  return String(value);
 }
 
 /** An HTTP error body read once, saying whether it could be read at all.

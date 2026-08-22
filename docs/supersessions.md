@@ -1427,3 +1427,66 @@ of `test/impl-v59-p1-one-sentence-surfaces.test.cjs` and `C7 [pull toast]` in
 `test/blind-v58-p7-http-status-classes.test.cjs` were re-cut onto the same claim; row 8 also asserts
 the consequences really differ, because the diagnosis is a prefix of the generation sentence and
 three identical sentences would otherwise satisfy it.
+
+## S32. The accept/reject accounting line cuts on the render break set, and a progress phrase cannot crash a download
+
+**NOT YET RATIFIED.** Built 2026-08-23 in session-v59, the phase 2 fix round, against three findings
+from that phase's adversarial review. Flagged here because it changes a SHIPPED channel format and
+withdraws a written invariant, not because anything narrowed.
+
+**What changed, one sentence each.** `firstOfferedLine` in `src/core/fnGenService.ts` cuts with the
+new shared `firstChannelRow` instead of `split("\n")`, so `[fngen] outcome=reject ... offered=` is
+one channel row whatever the model wrote. The model download's progress phrase takes the new
+`displayText` instead of `String()`, which cannot throw and renders a structure as JSON rather than
+`[object Object]`; `PullEvent.status` widened from `string` to `unknown` to force it.
+`providerReason`'s docblock no longer claims its JSON fallback is always one line.
+
+**The eighth site, and why counting them missed it.** Phase 2 escaped every channel line that
+interpolates SERVER text and counted three local first-line cutters. This is the fourth, and its
+payload is not the server's text but the MODEL'S OWN generated body, arriving through the vscode
+layer rather than off a socket. Driven through a real socket, a 200 whose `response` carries
+`fn add(a: i32, b: i32) -> i32 {<U+2028>[fngen] outcome=accept<U+2028>    a + b<U+2028>}` renders
+four channel rows from one `log()` call, the second of them the model's. That is the accept/reject
+ACCOUNTING line: a model that can write `[fngen] outcome=accept` inflates the accept count in every
+capture and every rig run. Four of the six breaks get through - bare CR, U+2028, U+2029, NEL. LF is
+cut by the old split, and the postprocess normalises CRLF to LF before the line ever sees it.
+
+**A CUT, not the escape S29 ruled for one file over, and the difference is the payload.** S29
+refused to widen `anthropicInstruct.ts`'s cut and escaped the whole reason instead, because there
+the tail carries the provider's words and throwing it away cost real evidence. Here the payload is a
+function body whose first line IS the diagnostic - the signature a reader compares against the one
+that was asked for - and the rest is indented code that would spend the 160-char cap rendering `\n`
+markers. `firstChannelRow` is exported from `src/core/errorBound.ts` so the break set has one home;
+a surface that wants the whole value still takes `escapeBreaks`.
+
+**The progress phrase was a genuine throw, not a rendering complaint.** `String()` on a `JSON.parse`
+product raises when `toString` is not callable. Driven mid-pull through a real socket,
+`{"status":{"toString":1}}` raised `TypeError: Cannot convert object to primitive value` out of the
+line handler, through the read loop and the transport, into the download's catch - carrying no
+marker the translation table could classify, which is verbatim the outcome phase 2's `evt.error` fix
+closed four lines above. Phase 2 left it deliberately, reasoning that `providerReason`'s
+message/type chain has nothing to read on a progress string. That reasoning was about WHICH
+coercion, not about whether. `displayText` is the answer for a value that is not an error: no
+message/type chain, and absent renders as the empty string the call site already meant by `?? ""`.
+The real ollama registry sends strings; a proxy or a custom `apiBase` is the exposure.
+
+**The withdrawn invariant.** `providerReason`'s docblock said the JSON fallback "is always one line"
+because `JSON.stringify` escapes line breaks. It escapes LF and CR and leaves U+2028, U+2029 and NEL
+alone, and the scalar path hands a server's string back with every break in it. No row is forged
+today because every consumer escapes or cuts on the full five-break set - the SENTENCE was wrong, and
+it is the sentence a future caller would relax on. It now says what is true and names the sink rule.
+
+**The guard that could not fail, which is the transferable part.**
+`test/review-v27-tier.test.cjs` already asserted this line carries no `\n` and no `\r`. Its only
+break-bearing input was `"\r\n  first\r\nsecond"`, where every CR sits beside an LF, so the cutter's
+`split("\n")` consumed both halves and a bare interior CR was never tested. The row is re-cut as a
+five-row table, every break interior and alone, and it fails on the shipped cutter for four of the
+five: driven, `"[fngen] outcome=reject refused-by=human-gesture offered=first\rsecond"`. A guard
+whose input cannot produce the case is a fact about the guard.
+
+**Pinned by.** `test/impl-v59-p2fix-outcome-row.test.cjs` (14 rows: six breaks driven end to end
+through a real ndjson 200 and the real postprocess, four pull STATUS shapes driven mid-pull through a
+real socket, the absent-status row, and two rows stating what `providerReason` really does with
+breaks), the re-cut five-row table plus the cap row in `test/review-v27-tier.test.cjs`, and the
+structural pin in `test/impl-v57-p2-in-stream-bound.test.cjs`, which now requires ZERO
+`boundBody(String(` in `ollama.ts` instead of exactly one.

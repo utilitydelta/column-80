@@ -14,7 +14,9 @@
 //   remove a rendered C# line.
 // - gate: a tier-1 member absent from the block is still accepted by
 //   ghostNamesMember (the human typing .clone() when clone is not shown).
-// - reject line: empty and CRLF offered text keep the line one-line and honest.
+// - reject line: empty offered text, and offered text broken by each of the
+//   five separators the channel renders rows on, keep the line one-line and
+//   honest.
 //
 // Run: SKIP_LIVE=1 node --test test/review-v27-tier.test.cjs
 
@@ -314,17 +316,49 @@ test("reject with EMPTY offered text still prints the refusing check on one line
   assert.ok(!lines[0].includes("\n"), "the evidence stays one line");
 });
 
-test("CRLF and long offered text stay one trimmed, capped line", () => {
+// EVERY BREAK IS INTERIOR AND ALONE, and the first cut of this row was hollow
+// for want of that. Its only break-bearing input was `"\r\n  first\r\nsecond"`,
+// where every CR sits beside an LF - so the trailing `!includes("\r")` proved
+// nothing about a bare CR, and a cutter splitting on `"\n"` alone sailed
+// through it while the model could forge a channel row with the other four
+// separators. The row below fails on the shipped cutter as it stood.
+const OFFERED_BREAKS = [
+  ["CRLF", "\r\n"],
+  ["a bare interior CR", "\r"],
+  ["U+2028", String.fromCharCode(0x2028)],
+  ["U+2029", String.fromCharCode(0x2029)],
+  ["NEL", String.fromCharCode(0x0085)],
+];
+
+for (const [label, brk] of OFFERED_BREAKS) {
+  test(`offered text broken by ${label} stays one trimmed line`, () => {
+    const lines = [];
+    const service = new FnGenService(SERVICE_CONFIG, async () => ({ text: "", ttftMs: 0, totalMs: 0 }), (l) =>
+      lines.push(l),
+    );
+    service.logOutcome("reject", { refusedBy: "human-gesture", offered: `${brk}  first${brk}second` });
+    assert.strictEqual(
+      lines[0],
+      "[fngen] outcome=reject refused-by=human-gesture offered=first",
+      `${label} must not reach the accounting line: ${JSON.stringify(lines[0])}`,
+    );
+    // What `OutputChannel.appendLine` would render. The character check the row
+    // used to carry named two of the five breaks and missed the three that are
+    // invisible in a diff.
+    assert.strictEqual(
+      lines[0].split(new RegExp("\\r\\n|[\\n\\r\\u2028\\u2029\\u0085]")).length,
+      1,
+      "no multi-line reject evidence",
+    );
+  });
+}
+
+test("long offered text stays capped and log-friendly", () => {
   const lines = [];
   const service = new FnGenService(SERVICE_CONFIG, async () => ({ text: "", ttftMs: 0, totalMs: 0 }), (l) =>
     lines.push(l),
   );
-  service.logOutcome("reject", { refusedBy: "human-gesture", offered: "\r\n  first\r\nsecond" });
   service.logOutcome("reject", { refusedBy: "human-gesture", offered: "x".repeat(400) });
-  assert.strictEqual(lines[0], "[fngen] outcome=reject refused-by=human-gesture offered=first");
-  assert.ok(lines[1].endsWith("..."), "long offer capped");
-  assert.ok(lines[1].length < 260, "capped line stays log-friendly");
-  for (const l of lines) {
-    assert.ok(!l.includes("\n") && !l.includes("\r"), "no multi-line reject evidence");
-  }
+  assert.ok(lines[0].endsWith("..."), "long offer capped");
+  assert.ok(lines[0].length < 260, "capped line stays log-friendly");
 });

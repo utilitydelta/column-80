@@ -16,6 +16,7 @@ import {
   channelBodyLine,
   channelUnreadLine,
   cutStreamLine,
+  displayText,
   HttpStatusError,
   providerReason,
   readBody,
@@ -631,7 +632,11 @@ export const hasModel = (models: string[], model: string): boolean =>
 
 /** One line of ollama's streaming pull response. */
 export interface PullEvent {
-  status?: string;
+  /** `unknown` for the same reason `error` below is: this is a `JSON.parse`
+   *  product and the declaration is a wish. A registry or proxy answering
+   *  `{"status":{...}}` used to reach `String()`, which THROWS on a structure
+   *  whose `toString` is not callable. The type is what forces the coercion. */
+  status?: unknown;
   /** Declared here, guaranteed by nobody - see `StreamEvent.error`. The pull
    *  path shares the generate path's coercion and moves with it. */
   error?: unknown;
@@ -733,7 +738,15 @@ export async function pullModel(
     }
     // The status phrase is server-controlled too, and it goes to a progress
     // notification rather than an error, so no catch-all shortens it either.
-    onProgress(progress.note(evt), boundBody(String(evt.status ?? "")));
+    //
+    // `displayText` AND NOT `String`, because `String` on a `JSON.parse`
+    // product is a throw site: `{"status":{"toString":1}}` raised a TypeError
+    // out of this handler, through the read loop and `pullModel` and into the
+    // download's catch, where it carried no marker the translation table could
+    // classify - a progress event killing a download with the same unclassified
+    // failure the `evt.error` line above exists to stop. The real registry
+    // sends strings; a proxy or a custom `apiBase` is the exposure.
+    onProgress(progress.note(evt), boundBody(displayText(evt.status)));
   };
 
   const reader = res.body.getReader();
