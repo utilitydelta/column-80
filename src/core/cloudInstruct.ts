@@ -154,6 +154,11 @@ async function streamChat(
   let ttftMs: number | undefined;
   let totalMs: number | undefined;
   let doneReason: string | undefined;
+  // The two terminal signals this dialect has. EITHER ends a stream; neither is
+  // a cut. See the guard after the reader loop for why the rule is a disjunction
+  // rather than a requirement on `[DONE]`.
+  let sawDone = false;
+  let sawFinish = false;
 
   const handleLine = (line: string): void => {
     if (params.signal.aborted) {
@@ -169,6 +174,7 @@ async function streamChat(
     // The stream's own end sentinel, distinct from finish_reason on the frame.
     if (payload === "[DONE]") {
       totalMs = Date.now() - started;
+      sawDone = true;
       return;
     }
     const evt = JSON.parse(payload) as StreamDelta;
@@ -185,6 +191,7 @@ async function streamChat(
     // rejects on; map onto the local doneReason vocabulary so one guard covers
     // both backends. Any other reason ("stop", ...) passes through untranslated.
     if (choice?.finish_reason) {
+      sawFinish = true;
       doneReason = choice.finish_reason;
     }
   };
@@ -211,6 +218,37 @@ async function streamChat(
     // request does not queue behind a dead stream (same discipline as ollama).
     void reader.cancel().catch(() => undefined);
     throw err;
+  }
+
+  // THE TERMINAL CHECK. A stream is complete when a `finish_reason` arrived OR
+  // a `[DONE]` sentinel arrived; it is a cut when the loop ends with neither.
+  //
+  // A disjunction rather than a requirement on `[DONE]`, because `handleLine`
+  // already tolerates providers that omit it and a hard requirement would turn
+  // a working provider red. The cost is stated rather than hidden: a provider
+  // that sends NEITHER signal goes red here, and nothing in this repo has
+  // watched a real cloud endpoint finish a stream. That is an accepted risk
+  // (session-v58 contract-phase3, falsifier 5), and the thing that would settle
+  // it is one drive against a real endpoint.
+  //
+  // Before this, the reader broke on `done` without asking whether the stream
+  // had finished, and a socket closed after two content deltas resolved as a
+  // complete generation: the half function of roadmap item 67.
+  //
+  // COUPLING: this message's HEAD is a marker in fnGen.ts
+  // SERVICE_REJECT_TOASTS, matched with startsWith. Rewording past the marker
+  // silently demotes the toast to the catch-all.
+  if (!sawFinish && !sawDone) {
+    // A cancel delivered inside the reader's LAST handleLine call lands after
+    // that call's own signal check, and this guard is the only code between
+    // there and the caller. Cancellation is a different outcome from failure;
+    // without this the user who pressed cancel is told their server went
+    // silent. Inside the cut branch, so a stream that finished properly and was
+    // cancelled a moment later still resolves.
+    if (params.signal.aborted) {
+      throw abortError();
+    }
+    throw new Error("Cloud: the stream ended before any terminal signal, so the reply is incomplete");
   }
 
   const end = Date.now() - started;

@@ -213,7 +213,7 @@ export async function generateInstruct(
       ...(params.numGpu !== undefined ? { num_gpu: params.numGpu } : {}),
     },
   };
-  return streamGenerate(
+  const result = await streamGenerate(
     params.apiBase,
     body,
     params.signal,
@@ -222,6 +222,48 @@ export async function generateInstruct(
     undefined,
     params.log,
   );
+  // THE TERMINAL CHECK, and it lives here rather than in the reader loop on
+  // purpose. `streamGenerate` is shared with generateFim, and roadmap item 67
+  // is about a half FUNCTION being proposed as complete - a half ghost is a
+  // different, smaller failure the next keystroke discards. Tracking the signal
+  // in the reader and spending it here is what keeps the check off the
+  // keystroke path.
+  //
+  // `stopped` is not a cut: the caller's own `stopWhen` ended that read
+  // deliberately and there was never going to be a done frame. No instruct
+  // caller passes one today; the guard reads it anyway rather than relying on
+  // that staying true.
+  //
+  // COUPLING: this message's HEAD is a marker in fnGen.ts
+  // SERVICE_REJECT_TOASTS, matched with startsWith. Rewording past the marker
+  // silently demotes the toast to the catch-all, which puts API vocabulary in
+  // front of the user.
+  if (!result.sawDone && result.stopped !== true) {
+    // A cancel delivered inside the reader's LAST handleLine call lands after
+    // that call's own signal check, and this guard is the only code between
+    // there and the caller. Without this, the user who pressed cancel is told
+    // their server went silent. Cancellation is a different outcome from
+    // failure, and phase 5's cancel affordance is built on that being true at
+    // the transport rather than at one consumer that happens to swallow it.
+    //
+    // INSIDE the cut branch, not before it: a stream that finished properly and
+    // was cancelled a moment later still resolves, exactly as it did before.
+    if (params.signal.aborted) {
+      throw abortError();
+    }
+    throw new Error("Ollama: the stream ended before its done frame, so the reply is incomplete");
+  }
+  // The four DECLARED fields, spelled out. `sawDone` is this function's to
+  // spend, not the caller's to read: three of the four backends behind
+  // InstructGenerateFn have no such frame, so a fifth key present on one arm and
+  // absent on the others reads as "no terminal frame" where it means "not
+  // applicable".
+  return {
+    text: result.text,
+    ttftMs: result.ttftMs,
+    totalMs: result.totalMs,
+    doneReason: result.doneReason,
+  };
 }
 
 /**
@@ -244,7 +286,17 @@ async function streamGenerate(
   stopWhen?: (textSoFar: string) => boolean,
   silence?: SilenceBound,
   log?: (line: string) => void,
-): Promise<{ text: string; ttftMs: number; totalMs: number; doneReason?: string; stopped?: boolean }> {
+): Promise<{
+  text: string;
+  ttftMs: number;
+  totalMs: number;
+  doneReason?: string;
+  stopped?: boolean;
+  /** Whether the terminal `done: true` frame arrived. Distinct from
+   *  `doneReason`, which the server may omit on a perfectly complete stream.
+   *  Required, for the reason spelled out at the inner annotation. */
+  sawDone: boolean;
+}> {
   // The silence watchdog owns the signal handed to fetch, so a bound that fires
   // cuts the socket. The caller's own signal is forwarded into it rather than
   // replaced: cancellation still means cancellation, and a bound firing is a
@@ -316,6 +368,16 @@ async function streamGenerate(
     totalMs: number;
     doneReason?: string;
     stopped?: boolean;
+    // REQUIRED, not optional, and that is the point. `generateInstruct` treats
+    // a missing terminal frame as a failed generation, so this field decides
+    // whether every instruct round succeeds. Declared optional and returned
+    // through a conditional spread, deleting the spread would leave it
+    // `undefined` on every stream - the guard would fire on every generation
+    // and tell every user their server went silent - and `tsc --noEmit` would
+    // stay green, because excess-property checking does not reach a spread.
+    // Required at both annotations plus a plain `sawDone,` in the return makes
+    // that a compile error at both ends.
+    sawDone: boolean;
   }> {
     const url = new URL("api/generate", withTrailingSlash(apiBase));
 
@@ -354,6 +416,7 @@ async function streamGenerate(
     let totalMs: number | undefined;
     let doneReason: string | undefined;
     let stopped = false;
+    let sawDone = false;
 
     const handleLine = (line: string): void => {
       if (signal.aborted) {
@@ -395,6 +458,13 @@ async function streamGenerate(
       }
       if (evt.done) {
         totalMs = Date.now() - started;
+        // TWO facts, and they are not the same one. `doneReason` is what the
+        // model said about finishing and is absent whenever the server omits
+        // `done_reason`; `sawDone` is whether the terminal frame arrived at
+        // all. Only the second answers "did this stream end, or did it stop".
+        // A guard written on `doneReason === undefined` calls a legitimate
+        // `{"done":true}` with no reason a cut (roadmap item 67).
+        sawDone = true;
         doneReason = evt.done_reason;
         return;
       }
@@ -462,6 +532,16 @@ async function streamGenerate(
       totalMs: total,
       doneReason,
       ...(stopped ? { stopped: true } : {}),
+      // Reported, never acted on HERE. This reader is shared by generateFim and
+      // generateInstruct, and only the instruct path may treat a missing
+      // terminal frame as a failure: a cut FIM ghost is visibly wrong, costs a
+      // keystroke and is discarded by the next one, while a cut function is
+      // proposed to the user as complete. Spent at generateInstruct.
+      //
+      // A plain field, not a conditional spread like `stopped` above: a spread
+      // is invisible to excess-property checking, so the compiler would not
+      // notice it going missing.
+      sawDone,
     };
   }
 }
