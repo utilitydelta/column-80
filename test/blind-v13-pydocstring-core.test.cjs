@@ -1,5 +1,5 @@
 // BLIND ORACLE — v13 (Python docstring-is-the-spec), PURE CORE surfaces. Three
-// contracts, all black-box from session-v13/goal.md + session-v13/scout.md ONLY.
+// contracts, all black-box from the v13 goal and scout notes ONLY.
 // Never reads src/**; esbuild resolves modules at bundle time only.
 //
 //   #1  pyLeadingDocstring(spanText) — a NEW pure core helper (Fork A's detector).

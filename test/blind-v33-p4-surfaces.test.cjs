@@ -1,10 +1,10 @@
-// Blind oracle: session-v33 phase 4, THE SURFACES. Written from
-// `session-v33/contract.md` ALONE (section "What the human sees" in full: the
-// pure-function seam, "The panel", "The toast", "The generation"), cross-read
-// against `session-v33/goal.md` for the same section and for "The last call,
-// ruled 2026-07-28". src/** was never read, not once: the candidate module
-// paths below come from a directory LISTING and esbuild resolves them at bundle
-// time, so nothing in this file was informed by an implementation.
+// Blind oracle: session-v33 phase 4, THE SURFACES. Written from the phase
+// contract ALONE (section "What the human sees" in full: the pure-function
+// seam, "The panel", "The toast", "The generation"), cross-read against the
+// goal for the same section and for "The last call, ruled 2026-07-28". src/**
+// was never read, not once: the candidate module paths below come from a
+// directory LISTING and esbuild resolves them at bundle time, so nothing in
+// this file was informed by an implementation.
 //
 // Under test, the two pure functions the contract puts in core precisely so the
 // panel's decisions are testable without an extension host:

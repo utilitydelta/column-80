@@ -1,5 +1,5 @@
 // Blind oracle (v12 type-gen, PYTHON): two contracts, both from the surface
-// spec + session-v12/scout-py.md ground truth ONLY. Never reads src/**.
+// spec + the Python scout's ground truth ONLY. Never reads src/**.
 //
 //   PART A — the pure Python type-kind classifier (a NEW pure core function
 //   Phase 2 adds; RED until then). It reads a class HEADER (decorator line(s)
@@ -165,7 +165,7 @@ function render(input) {
 const FN_INSTR =
   "Implement the function below. Reply with one fenced code block containing the complete function definition, signature and body. The block must contain only this one function: no imports, no other functions, no code before or after it. Output nothing outside the code block.";
 
-// The shipped Rust type instructions (session-v12/scout.md Q5), pinned for the
+// The shipped Rust type instructions (the scout's Q5), pinned for the
 // FROZEN cross-guard: a Python change must not disturb Rust bytes.
 const RUST_STRUCT_INSTR =
   "Complete the struct definition below. Reply with one fenced code block containing the complete struct definition: the header and its fields, staying strictly inside this one type. The block must contain only this one struct: no other types, no impl blocks, no functions, no code before or after it. The doc comment above the header describes what the struct must hold. Output nothing outside the code block.";

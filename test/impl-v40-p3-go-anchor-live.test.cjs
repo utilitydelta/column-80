@@ -2,7 +2,7 @@
 // GoLspExtractor.resolveTypeCursorByName against a REAL gopls, over the REAL
 // cobra checkout used by item 3's own rig (~/sandbox/v23-corpus/cobra). This
 // is the one part of the anchor leg the goal's scout pass asks to prove live
-// rather than with a fixture (session-v40/goal.md, "SPIKED, by running" under
+// rather than with a fixture (the goal's "SPIKED, by running" note under
 // item 2): the shape of a real workspace/symbol response — containerName as a
 // real Go import PATH, kind 23 for a struct, kind 5 for a named non-struct
 // type (`type ShellCompDirective int`) — is gopls's own, not this repo's to

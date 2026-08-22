@@ -68,8 +68,9 @@ function needPaths(ctx, label, ...paths) {
 //
 // The contract says "using Namespace; from the hit's containerName, which
 // Roslyn fills with the namespace". Measured live against the real Roslyn LS
-// over /home/utilitydelta/repos/csharp-scratch (session-v52/spikes/
-// adv-p3-cs-live.cjs), workspace/symbol answers:
+// over /home/utilitydelta/repos/csharp-scratch (the finding is on the record in
+// `docs/architecture/tighten-doc-comment.md`, "`importLineFor`, graded"),
+// workspace/symbol answers:
 //
 //   name="Stripe"  kind=5   containerName="project Atlas (net10.0)"
 //   name="Result"  kind=6   containerName="in Result<T, E> (project Atlas (net10.0))"

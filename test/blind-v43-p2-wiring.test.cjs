@@ -1,8 +1,8 @@
 // Blind oracle: session-v43 phase 2, the vscode wiring for the Claude Code
 // fn-gen backend.
 //
-// Written from session-v43/contract-phase2.md ONLY. Row numbers below match
-// that file's "Blind oracle rows" list 1..11. The oracle did not read the
+// Written from the phase-2 contract ONLY. Row numbers below match
+// that contract's "Blind oracle rows" list 1..11. The oracle did not read the
 // `claude-code` branches of src/vscode/config.ts, src/vscode/fnGen.ts or
 // package.json's fnGenProvider block; it read only the pre-existing seams it
 // needs to drive the layer at all (the CloudFnGenConfig type, the

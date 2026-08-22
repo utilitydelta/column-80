@@ -6,9 +6,9 @@
 // belongs to `String`: `toString(): string`, `charAt(pos: number): string`,
 // `fontcolor(color: string): string`, down to `matchAll`. The def line is right;
 // the MEMBER list under "real signatures, use these exact names, do not invent"
-// is the primitive's prototype. Measured by session-v37/spike-17: the member leg
-// costs 1112 bytes against a 161-byte def, so 87% of that candidate's block is
-// junk, and 26 of this repo's 55 exported type aliases are that shape.
+// is the primitive's prototype. Measured by the primitive-alias spike: the
+// member leg costs 1112 bytes against a 161-byte def, so 87% of that candidate's
+// block is junk, and 26 of this repo's 55 exported type aliases are that shape.
 //
 // WHERE THE FIX SITS. In the RENDERER (`tsShapeBlock`), not the walk. The
 // prefill admits a candidate to the shape path only when it resolved fields or
@@ -18,10 +18,9 @@
 //
 // THE FIXTURE IS CAPTURED, NOT AUTHORED. test/fixtures/v37-primitive-alias.json
 // carries the hover signatures and member lists the real TypeScript language
-// service returned for this repo's own types, harvested by
-// session-v37/spike-17-primitive-alias.cjs. Rows that need a shape this repo
-// does not contain (an alias of an object type, a generic alias) are authored
-// and say so.
+// service returned for this repo's own types, harvested by that same spike. Rows
+// that need a shape this repo does not contain (an alias of an object type, a
+// generic alias) are authored and say so.
 //
 // ANTI-VACUITY. Every row that expects no member list renders a CONTROL type out
 // of the same shape in the same assertion, and asserts the control's member list

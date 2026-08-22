@@ -1,7 +1,6 @@
 // Blind oracle, session-v58 phase 5: the cancel affordance (roadmap item 67,
-// the RULED REPLACEMENT for the watchdog). Contract:
-// session-v58/contract-phase5.md. Written BEFORE the code, against the
-// contract only.
+// the RULED REPLACEMENT for the watchdog). Written BEFORE the code, against
+// the phase-5 contract only.
 //
 // ===========================================================================
 // WHAT THIS FILE PINS, AND THE ONE CLAUSE THE PHASE EXISTS FOR
@@ -287,11 +286,11 @@
 //   * That the palette really shows the command, and that a user can bind it
 //     from the keybindings UI.
 //
-// The human now has a server that reproduces the state these need:
-// `session-v57/fake-server.mjs` gained `hang` (accepts, sends headers, never
-// answers) and `hang-silent` (accepts and sends nothing). Walk 6 of
-// `session-v58/visual-residual.md` is the drive: generate against `hang`,
-// dismiss the notification, cancel from the status bar.
+// The human now has a server that reproduces the state these need: the fake
+// server gained `hang` (accepts, sends headers, never answers) and
+// `hang-silent` (accepts and sends nothing). Walk 6 of the phase's visual
+// residual list is the drive: generate against `hang`, dismiss the
+// notification, cancel from the status bar.
 //
 // Run: node --test test/blind-v58-p5-cancel-affordance.test.cjs
 

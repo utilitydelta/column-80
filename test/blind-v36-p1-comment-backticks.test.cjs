@@ -1,5 +1,5 @@
 // BLIND contract oracle for session-v36 phase 1: the backtick gesture for
-// comment-named types. Written against the contract in `session-v36/goal.md`
+// comment-named types. Written against the contract in the goal
 // before the implementation existed, from the exported surface only, and never
 // edited to make an implementation pass.
 //

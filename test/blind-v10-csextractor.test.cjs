@@ -1,4 +1,4 @@
-// Blind oracle: the C# surface extractor (session-v10/phase3-brief.md).
+// Blind oracle: the C# surface extractor (the v10 phase 3 brief).
 // Black-box contract tests written from the SurfaceExtractor interface ALONE,
 // before the C# impl exists, pinned against a FAKE runner fed REAL payloads
 // captured by driving the actual Roslyn LS headless (see

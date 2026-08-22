@@ -1,12 +1,12 @@
 // BLIND ORACLE - session-v27 phase 3: the chain-surface cache. Pins the frozen
-// facade in `session-v27/session-state.md` ("Phase 3 facade") against the
-// measured reality in `session-v27/measure-chains.md`: Roslyn starves the chain
-// vocabulary at a List<Tile> receiver (Where<> at position 113 of 115, resolve
-// cap 32 head-of-order, so the verbs never carry a signature and the narrowed
-// block goes dark exactly where chains live). The fix under test: a
-// once-per-workspace absorb of the Enumerable static surface, cached by
-// STRIPPED name per language namespace, merged into any member whose signature
-// is missing.
+// phase-3 facade against the measured reality recorded in
+// `docs/architecture/surface-injection.md`, "The C# chain surface": Roslyn
+// starves the chain vocabulary at a List<Tile> receiver (Where<> at position
+// 113 of 115, resolve cap 32 head-of-order, so the verbs never carry a
+// signature and the narrowed block goes dark exactly where chains live). The
+// fix under test: a once-per-workspace absorb of the Enumerable static
+// surface, cached by STRIPPED name per language namespace, merged into any
+// member whose signature is missing.
 //
 // Nothing here has read src/. RED by design until `src/core/chainSurface.ts`
 // exists; the bundle guard is the single loud failure until then, every other

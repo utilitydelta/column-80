@@ -1,6 +1,6 @@
 // BLIND CONTRACT ORACLE - session-v41, phase 1: trait surface recovery.
 //
-// Written from `session-v41/goal.md` (phase-1 section) and from the phase-1
+// Written from the goal's phase-1 section and from the phase-1
 // contract handed to this oracle. File conventions copied from
 // test/blind-v39-p1-hover-recovery.test.cjs and test/impl-v39-p1-hover-recovery.test.cjs
 // (header style, bundleCore harness, bundle guard, btest skip pattern) - their

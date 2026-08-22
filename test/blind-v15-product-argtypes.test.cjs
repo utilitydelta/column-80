@@ -6,7 +6,7 @@
 // driven exactly the way real vscode drives them, plus the renderer they feed
 // (renderFimCandidates in src/core/fimInject.ts). None of those files is read;
 // esbuild resolves them at bundle time only. Written against the contract in
-// session-v15/goal.md and session-v15/p2-surface.md.
+// the goal and the P2 surface spec.
 //
 // WHY THIS FILE EXISTS. P2 measured constructor arity from 0/8 to 8/8 in four
 // languages, but it measured through the HEADLESS test transports. The product

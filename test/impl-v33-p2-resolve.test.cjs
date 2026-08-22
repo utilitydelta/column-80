@@ -6,8 +6,8 @@
 // entry's `text` stops being the payload and becomes the last known slice, which
 // is what the panel previews and what the re-adoption audit compares against.
 //
-// The rows here are the five-step rule of session-v33/contract.md
-// (`resolveForPrompt`), plus the three uri-level state changes the vscode layer
+// The rows here are the five-step rule the phase contract set for
+// `resolveForPrompt`, plus the three uri-level state changes the vscode layer
 // drives from workspace events: markLapsed, markDeleted, renameUri.
 //
 // Run: SKIP_LIVE=1 node --test test/impl-v33-p2-resolve.test.cjs

@@ -1,5 +1,5 @@
 // Blind oracle, session-v58 phase 3: "the stream that ended wrong" (roadmap
-// item 67, terminal-event half). Contract: session-v58/contract-phase3.md.
+// item 67, terminal-event half).
 // Written BEFORE the fix, against the contract only.
 //
 // ===========================================================================
@@ -78,9 +78,9 @@
 //     That is the harness this file uses for every cut row, and G2 prints both
 //     framings side by side so the distinction stays on the record.
 //
-// The destroy itself copies session-v57/fake-server.mjs's `cut` scenario:
-// write the frames, then `res.destroy()` on a short timer so the frames are on
-// the wire before the close.
+// The destroy itself copies the v57 fake server's `cut` scenario: write the
+// frames, then `res.destroy()` on a short timer so the frames are on the wire
+// before the close.
 //
 // ===========================================================================
 // BINDINGS THE CONTRACT LEAVES OPEN, RESOLVED AND REPORTED
@@ -376,7 +376,7 @@ function serve(handler) {
 
 /** THE MID-REPLY CUT. Connection-close framing, so the socket close reads as
  *  end-of-body rather than a truncated chunked body, then res.destroy() the way
- *  session-v57/fake-server.mjs's `cut` scenario does it. See the harness note
+ *  the v57 fake server's `cut` scenario does it. See the harness note
  *  in the header: this framing is what makes the row test the contract's case
  *  instead of undici's `terminated`. */
 const cutServer = (frames, ctype) => (_req, res) => {

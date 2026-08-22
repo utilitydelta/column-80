@@ -10,8 +10,8 @@
 // `src/vscode/oracleSurface.ts`, so the only honest proof bundles that file with
 // a vscode stub and asks it.
 //
-// Every diagnostic below is VERBATIM from `session-v30/scout/captures/`, which
-// are real checker runs: pyright, `go build`, `dotnet build`, cargo, tsc.
+// Every diagnostic below is VERBATIM from the scout's captures, which are real
+// checker runs: pyright, `go build`, `dotnet build`, cargo, tsc.
 //
 // The extractor is a stub. What a real language server answers is the live
 // suite's question; this file's question is which hook set the diagnostic

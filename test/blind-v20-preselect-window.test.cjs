@@ -1,7 +1,7 @@
 // BLIND CONTRACT TEST - v20 "the preselect gets a window".
 //
-// Written from session-v20/surface.md, never from the code. This file does not
-// read src/vscode/completionProvider.ts, src/core/completionService.ts or
+// Written from the v20 surface document, never from the code. This file does
+// not read src/vscode/completionProvider.ts, src/core/completionService.ts or
 // src/core/cache.ts; esbuild resolves them at bundle time only. Every assertion
 // below is either a numbered promise of the surface, one of its named
 // invariants, or an externally observable property of VS Code.
@@ -604,11 +604,11 @@ test("B. the expired request is the ordinary unscoped one, not a special case: i
 // ===========================================================================
 // C. THE CHOICE RIDES THE SAME CLOCK. Originally "no clock on a choice"
 // (v20's promise 3, the indefinite active hold). Amended under the human
-// design call 2026-07-26 (session-v26/journeys/member-dot-flow.md): the 1.5
-// second window is UNIFORM - "Escape keeps the ghost from whatever the last
-// one was run", preselected or arrowed, and the window elapsing reruns
-// unconstrained either way. Arrow-Escape-Tab is untouched INSIDE the window;
-// the indefinite hold is void.
+// design call 2026-07-26 (`docs/architecture/vscode-layer.md`, "The member-dot
+// journey, and the uniform window"): the 1.5 second window is UNIFORM -
+// "Escape keeps the ghost from whatever the last one was run", preselected or
+// arrowed, and the window elapsing reruns unconstrained either way.
+// Arrow-Escape-Tab is untouched INSIDE the window; the indefinite hold is void.
 // ===========================================================================
 
 test("C. an arrowed choice rides the uniform window: inside it scoped, at or past the deadline unscoped [journeys/member-dot-flow.md, decided 2026-07-26]", async () => {
@@ -668,8 +668,9 @@ test("C. arrowing back to the first item is still a choice of THAT member, on th
 // ===========================================================================
 
 // Amended under the human design call 2026-07-26
-// (session-v26/journeys/member-dot-flow.md): the window is uniform, so an
-// arrowed scope's post-close serve arms the same one-shot a preselect's does.
+// (`docs/architecture/vscode-layer.md`, "The member-dot journey, and the
+// uniform window"): the window is uniform, so an arrowed scope's post-close
+// serve arms the same one-shot a preselect's does.
 test("D. serving a scope post-close arms exactly one timer, preselected or arrowed [uniform window; formerly 'an ACTIVE serve arms none']", async () => {
   await table(
     [
@@ -1061,10 +1062,10 @@ test("D. when the timer fires the record is DROPPED and the request that follows
 });
 
 // Amended under the human design call 2026-07-26
-// (session-v26/journeys/member-dot-flow.md): an arrowed scope expires by
-// timer exactly like a preselect - one onExpired, then the unscoped revert.
-// The original row ("never expires by timer") pinned the void indefinite
-// hold.
+// (`docs/architecture/vscode-layer.md`, "The member-dot journey, and the
+// uniform window"): an arrowed scope expires by timer exactly like a preselect
+// - one onExpired, then the unscoped revert. The original row ("never expires
+// by timer") pinned the void indefinite hold.
 test("D. an arrowed scope expires by timer like any other: one onExpired at the deadline, and the request after it is unscoped [uniform window]", async () => {
   const W = windowMs();
   const { results } = await session([

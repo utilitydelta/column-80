@@ -1,6 +1,5 @@
 // Adversarial review: session-v58 phase 3, the stream that ended wrong
-// (roadmap item 67, terminal-event half; contract at
-// session-v58/contract-phase3.md).
+// (roadmap item 67, terminal-event half; the phase 3 contract).
 //
 // Written AFTER the implementation and after the blind oracle
 // (test/blind-v58-p3-terminal-event.test.cjs, 25 rows green). Its job is the

@@ -1,5 +1,5 @@
 // ADVERSARIAL REVIEW - session-v45 phase 3 (the per-language aggregate render
-// budget). Contract: session-v45/contract-phase3.md.
+// budget), against that phase's contract.
 //
 // FAILING rows are defect claims with evidence. PASSING rows are attacks that
 // did not land, kept as the record.

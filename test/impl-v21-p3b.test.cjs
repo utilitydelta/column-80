@@ -269,7 +269,7 @@ test("F3: method lines still tail-drop individually when they overrun (the C# ov
 // RE-CUT at the measured shape (session-v55 phase 18, roadmap item 46). These rows
 // used to script cold answers whose member COUNT changed as the server warmed —
 // one member becoming seven, two becoming one. No server does that.
-// `session-v21/spike-p3.md:232-256` recorded a live Pylance walk over `class
+// The v21 spike recorded a live Pylance walk over `class
 // Stripe`: 11 members with 1 signed cold, the SAME 11 with 8 signed warm, and a
 // server still cold 40ms later repeats its cold answer verbatim. documentSymbol is
 // cheap, so the count is complete on the first answer; the SIGNATURES are what the

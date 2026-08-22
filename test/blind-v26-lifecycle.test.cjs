@@ -1,12 +1,12 @@
 // Blind oracle for session-v26 phase 1: the scope lifecycle machine,
-// src/core/scopeLifecycle.ts. Contract source: session-v26/goal.md ("The rule
-// this session ships" + the acceptance bar) and the three dogfood captures in
-// session-v26/capture-2026-07-26.md. The rule under test: a scope is a loan,
+// src/core/scopeLifecycle.ts. Contract source: this session's goal ("The rule
+// this session ships" + the acceptance bar) and the three dogfood captures
+// taken 2026-07-26. The rule under test: a scope is a loan,
 // not a transfer - whatever happens to the scoped request, the product hands
 // the site back to the unscoped completion.
 //
 // Frozen contract: implementation agents may not edit this file. Wrong-looking
-// tests go back through review and triage (session-v26/session-state.md).
+// tests go back through review and triage.
 //
 // The module is pure and headless; time is injected through `now`, no timers.
 // Readings taken where the facade underspecifies (also flagged at use sites):
@@ -195,8 +195,9 @@ test("expiry ticks with no window pending never rerender", () => {
 // ---- Rule 6: the served active path - indefinite hold, Escape drop, sticky refusal
 
 // Amended under the human design call 2026-07-26
-// (session-v26/journeys/member-dot-flow.md): the 1.5 second window is
-// UNIFORM. "Escape keeps the ghost from whatever the last one was run" -
+// (`docs/architecture/vscode-layer.md`, "The member-dot journey, and the
+// uniform window"): the 1.5 second window is UNIFORM.
+// "Escape keeps the ghost from whatever the last one was run" -
 // preselected or arrowed - and the window elapsing reruns unconstrained
 // either way. This row originally pinned v20's indefinite hold for arrowed
 // choices, which that design call voids.

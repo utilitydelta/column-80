@@ -5,7 +5,7 @@
 // renderWholeBlockInjection, renderFimCandidates); the tests pin the ensemble
 // invariants a fifth language must not bend, so they may run green immediately
 // (the blind-v22 convention for unchanged behavior). Black-box: written from
-// session-v23/goal.md + dispatch-map.md, the allowed compilerOracle.ts /
+// the goal + the dispatch map, the allowed compilerOracle.ts /
 // extraction.ts / repair.ts / classifyHallucination contract excerpts, and the
 // exported surfaces as prior blind suites pinned them. goOracle.ts,
 // goExtraction.ts, fimInject.ts and fimWholeBlock.ts bodies were never opened.

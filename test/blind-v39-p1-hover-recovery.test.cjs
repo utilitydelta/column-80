@@ -1,6 +1,6 @@
 // BLIND CONTRACT ORACLE - session-v39, items 1 and 2.
 //
-// Written from `session-v39/goal.md`, from `session-v38/goal.md`, from the real
+// Written from this session's goal and its predecessor's, from the real
 // corpus at ~/sandbox/complexity-study-acme, and from the harness mechanics
 // of test/blind-v38-p1-enum-render.test.cjs, test/adversarial-v38-p1.test.cjs and
 // test/blind-v37-p5-tuple-payload.test.cjs, which are tests.
@@ -140,9 +140,9 @@
 // PROVENANCE. Every Rust source block below is VERBATIM from a real file, quoted
 // with its path and line range. Hovers are labelled MEASURED where this repo holds
 // a capture of them, and SYNTHESIZED where they are written in the elision form
-// test/blind-v37-p5 byte-verified against `session-v37/spike-10-elision-rust.txt`
+// test/blind-v37-p5 byte-verified against a live rust-analyzer capture
 // (four-space indent, U+2026 inside `/* … */`, list cut at five members). The
-// NodeStatus hover is the one printed in `session-v39/goal.md` itself.
+// NodeStatus hover is the one this session's goal printed itself.
 //
 // Run: SKIP_LIVE=1 node --test test/blind-v39-p1-hover-recovery.test.cjs
 
@@ -480,7 +480,7 @@ const SRC_NODE_STATUS = [
   "",
 ].join("\n");
 
-// The hover printed in `session-v39/goal.md`'s own worked example, in the
+// The hover printed in this session's own worked example, in the
 // byte-verified elision form.
 const HOVER_NODE_STATUS = [
   "pub enum NodeStatus {",
@@ -556,7 +556,7 @@ const SRC_SIGN_ALGO = [
   "",
 ].join("\n");
 
-// MEASURED. `session-v35/log.txt:2205`, quoted in test/blind-v37-p5. The only
+// MEASURED, quoted in test/blind-v37-p5. The only
 // captured evidence in this repo of how rust-analyzer renders a struct variant.
 // No list cut here: three variants, all three shown.
 const HOVER_SIGN_ALGO = [
@@ -710,7 +710,7 @@ const HOVER_STORE_ERROR = [
   "}",
 ].join("\n");
 
-// MEASURED. `session-v35/log.txt:2247`, the live `create_ca` capture. The v37 tuple
+// MEASURED: the live `create_ca` capture. The v37 tuple
 // case, present here only as the no-regression control.
 const HOVER_BASIC_CONSTRAINTS = [
   "pub enum BasicConstraints {",
@@ -731,7 +731,7 @@ const SRC_BASIC_CONSTRAINTS = [
   "",
 ].join("\n");
 
-// MEASURED. `session-v37/spike-10-elision-rust.txt`, base64::DecodeError.
+// MEASURED. base64::DecodeError.
 const HOVER_DECODE_ERROR = [
   "pub enum DecodeError {",
   "    InvalidByte( /* … */ ),",
@@ -777,7 +777,7 @@ const SRC_BASE64_DECODE = [
   "",
 ].join("\n");
 
-// MEASURED. `session-v37/spike-14-comment-anchor.txt`. Nothing elided at all.
+// MEASURED. Nothing elided at all.
 const HOVER_ALPHABET = ["pub struct Alphabet {", "    pub(crate) symbols: [u8; ALPHABET_SIZE],", "}"].join("\n");
 // ~/sandbox/complexity-study-oss/base64/src/alphabet.rs:54-57, verbatim.
 const SRC_ALPHABET = [

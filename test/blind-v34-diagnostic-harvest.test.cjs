@@ -12,7 +12,7 @@
 // impl-v30-p2-langdispatch (the `languageId` on the document, which is what makes
 // the non-rust row expressible).
 //
-// THE CONTRACT, from session-v34/goal.md items 2 and 3, and nothing else.
+// THE CONTRACT, from goal items 2 and 3, and nothing else.
 //
 //   Item 2. The diagnostic NAMES the type; resolve that name and inject its
 //   definition. Harvest backticked identifiers from the MESSAGE and from the SPAN

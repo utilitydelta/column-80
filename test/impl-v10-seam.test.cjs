@@ -1,4 +1,4 @@
-// Phase-1 seam-confirmation lock (session-v10/goal.md phase 1). v9 extracted
+// Phase-1 seam-confirmation lock (session-v10 phase 1). v9 extracted
 // oracleFor + the extractor/whole-block registries as the only construction
 // paths; v10 (C#) is the third language proving those seams generalize. This
 // file LOCKS two phase-1 claims so a later refactor cannot silently break the
@@ -16,7 +16,7 @@
 //      land on the attribute" and catches a startLine-returning regression. It
 //      does NOT and cannot (with C# inputs) prove the interior stripping logic,
 //      nor does it cover C# fn-gen doc-comment capture or signature slicing —
-//      those are wrong-defaulted to Rust today (session-v10/scraps.md F2/F3)
+//      those are wrong-defaulted to Rust today (session-v10 findings F2/F3)
 //      and are pinned by the phase-4 blind oracle, where the gestures light up.
 //   2. The core construction registries stay DARK for csharp before phase 2/3
 //      wire it, and dark for any unknown id (honest inapplicability, the seam's

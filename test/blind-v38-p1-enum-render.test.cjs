@@ -1,6 +1,6 @@
 // BLIND CONTRACT ORACLE - session-v38 item 1, "render the enum".
-// Written from `session-v38/goal.md` section "Item 1. Render the enum. This is
-// the build." and from the facade the existing tests already declare. While
+// Written from the goal section "Item 1. Render the enum. This is the build."
+// and from the facade the existing tests already declare. While
 // writing this file NOTHING here read `src/vscode/fnGen.ts`,
 // `src/core/crossFileShape.ts`, `src/core/dataShape.ts` or
 // `src/core/compilerDirected.ts`. Harness mechanics were copied from
@@ -75,8 +75,8 @@
 //
 // PROVENANCE OF THE FIXTURES. The two Rust enum hovers are MEASURED, lifted from
 // the same captures test/blind-v37-p5-tuple-payload.test.cjs quotes:
-// `BasicConstraints` from `session-v35/log.txt:2247` and `DecodeError` from
-// `session-v37/spike-10-elision-rust.txt`. `DecodeError` is the goal's own named
+// `BasicConstraints` from the live `create_ca` capture and `DecodeError` from
+// the Rust elision spike. `DecodeError` is the goal's own named
 // example of an enum that renders today only because its `impl Display` happens
 // to fill `methods`. The empty-shape struct hover is the F2 fixture. Everything
 // labelled SYNTHESIZED below says so and says why.
@@ -187,7 +187,7 @@ const show = (v) => JSON.stringify(v);
 
 const WS = "file:///work/v38p1";
 
-// MEASURED. `session-v35/log.txt:2247`, the live `create_ca` capture, under the
+// MEASURED. The live `create_ca` capture, under the
 // header "Data shape of `BasicConstraints`". A PURE DATA enum: no `name: Type`
 // line anywhere, so zero fields, and no methods supplied below, so zero methods.
 // This is exactly the type the goal says injects zero bytes today.
@@ -200,7 +200,7 @@ const HOVER_BASIC_CONSTRAINTS = [
 const SRC_BASIC_CONSTRAINTS = ["pub enum BasicConstraints {", "    Unconstrained,", "    Constrained(u8),", "}", ""].join("\n");
 const BASIC_VARIANTS = ["Unconstrained", "Constrained"];
 
-// MEASURED. `session-v37/spike-10-elision-rust.txt`, base64::DecodeError, the
+// MEASURED. From the Rust elision spike, base64::DecodeError, the
 // goal's own named case: it renders TODAY, and not because it is an enum. It
 // carries an `impl Display`, so `methods` is non-empty and the existing gate
 // happens to pass.

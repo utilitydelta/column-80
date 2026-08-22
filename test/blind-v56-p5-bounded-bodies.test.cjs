@@ -1,6 +1,6 @@
 // Blind oracle, session-v56 phase 5: "bound the raw bodies, widen unreachable"
-// (roadmap item 63, second half). Contract: session-v56/contract-phase5.md.
-// Written BEFORE the fix, against the contract only.
+// (roadmap item 63, second half). Written BEFORE the fix, against that phase's
+// contract only.
 //
 // WHAT THIS FILE PINS, one row per falsification clause:
 //   contract 1  an HTTP error body interpolated into an Ollama error string is

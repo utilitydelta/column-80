@@ -107,8 +107,8 @@ test("F1b prose: the refusal rate over this repo's own ARCHITECTURE.md is not 10
 // stop, so the ghost is now `) {`, `Self {`, `self):`. The length floor (00:20)
 // then refuses exactly that shape. Neither was re-measured after the other.
 //
-// Evidence: apply the shipped floor to the shipped run
-// `session-v25/harness/results/verify-decl.json` (the post-finding-8 pipeline).
+// Evidence: apply the shipped floor to the shipped run of the post-finding-8
+// pipeline.
 // 17 of 710 served ghosts trip it, not the 1.0% quoted in `belowGhostFloor`,
 // `src/core/config.ts`, `src/vscode/config.ts` and `package.json` - and 9 of the
 // 17 carried a line the developer actually went on to write (7 Go `) {`, a Rust

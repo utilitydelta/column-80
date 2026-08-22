@@ -1,7 +1,7 @@
 // Blind oracle: classifyHallucination v3 spine (E0425/E0412 invented-item and
-// E0433 disambiguation) against the FROZEN phase-1 contract
-// [session-v3/phase1-classifier-contract.md]. Pure over one Diagnostic (the
-// compilerOracle shape) plus an optional CrateResolution: the real rustc
+// E0433 disambiguation) against the FROZEN phase-1 classifier contract. Pure
+// over one Diagnostic (the compilerOracle shape) plus an optional
+// CrateResolution: the real rustc
 // messages captured in test/fixtures/rustc/v3-classify/ map to their class,
 // with the crate/item/module/feature and the cursor derived from the primary
 // span. E0433 "cannot find X in Y" needs the resolution to disambiguate a

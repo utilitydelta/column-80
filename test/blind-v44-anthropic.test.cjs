@@ -1,7 +1,7 @@
 // Blind oracle: the native Anthropic Messages transport
 // (src/core/anthropicInstruct.ts, session-v44 phase 3).
 //
-// Written from session-v44/contract-phase3.md ONLY, BEFORE the implementation
+// Written from the phase-3 contract ONLY, BEFORE the implementation
 // existed. The oracle never read src/core/anthropicInstruct.ts, nor any other
 // file under src/. Every assertion below traces to a sentence in that contract;
 // the numbered rows match its "Testing shape" list 1..17, and rows named

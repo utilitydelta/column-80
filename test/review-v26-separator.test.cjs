@@ -6,8 +6,7 @@
 // (dropDuplicatedHead runs FIRST in dropSuffixRepeats, then the char-level
 // overlap trim, then the line-level repeat).
 //
-// Tests that PIN a hazard rather than a contract say so in their name; the
-// findings live in session-v26/review-p34.md.
+// Tests that PIN a hazard rather than a contract say so in their name.
 //
 // Run: SKIP_LIVE=1 node --test test/review-v26-separator.test.cjs
 

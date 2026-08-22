@@ -1,6 +1,6 @@
-// Blind oracle: the C# compiler oracle (session-v10/goal.md phase 2 +
-// session-v10/phase2-brief.md). Black-box contract tests written from the
-// CompilerOracle surface ALONE, before src/core/csOracle.ts exists. Covers
+// Blind oracle: the C# compiler oracle (v10 phase 2 and its brief).
+// Black-box contract tests written from the CompilerOracle surface ALONE,
+// before src/core/csOracle.ts exists. Covers
 // every phase-2 contract point:
 //   Construction    CsOracle(deps), language === "csharp", NO test rung
 //   appliesTo       "csharp" true; rust/typescript/unknown false

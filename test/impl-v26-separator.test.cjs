@@ -1,6 +1,7 @@
 // Implementer tests for session-v26 phase 3: the lone-separator exemption in
 // dropDuplicatedHead (src/core/postprocess.ts). The measured defect
-// (session-v26/measure-emptyserve.md): at 47 real scoped member sites, all 4
+// (`docs/architecture/fim-completion.md`, "The empty-serve separator, and the
+// burden of proof on dropping"): at 47 real scoped member sites, all 4
 // empty serves had the exact correct separator as the raw stream's first line
 // and dropDuplicatedHead deleted it - the fuzzy threshold floors at 1 and
 // `;` `,` `)` are each edit distance 1 from `}`. The four captured shapes must

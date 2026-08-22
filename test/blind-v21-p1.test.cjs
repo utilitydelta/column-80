@@ -1,6 +1,6 @@
 // BLIND CONTRACT TEST - v21 phase 1, items 1 and 2.
 //
-// Written from session-v21/surface-p1.md and nothing else. This file does not
+// Written from the phase-1 surface and nothing else. This file does not
 // read src/vscode/completionProvider.ts, src/core/completionService.ts or
 // src/vscode/extension.ts; esbuild resolves them at bundle time only. Every
 // assertion below is a clause of that surface, one of its named invariants, or

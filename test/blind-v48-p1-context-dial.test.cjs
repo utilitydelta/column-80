@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v48 phase 1, "the context dial".
 //
-// Binds to session-v48/contract-phase1.md and to NOTHING ELSE. While writing the
+// Binds to the phase-1 contract and to NOTHING ELSE. While writing the
 // assertions in this file, src/core/budgetProfile.ts, src/vscode/fnGen.ts,
 // src/vscode/config.ts and package.json's contributes.configuration were never
 // opened. The implementation was being built in parallel; a red row here means

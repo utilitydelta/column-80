@@ -1,4 +1,4 @@
-// Blind oracle: the TS compiler oracle (session-v9/phase2-surface.md).
+// Blind oracle: the TS compiler oracle (the v9 phase 2 surface).
 // Black-box contract tests written from the surface ALONE, before the impl
 // exists. Covers every phase-2 section:
 //   Construction    TsOracle deps, language === "typescript"

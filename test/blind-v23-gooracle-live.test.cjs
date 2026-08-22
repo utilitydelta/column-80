@@ -1,4 +1,4 @@
-// Blind oracle: the Go oracle's LIVE falsification rung (session-v23/goal.md,
+// Blind oracle: the Go oracle's LIVE falsification rung (the v23 goal,
 // GoOracle + falsification bar). REAL `go build -o /dev/null ./...` against
 // throwaway modules in temp dirs, through the oracle's own buildCheckCommand /
 // parseCheckOutput / checkSuccess / coverage pair, plus one runOracleCheck

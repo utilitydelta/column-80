@@ -1,7 +1,7 @@
 // Blind oracle, session-v58 phase 1 (roadmap item 69, first shape): the
 // channel keeps the raw body.
 //
-// Written against session-v58/contract-phase1.md ALONE, before the change
+// Written against the phase 1 contract ALONE, before the change
 // exists. Every row here is expected RED on the branch point and GREEN after
 // the phase lands. Nothing in this file was written by reading a reader loop,
 // fnGen.ts or fnGenService.ts.

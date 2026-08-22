@@ -2,7 +2,7 @@
 // (`goMemberSite` + `memberSiteFor("go")`, dispatch-map row 4), the Go comment
 // token (`lineCommentFor("go")`, row 5), and the Go arg-type stop-rules row
 // (`argTypeStopRulesFor("go")`, row 6). Black-box: written from
-// session-v23/goal.md + dispatch-map.md and the exported surface of
+// the v23 goal and its dispatch map, plus the exported surface of
 // src/core/fimInject.ts AS SHIPPED TODAY; the Go implementation is never
 // opened.
 //

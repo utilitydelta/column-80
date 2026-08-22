@@ -1,7 +1,7 @@
 // Blind oracle: Claude Code headless backend contract
 // (src/core/claudeCodeInstruct.ts, session-v43 phase 1).
 //
-// Written from session-v43/contract-phase1.md ONLY. The oracle never read the
+// Written from the phase-1 contract ONLY. The oracle never read the
 // implementation; every assertion below traces to a sentence in that contract,
 // and the row numbers match the contract's "Testing shape" list 1..24. Rows
 // named "row A<n>" come from the contract's amendments section (ruled
@@ -751,8 +751,8 @@ test("row A2b: classification order survives the new row - text beats the CLI's 
 // CLI's self-reported figures now that ttft= / total= are the module's wall
 // clock.
 //
-// SUPERSEDED AGAIN by session-v44 phase 2, which puts `cache-mode=` between
-// model= and ttft= (session-v44/contract-phase2.md, "Evidence"). Every other
+// SUPERSEDED AGAIN by session-v44 phase 2, whose contract puts `cache-mode=`
+// between model= and ttft= under "Evidence". Every other
 // field keeps its spelling, order and value, which is what this row still
 // guards. Ruled shape:
 //   [claude-code] fence-strip=<yes|no> num_turns=<n|?> model=<id|cli-default>

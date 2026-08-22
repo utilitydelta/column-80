@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v50 phase 1, "the settle re-poll gets two bounds".
 //
-// Binds to session-v50/contract-phase1.md INCLUDING BOTH AMENDMENTS, and to
+// Binds to the phase-1 contract INCLUDING BOTH AMENDMENTS, and to
 // nothing else. The bodies of `membersWithSettle` and `hoverWithSettle` were not
 // read and not used to derive a single expectation below; every number in an
 // assertion comes out of the contract text or out of this file's own fixtures.
@@ -30,10 +30,11 @@
 //
 // C1-1 (withdrawn). The stop ended the loop when a re-poll returned the same
 // member count and the same signed count. The adversarial review reproduced the
-// session-v21 case at its MEASURED shape - `session-v21/surface-p3b.md` §1b, a
-// cold `membersOfType` answering 11 members with 1 signed in 52ms against a 50ms
-// fan-out budget, warming to 7 rendered - and the stop fires one poll before the
-// answer the loop exists to reach. Measured against the pre-bound code: 3 calls
+// session-v21 case at its MEASURED shape, recorded under "Measured records" in
+// docs/architecture/surface-injection.md: a cold `membersOfType` answering 11
+// members with 1 signed in 52ms against a 50ms fan-out budget, warming to 7
+// rendered - and the stop fires one poll before the answer the loop exists to
+// reach. Measured against the pre-bound code: 3 calls
 // and 10 rendered methods with no stop, 2 calls and 0 rendered with it. C1-1b
 // below now IS that case.
 //
@@ -337,8 +338,8 @@ const bare = (name) => ({ name, kind: "method" });
 const ctor = { name: "constructor", kind: "method", signature: "fn constructor(id: u64) -> Self" };
 
 // Ten method names, so a member set of `ctor` plus these is the 11 members with
-// 1 signed that `session-v21/surface-p3b.md` §1b recorded coming back cold. Used
-// by C1-1b.
+// 1 signed that the v21 measurement recorded coming back cold (see "Measured
+// records" in docs/architecture/surface-injection.md). Used by C1-1b.
 const V21_METHODS = ["place", "cancel", "total", "ship", "refund", "price", "tax", "audit", "split", "merge"];
 
 // ---------------------------------------------------------------------------
@@ -521,8 +522,9 @@ wtest("C1-1b [was: 1 signed constructor costs ONE re-poll]: the v21 case at its 
   // cursor whose answer never changed, and the review showed that rule cannot
   // tell "never changes" from "not warm yet".
   //
-  // `session-v21/surface-p3b.md` §1b: a cold `membersOfType` answered 11 members
-  // with 1 signed in 52ms against a 50ms fan-out budget, and warmed to a rendered
+  // Recorded under "Measured records" in docs/architecture/surface-injection.md:
+  // a cold `membersOfType` answered 11 members with 1 signed in 52ms against a
+  // 50ms fan-out budget, and warmed to a rendered
   // set. The MEMBER count is complete from the first answer because
   // documentSymbol is cheap; the SIGNATURES are what is missing, and a server
   // still cold 40ms later is cut by the same wall clock and answers 11/1 again.

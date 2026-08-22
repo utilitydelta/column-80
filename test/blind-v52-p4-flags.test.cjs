@@ -1,12 +1,13 @@
 // BLIND ORACLE - session-v52 phase 4: THE FLAGS.
 //
-// Bound to `session-v52/contract-p4.md`, written before `src/core/tightenFlags.ts`
-// exists. Nothing in this file has read `src/**`, and nothing here has read
-// `session-v52/spikes/detector.cjs` - that is the implementation this file grades,
-// and reading it would fit the oracle to the code instead of to the contract.
-// The only sources are the contract, the fixture constants in
-// `session-v52/spikes/validate-detector.cjs`, and the doc comment quoted in
-// `docs/dumb-models-work.md`.
+// Bound to the phase-4 contract, written before `src/core/tightenFlags.ts`
+// exists. Nothing in this file has read `src/**`, and nothing here has read the
+// scout's detector - that is the implementation this file grades, and reading
+// it would fit the oracle to the code instead of to the contract. The only
+// sources are the contract, the detector's own validation fixtures, and the doc
+// comment quoted in `docs/dumb-models-work.md`. The detector port and its
+// corpus numbers are recorded in `docs/architecture/tighten-doc-comment.md`,
+// "The undefined-term flag and its 1% gate".
 //
 // THE ORACLES ARE COMPUTED HERE. Every synthetic row recomputes containment in
 // this file from the contract's own words - "content tokens: lowercase
@@ -101,7 +102,7 @@ function assertReportShape(report, prose, what) {
 }
 
 // ---------------------------------------------------------------------------
-// The fixtures. Copied verbatim from `session-v52/spikes/validate-detector.cjs`
+// The fixtures. Copied verbatim from the detector's validation set
 // per the contract: "Do not paraphrase these. Copy them."
 // ---------------------------------------------------------------------------
 

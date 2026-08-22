@@ -581,8 +581,8 @@ function rng(src, from, to) {
   return r;
 }
 // FIDELITY: `selectionRange` covers the NAME TOKEN on the node's first line,
-// which is what every server measured in `session-v24/measure-midedit.md`
-// reports. A full-span selectionRange is a shape no server produces and it
+// which is what every server in the mid-edit symbol survey reports. A
+// full-span selectionRange is a shape no server produces and it
 // pushes every anchor to column 0.
 function nameSelection(name, range) {
   const line = range.__line;

@@ -420,7 +420,7 @@ test("a multi-line message keeps its first line and GAINS the pointer", () => {
 test("the pointer is conditional, which is the whole point", () => {
   // A pointer on a message that dropped nothing names a channel the user has no
   // reason to open, and it is the same false promise the phase-1 review found
-  // on the transport side (session-v57/scraps.md S57-1).
+  // on the transport side (scrap S57-1).
   assert.ok(!tierDisabledToast("one line only").includes(POINTER));
   assert.ok(tierDisabledToast("one line\nplus a second").includes(POINTER));
 });

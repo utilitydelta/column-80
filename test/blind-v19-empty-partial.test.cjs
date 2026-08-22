@@ -1,6 +1,6 @@
 // BLIND CONTRACT TEST - v19 phase 3 "empty-partial anchoring".
 //
-// Written from session-v19/phase3-brief.md, never from the code. This file does
+// Written from the phase-3 brief, never from the code. This file does
 // not read src/vscode/completionProvider.ts, src/core/completionService.ts,
 // src/core/cache.ts or src/core/fimInject.ts; esbuild resolves them at bundle
 // time only. Every assertion below is either a promise of the phase or an

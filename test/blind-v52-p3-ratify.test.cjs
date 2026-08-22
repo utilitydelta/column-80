@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v52 phase 3: THE EXISTENCE GATE (tier 2).
 //
-// Bound to `session-v52/contract-p3.md` and to nothing else. Nothing in this
+// Bound to the phase-3 contract and to nothing else. Nothing in this
 // file has read `src/**`; esbuild resolves `src/core/tightenRatify` at bundle
 // time and that is the only contact with the implementation. Every row names
 // the contract sentence it holds the product to.

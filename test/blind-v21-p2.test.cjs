@@ -1,6 +1,6 @@
 // BLIND CONTRACT TEST - v21 phase 2: the two configuration nudges.
 //
-// Written from session-v21/surface-p2.md and nothing else. src/vscode/firstRun.ts
+// Written from the phase 2 surface and nothing else. src/vscode/firstRun.ts
 // was NOT read - not opened, not grepped, not inspected through bundle output.
 // esbuild resolves it at bundle time only. Expected RED until phase 2 ships.
 //

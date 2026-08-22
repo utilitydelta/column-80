@@ -1,6 +1,6 @@
 // Blind oracle, session-v56 phase 4: "translate the service rejects, close the
-// catch-alls" (roadmap item 63, first half). Contract:
-// session-v56/contract-phase4.md. Written BEFORE the fix.
+// catch-alls" (roadmap item 63, first half). Written BEFORE the fix, against
+// the phase-4 contract.
 //
 // WHAT THIS FILE PINS. One string serves two audiences today: the service
 // throws channel-grade messages and the gesture catch-alls forward them raw to

@@ -1,7 +1,7 @@
 // Blind oracle, session-v55 phase 8: FIM is served LOCALLY, whatever
 // `column80.apiBase` says. Goal amendment A.
 //
-// Written from session-v55/contract-phase8.md ONLY. Every row names the item
+// Written from the phase-8 contract ONLY. Every row names the item
 // under "What must hold" (1..8) that it pins, plus the two rows that pin the
 // "Out of scope" section, which contains a do-NOT-build and a do-build.
 //

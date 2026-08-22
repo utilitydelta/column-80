@@ -1,5 +1,6 @@
-// Blind oracle: the TypeScript TDD leg (session-v31/contract-ts.md, goal.md
-// items 3 and 6, Amendments 1 and 2). Black-box contract tests written from the
+// Blind oracle: the TypeScript TDD leg (the TS contract, now on the record in
+// `docs/architecture/tdd-language-seam.md`, "TypeScript"; goal items 3 and 6,
+// Amendments 1 and 2). Black-box contract tests written from the
 // CONTRACT ALONE, before `src/core/tddTs.ts` exists. Covers:
 //   §Registration   typescript + the three sibling languageIds, and the two
 //                   languageIds that are still dark at this phase

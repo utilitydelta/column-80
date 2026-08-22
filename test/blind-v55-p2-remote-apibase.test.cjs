@@ -1,7 +1,7 @@
 // Blind oracle: session-v55 phase 2, a remote Ollama (`column80.apiBase`
 // pointed at another machine) is not gated on THIS box's VRAM.
 //
-// Written from session-v55/contract-phase2.md ONLY. Every test names the
+// Written from the phase-2 contract ONLY. Every test names the
 // contract item under "What must hold" that it pins, 1..9. The oracle read no
 // implementation of the remote arm: it read the public seam it must drive
 // (`buildFnGenService`'s signature, `ProbeHardwareOptions`, `ClaudeCodeDeps`,

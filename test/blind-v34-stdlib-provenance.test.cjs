@@ -1,7 +1,7 @@
 // BLIND ORACLE - session-v34 item 1, "Stdlib types get no surface rendered",
 // plus Amendment A. Black-box over `resolvePrefill` only.
 //
-// THE CONTRACT, restated from `session-v34/goal.md` item 1 + Amendment A:
+// THE CONTRACT, restated from the goal's item 1 + Amendment A:
 //
 //   1. A ROOT candidate type whose definition lives in the Rust standard
 //      library renders NOTHING - no data shape, no member list, no worked
@@ -281,8 +281,7 @@ function rng(src, from, to) {
   return r;
 }
 // FIDELITY: `selectionRange` covers the NAME TOKEN on the node's first line,
-// which is what every server measured in session-v24/measure-midedit.md
-// reports - never the whole node span.
+// which is what every measured server reports - never the whole node span.
 function nameSelection(name, range) {
   const line = range.__line;
   if (typeof line !== "string") return range;

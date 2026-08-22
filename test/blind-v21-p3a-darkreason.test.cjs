@@ -1,5 +1,5 @@
 // BLIND ORACLE - session-v21 phase 3a item 3: "No block" must say why, in every
-// language [session-v21/surface-p3a.md §3]. Written from that document ALONE,
+// language [the phase-3a surface, §3]. Written from that document ALONE,
 // before the implementation exists. This file never reads
 // src/vscode/completionProvider.ts, src/core/fimInject.ts,
 // src/core/extraction.ts or any extractor - the esbuild bundle resolves them at

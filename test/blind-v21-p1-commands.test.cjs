@@ -1,6 +1,6 @@
 // BLIND CONTRACT TEST - v21 phase 1, item 3: the executed command order.
 //
-// Written from session-v21/surface-p1.md and nothing else. This file does not
+// Written from the phase-1 surface spec and nothing else. This file does not
 // read src/vscode/extension.ts, src/vscode/completionProvider.ts or
 // src/core/completionService.ts; esbuild resolves them at bundle time only.
 //

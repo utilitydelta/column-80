@@ -1,8 +1,8 @@
 // BLIND ORACLE — v13 (Python docstring-is-the-spec), the RESOLVER surface.
 // Drives the REAL `resolveFunctionAtCursor` (src/vscode/fnGen) over a FAKE
 // vscode module. Black-box: never reads the not-yet-written Python doc arm /
-// span-shrink. From session-v13/goal.md + scout.md (Fork A) + scout-py.md /
-// scout-v13 geometry ONLY.
+// span-shrink. From the goal + the scout (Fork A) + the Python scout's
+// geometry ONLY.
 //
 // THE CONTRACT (Fork A — span-exclusion). For a Python def/class WITH a leading
 // docstring the resolver must:

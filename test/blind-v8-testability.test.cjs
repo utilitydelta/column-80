@@ -5,8 +5,8 @@
 // first-match-wins: async -> io -> needs-fixture -> underspecified -> testable
 // (P2-surface clauses 1..5). Never read src/**; the classifier is a stub
 // (returns {testable:true}), so every !testable case below is expected red.
-// Signatures are drawn from session-v8/sampledb-sample.json where possible so
-// the cases are realistic, not toy.
+// Signatures are drawn from a real sampled corpus where possible so the cases
+// are realistic, not toy.
 //
 // Run: SKIP_LIVE=1 node --test test/blind-v8-testability.test.cjs
 

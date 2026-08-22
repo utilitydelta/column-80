@@ -1,5 +1,5 @@
 // Blind oracle: the include-the-block gestures' PURE core
-// (session-v32/contract-p3-block.md, goal.md item 4). Black-box contract tests
+// (the phase-3 block contract, goal item 4). Black-box contract tests
 // written from the CONTRACT ALONE, before the implementation exists. Covers:
 //   §symbolBlockRange  every row of the contract's first case table: a run start
 //                      above the symbol range start, a run start equal to the
@@ -26,7 +26,7 @@
 // ONE failing bundle test, every other test skips.
 //
 // Chain fixtures are built from the REAL chains measured in
-// session-v32/scout-findings.md finding 5, one per server, depths included. Each
+// the scout's finding 5, one per server, depths included. Each
 // fixture says which server it came from. Where finding 5 gives only the depth
 // and the two named nodes, the intermediate nodes are filled in with the shapes
 // the same finding measured (whitespace-duplicate neighbours, a body block

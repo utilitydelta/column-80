@@ -1,6 +1,6 @@
 // BLIND ORACLE — session-v24 phase 3, the four batched fixes.
-// Written from `session-v24/surface-p3.md` (17 numbered items) and
-// `session-v24/goal.md` §3/§5/§6/§7 ALONE. Nothing here has read
+// Written from the phase-3 surface document (17 numbered items) and the goal's
+// §3/§5/§6/§7 ALONE. Nothing here has read
 // src/vscode/fnGen.ts, src/vscode/oracleSurface.ts, src/core/fnGenService.ts,
 // src/core/punt.ts, src/core/prompt.ts or any extraction/reindent module; the
 // esbuild bundles resolve them at bundle time only and every assertion is made

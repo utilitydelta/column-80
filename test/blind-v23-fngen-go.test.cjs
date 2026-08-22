@@ -4,8 +4,8 @@
 // the marker regex already covers them — pinned, not extended), the type-gen
 // prompt noun for Go ("members", the non-Rust branch, row 7 NO ROW), and the
 // Go file-local definitions scan (`fileLocalDefinitionsFor("go")`, row 10:
-// a column-0 func/type scanner). Black-box: written from session-v23/goal.md
-// + dispatch-map.md and the exported surfaces of src/core/punt.ts,
+// a column-0 func/type scanner). Black-box: written from the goal + the
+// dispatch map and the exported surfaces of src/core/punt.ts,
 // src/core/prompt.ts, src/core/instructPostprocess.ts AS SHIPPED TODAY; no
 // Go implementation is opened.
 //

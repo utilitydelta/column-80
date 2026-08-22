@@ -1,5 +1,5 @@
 // Blind oracle: session-v33 phase 3, THE READER. Written from
-// `session-v33/contract.md` ALONE (section "The reader", plus "Events the
+// the session contract ALONE (section "The reader", plus "Events the
 // vscode layer must subscribe to"). src/** was never read, not once: the
 // candidate module paths below come from a directory LISTING and esbuild
 // resolves them at bundle time, so nothing in this file was informed by an

@@ -36,20 +36,20 @@
 // Both model the cold answer as a set of ONE member, so the warm answer
 // necessarily changes the COUNT, and any count-based stop passes them. The
 // measurement they were written from is not that shape:
-// `session-v21/surface-p3b.md` §1(b) recorded a cold `membersOfType` answering
-// ELEVEN members with ONE signed in 52ms against the 50ms hover fan-out budget,
-// warming to 7 rendered. The count is complete from the first answer, because
-// documentSymbol is cheap; the SIGNATURES are what the fan-out fills. Whoever
-// owns those rows should re-cut their cold answer at 11 members / 1 signed and
-// their warm answer at the same 11 with the rest signed. Until then those two
-// rows cannot see a regression in the loop they exist to protect, and R1 here is
-// the only row that can.
+// `docs/architecture/surface-injection.md` ("The cold cross-file walk") records
+// a cold `membersOfType` answering ELEVEN members with ONE signed in 52ms
+// against the 50ms hover fan-out budget, warming to 7 rendered. The count is
+// complete from the first answer, because documentSymbol is cheap; the
+// SIGNATURES are what the fan-out fills. Whoever owns those rows should re-cut
+// their cold answer at 11 members / 1 signed and their warm answer at the same
+// 11 with the rest signed. Until then those two rows cannot see a regression in
+// the loop they exist to protect, and R1 here is the only row that can.
 //
-// DEFER - Finding 5, accepted, and the fix is in
-// `session-v50/probe/latency-baseline.cjs` which this file does not own. What is
-// already done there: `--cold` sets the per-open settle to 0 and skips the
-// off-clock `openFile(r.uri)` before each row. What the probe must ALSO stop
-// doing before a `--cold` run can produce the loop's case:
+// DEFER - Finding 5, accepted, and the fix is in the latency-baseline probe,
+// which this file does not own. What is already done there: `--cold` sets the
+// per-open settle to 0 and skips the off-clock `openFile(r.uri)` before each
+// row. What the probe must ALSO stop doing before a `--cold` run can produce
+// the loop's case:
 //   1. `assertAlive` runs `membersOfType(gateCursor)` before EVERY row, and
 //      `gateCursor` is roots[0]'s own cursor (built at the same line the pre-run
 //      gate uses). So roots[0]'s file has had documentSymbol computed off the
@@ -311,7 +311,7 @@ wtest("R0 CONTROL: a set that grows on the second answer still recovers", async 
 // stop is gone, and these rows now hold the recovery it broke.
 //
 // The session-v21 case is not a hypothesis. It was MEASURED in the v21 spike
-// (`session-v21/surface-p3b.md` §1(b)):
+// (`docs/architecture/surface-injection.md`, "The cold cross-file walk"):
 //
 //   "`membersOfType` on the first walk over a just-opened def file answers 11
 //    members with 1 signed in 52ms, against the 50ms fan-out budget. The single
@@ -548,13 +548,12 @@ wtest("R4 [RECORD] a root that spends the allowance leaves every collaborator wi
 // R5. THE ALLOWANCE, NOT THE STOP, IS WHAT BOUNDS THE WALK.
 //
 // This was the row that argued the no-progress stop bought almost nothing the
-// allowance did not, read off the shipped after-side
-// (`session-v50/baseline-go-p1after.txt`): every row at the 120ms ceiling
-// (`ConnConfig` 122ms, `Config` 125ms, `ConnectError` 121ms, `FallbackConfig`
-// 130ms) was bound by the ALLOWANCE, and the stop only moved rows already under
-// it. The stop is now gone, and the row is re-cut to hold what remains: the
-// allowance alone is a ceiling that does not grow with the graph. Nine stuck
-// cursors cost one allowance.
+// allowance did not, read off the shipped after-side: every row at the 120ms
+// ceiling (`ConnConfig` 122ms, `Config` 125ms, `ConnectError` 121ms,
+// `FallbackConfig` 130ms) was bound by the ALLOWANCE, and the stop only moved
+// rows already under it. The stop is now gone, and the row is re-cut to hold
+// what remains: the allowance alone is a ceiling that does not grow with the
+// graph. Nine stuck cursors cost one allowance.
 //
 // AGAINST 19f1e6f the same nine cursors take 4 member calls EACH and the walk
 // costs 1092ms, which is the 9 x 3 x 40ms this phase was sent to kill. Against

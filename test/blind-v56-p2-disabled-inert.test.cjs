@@ -1,6 +1,5 @@
 // Blind oracle, session-v56 phase 2: "disabled means inert, everywhere"
-// (roadmap item 58). Contract: session-v56/contract-phase2.md. Written BEFORE
-// the fix.
+// (roadmap item 58). Written BEFORE the fix, against the phase 2 contract.
 //
 // WHAT THIS FILE PINS. A disabled fn-gen service - whatever the tier's reason -
 // must make every transport-using gesture refuse instead of dialling:

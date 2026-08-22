@@ -1,7 +1,7 @@
 // BLIND CONTRACT TEST - v20 phase 2, "the second Escape is the fast revert".
 //
-// Written from session-v20/surface-phase2.md (with session-v20/surface.md and
-// session-v20/goal.md as the phase 1 contract it must not break), never from
+// Written from the phase 2 surface document (with the phase 1 surface and goal
+// as the contract it must not break), never from
 // the code. This file does not read src/vscode/completionProvider.ts,
 // src/vscode/extension.ts or src/core/completionService.ts; esbuild resolves
 // them at bundle time only. Every assertion below is a clause of the phase 2
@@ -630,10 +630,10 @@ test("C. the request following a dropScope() arms no new timer: the unscoped ser
 });
 
 // Amended under the human design call 2026-07-26
-// (session-v26/journeys/member-dot-flow.md): the window is uniform, so an
-// arrowed scope's post-close serve DOES arm the one-shot, and the second
-// Escape cancels it exactly as it does a preselect's. The original row
-// ("nothing was armed") pinned the void indefinite hold.
+// (docs/architecture/vscode-layer.md, "Measured records"): the window is
+// uniform, so an arrowed scope's post-close serve DOES arm the one-shot, and
+// the second Escape cancels it exactly as it does a preselect's. The original
+// row ("nothing was armed") pinned the void indefinite hold.
 test("C. dropping an arrowed scope cancels its window like any other: one timer armed at the serve, none pending after the drop, nothing ever expires [uniform window]", async () => {
   const W = windowMs();
   const { results } = await session([...ACTIVE_STEPS, drop(), { request: false, advanceMs: W * 4, fire: true }]);
@@ -910,10 +910,10 @@ test("F. the passive window still bounds the scope: inside it scoped, at or afte
 });
 
 // Amended under the human design call 2026-07-26
-// (session-v26/journeys/member-dot-flow.md): the window is uniform.
-// Arrow-Escape-Tab is untouched INSIDE the 1.5s window; past it the arrowed
-// scope reverts like a preselect. The original row pinned the void indefinite
-// hold ("survives any elapsed time").
+// (docs/architecture/vscode-layer.md, "Measured records"): the window is
+// uniform. Arrow-Escape-Tab is untouched INSIDE the 1.5s window; past it the
+// arrowed scope reverts like a preselect. The original row pinned the void
+// indefinite hold ("survives any elapsed time").
 test("F. arrow-Escape-Tab holds inside the uniform window and reverts past it [journeys/member-dot-flow.md, decided 2026-07-26]", async () => {
   const W = windowMs();
   const { results } = await session([

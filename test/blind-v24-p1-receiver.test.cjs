@@ -1,6 +1,5 @@
-// Blind oracle for session-v24 phase 1, REWORKED against the rewritten contract
-// in `session-v24/surface-p1.md`. Entry point: `resolvePrefill`
-// (src/vscode/fnGen.ts).
+// Blind oracle for session-v24 phase 1, REWORKED against the rewritten
+// contract. Entry point: `resolvePrefill` (src/vscode/fnGen.ts).
 //
 // This file replaces the version written against the old contract. That design
 // found the enclosing type by counting braces over file text; this one does not
@@ -38,11 +37,11 @@
 // FIXTURE FIDELITY, and why it mattered. An earlier version of this file set
 // every node's `selectionRange` to the whole header-line range, so anchors
 // landed at column 0 on `impl` / `public` / `class` / `export`. No measured
-// server does that: `session-v24/measure-midedit.md` records the selection
-// covering the NAME TOKEN in all five. The infidelity had a real cost - a
-// literal name-vs-anchor agreement check reddens ~25 rows on that artifact
-// alone, so the product shipped a weaker line-granularity check instead. The
-// fidelity is fixed here and the guard row below pins it.
+// server does that: the selection covers the NAME TOKEN in all five. The
+// infidelity had a real cost - a literal name-vs-anchor agreement check
+// reddens ~25 rows on that artifact alone, so the product shipped a weaker
+// line-granularity check instead. The fidelity is fixed here and the guard row
+// below pins it.
 //
 // GREEN NOW AND AFTER, on purpose:
 //   * "item 13" - the free-function SURFACE is byte-frozen. Note the contract
@@ -72,12 +71,11 @@
 // needs an enclosing type, and a Go constructor is a package-level function with
 // nothing enclosing it.
 //
-// MID-EDIT (item 10) is now covered, from the live measurement in
-// `session-v24/measure-midedit.md` - never guessed. Every measured failure is a
-// silent MISS and not one returned a wrong container, so those rows pin the
-// DIRECTION of failure rather than the brokenness shapes: resolve the right type
-// or nothing. Python's single accepted regression has its own row so it cannot
-// later be read as a defect.
+// MID-EDIT (item 10) is now covered, from the live measurement - never
+// guessed. Every measured failure is a silent MISS and not one returned a
+// wrong container, so those rows pin the DIRECTION of failure rather than the
+// brokenness shapes: resolve the right type or nothing. Python's single
+// accepted regression has its own row so it cannot later be read as a defect.
 //
 // Run: SKIP_LIVE=1 node --test test/blind-v24-p1-receiver.test.cjs
 
@@ -310,7 +308,7 @@ function rng(src, from, to) {
 }
 
 // The identifier a server's `selectionRange` covers, given the symbol's name.
-// Measured, not assumed (`session-v24/measure-midedit.md`):
+// Measured, not assumed:
 //   rust-analyzer  `impl Owner`             sel 4:5-4:10   -> `Owner`
 //                  `impl Persist for Owner` sel 8:17-8:22  -> `Owner`, the SELF
 //                                                             TYPE, never the trait
@@ -1996,9 +1994,9 @@ for (const lang of ["rust", "python"]) {
 }
 
 // ===========================================================================
-// ITEM 10 - MID-EDIT FILES. Measured, all five languages, live servers
-// (`session-v24/measure-midedit.md`). Nothing here is guessed; each row models a
-// tree shape the measurement actually recorded.
+// ITEM 10 - MID-EDIT FILES. Measured, all five languages, live servers.
+// Nothing here is guessed; each row models a tree shape the measurement
+// actually recorded.
 //
 // THE HEADLINE, and the thing worth pinning hardest: every failure is a silent
 // MISS. Not one measured case returned a WRONG container. That is the direction
@@ -2542,7 +2540,7 @@ btest("item 4a: a generation kind outside every current admit set is still case 
 // actually report, or every row built on them tests something no product ever
 // sees. This row pins the one shape that was wrong: `selectionRange` covers the
 // NAME TOKEN, never the whole header line. The expected columns are read
-// straight off the tables in `session-v24/measure-midedit.md`.
+// straight off the measured tables.
 // ===========================================================================
 
 btest("fixture fidelity: `selectionRange` covers the NAME TOKEN, at the columns the measured servers report", async () => {

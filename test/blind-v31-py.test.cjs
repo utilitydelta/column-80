@@ -1,6 +1,6 @@
-// Blind oracle: the Python TDD leg (session-v31/contract-py.md, goal.md item 4
-// and item 6, Amendments 1 to 5). Black-box contract tests written from the
-// CONTRACT ALONE, before `src/core/tddPy.ts` exists. Covers:
+// Blind oracle: the Python TDD leg (`docs/architecture/tdd-language-seam.md`,
+// "Python"; goal items 4 and 6, Amendments 1 to 5). Black-box contract tests
+// written from the CONTRACT ALONE, before `src/core/tddPy.ts` exists. Covers:
 //   §Registration   "python" resolves, markerPrefix "#", pytest then unittest
 //   §Placement      the three-tier target directory, runRoot, no-project-root
 //   §The import     derived from the package path, and PROVEN before a write

@@ -1,5 +1,5 @@
 // BLIND ORACLE - session-v48 phases 2 + 3: arbitration, refusal, and the
-// dropped edges. Every assertion below is bound to `session-v48/contract-phase2.md`
+// dropped edges. Every assertion below is bound to the phase-2 contract
 // (P1..P8 and "What must NOT change"). Nothing here has read src/core/prompt.ts,
 // src/core/fnGenService.ts, src/vscode/fnGen.ts, src/core/dataShape.ts or any
 // module phase 2 adds. Written while the implementation was in flight, so a red

@@ -1,11 +1,11 @@
 // BLIND ORACLE — session-v45 phase 0, the C# method scanner.
 //
-// Bound to session-v45/contract-phase0.md and to nothing else. Written
-// WITHOUT reading session-complxity-research/spikes/lib-cs-scan.cjs,
-// 01-corpus-cs.cjs or lib-cs.cjs — the only mirror-language material read was
-// lib-go-scan.cjs's classify contract and test/impl-v40-p2-go-rig.test.cjs's
-// conventions. Every expectation below comes from the contract's words plus
-// hand-computed byte arithmetic over the snippet in the row.
+// Bound to the phase 0 contract and to nothing else. Written WITHOUT reading
+// the rig's lib-cs-scan.cjs, 01-corpus-cs.cjs or lib-cs.cjs — the only
+// mirror-language material read was lib-go-scan.cjs's classify contract and
+// test/impl-v40-p2-go-rig.test.cjs's conventions. Every expectation below
+// comes from the contract's words plus hand-computed byte arithmetic over the
+// snippet in the row.
 //
 // If a row and the scanner disagree, that is a FINDING to be settled in
 // writing (an A-number amendment in the contract) before either side moves.

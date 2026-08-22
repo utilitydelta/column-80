@@ -7,7 +7,7 @@
 // the opposite of the oracle's: every row here is an attempt to break the
 // thing, and a row that stays green is a claim of CLEAN, not decoration.
 //
-// Contract: session-v58/contract-phase7.md, including amendments A1-A4.
+// Contract: the phase 7 contract, including amendments A1-A4.
 //
 // ---------------------------------------------------------------------------
 // WHERE THIS DIFFERS FROM THE ORACLE

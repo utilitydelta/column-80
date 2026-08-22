@@ -400,8 +400,8 @@ test("a marker matched mid-message on an anchored row does NOT fire", () => {
 });
 
 test("the Anthropic in-stream error frame keeps the provider's cause and gets no crafted sentence", () => {
-  // RE-CUT, and the amendment at the end of session-v57/goal.md carries the
-  // measurement. This frame is Anthropic's GENERIC error envelope: a rate limit,
+  // RE-CUT, on a measurement taken during the session. This frame is
+  // Anthropic's GENERIC error envelope: a rate limit,
   // an invalid key and a malformed request all arrive through it. Item 66 listed
   // it as a stream cut, and translating it told a rate-limited user to check a
   // server that is fine, with the real reason taken off the screen.

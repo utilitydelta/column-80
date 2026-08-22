@@ -5,7 +5,7 @@
 // under live semantics a block's own lines are SUPPOSED to change and "the
 // text moved" stopped being news.
 //
-// The first table below is `session-v33/spikes/resize.spike.cjs` ported case
+// The first table below is the resize spike ported case
 // for case. Every row marked MEASURED is a verbatim change event captured from
 // a real extension host, which is a stronger fixture than anything written by
 // hand (session-v32 finding 6 is the standing reminder of what hand-written

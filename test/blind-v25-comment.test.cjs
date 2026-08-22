@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v25 fixes 3 and 4: the comment rules.
 // Black-box contract test for `src/core/fimComment.ts` written against
-// `session-v25/contract-comment.md` ONLY (plus goal.md fixes 3 and 4 and the
+// the comment contract ONLY (plus goal fixes 3 and 4 and the
 // two scout-notes sections behind them). This file has never read the
 // implementation, has never read `src/core/fimInject.ts`, and must not be
 // edited to make an implementation pass (AGENTS.md "Rules").

@@ -1,7 +1,6 @@
 // Blind oracle, session-v58 phase 4: "the error frame the cloud reader drops"
-// (roadmap item 67, third hole). Contract: session-v58/contract-phase4.md,
-// as CORRECTED 2026-08-22 per S58-8. Written BEFORE the fix, against the
-// contract only.
+// (roadmap item 67, third hole). Written BEFORE the fix, against the phase-4
+// contract only, as CORRECTED 2026-08-22 per S58-8.
 //
 // ===========================================================================
 // WHAT THIS FILE PINS
@@ -95,7 +94,7 @@
 //     taking the longest common suffix of the two thrown messages. The fillers
 //     differ, so the common suffix is exactly the marker and nothing else.
 //   * THE PROVIDER'S MESSAGE. "upstream overloaded", the contract's own falsifier
-//     1 text and `session-v57/fake-server.mjs`'s `flood-200` shape.
+//     1 text and the fake server's `flood-200` shape.
 //   * THE GESTURE ARGUMENT. Bound to "function generation" everywhere, so any
 //     difference between rows is the ERROR's doing and never the gesture's.
 //   * C4's "IT EARNS A PAYLOAD_CARRIERS ENTRY AND NO SERVICE_REJECT_TOASTS ROW".
@@ -338,7 +337,7 @@ const SSE = "text/event-stream";
 const sseFrame = (o) => `data: ${JSON.stringify(o)}\n\n`;
 const DONE_SENTINEL = "data: [DONE]\n\n";
 
-/** An OpenAI-shape in-stream error frame. `session-v57/fake-server.mjs`'s
+/** An OpenAI-shape in-stream error frame. The fake server's
  *  `flood-200` / `forgery` scenarios write exactly this line. */
 const errorFrame = (message, type = "server_error") => sseFrame({ error: { message, type } });
 
@@ -702,7 +701,7 @@ btest("C2 [neither wrong sentence]: not the empty-generation one and not the sil
 });
 
 // ===========================================================================
-// C3 - IT IS BOUNDED. `session-v57/fake-server.mjs`'s `flood-200`: a 100KB error
+// C3 - IT IS BOUNDED. The fake server's `flood-200`: a 100KB error
 // message inside a 200. The marker is read out of the product, never written
 // down here.
 // ===========================================================================
@@ -814,7 +813,7 @@ btest("C4 [no service row]: this frame gets NO crafted sentence of its own", asy
 });
 
 // ===========================================================================
-// C5 - THE FORGERY ROUTE STAYS SHUT. `session-v57/fake-server.mjs`'s `forgery`
+// C5 - THE FORGERY ROUTE STAYS SHUT. The fake server's `forgery`
 // scenario, on this arm. This is the exact attack PAYLOAD_CARRIERS exists for.
 // ===========================================================================
 

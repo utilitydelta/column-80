@@ -2,7 +2,7 @@
 // (src/core/claudeCodeInstruct.ts, src/core/prompt.ts, src/core/fnGenService.ts,
 // session-v44 phase 2).
 //
-// Written from session-v44/contract-phase2.md ONLY, BEFORE the implementation
+// Written from that phase's contract ONLY, BEFORE the implementation
 // existed. The oracle never read src/core/claudeCodeInstruct.ts or any other
 // file under src/. Every assertion below traces to a sentence in that contract;
 // the numbered rows match its "Testing shape" list 1..16, and rows named

@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v21 phase 3a, items 1 and 2 of the member-site
-// surface [session-v21/surface-p3a.md]. Written from that document ALONE,
-// before the implementation exists. This file never reads
+// surface. Written from that document ALONE, before the implementation
+// exists. This file never reads
 // src/core/extraction.ts, src/core/fimInject.ts, src/vscode/raExtractor.ts,
 // src/vscode/csExtractor.ts, src/core/csExtraction.ts or
 // src/vscode/completionProvider.ts - esbuild resolves them at bundle time only.
@@ -9,8 +9,8 @@
 // What this file pins:
 //
 //   A. A FIELD IS A MEMBER, AND IT HAS A TYPE [surface §1]. rust-analyzer serves
-//      the field's type in `detail` (12/12 same-file, 2/2 cross-crate - see
-//      session-v21/spike-p3.md); the product throws it away at two predicates.
+//      the field's type in `detail` (12/12 same-file, 2/2 cross-crate, as the
+//      v21 spike measured); the product throws it away at two predicates.
 //      A field whose server gave a type must render a line a consumer can read
 //      the NAME and the TYPE off, and that line must sit in the block beside the
 //      methods. The name must be exactly what the buffer would have to spell.
@@ -143,7 +143,7 @@ const linesNaming = (block, name) => lines(block).filter((l) => tokenRe(name).te
 // ===========================================================================
 // A. A RUST FIELD IS A MEMBER, AND IT HAS A TYPE [surface §1].
 //
-// The captured items are verbatim from session-v21/spike-p3.md: rust-analyzer's
+// The captured items are verbatim from the v21 spike: rust-analyzer's
 // field items carry the bare type in `detail`, method items carry an `fn`-shaped
 // detail. The difference is the SHAPE of detail, not its presence.
 // ===========================================================================

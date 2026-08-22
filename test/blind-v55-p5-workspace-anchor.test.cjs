@@ -1,7 +1,7 @@
 // Blind oracle, session-v55 phase 5: the diagnostic anchor is a [workspace]
 // manifest, not any ancestor Cargo.toml.
 //
-// Written from session-v55/contract-phase5.md ALONE, INCLUDING its amendment,
+// Written from that phase's contract ALONE, INCLUDING its amendment,
 // which strikes item 6 and narrows the fix to ONE function. Nothing here was
 // written from the fix. Only the seam was read: the exported signature
 // resolveDiagnosticPath(crateRoot, fileName, fileExists?) and the exported

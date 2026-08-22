@@ -1,4 +1,4 @@
-// Blind oracle: the language-pluggable oracle seam (session-v9/phase1-surface.md).
+// Blind oracle: the language-pluggable oracle seam.
 // Black-box contract tests written from the surface ALONE, before the impl
 // exists. Covers the New-surface clauses:
 //   §1 CompilerOracle grows checkSuccess/resolveDiagnosticPath/isAssertionShaped

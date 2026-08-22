@@ -1,8 +1,8 @@
 // IMPLEMENTER (white-box) - session-v47: `enclosingTypeName`, the symbol-tree
 // descent to the type a cursor sits inside.
 //
-// WHAT IT IS FOR, since no product code calls it. session-v47 found that
-// `session-v46/run-arm.cjs` never set `resolved.symbols`, which switched off
+// WHAT IT IS FOR, since no product code calls it. session-v47 found that the
+// v46 arm runner never set `resolved.symbols`, which switched off
 // `resolvePrefill`'s receiver leg in every arm this project has measured. The
 // fix feeds the rig a translated symbol tree, and a re-derived translation is
 // this project's classic silent defect - so the rig CHECKS its translation
@@ -10,7 +10,7 @@
 // check depends on gets tested at its own edges.
 //
 // The documentSymbol fixtures are the SHAPES Roslyn really returns, taken from
-// the live probe in session-v47/probe-cs0103.json (a C# 12 primary-constructor
+// a live Roslyn probe (a C# 12 primary-constructor
 // controller answering one member, a classic service answering twelve with
 // `detail` signatures). Kind numbers are LSP SymbolKind: 5 class, 6 method,
 // 8 field, 9 constructor, 10 enum, 11 interface, 23 struct, 3 namespace.

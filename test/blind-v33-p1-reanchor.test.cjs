@@ -1,9 +1,9 @@
 // Blind oracle: session-v33 phase 1, the widened `reanchorRange` and
-// `ContextBlockStore.reanchor`. Written from `session-v33/contract.md` ALONE.
-// src/** was never read: esbuild resolves `../src/core/contextBlocks` at bundle
-// time only, and every expectation below is quoted from the contract file or
-// lifted verbatim from `session-v33/spikes/resize.spike.cjs`, which the contract
-// names as the source of its row table.
+// `ContextBlockStore.reanchor`. Written from the phase contract ALONE. src/**
+// was never read: esbuild resolves `../src/core/contextBlocks` at bundle time
+// only, and every expectation below is quoted from the contract or lifted
+// verbatim from the resize spike, which the contract names as the source of its
+// row table.
 //
 // Covered, and nothing else: the three `reanchorRange` outcomes, the four-case
 // classification table, the resolution rules including the defensive

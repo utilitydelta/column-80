@@ -1,5 +1,5 @@
 // BLIND ORACLE - v18 phase 3 "the gate and the prompt block stop sharing a
-// deadline" [session-v18/phase3-surface.md]. Black-box over CompletionService.
+// deadline" [the phase-3 surface contract]. Black-box over CompletionService.
 // Never reads src/**: the entry re-exports the module and esbuild resolves it
 // at bundle time only. Written against the FROZEN CONTRACT, not the code.
 //

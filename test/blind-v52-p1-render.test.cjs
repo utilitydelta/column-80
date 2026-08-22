@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v52 phase 1: THE RENDER.
 //
-// Bound to `session-v52/contract-p1.md`, written before the implementation
+// Bound to the phase-1 contract, written before the implementation
 // exists. Nothing in this file has read `src/**`; every row below points at a
 // sentence of that contract and says which one in a comment above it.
 //

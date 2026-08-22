@@ -2,9 +2,10 @@
 // (`,` `;` `)` `);`) is the completion honestly finishing the statement, and
 // is EXEMPT from the fuzzy head-duplicate drop (edit-distance threshold
 // max(1, 0.05*len) against the suffix's first non-blank line). A ghost that
-// genuinely re-spells the next suffix line still drops. Written against
-// session-v26/goal.md (defect class 3) and session-v26/measure-emptyserve.md
-// only; never read src/**.
+// genuinely re-spells the next suffix line still drops. Written against the
+// goal's defect class 3 and the empty-serve measurement
+// (`docs/architecture/fim-completion.md`, "The empty-serve separator, and the
+// burden of proof on dropping") only; never read src/**.
 //
 // Binding choice: the bundle re-exports everything from src/core/postprocess
 // and the surface is discovered at runtime. Two pipeline-level candidates

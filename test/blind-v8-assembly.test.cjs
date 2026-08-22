@@ -1,5 +1,5 @@
-// Blind oracle: the two pure test-assembly cores [session-v8/P5-surface.md,
-// composing the P3 renderBlankValue rule; goal.md contract items 2, 3, 5 and
+// Blind oracle: the two pure test-assembly cores [the P5 surface document,
+// composing the P3 renderBlankValue rule; goal contract items 2, 3, 5 and
 // finding 9]. Two exports from ../src/core/testAssembly:
 //   blankTestModule(moduleText, returnType, opts?) -> { snippet, holes }
 //     replaces each assert_eq!/assert_ne! EXPECTED value (the 2nd top-level

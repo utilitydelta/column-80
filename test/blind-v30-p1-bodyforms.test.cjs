@@ -1,12 +1,11 @@
 // BLIND ORACLE - session-v30 phase 1: the body scan sees the type a developer
 // wrote down, in every form a developer writes it.
 //
-// Written from `session-v30/goal.md` item 1b and the scout table it cites
-// (`session-v30/scout/findings.md`, finding 4), BEFORE the implementation
-// existed. Nothing here has read src/core/repairTypes.ts, fimWholeBlock.ts,
-// crossFileShape.ts, csExtraction.ts, goExtraction.ts or tsExtraction.ts. The
-// only contract in hand is the exported signature of `spanTypesInPlay` and the
-// four-leg priority order the goal states.
+// Written from goal item 1b and the scout table it cites (finding 4), BEFORE
+// the implementation existed. Nothing here has read src/core/repairTypes.ts,
+// fimWholeBlock.ts, crossFileShape.ts, csExtraction.ts, goExtraction.ts or
+// tsExtraction.ts. The only contract in hand is the exported signature of
+// `spanTypesInPlay` and the four-leg priority order the goal states.
 //
 // THIS FILE IS NEVER EDITED TO MAKE AN IMPLEMENTATION PASS. A row here is a
 // claim about what the product owes a repair round. Fix the product, or argue

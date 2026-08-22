@@ -6,7 +6,7 @@
 // finders (findTypeAnchorInText / pyFindTypeAnchorInText), the parameter-type
 // scan (argumentTypeNames) and the renderer (renderFimCandidates). None of
 // those bodies is read here; esbuild resolves the modules at bundle time only.
-// Written against session-v15/goal.md build step 1.
+// Written against the session goal's build step 1.
 //
 // THE PROMISE. At a member site the extension injects the receiver's members,
 // and under a header reading "to build a X:" it injects the construction

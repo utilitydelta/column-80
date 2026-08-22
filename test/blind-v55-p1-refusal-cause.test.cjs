@@ -1,5 +1,4 @@
 // Blind oracle, session-v55 phase 1: "fn-gen refusals name their real cause".
-// Contract: session-v55/contract-phase1.md.
 //
 // `executeDocumentSymbolProvider` is the ONLY thing the resolver asks, and its
 // answer splits four ways. Today all four collapse to one `undefined` return and

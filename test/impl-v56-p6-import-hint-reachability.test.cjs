@@ -1,6 +1,5 @@
 // IMPLEMENTER (white-box) - session-v56 phase 6, item 56: "the import hint
-// derives paths that compile". The contract is `session-v56/contract-phase6.md`
-// and a blind oracle
+// derives paths that compile". A blind oracle
 // (`test/blind-v56-p6-import-hint-reachability.test.cjs`) tests the same
 // behaviour from the contract alone. This file tests the seams the blind file
 // cannot see:

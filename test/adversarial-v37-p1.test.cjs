@@ -633,7 +633,7 @@ test("[RECORD] E: an independent walk through the product's own doc channel agre
   // margin inside the old 2.0 was 0.16 points. At that margin the row detects
   // "someone wrote doc comments in src/", not drift: v49's own doc comments took
   // it to 14.95% and turned it red with nothing wrong in the code. It cannot be
-  // re-cut either, because `session-v37/harvest-doc-spans.cjs` is permanently
+  // re-cut either, because the doc-span harvester is permanently
   // deleted and re-deriving the fixture with this row's own walk would make it
   // tautological. Widened rather than retired, because the population check above
   // is the half that caught the real defect and it is untouched.

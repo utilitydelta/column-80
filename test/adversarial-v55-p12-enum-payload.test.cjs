@@ -107,7 +107,7 @@ const spent = (f, op, name) => f.calls.filter((c) => c === `${op}(${name})`).len
 // The blind oracle's P12-3c pinned "an enum yields NO walkable render edge" and
 // its own header says that if the ruling is "the payload IS a render edge" the
 // row goes red and THAT RED IS THE DECLARATION, to be re-cut by the review or by
-// triage and never by the implementer. `session-v55/contract-phase12.md`'s
+// triage and never by the implementer. The phase-12 contract's
 // amendment makes that ruling. This review CONFIRMS it: the payload is a render
 // edge, `DerivedType.fields` does not move, and the row below is the replacement
 // text. It is written here rather than into the blind file, which the review may

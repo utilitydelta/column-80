@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v49 phase 1, "Go's field leg".
 //
-// Binds to session-v49/contract-phase1.md and to nothing else. While writing
+// Binds to the phase-1 contract and to nothing else. While writing
 // the assertions in this file, src/core/crossFileShape.ts, src/core/dataShape.ts,
 // src/core/goExtraction.ts and src/vscode/fnGen.ts were never opened. The only
 // src file read was src/core/extraction.ts, and only far enough to read the
@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 // THE FIXTURES ARE REAL BYTES WHERE REAL BYTES EXIST.
 //
-// session-v48/capture-go-hovers.json is 4356 bytes of `pgx.Conn` and 5110 bytes
+// The captured hover JSON is 4356 bytes of `pgx.Conn` and 5110 bytes
 // of `pgx.ConnConfig`, captured live off gopls v0.23.0 against
 // ~/sandbox/v42-corpus/pgx by the session-v48 scout. Every P1 row that can run
 // on a real hover runs on those bytes, raw, fences and prose and the trailing

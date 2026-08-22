@@ -108,8 +108,8 @@ function call(shim, extra = {}, config = {}) {
   return fn({ signal: new AbortController().signal, ...BASE, ...extra });
 }
 
-// A realistic success payload, shaped like the live capture in
-// session-v43/claude-json-sample.json.
+// A realistic success payload, shaped like the live JSON sample the v43 scout
+// captured off the CLI.
 function payload(over = {}) {
   const usage = { input_tokens: 2, output_tokens: 11, ...(over.usage ?? {}) };
   const out = {

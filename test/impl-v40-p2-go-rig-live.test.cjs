@@ -2,7 +2,7 @@
 // drives `go build -o /dev/null ./...` (via the product's own GoOracle),
 // against a REAL repo, both directions: green on the clean tree, and red
 // with real compiler output once a syntax error is spliced in. This is the
-// one part of the Go rig session-v40/goal.md asks to prove live rather than
+// one part of the Go rig the v40 goal asks to prove live rather than
 // with a fixture, because the whole point of the rig is that the checker is
 // the product's own oracle running the real toolchain, not a re-derived one.
 //

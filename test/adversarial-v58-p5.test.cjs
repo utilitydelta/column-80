@@ -310,7 +310,7 @@ test("CLEAN (re-cut): every model call in oracleSurface.ts is claimed AND carrie
   }
 });
 
-// DEFERRED as S58-10 (session-v58/scraps.md). Not fn-gen, so item 67's ruling
+// DEFERRED as S58-10. Not fn-gen, so item 67's ruling
 // does not reach it; wiring it means lifting the registry out of
 // `registerFnGen` into `extension.ts` and threading it through `FirstRunDeps`,
 // because `registerFirstRun` is a sibling call; and it carries a product call

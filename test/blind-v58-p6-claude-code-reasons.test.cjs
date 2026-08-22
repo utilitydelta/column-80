@@ -1,7 +1,6 @@
 // Blind oracle, session-v58 phase 6: "Claude Code speaks through its own
 // reasons" (roadmap item 68, first half - the structural pass, first case).
-// Contract: session-v58/contract-phase6.md. Written BEFORE the change, against
-// the CONTRACT and nothing else.
+// Written BEFORE the change, against the CONTRACT and nothing else.
 //
 // ===========================================================================
 // WHAT THIS FILE PINS

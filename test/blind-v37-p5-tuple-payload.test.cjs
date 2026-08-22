@@ -1,6 +1,6 @@
 // BLIND CONTRACT ORACLE - session-v37 item 5 (roadmap item 32).
-// The tuple-variant payload. Written from `session-v37/goal.md` and the declared
-// facade only. Nothing here read `src/core/crossFileShape.ts` or `src/vscode/fnGen.ts`.
+// The tuple-variant payload. Written from the phase goal and the declared facade
+// only. Nothing here read `src/core/crossFileShape.ts` or `src/vscode/fnGen.ts`.
 //
 // THE DEFECT. rust-analyzer hovers a tuple variant with its payload elided:
 //
@@ -32,8 +32,8 @@
 // that was byte-verified on three real enums - see BYTE CHECK below). Nothing is
 // hand-invented. The corpora are read once here and inlined so these rows run on any box.
 //
-// BYTE CHECK. `session-v37/spike-10-elision-rust.txt` prints `hoverBytes` beside each
-// injected def. The three hover strings reconstructed from it measure 142, 84 and 62
+// BYTE CHECK. The Rust elision spike printed `hoverBytes` beside each injected
+// def. The three hover strings reconstructed from it measure 142, 84 and 62
 // bytes, matching the spike exactly, so the elision form used throughout this file
 // (four-space indent, `( /* … */ )` with U+2026) is the real one and not a guess.
 //
@@ -64,8 +64,8 @@ const derived = (name, signature) => ({
 // HOVERS
 // ---------------------------------------------------------------------------
 
-// MEASURED. `session-v35/log.txt:2247`, the live `create_ca` capture that filed
-// roadmap item 32, under the header "Data shape of `BasicConstraints`".
+// MEASURED. The live `create_ca` capture that filed roadmap item 32, under the
+// header "Data shape of `BasicConstraints`".
 const HOVER_BASIC_CONSTRAINTS = [
   "pub enum BasicConstraints {",
   "    Unconstrained,",
@@ -73,8 +73,8 @@ const HOVER_BASIC_CONSTRAINTS = [
   "}",
 ].join("\n");
 
-// MEASURED. `session-v37/spike-10-elision-rust.txt`, "PRODUCT INJECTS (renderDef,
-// byte for byte)" for base64::DecodeError. Spike reports hoverBytes=142.
+// MEASURED. The Rust elision spike, "PRODUCT INJECTS (renderDef, byte for byte)"
+// for base64::DecodeError. Spike reports hoverBytes=142.
 const HOVER_DECODE_ERROR = [
   "pub enum DecodeError {",
   "    InvalidByte( /* … */ ),",
@@ -100,7 +100,7 @@ const HOVER_STATUS = [
   "}",
 ].join("\n");
 
-// MEASURED. `session-v35/log.txt:2205`. A real enum carrying all three variant
+// MEASURED. Same `create_ca` capture. A real enum carrying all three variant
 // kinds, and the only captured evidence in this repo of how RA renders a STRUCT
 // variant: braces, body elided, no parentheses anywhere.
 const HOVER_SIGNATURE_ALGORITHM_PARAMS = [
@@ -111,8 +111,8 @@ const HOVER_SIGNATURE_ALGORITHM_PARAMS = [
   "}",
 ].join("\n");
 
-// MEASURED. `session-v35/log.txt:609`. RA truncated the variant LIST at five and
-// appended a bare `/* … */,` line. The source declares eight.
+// MEASURED. Same capture. RA truncated the variant LIST at five and appended a
+// bare `/* … */,` line. The source declares eight.
 const HOVER_PKI_ERROR = [
   "pub enum PkiError {",
   "    Io( /* … */ ),",
@@ -124,7 +124,7 @@ const HOVER_PKI_ERROR = [
   "}",
 ].join("\n");
 
-// MEASURED. `session-v37/spike-14-comment-anchor.txt`, "PRODUCT INJECTS" for
+// MEASURED. The comment-anchor spike, "PRODUCT INJECTS" for
 // base64::alphabet::Alphabet. A struct: RA prints the field WITH its type, no elision.
 const HOVER_ALPHABET = [
   "pub struct Alphabet {",
@@ -132,7 +132,7 @@ const HOVER_ALPHABET = [
   "}",
 ].join("\n");
 
-// MEASURED. `session-v35/log.txt`, under "Data shape of `CertificateParams`". RA
+// MEASURED. Same capture, under "Data shape of `CertificateParams`". RA
 // truncated the FIELD list at five. A struct, so item 5 must not touch it.
 const HOVER_CERTIFICATE_PARAMS = [
   "pub struct CertificateParams {",
@@ -384,7 +384,7 @@ const SRC_COBRA_COMPLETIONS = [
   ")",
 ].join("\n");
 
-// MEASURED. `session-v37/spike-10-elision-go.txt`, what the product injects for cobra's
+// MEASURED. The Go elision spike, what the product injects for cobra's
 // ShellCompDirective.
 const HOVER_SHELL_COMP_DIRECTIVE = "type ShellCompDirective int // size=8";
 

@@ -1,7 +1,7 @@
 // Blind oracle for P4 item 2a: the `membersOfType` extractor capability, LIVE
-// against real rust-analyzer on the cohort-tally crate. Contract:
-// session-v6/harness/SURFACE-p4-item2a.md (L1/L2/L3). Empirical documentSymbol
-// shape: session-v6/harness/investigation-item2.md §1(A).
+// against real rust-analyzer on the cohort-tally crate. Contract: the P4 item
+// 2a surface document (L1/L2/L3), with the empirical documentSymbol shape from
+// the item-2 investigation.
 //
 // The capability under test does NOT exist yet - `extractor.membersOfType` is
 // undefined, so every bar that calls it is RED-before-green ("membersOfType is

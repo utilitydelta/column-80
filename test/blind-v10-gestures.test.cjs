@@ -1,7 +1,7 @@
 // Blind oracle: v10 phase 4 - wiring the C# GESTURES (fn-gen / FIM whole-block /
 // compiler-directed repair) for the `csharp` language id, and paying down the
 // six "defaults-to-Rust" behavior forks the phase-1 review catalogued
-// (session-v10/scraps.md F2, F3a-e). Black-box: never reads the not-yet-written
+// (findings F2, F3a-e). Black-box: never reads the not-yet-written
 // csharp branches; tests the DISPATCH surface + goal + REAL captured C# inputs.
 //
 // THE FROZEN-BYTES INVARIANT (phase4-brief): every fork fix is a NEW csharp

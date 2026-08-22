@@ -1,4 +1,4 @@
-// Phase-1 seam-confirmation lock (session-python/goal.md phase 1). v9 extracted
+// Phase-1 seam-confirmation lock (the Python session, phase 1). v9 extracted
 // oracleFor + the whole-block registry as the only core construction paths; v10
 // (C#) proved they take a third language; v11 (Python) is the fourth. This file
 // LOCKS the phase-1 seam state so a later refactor — or a premature/residual

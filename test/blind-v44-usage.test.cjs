@@ -1,7 +1,7 @@
 // Blind oracle: the usage / cache instrument on the Claude Code backend
 // (src/core/claudeCodeInstruct.ts, session-v44 phase 1).
 //
-// Written from session-v44/contract-phase1.md ONLY, BEFORE the implementation
+// Written from the phase-1 contract ONLY, BEFORE the implementation
 // existed. The oracle never read src/core/claudeCodeInstruct.ts. Every
 // assertion below traces to a sentence in that contract; the row numbers match
 // its "Testing shape" list 1..13, and rows named "extra" trace to a sentence in
@@ -155,7 +155,7 @@ const TAIL_RE =
 // The fields that were on the line before this phase, in their v43 order.
 //
 // SUPERSEDED by session-v44 phase 2: `cache-mode=` now sits between model= and
-// ttft= (session-v44/contract-phase2.md, "Evidence"). Phase 1's rule that the
+// ttft= (the phase-2 contract, "Evidence"). Phase 1's rule that the
 // accounting fields TERMINATE the line is unaffected, and so is every other
 // field's spelling, order and value, which is what this row exists to guard.
 const HEAD_RE =

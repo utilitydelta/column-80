@@ -22,9 +22,10 @@
 // WHY IT IS GONE
 //
 // The three fields it was written about no longer exist. Session-v48 phase 1
-// (`session-v48/contract-phase1.md`) makes all three derivations of ONE context
-// stop, resolved in `budgetProfileFor` and read off the resolved profile, for
-// exactly the reason the v37 seam was built: so a later ruling could move them.
+// (`docs/constants.md`, "The derivation seam's contract") makes all three
+// derivations of ONE context stop, resolved in `budgetProfileFor` and read off
+// the resolved profile, for exactly the reason the v37 seam was built: so a
+// later ruling could move them.
 // The ruling of 2026-08-10 is that every language gets the same numbers, which
 // removes both the per-language table and the mutability the seam offered.
 //

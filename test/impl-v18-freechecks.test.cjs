@@ -1,7 +1,8 @@
 // Implementer tests for v18 phase 4: the construction-surface filter.
 //
-// Phase 4's other half, the self-reference gate leg, was withdrawn - see
-// session-v18/triage-p4.md - and its tests went with it.
+// Phase 4's other half, the self-reference gate leg, was withdrawn - the
+// withdrawal is on the record in `docs/architecture/fim-completion.md`,
+// "Measured records" - and its tests went with it.
 //
 // The blind file drives the filter through its contract shapes. These cover what
 // it cannot see: the per-language constructor spellings, the signature shapes the

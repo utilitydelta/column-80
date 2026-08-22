@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v50 phase 3, "Python's field leg".
 //
-// Binds to session-v50/contract-phase3.md and to nothing else. The four bodies
+// Binds to the phase-3 contract and to nothing else. The four bodies
 // the brief fences off were never opened: `pyFieldsFromMembers`,
 // `pyFieldTypeCursor` and `pyRenderDerivedDef` in src/core/pyExtraction.ts, and
 // `pyShapeBlock` in src/vscode/fnGen.ts. What WAS read, and only far enough to

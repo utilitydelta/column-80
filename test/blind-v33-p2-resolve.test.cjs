@@ -1,5 +1,5 @@
-// Blind oracle: session-v33 phase 2, the payload path. Written from
-// `session-v33/contract.md` ALONE. src/** was never read: esbuild resolves
+// Blind oracle: session-v33 phase 2, the payload path. Written from the
+// phase-2 contract ALONE. src/** was never read: esbuild resolves
 // `../src/core/contextBlocks` at bundle time only, and every expectation below
 // is quoted from a sentence of the contract, named in the test title.
 //

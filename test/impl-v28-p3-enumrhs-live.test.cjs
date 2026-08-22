@@ -1,7 +1,7 @@
 // IMPLEMENTATION oracle (LIVE) for session-v28 phase 3: the FIM enum-RHS leg,
 // replayed end to end against the real Roslyn language server and the real 1.5b.
 //
-// The acceptance bar, session-v28/goal.md item 3 verbatim: "At `t.Band == ` in
+// The acceptance bar, goal item 3 verbatim: "At `t.Band == ` in
 // the captured file the block lists Municipal/Regional/Continental/Parcel and
 // the ghost completes `LodBand.Regional` against the doc-comment intent."
 //
@@ -63,15 +63,16 @@
 // the original bytes unconditionally in test.after and again on process exit. A
 // run that leaves the playground modified is a defect in this file.
 //
-// WHAT THE CAPTURED STATE IS. session-v27/capture-csharp-linq.md defect 3: the
-// human was mid-edit on `return tiles.Where(t => t.IsRegional).Count();`, had
+// WHAT THE CAPTURED STATE IS. `docs/architecture/fn-generation.md`, "The dark
+// reject", plain-FIM bullet: the human was mid-edit on
+// `return tiles.Where(t => t.IsRegional).Count();`, had
 // replaced the middle with `t.Band ==`, and the closing `).Count();` still sat
 // AFTER the cursor - which is why the capture's ghost re-typed it. So the buffer
 // this file writes holds the whole line, `).Count();` included, and the cursor
 // splits it at the operator. That does not parse, and it is not meant to: an
 // enum-RHS site only exists in a buffer the human has not finished. The suffix
-// re-type itself (capture defect 3b) is a postprocess question deferred in
-// session-v27/scraps.md and is NOT this file's bar.
+// re-type itself is a postprocess question deferred at the time, and is NOT
+// this file's bar.
 //
 // WHERE THE CURSOR SITS, and why it is not where goal.md's prose puts it.
 // goal.md writes the site as `t.Band == `, trailing space included. The capture

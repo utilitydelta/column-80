@@ -1,7 +1,7 @@
 // Blind oracle: session-v56 phase 1, a reachable remote host with zero models
 // is not ready (roadmap item 57).
 //
-// Written from session-v56/contract-phase1.md ONLY, BEFORE the fix. Every test
+// Written from that phase's contract ONLY, BEFORE the fix. Every test
 // names the contract behaviour (1..4) or falsification bullet it pins. The
 // oracle read no implementation of the remote-arm enable decision: it read the
 // facade's exported signature (`buildFnGenService(output, log, probeOpts?,

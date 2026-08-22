@@ -6,8 +6,8 @@
 // opposite of the oracle's: every row here is an attempt to break the thing,
 // and a row that stays green is a claim of CLEAN, not decoration.
 //
-// Branch point HEAD bb32501 (phase 1). Contract: session-v58/contract-phase2.md
-// with its two amendments.
+// Branch point HEAD bb32501 (phase 1), against that phase's contract and its
+// two amendments.
 //
 // THE TRAP THIS FILE OBEYS. A raw U+2028 or U+2029 anywhere in a .cjs file -
 // inside a comment included - makes the file fail to parse, because JS treats

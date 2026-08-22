@@ -7,7 +7,7 @@
 // included. The v36 backtick gesture writes the name in a body comment by
 // construction, so the span leg won every time the developer used the gesture.
 //
-// Measured live on two servers, 12 rows in session-v37/spike-14-comment-anchor.txt:
+// Measured live on two servers, 12 rows in the comment-anchor spike:
 // rust-analyzer and the TypeScript language service both return NOTHING at a
 // comment position (no definition, no hover, no shape, no worked example), and
 // the same name at a code position in the same file in the same run resolves

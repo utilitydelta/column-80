@@ -1,12 +1,12 @@
-// Blind oracle: the bound, wired (session-v25/contract-wiring.md, phase 2).
+// Blind oracle: the bound, wired (the phase-2 wiring contract).
 // Covers goal fixes 1 (the stream half), 2 (the exemption), 5 (the bound's
 // share of the evidence) and 6 (the setting goes). Drives CompletionService
 // headless with an injected fake generate fn, and drives generateFim against
 // an in-process ndjson server so the stream abort is testable without ollama.
 //
-// Written against session-v25/contract-wiring.md, session-v25/contract-bound.md
-// and session-v25/goal.md only. Never read src/core/ollama.ts,
-// src/core/fimBound.ts, src/vscode/completionProvider.ts, nor the logic of
+// Written against the wiring contract, the bound contract and the goal only.
+// Never read src/core/ollama.ts, src/core/fimBound.ts,
+// src/vscode/completionProvider.ts, nor the logic of
 // src/core/completionService.ts. Phase 1's fimBound surface is treated as
 // stable and is used to state expectations the wiring must reproduce.
 //

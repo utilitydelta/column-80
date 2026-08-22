@@ -2,11 +2,13 @@
 // `src/core/tightenRatify.ts` judges what a workspace symbol provider returned
 // for one candidate, and derives the import line the target file would need.
 //
-// The contract is `session-v52/contract-p3.md`; `session-v52/triage-p3.md` is
-// the adversarial review that graded the first build against `cargo check`,
-// `go list`, the CPython interpreter, `tsc` and a live Roslyn server, and every
-// gate below traces to one of its 20 defects. A blind oracle tests the same
-// surface from the contract alone; this file tests the seams neither names.
+// The phase contract set the surface; the phase triage was the adversarial
+// review that graded the first build against `cargo check`, `go list`, the
+// CPython interpreter, `tsc` and a live Roslyn server, and every gate below
+// traces to one of its 20 defects. The graded result is in
+// `docs/architecture/tighten-doc-comment.md`, "`importLineFor`, graded". A blind
+// oracle tests the same surface from the contract alone; this file tests the
+// seams neither names.
 //
 // PRECISION IS THE SHIP CONDITION HERE, so most of these rows assert a REFUSAL.
 // An import line that does not compile hands the model a type it will name

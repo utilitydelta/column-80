@@ -1,7 +1,7 @@
 // BLIND-STYLE CONTRACT - session-v42 phase 2: the per-language type cap.
 //
 // THE CONTRACT: Go's injected-type cap is 8, measured on the authored-gesture
-// funnel (the cap was the binding stage; ladder in session-v42/funnel-report
+// funnel (the cap was the binding stage; the ladder is in the funnel report's
 // addendum).
 //
 // THE RUST HALF IS SUPERSEDED by session-v48 phase 1 (docs/supersessions.md).

@@ -4,8 +4,8 @@
 // NEVER READ. src/core/instructPostprocess.ts was not opened, grepped, or
 // inspected in any form while writing this file, and neither was
 // src/core/fnGenService.ts. Every expectation below comes from the written
-// contract and from captured model replies in
-// session-complxity-research/data/repair-v38-fence.json (data, not source).
+// contract and from the captured model replies of the item-2 capture file
+// (data, not source).
 // The only source-adjacent files read were test/impl2-postprocess.test.cjs,
 // test/blind2-postprocess.test.cjs and test/.blind-util.cjs.
 //
@@ -83,8 +83,8 @@
 // I resolve it STRICTLY (closer length >= opener length), which drops the
 // leniency, on this evidence:
 //
-//   Scanned all 86 json files under session-complxity-research/data/ for
-//   strings containing a fence line. 1184 such strings. Run-length pairs:
+//   Scanned all 86 json files of captured replies for strings containing a
+//   fence line. 1184 such strings. Run-length pairs:
 //       open 3 / close 3   1173
 //       open 4 / close 4     11
 //       open N / close M<N    0
@@ -180,9 +180,9 @@ const { extractFirstCodeBlock, postprocessInstructOutput } = mod;
 test.after(cleanup);
 
 // ---- captured replies, verbatim ------------------------------------------
-// Copied out of session-complxity-research/data/repair-v38-fence.json,
-// rounds[].raw, character for character. Held as line arrays so the fence runs
-// stay readable and nothing is re-escaped.
+// Copied out of the item-2 capture file, rounds[].raw, character for
+// character. Held as line arrays so the fence runs stay readable and nothing
+// is re-escaped.
 
 // row id acme_memcache:.../shard_mem_cache.rs:get_write_event_seqes:41992
 // round 0. rejectWhy: "generation contains a code-fence line (unclosed or

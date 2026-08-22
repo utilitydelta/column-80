@@ -1,6 +1,6 @@
 // BLIND CONTRACT ORACLE - session-v41, phase 2: alias resolution, two tiers.
 //
-// Written from `session-v41/goal.md` (phase-2 section, the three-way evidence
+// Written from this session's goal (phase-2 section, the three-way evidence
 // split, decision rule 1) and from the phase-2 contract handed to this oracle.
 // Harness conventions copied from test/blind-v41-p1-trait-recovery.test.cjs and
 // the G1/G2 rows of test/adversarial-v41-p1.test.cjs (vscode stub, resolvePrefill

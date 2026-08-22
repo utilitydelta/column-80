@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v50 phase 0, "the enum spelling is a merge".
 //
-// Binds to session-v50/contract-phase0.md and to nothing else. While writing the
+// Binds to the phase 0 contract and to nothing else. While writing the
 // assertions in this file the BODY of src/core/crossFileShape.ts was never
 // opened, and src/vscode/fnGen.ts was never opened at all. The only src reads
 // were type declarations, far enough to build a fixture a real transport would

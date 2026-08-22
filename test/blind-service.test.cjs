@@ -74,8 +74,8 @@ const REQ = { prefix: "const a = 1;\nlet b = ", suffix: ";\n// end\n", manual: t
 // ---- config defaults (pure fixture; may pass even against stubs)
 
 // v25 amended this frozen assertion, which is not a thing done lightly. The
-// `multiline: true` row was removed because session-v25/goal.md fix 6 repeals
-// the setting outright: "Decided: the setting goes. It is user-facing, defaults
+// `multiline: true` row was removed because the v25 goal's fix 6 repeals the
+// setting outright: "Decided: the setting goes. It is user-facing, defaults
 // true, and says 'Allow multi-line completions', and after fix 1 it would govern
 // nothing except exempt sites." Scope of authorship became a product decision
 // rather than a knob, so the field no longer exists to have a default. Every

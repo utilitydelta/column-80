@@ -5,7 +5,7 @@
 // variable. The whole point is a controlled leak boundary: scaffold what the
 // TYPE determines (visible in the signature anyway, no contract leak), keep as
 // ONE hole what the CONTRACT determines (leaking it defeats blank-value). This
-// test mirrors session-v8/tabstop-templates.txt (ground truth) exactly. Never
+// test mirrors the tabstop-template ground truth exactly. Never
 // read src/**; renderBlankValue is a stub, so multi-hole/struct/tuple/array/
 // startHole cases are expected genuine RED.
 //

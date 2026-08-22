@@ -1,5 +1,5 @@
 // BLIND ORACLE - session-v56 phase 6 (item 56, "the import hint derives paths
-// that compile"). Written against session-v56/contract-phase6.md BEFORE the
+// that compile"). Written against the phase 6 contract BEFORE the
 // implementation exists. Nothing in here was derived from reading the body of
 // `renderImportHint`, `deriveUsePath`, or `rustImport`: only the exported
 // signature `renderImportHint(types, targetFilePath, deps)` and the way the

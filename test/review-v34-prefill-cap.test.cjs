@@ -274,7 +274,7 @@ rtest("item 1 frees the byte budget but not the CAP SLOT: the fifth project type
 // either"; the third of those is unenforced.
 // ===========================================================================
 
-// REVISED during triage, and the reason is on the record in session-v34/scraps.md.
+// REVISED during triage, and the reason is on the record here.
 //
 // This row originally asserted that a candidate with NO resolvable definition
 // must be refused anyway. Two things are wrong with that. Item 1 forbids a name

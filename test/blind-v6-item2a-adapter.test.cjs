@@ -1,8 +1,8 @@
 // Blind oracle for P4 item 2a: the P-map bar - `RaCommandExtractor.membersOfType`
 // maps a hierarchical documentSymbol response into CompletionMember[]. PURE /
 // headless (blind6-command-adapter pattern: vscode stub + esbuild vscode alias +
-// fake RaCommandRunner). Contract: session-v6/harness/SURFACE-p4-item2a.md
-// (P-map). Empirical documentSymbol shape: investigation-item2.md §1(A).
+// fake RaCommandRunner). Contract: the P4 item 2a surface document (P-map).
+// Empirical documentSymbol shape: investigation-item2.md §1(A).
 //
 // membersOfType does NOT exist yet, so every case is RED-before-green
 // ("membersOfType is not a function"). The FILE still LOADS (esbuild bundles the

@@ -1,7 +1,7 @@
 // BLIND ORACLE for session-v55 phase 10 (Q10): a generic parameter is not a call
-// owner. Bound to `session-v55/contract-phase10.md`, written before the fix
-// exists, driving `resolveCallOwners` through the public facade over a stubbed
-// vscode module. Nothing here reads the function's body.
+// owner. Bound to that phase's contract, written before the fix exists, driving
+// `resolveCallOwners` through the public facade over a stubbed vscode module.
+// Nothing here reads the function's body.
 //
 // The defect, in contract terms: when a call's receiver is a generic parameter,
 // the enclosing-container walk answers a single uppercase letter such as `T`,

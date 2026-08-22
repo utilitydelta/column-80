@@ -228,9 +228,9 @@ test("the fields ahead of usage keep their spelling, order and values", async ()
       cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
     })
   );
-  // `cache-mode=` was added between model= and ttft= by phase 2
-  // (session-v44/contract-phase2.md, "Evidence"). Everything else on the head
-  // keeps its spelling, order and value, which is what this row guards.
+  // `cache-mode=` was added between model= and ttft= by phase 2, under its
+  // contract's "Evidence" section. Everything else on the head keeps its
+  // spelling, order and value, which is what this row guards.
   assert.match(
     line,
     /^\[claude-code\] fence-strip=no num_turns=1 model=claude-sonnet-4-5 cache-mode=single-shot ttft=\d+ms total=\d+ms cli-ttft=900ms cli-total=1200ms /

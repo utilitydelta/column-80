@@ -1,5 +1,5 @@
-// Blind oracle: the Python compiler oracle (session-python/goal.md phase 2 +
-// session-python/phase2-brief.md). Black-box contract tests written from the
+// Blind oracle: the Python compiler oracle (the Python session's phase 2 goal
+// and brief). Black-box contract tests written from the
 // CompilerOracle surface ALONE, before src/core/pyOracle.ts exists. Covers
 // every phase-2 contract point the brief pins:
 //   Construction    PyOracle(deps), language === "python", NO test rung, NO

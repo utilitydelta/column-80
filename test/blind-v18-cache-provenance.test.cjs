@@ -1,5 +1,5 @@
 // BLIND ORACLE - v18 phase 1 "cache provenance and the member-site walk
-// refusal" [session-v18/phase1-surface.md]. Black-box over CompletionCache's
+// refusal" [the phase 1 surface]. Black-box over CompletionCache's
 // new provenance surface and the CompletionService behaviour that rides on it.
 // Never reads src/**: the entry re-exports the modules and esbuild resolves
 // them at bundle time only. Written against the FROZEN CONTRACT, not the code.

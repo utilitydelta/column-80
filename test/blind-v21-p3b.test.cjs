@@ -1,8 +1,10 @@
 // BLIND ORACLE — session-v21 phase 3b: the WHOLE-BLOCK injection site (cursor in
 // an empty function body, goal item 8), across Python / TypeScript / C#.
 //
-// Contract under test: session-v21/surface-p3b.md (the settled promise). §0's
-// corrected budget is 1200 chars = DATASHAPE_TOTAL_TOK(300) * 4 (NOT 1600).
+// Contract under test: the v21 phase 3b surface (the settled promise), whose
+// measured record is `docs/architecture/surface-injection.md`, "The cold
+// cross-file walk". §0's corrected budget is 1200 chars =
+// DATASHAPE_TOTAL_TOK(300) * 4 (NOT 1600).
 // This file NEVER opens the body of a function under test; it drives the settled,
 // exported surface with fakes and asserts the CONTRACT INVARIANTS, not the
 // mechanism the implementer is free to choose. The current implementation carries
@@ -175,8 +177,8 @@ test("§1a: even a fields-heavy type (12 fields, 4 methods) surfaces a callable,
 // RE-CUT at the MEASURED shape (session-v55 phase 18, roadmap item 46). This
 // section used to script the cold answer as a set of ONE member warming to seven,
 // so the member COUNT changed between the two answers. No server does that.
-// `session-v21/spike-p3.md:232-256` recorded the live Pylance walk this section
-// exists for, over `class Stripe` (11 members) in the python-scratch dogfood repo:
+// The v21 spike recorded the live Pylance walk this section exists for, over
+// `class Stripe` (11 members) in the python-scratch dogfood repo:
 //
 //   cold  membersOfType -> 11 members, 1 signed, 52ms  (the 50ms fan-out budget let
 //                                                       exactly one ask land, and it

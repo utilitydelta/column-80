@@ -1,8 +1,8 @@
 // BLIND ORACLE - session-v28 phase 1: the repair round sees the SPAN's types,
 // not the one type a diagnostic happened to name.
 //
-// Written from the contract only: `session-v28/goal.md` item 1 plus its
-// acceptance bar, and `session-v28/design-p1.md`. Nothing here has read
+// Written from the contract only: the phase goal's item 1 plus its acceptance
+// bar, and the phase-1 design note. Nothing here has read
 // src/core/repairTypes.ts, src/core/repairGate.ts, the body of
 // classifyCsHallucination, src/vscode/fnGen.ts or src/vscode/oracleSurface.ts.
 // The harness shape (esbuild bundle of src/core into a throwaway .cjs, required

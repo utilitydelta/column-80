@@ -34,9 +34,9 @@ const { mod, cleanup } = bundleCore(
 const { recoverElidedSurface, renderDerivedDef, resolveCrossFileShape, tsShapeHooks } = mod;
 test.after(cleanup);
 
-// The hover form is rust-analyzer's own, byte-verified against
-// session-v37/spike-10-elision-rust.txt: four-space indent, a real U+2026 inside
-// a block comment, one space either side of it.
+// The hover form is rust-analyzer's own, byte-verified against the Rust
+// elision spike capture: four-space indent, a real U+2026 inside a block
+// comment, one space either side of it.
 const elided = (name) => `${name}( /* … */ ),`;
 const show = (v) => JSON.stringify(v);
 

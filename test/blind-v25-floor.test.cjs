@@ -1,9 +1,9 @@
 // Blind oracle: the minimum-length floor and the suppression ledger
-// (session-v25/contract-floor.md, phase 4). Covers goal fix 8 and the counting
+// (the phase-4 floor contract). Covers goal fix 8 and the counting
 // half of goal fix 5.
 //
-// Written against session-v25/contract-floor.md, the fix 5 / fix 8 / Bars
-// sections of session-v25/goal.md, and session-v25/jetbrains-flcc.md only.
+// Written against the floor contract, the fix 5 / fix 8 / Bars sections of the
+// goal, and the JetBrains full-line-completion notes only.
 // Never read src/core/fimBound.ts, src/core/fimComment.ts, src/vscode/*, nor
 // the logic of src/core/config.ts or src/core/completionService.ts - only their
 // exported type surfaces, so the requests and configs below are well formed.

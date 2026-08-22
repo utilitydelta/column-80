@@ -19,7 +19,7 @@
 // 2026-08-10, LATER (session-v49 phase 0): those six rows are now DELETED, on
 // the human's ruling. They were kept as skips on the chance the captures came
 // back; the human checked their other machine and they are not there, so the
-// loss is settled rather than pending (session-v48/scraps.md S48-9). A row that
+// loss is settled rather than pending (scrap S48-9). A row that
 // can never run again is not a guard — it is a title that reads like one, and
 // this file's own first paragraph says every row here ran.
 //

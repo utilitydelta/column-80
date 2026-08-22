@@ -7,7 +7,7 @@
 // Run: SKIP_LIVE=1 node --test test/.adv-v25-phase1.test.cjs
 //
 // Evidence behind each block is in the review report; the measured corpora are
-// session-v25/harness/results/spike1{,-go,-python}.json (750 real generations)
+// the phase-1 spike results across Rust, Go and Python (750 real generations)
 // and the five repos those sites were harvested from.
 
 const test = require("node:test");

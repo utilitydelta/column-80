@@ -1,7 +1,7 @@
 // BLIND ORACLE - session-v51 phase 0. THE C# MEMBER LIST IS THE FLOOR.
 //
-// Bound to `session-v51/contract-phase0.md`, written before the implementation.
-// Every row below points at a sentence in that file. Nothing here imports
+// Bound to that phase's contract, written before the implementation. Every row
+// below points at a sentence in it. Nothing here imports
 // `csShapeBlock`, `csShapeGraphBlock`, `walkDataShape` or any pricing helper:
 // the contract bans it by name, because a row bound to a helper is what let
 // Python's field leg sit dark for most of session-v50. The only thing driven is

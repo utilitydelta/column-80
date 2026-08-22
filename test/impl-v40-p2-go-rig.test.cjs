@@ -5,8 +5,8 @@
 // snippets and against real functions pulled by hand out of cobra/gin. The
 // live check that lib-go.cjs's buildTests really runs `go build -o /dev/null
 // ./...` against a real repo lives in impl-v40-p2-go-rig-live.test.cjs — this
-// file needs neither a GPU nor a network, per session-v40/goal.md's process
-// section for this phase.
+// file needs neither a GPU nor a network, which is what the phase's process
+// section required.
 //
 // Run: SKIP_LIVE=1 node --test test/impl-v40-p2-go-rig.test.cjs
 

@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v51 phase 3, "the hover fan-out cap is two numbers".
 //
-// Binds to session-v51/contract-phase3.md and to nothing else. The four bodies
+// Binds to the phase 3 contract and to nothing else. The four bodies
 // the brief fences off were never opened: `membersWithHoverSignatures` and the
 // transports' `membersOfType` in src/core/extraction.ts / src/vscode/*, the
 // resolver body of `resolveCrossFileShape` in src/core/crossFileShape.ts, and

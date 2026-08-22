@@ -1,8 +1,7 @@
 // IMPLEMENTER tests - session-v51 phase 1: the Python measurement rig.
 // Proves the pieces that need neither a live pyright nor a corpus: the
-// function scanner (session-complxity-research/spikes/lib-py-scan.cjs) and the
-// placement rules (session-complxity-research/spikes/lib-py.cjs), against
-// synthetic Python snippets.
+// function scanner (`lib-py-scan.cjs`) and the placement rules (`lib-py.cjs`),
+// against synthetic Python snippets.
 //
 // Python has no braces, so every span rule here is a DEDENT rule, and each of
 // the rows below is a shape that would silently truncate or over-run a span if

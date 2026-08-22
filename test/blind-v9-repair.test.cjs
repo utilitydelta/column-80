@@ -1,5 +1,5 @@
 // Blind oracle: v9 phase 4B - repair side + oracle honesty for TypeScript
-// (session-v9/phase4-surface.md: "Iron constraints", "Predicted breakage",
+// (the phase-4 surface contract: "Iron constraints", "Predicted breakage",
 // "4B contract", "4B amendments"). Black-box: never reads src/**. Written
 // BEFORE the 4B implementation exists; every red maps to an unbuilt 4B
 // behavior, every green is a freeze pin on behavior that must survive 4B.

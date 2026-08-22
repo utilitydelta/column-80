@@ -6,7 +6,7 @@
 // to answer, and a member left without a signature is DROPPED by the renderer.
 //
 // WHAT THIS FILE FOUND, and it was found on the phase-0 baseline's own artifact:
-// `session-v49/baseline-py.txt` records the gate answering
+// the baseline log records the gate answering
 // `membersOfType(GraphEngine) -> 38 members` and, four lines later, the timed
 // row for the same type reading `members=31`. Seven members left the surface and
 // nothing anywhere said so. Every count downstream was a silent lower bound.

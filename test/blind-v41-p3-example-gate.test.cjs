@@ -1,7 +1,7 @@
 // BLIND CONTRACT ORACLE - session-v41, phase 3: the example gate.
 //
-// Written from `session-v41/goal.md` (phase-3 section, decision rules 2 and 3)
-// and from the phase-3 contract handed to this oracle. Harness conventions
+// Written from the session goal (phase-3 section, decision rules 2 and 3) and
+// from the phase-3 contract handed to this oracle. Harness conventions
 // copied from test/blind-v41-p2-alias-tiers.test.cjs (vscode stub, resolvePrefill
 // product path, makeDoc shape) and test/blind-v38-p1-enum-render.test.cjs
 // (example-leg stub `example: async (c, prefer) => examples[prefer]`, the

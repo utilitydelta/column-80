@@ -1,5 +1,5 @@
-// Blind oracle: doc-comment attachment (session-v32/contract-p1-attach.md,
-// goal.md item 1). Black-box contract tests for `attachRunStart` and
+// Blind oracle: doc-comment attachment (the phase 1 attach contract, goal item
+// 1). Black-box contract tests for `attachRunStart` and
 // `attachedCandidateIndex`, written from the CONTRACT ALONE.
 //
 // REWRITTEN after the phase-1 predicate was REPLACED. An adversarial review

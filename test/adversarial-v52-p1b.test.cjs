@@ -11,7 +11,7 @@
 //       get it. Read a red E as "this is the claim".
 //   S*  a suspicion that came back SOUND. Green means the fix holds.
 //
-// Nothing here is a spec. The contract is `session-v52/contract-p1.md`.
+// Nothing here is a spec; the phase-1 contract is.
 //
 // Run: SKIP_LIVE=1 npx node --test test/adversarial-v52-p1b.test.cjs
 

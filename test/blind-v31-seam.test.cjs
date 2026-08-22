@@ -1,6 +1,6 @@
-// Blind oracle: the TDD language seam (session-v31/contract-seam.md, goal.md
-// item 1). Black-box contract tests written from the CONTRACT ALONE, before the
-// implementation exists. Covers:
+// Blind oracle: the TDD language seam (docs/architecture/tdd-language-seam.md,
+// "The seam"; goal item 1). Black-box contract tests written from the CONTRACT
+// ALONE, before the implementation exists. Covers:
 //   §tddLangFor      one construction point, undefined for an unregistered lang
 //   §TddLang         the Rust adapter's shape and its delegating members
 //   §PlacementResult same-file placement, and the no-project-root refusal

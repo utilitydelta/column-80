@@ -5,9 +5,8 @@
 // Written AFTER the implementation and after the blind oracle
 // (test/blind-v58-p6-claude-code-reasons.test.cjs, 65 rows green). Its job is
 // the opposite of the oracle's: every row here is an attempt to break the
-// thing, and a row that stays green is a claim of CLEAN, not decoration.
-//
-// Contract: session-v58/contract-phase6.md.
+// thing, and a row that stays green is a claim of CLEAN, not decoration. The
+// claims attacked are that phase's contract clauses.
 //
 // ---------------------------------------------------------------------------
 // HOW THE NARROWING CLAIM IS PROVEN HERE

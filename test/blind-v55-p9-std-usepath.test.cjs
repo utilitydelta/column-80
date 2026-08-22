@@ -1,5 +1,5 @@
 // BLIND ORACLE - session-v55 phase 9, "a stdlib type does not get a use-path
-// hint" (`session-v55/contract-phase9.md`, queue Q23). Black-box over
+// hint" (the phase-9 contract, queue Q23). Black-box over
 // `resolvePrefill` only.
 //
 // THE CONTRACT, restated from contract-phase9.md "What must hold":

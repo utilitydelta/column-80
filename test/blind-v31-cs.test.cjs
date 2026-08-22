@@ -1,6 +1,7 @@
-// Blind oracle: the C# TDD leg (session-v31/contract-cs.md, contract-seam.md,
-// goal.md items 5 and 6, Amendments 1 to 7). Black-box contract tests written
-// from the CONTRACT ALONE, before `src/core/tddCs.ts` exists. THE LAST LEG.
+// Blind oracle: the C# TDD leg (the C# and seam contracts, goal items 5 and 6,
+// Amendments 1 to 7; the shipped seam is docs/architecture/tdd-language-seam.md,
+// "C#"). Black-box contract tests written from the CONTRACT ALONE, before
+// `src/core/tddCs.ts` exists. THE LAST LEG.
 // Covers:
 //   §Registration   "csharp" resolves, markerPrefix "//", mstest > xunit >
 //                   nunit, and - because this is the last leg - that ALL FIVE

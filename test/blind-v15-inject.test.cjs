@@ -1,4 +1,4 @@
-// Blind oracle: the v15 P2 injection surface [session-v15/p2-surface.md].
+// Blind oracle: the v15 P2 injection surface.
 // Three pure functions in src/core/fimInject.ts:
 //
 //   1. lineCommentFor(languageId)                      - "#" for python, "//" otherwise

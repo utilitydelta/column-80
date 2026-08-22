@@ -4,7 +4,7 @@
 // bloom_membership run using fastbloom, where the compiler named a hallucinated
 // associated function (`new_for`) so the `prefer` hint matches nothing.
 //
-// Frozen contract (session-v3/goal.md item 3 + falsification bar: "example()
+// Frozen contract (v3 goal item 3 + falsification bar: "example()
 // returns a std/blanket-trait example when a crate-specific worked example is
 // available"). These tests encode the contract and are NEVER edited to make an
 // implementation pass.

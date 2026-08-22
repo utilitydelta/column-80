@@ -4,8 +4,7 @@
 // stale-serve behavior around the fix-(a) drop, the pending-record attribution
 // seam, the acceptance-bar wall-clock invariant, and the served-bit carry
 // across the widget's own auto-reopen. Tests that PIN a hazard rather than a
-// contract say so in their comment; the findings live in
-// session-v26/review-p1.md.
+// contract say so in their comment.
 //
 // Run: SKIP_LIVE=1 node --test test/review-v26-lifecycle.test.cjs
 
@@ -64,11 +63,11 @@ const table = (rows, run) => {
 
 // Updated by the implementer twice on 2026-07-26: first to the triage
 // amendment (the drop moved from the first post-close REQUEST to that
-// attempt's zero SERVE), then to the human design call
-// (session-v26/journeys/member-dot-flow.md): the window is UNIFORM, so the
-// arrowed choice takes the same zero-serve hand-back as the preselect. What
-// R1 guards now is that the post-close attempt holds for BOTH kinds and that
-// its zero serve hands both back the same way.
+// attempt's zero SERVE), then to the human design call recorded in
+// docs/architecture/vscode-layer.md, "Measured records": the window is UNIFORM,
+// so the arrowed choice takes the same zero-serve hand-back as the preselect.
+// What R1 guards now is that the post-close attempt holds for BOTH kinds and
+// that its zero serve hands both back the same way.
 test("R1. never-served post-close requests hold for both kinds, and the zero SERVE hands both back - the arrowed indefinite hold is void", () => {
   table(
     [

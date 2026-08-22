@@ -1,6 +1,6 @@
 // BLIND ORACLE for session-v55 phase 11 (Q12): the repair surface has no
-// `excludeName`. Bound to `session-v55/contract-phase11.md` and to
-// `session-v36/scraps.md` S36-3 (`[RECORD] E6`), written before the fix exists.
+// `excludeName`. Bound to the phase contract and to scrap S36-3 (`[RECORD] E6`),
+// written before the fix exists.
 //
 // Two pure core functions are driven directly over an esbuild bundle, with no
 // vscode stub: `spanTypesInPlay` (`src/core/repairTypes.ts`) and `refineTargets`

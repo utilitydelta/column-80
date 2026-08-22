@@ -1,5 +1,5 @@
 // Adversarial review: session-v58 phase 4, the cloud error frame (roadmap item
-// 67, third hole; contract at session-v58/contract-phase4.md).
+// 67, third hole).
 //
 // Written AFTER the implementation and after the blind oracle
 // (test/blind-v58-p4-cloud-error-frame.test.cjs, 26 rows green). Its job is the

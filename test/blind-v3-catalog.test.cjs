@@ -1,6 +1,6 @@
 // Blind oracle: enabled-optional buildCatalog against the FROZEN phase-3
-// contract [session-v3/phase3-catalog-contract.md]. buildCatalog(metadata) is
-// pure over one `cargo metadata` object and now ALSO surfaces OPTIONAL direct
+// catalog contract. buildCatalog(metadata) is pure over one `cargo metadata`
+// object and now ALSO surfaces OPTIONAL direct
 // deps that the active feature set actually compiled: an optional manifest dep
 // is included iff the member's resolve node carries a normal (kind:null) dep
 // entry whose resolved PACKAGE-ID matches it, and it is listed under the resolve

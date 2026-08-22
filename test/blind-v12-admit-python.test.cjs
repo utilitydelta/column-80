@@ -2,7 +2,7 @@
 // `resolveFunctionAtCursor` (src/vscode/fnGen) driven over a FAKE vscode module.
 // Black-box: never reads the not-yet-written Python type branch of fnGen.
 //
-// THE CONTRACT (session-v12/scout-py.md). pyright reports Class (vscode
+// THE CONTRACT (the Python scout notes). pyright reports Class (vscode
 // SymbolKind 4) for a plain class, a @dataclass, AND an Enum subclass — kind
 // alone cannot tell them apart (scout-py.md Q1, PROVEN). So Phase 2 admits
 // Python Class as a type target and CLASSIFIES it by reading the header text the

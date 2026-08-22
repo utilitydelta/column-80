@@ -867,7 +867,7 @@ test("the shared depth scanner and argument splitter serve every profile", () =>
 //
 // One review row was deliberately NOT made to pass and is rewritten below (the
 // zero-count no-message report); one was deleted by triage and is recorded as
-// X2 in session-v31/scraps.md.
+// scrap X2.
 // ===========================================================================
 
 const TS_LITERALS = { singleQuoteStrings: true, templateLiteralDelimiter: "`", nestedBlockComments: false, regexLiteral: true };
@@ -1392,7 +1392,7 @@ test("parse: DEFERRED to phase 6 — a zero-count report with no message names n
   // with nothing to act on.
   //
   // Phase 6 owns the sentence an unclassified no-run outcome deserves; see
-  // session-v31/scraps.md D6. This row pins the CURRENT fallback so the change
+  // scrap D6. This row pins the CURRENT fallback so the change
   // is deliberate when it comes.
   const parse = parseVitestJson(zeroCount({}), "", 1);
   assert.equal(parse.buildError, undefined);

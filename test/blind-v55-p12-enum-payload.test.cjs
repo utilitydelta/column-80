@@ -1,5 +1,5 @@
 // BLIND ORACLE for session-v55 phase 12 (Q13): the field leg is dark on every
-// Rust enum. Bound to `session-v55/contract-phase12.md` and to the exported
+// Rust enum. Bound to the phase-12 contract and to the exported
 // facade of `src/core/crossFileShape.ts`. Written before the fix exists.
 //
 // WHAT WAS READ WHILE WRITING THIS FILE, said plainly, because the discipline is
@@ -67,9 +67,9 @@
 // 1. THE ENUM HOVER IS THE ELIDED FORM, not a hand-spelled one. rust-analyzer
 //    does NOT print an enum's tuple or struct payloads; it prints
 //    `Constrained( /* … */ )` and `Leader { /* … */ }`, and no RA setting
-//    recovers them. That form is MEASURED - `session-v35/log.txt:2247`
-//    (rcgen `BasicConstraints`) and `session-v39/goal.md`'s `NodeStatus` - and
-//    is quoted verbatim in test/blind-v39-p1-hover-recovery.test.cjs, from which
+//    recovers them. That form is MEASURED - rcgen `BasicConstraints` and the
+//    `NodeStatus` capture - and is quoted verbatim in
+//    test/blind-v39-p1-hover-recovery.test.cjs, from which
 //    the shape here is copied. So the fixture hands the walk the elided hover
 //    PLUS the definition file's source and lets the PRODUCT'S OWN recovery
 //    restore the payloads. A fixture that spelled `Paid(Receipt)` in the hover

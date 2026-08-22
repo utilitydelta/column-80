@@ -48,7 +48,7 @@ const FN_INSTR =
 
 // ===========================================================================
 // FROZEN Rust type instruction — byte-exact. These are the shipped Rust bytes
-// (session-v12/scout.md Q5). A red guard here = this file mismodelled the true
+// (v12 scout, Q5). A red guard here = this file mismodelled the true
 // current Rust value; fix the PIN, never the contract.
 // ===========================================================================
 

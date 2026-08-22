@@ -44,8 +44,8 @@
 //     guessed value appears nowhere" is checked against all of them.
 //
 // Assertions are stable structural properties and substrings, never exact
-// human prose. Fixtures are DERIVED from the captures in session-v31/goal.md
-// and are labelled as such at each definition. Never reads src/**.
+// human prose. Fixtures are DERIVED from the goal's captures and are labelled
+// as such at each definition. Never reads src/**.
 //
 // Guard: a missing surface is ONE loud failure and every other row SKIPS.
 //

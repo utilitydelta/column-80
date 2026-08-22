@@ -1,6 +1,6 @@
 // Blind oracle (v12 type-gen, C# + TS): ADMISSION + genKind through the real
 // `resolveFunctionAtCursor` (src/vscode/fnGen) driven over a FAKE vscode module.
-// The contract (session-v12/scout.md Q1/Q2, per-language admit sets):
+// The contract (the scout's Q1/Q2, per-language admit sets):
 //   typeKindsFor(languageId):   // vscode SymbolKind numbers
 //     rust    -> {Struct, Enum}            FROZEN — a trait (Interface) never admitted
 //     csharp  -> {Class, Struct, Enum}     + Class; Interface EXCLUDED (bodyless members)

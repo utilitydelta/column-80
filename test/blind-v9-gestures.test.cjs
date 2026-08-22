@@ -1,5 +1,5 @@
 // Blind oracle: v9 phase 4A - the generation-side gestures for TypeScript
-// (session-v9/phase4-surface.md, "Iron constraints" + "4A contract" only; 4B
+// (the phase-4 surface document, "Iron constraints" + "4A contract" only; 4B
 // is a later rung and is NOT tested here). Black-box: never reads src/**.
 //
 // Harness: the whole extension is activated against a stub vscode (the

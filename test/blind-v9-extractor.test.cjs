@@ -1,4 +1,4 @@
-// Blind oracle: the TS surface extractors (session-v9/phase3-surface.md).
+// Blind oracle: the TS surface extractors (the v9 phase 3 surface).
 // Black-box contract tests written from the surface ALONE, before the impl
 // exists. Covers phase 3:
 //   TsLsExtractor    headless transport driven against REAL scratch TS

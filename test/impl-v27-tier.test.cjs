@@ -2,10 +2,10 @@
 // arm-D empty-partial block (tier-1 members dropped from the BLOCK, never the
 // enforcement set), and the fn-gen reject-reason line.
 //
-// Evidence: session-v27/measure-ordering.md (arm D 79.5% top-1 vs control
-// 75.0%, blanket-first 0 vs 2, on 44 real Rust member sites) and
-// session-v27/capture-csharp-linq.md defect 2 (a reject with no why is a dark
-// site).
+// Evidence: docs/architecture/surface-injection.md, "Measured records" (arm D
+// 79.5% top-1 vs control 75.0%, blanket-first 0 vs 2, on 44 real Rust member
+// sites) and docs/architecture/fn-generation.md, "The dark reject" (a reject
+// with no why is a dark site).
 //
 // Bundled with the esbuild vscode-stub alias (blind6-command pattern) because
 // the rust-analyzer tier stamp lives in the product transport
@@ -150,10 +150,9 @@ test("toCsCompletionMember tiers object-declared members and the unresolved Obje
 
 // ---------------------------------------------------------------------------
 // Arm D at an empty partial: tier-1 members leave the BLOCK, never the
-// enforcement set. Fixture mirrors the captured 21-member tuple-site surface
-// (session-v26/capture-2026-07-26.md: RefMut<LogSegmentFileMetadata>, own
-// fields log_id/read/write/file_len, blanket clone/to_owned/... leading the
-// provider order).
+// enforcement set. Fixture mirrors a captured 21-member tuple-site surface:
+// RefMut<LogSegmentFileMetadata>, own fields log_id/read/write/file_len,
+// blanket clone/to_owned/... leading the provider order.
 // ---------------------------------------------------------------------------
 
 const own = (name, signature) => ({ name, signature, kind: "method", tier: 0 });

@@ -35,9 +35,9 @@
 // the prompt - was a Go fact, and it does not transfer.
 //
 // C#'s COLUMN MOVED IN session-v51, AND THE NUMBERS BELOW ARE THE MOVED ONES.
-// Read them as post-v51, not as v50's. session-v51 phase 0 (session-v51/
-// contract-phase0.md) changed how the shared per-prompt aggregate is apportioned
-// in C#, and only in C#: `resolvePrefill` now prices the WHOLE prompt's member
+// Read them as post-v51, not as v50's. session-v51 phase 0 changed how the
+// shared per-prompt aggregate is apportioned in C#, and only in C#:
+// `resolvePrefill` now prices the WHOLE prompt's member
 // blocks before the first shape block renders, and a shape block may only spend
 // what is left over that price plus what its own type's member block will shed
 // once the shape block has printed those fields. A walk that cannot repay what

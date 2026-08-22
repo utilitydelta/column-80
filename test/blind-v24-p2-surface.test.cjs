@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v24 phase 2: "the API-surface instruction stops
 // over-claiming, and stops naming private members". Pins the external contract
-// in `session-v24/surface-p2.md` (items 1-15) plus goal.md fix 2.
+// for items 1-15, plus goal.md fix 2.
 //
 // STATE: 59 rows, 45 green, 14 RED. Phase 2 has landed, so the original 22 reds
 // are pins now. The 14 reds are a THIRD red-before-green round, from two
@@ -126,12 +126,12 @@
 //                   the LINE rather than the DECLARATOR drops it, and nothing
 //                   downstream catches a surface that is merely absent. [RED]
 //     FIXTURE FIDELITY  every node's `selectionRange` covers the NAME TOKEN at
-//                   the columns `session-v24/measure-midedit.md` recorded from
-//                   five live servers, never the whole node span; and no node
-//                   has an inverted range or swallows a later sibling. Guards
-//                   this file, not the product. Extended to all seventeen
-//                   trees, including the enum, the multi-declarator line and
-//                   the one-line class body.              [GREEN both sides]
+//                   the columns measured from five live servers, never the
+//                   whole node span; and no node has an inverted range or
+//                   swallows a later sibling. Guards this file, not the
+//                   product. Extended to all seventeen trees, including the
+//                   enum, the multi-declarator line and the one-line class
+//                   body.                                 [GREEN both sides]
 //
 // THE PHASE-1 BYTE FREEZE (item 15). Scoping the instruction moves the round-0
 // pre-fill's bytes, and the six `item 13` rows in
@@ -162,9 +162,9 @@
 // file set every node's `selectionRange` to its whole `range`, so an anchor
 // derived from it landed at column 0 on `impl` / `public` / `class` / `export` /
 // `func`. No measured server does that: all five point the selection at the NAME
-// TOKEN (`session-v24/measure-midedit.md`). The cost was real and was paid by
-// the product, not by the test - a name-vs-anchor agreement check in a SHARED
-// resolver shipped weakened to line granularity because the strict version
+// TOKEN. The cost was real and was paid by the product, not by the test - a
+// name-vs-anchor agreement check in a SHARED resolver shipped weakened to
+// line granularity because the strict version
 // reddened rows that were only failing on this artifact. A fixture convention
 // was setting safety semantics. `selectionTokenFor` now derives the token the
 // way the measurement records it, including the three cases where it is not
@@ -429,7 +429,7 @@ function rng(src, from, to) {
 }
 
 // The identifier a server's `selectionRange` covers, given the symbol's name.
-// MEASURED, not assumed (`session-v24/measure-midedit.md`, five live servers):
+// MEASURED, not assumed (five live servers):
 //   rust-analyzer  `impl Owner`             sel 4:5-4:10   -> `Owner`
 //                  `impl Persist for Owner` sel 8:17-8:22  -> `Owner`, the SELF
 //                                                             TYPE, never the trait
@@ -1471,9 +1471,8 @@ for (const [lang, c] of Object.entries(VISIBILITY_CASES)) {
 }
 
 // GREEN BOTH SIDES. Item 8: Python is explicitly UNCHANGED this phase. The
-// standing decision to keep single-underscore members is a human call routed to
-// session-v24/scraps.md; a phase-2 implementation that "tidies" Python here is
-// out of contract.
+// standing decision to keep single-underscore members is a human call; a
+// phase-2 implementation that "tidies" Python here is out of contract.
 btest("B8 (item 8) [python]: single-underscore members are KEPT - Python's surface does not change this phase", async () => {
   const files = { [PY_URI]: PY_SRC };
   const r = await runPrefill({
@@ -2454,7 +2453,7 @@ btest("B17 (items 7 + 9) [csharp]: a PUBLIC member sharing a source line with a 
 // if that tree models a shape no server produces, the rows test something no
 // product ever sees. This one shape was wrong: `selectionRange` was the whole
 // node span, so every anchor landed at column 0 on a keyword. Expected columns
-// are read straight off the tables in `session-v24/measure-midedit.md`.
+// are read straight off the measured table above, five live servers.
 //
 // It reads the SELECTED TEXT back out of the source, so a regression to the
 // full-span shape shows up as `impl` / `public` / `export` / `func` rather than

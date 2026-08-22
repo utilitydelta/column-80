@@ -19,8 +19,8 @@
 //     is type-shaped, else the FIRST
 //   - keep an uppercase-initial name that is not a lone capital
 //
-// The keep-predicate is not a paraphrase. It is `typeish` at
-// session-v37/spike-9-rules.cjs:29:
+// The keep-predicate is not a paraphrase. It is `typeish`, verbatim from the
+// rules spike:
 //
 //     const typeish = (s) => /^[A-Z]/.test(s) && !/^[A-Z]$/.test(s);
 //

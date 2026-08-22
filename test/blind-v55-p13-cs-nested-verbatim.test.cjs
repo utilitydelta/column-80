@@ -1,7 +1,6 @@
 // BLIND ORACLE for session-v55 phase 13 (Q16): a nested `@"…"` inside an
-// interpolation hole. Bound to `session-v55/contract-phase13.md` and to the two
-// exported, pure functions `reindentCsBody` and `dedentCsBody`. Written before
-// the fix exists.
+// interpolation hole. Bound to the phase contract and to the two exported, pure
+// functions `reindentCsBody` and `dedentCsBody`. Written before the fix exists.
 //
 // WHAT WAS READ WHILE WRITING THIS FILE, said plainly, because the discipline is
 // worth nothing unspoken. `csExtraction.ts`'s EXPORTED signatures and doc
@@ -123,13 +122,12 @@
 // Measured on THIS fixture: 84 of 300. The two numbers are not in conflict and
 // neither refutes the other, because a wrong-case COUNT is a property of the
 // case population, not of the product. The population behind the 15 does not
-// exist: `docs/roadmap.md:1954`, `docs/queue.md:151` and `session-v53/claims.md`
-// C305 all restate the figure, C305 cites `session-v16/progress.md`,
-// `triage-p1.md` and `review-p1.md` as "artifacts behind the dotnet run", and
-// none of those three files contains the word `verbatim`, a case count, or any
-// C# fixture. A repo-wide search for "placed case", "wrong values" and "15 of
-// 300" finds only the four prose restatements of the claim. So the figure is
-// unfalsifiable as stated and this file does not carry it.
+// exist: `docs/roadmap.md:1954`, `docs/queue.md:151` and claim C305 of the v53
+// register all restate the figure, C305 cites three v16 artifacts as "artifacts
+// behind the dotnet run", and none of those three contains the word `verbatim`,
+// a case count, or any C# fixture. A repo-wide search for "placed case", "wrong
+// values" and "15 of 300" finds only the four prose restatements of the claim.
+// So the figure is unfalsifiable as stated and this file does not carry it.
 //
 // What IS reproducible is the decomposition, and it is the number worth quoting:
 // 14 of the 50 shapes are wrong in every one of the 6 contexts, 6 x 14 = 84, and

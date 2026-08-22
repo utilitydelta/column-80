@@ -1,7 +1,7 @@
 // Blind oracle, session-v55 phase 7: "a generated body does not change the
 // file's line endings" (queue Q15).
 //
-// Written from session-v55/contract-phase7.md ALONE. Nothing here was written
+// Written from the phase 7 contract ALONE. Nothing here was written
 // from a fix; the only things read out of `src/` were the SEAMS this file has to
 // drive, and they are named below so a reviewer can check that claim cheaply.
 //

@@ -1,6 +1,6 @@
 // Blind oracle, session-v57 phase 2: "the failure that arrives inside a 200"
-// (roadmap item 63, first string). Contract: session-v57/contract-phase2.md,
-// including the AMENDED note at its top that adds the Anthropic SSE site.
+// (roadmap item 63, first string). Contract: the phase-2 contract, including
+// the AMENDED note at its top that adds the Anthropic SSE site.
 // Written BEFORE the fix, against the contract only. Nothing in this file reads
 // a throw statement, boundBody, safeText, rawText, src/core/errorBound.ts, or
 // any function body. Only exported signatures and the wire-format event

@@ -1,8 +1,8 @@
 // Blind oracle, session-v57 phase 3: "the tier message that skipped the sweep"
-// (roadmap item 63, third string). Contract: session-v57/contract-phase3.md.
-// Written BEFORE the fix, against the CONTRACT ONLY: no assertion here is
-// copied from the product's message construction, its tier gate, its toast
-// table or src/vscode/toastText.ts. None of those were read.
+// (roadmap item 63, third string). Written BEFORE the fix, against that phase's
+// CONTRACT ONLY: no assertion here is copied from the product's message
+// construction, its tier gate, its toast table or src/vscode/toastText.ts. None
+// of those were read.
 //
 // THE SCENARIO, IDENTICAL IN EVERY ROW. The Claude Code backend is selected
 // (`fnGenProvider: "claude-code"`), the CLI probe answers PRESENT, and the

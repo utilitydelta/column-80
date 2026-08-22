@@ -2,8 +2,8 @@
 // and the three pure functions read no member name out of one. This is the
 // deliberate behaviour, not an oversight — two designs that changed it were
 // built and withdrawn, each having suppressed correct code, against a benefit
-// measured at 0 in 485 real generations. See session-v18/phase2-surface.md
-// before making any of these red.
+// measured at 0 in 485 real generations. Do not make any of these red without a
+// measurement that beats that one.
 //
 // Run: npm test
 

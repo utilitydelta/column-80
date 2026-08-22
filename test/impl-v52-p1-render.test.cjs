@@ -2,9 +2,9 @@
 // (`src/core/tightenRegion.ts`), region to the bytes that replace it
 // (`src/core/tightenRender.ts`).
 //
-// The contract is `session-v52/contract-p1.md`. A blind oracle tests the same
-// surface from the contract alone; this file tests the seams the contract does
-// not name - the tokenizer's backtick glue, the paragraph accumulator's
+// A blind oracle tests the same surface from the contract alone; this file
+// tests the seams the contract does not name - the tokenizer's backtick glue,
+// the paragraph accumulator's
 // prefix-greedy property, the opener extension that keeps `//!` out of a `///`
 // block - plus every ship condition, because a ship condition is a test and not
 // a review.

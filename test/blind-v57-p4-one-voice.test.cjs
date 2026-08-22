@@ -1,6 +1,6 @@
 // Blind oracle, session-v57 phase 4: "one voice for the silent server, on
-// every arm" (roadmap item 66). Contract: session-v57/contract-phase4.md.
-// Written BEFORE the fix, against the contract only.
+// every arm" (roadmap item 66). Written BEFORE the fix, against the phase 4
+// contract only.
 //
 // WHAT THIS FILE PINS. A model server that goes silent mid-reply throws from
 // whichever transport was carrying the reply. Today only the Ollama stream cut
@@ -422,7 +422,7 @@ for (const arm of ARMS.slice(1)) {
 // Contract 2: no API vocabulary on screen, on any arm.
 // ===========================================================================
 
-// RE-CUT by session-v57 phase 4, per the amendment at the end of session-v57/goal.md.
+// RE-CUT by session-v57 phase 4, per the amendment at the end of the goal.
 // `stream error` left this list because the throw that carried it is no longer
 // translated at all: it is Anthropic's GENERIC in-stream error envelope, not a
 // stream cut, and the phase's review measured a rate limit and an invalid API
@@ -445,7 +445,7 @@ btest("C2 [vocabulary]: no arm's notification carries message_stop, no body, str
 
 // ===========================================================================
 // RE-CUT, session-v57 phase 4. The Anthropic in-stream error frame WAS the
-// fifth arm of contract 1. The amendment at the end of session-v57/goal.md
+// fifth arm of contract 1. The amendment at the end of the goal
 // removes it, with the measurement that removed it. Its rows are replaced by
 // these two, which pin the opposite and are the stronger pair: the frame keeps
 // the provider's own cause, and it still puts no API vocabulary on the screen.

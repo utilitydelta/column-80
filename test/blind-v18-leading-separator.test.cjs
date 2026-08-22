@@ -1,7 +1,6 @@
-// REGRESSION NET - v18 phase 2 "the leading-separator gate bypass"
-// [session-v18/phase2-surface.md]. Written against the contract, not against
-// the code. Never reads src/**: the entries re-export the modules and esbuild
-// resolves them at bundle time only.
+// REGRESSION NET - v18 phase 2 "the leading-separator gate bypass". Written
+// against the contract, not against the code. Never reads src/**: the entries
+// re-export the modules and esbuild resolves them at bundle time only.
 //
 // NOTHING SHIPPED, AND THAT IS THE POINT. The phase was ordered to close a gate
 // bypass. Measurement showed the bypass is not reachable - 0 leading-separator
@@ -12,9 +11,9 @@
 // The gate is MEMBERSHIP-ONLY. It once had two legs, membership and arity; the
 // arity leg was removed in v19 because it parsed only TypeScript signatures,
 // returned undefined for every C#/Python one, and its one TypeScript catch sat
-// behind the compiler oracle that catches the same wrong call on accept
-// [session-v19/gate-membership-only-surface.md]. So this file no longer pins
-// arity at all - the two functions below are the whole surface it reads.
+// behind the compiler oracle that catches the same wrong call on accept. So this
+// file no longer pins arity at all - the two functions below are the whole
+// surface it reads.
 //
 // So this file is a NET, not a spec. It pins that:
 //

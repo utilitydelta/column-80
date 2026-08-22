@@ -3,9 +3,8 @@
 // RED BY DESIGN until triage rules. Phase 0b moved DATASHAPE_TOTAL_TOK into
 // src/core/budgetProfile.ts and made fnGen's module-level DATASHAPE_BOUNDS
 // spell its TOK_MAX as `walkTokMaxFor(DATASHAPE_TOTAL_TOK)` instead of the
-// literal 200. The rig's bundle-rewrite loaders in
-// session-complxity-research/spikes/lib-core.cjs patch these constants by
-// exact text match, and the seam changed what they find:
+// literal 200. The rig's bundle-rewrite loaders in lib-core.cjs patch these
+// constants by exact text match, and the seam changed what they find:
 //
 //  - loadPrefillWide: WIDE_PATCHES' DATASHAPE_BOUNDS pattern (literal
 //    `TOK_MAX: 200`) no longer matches; the loader THROWS. Loud, so no wrong

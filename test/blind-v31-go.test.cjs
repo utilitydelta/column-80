@@ -1,6 +1,6 @@
-// Blind oracle: the Go TDD leg (session-v31/contract-go.md, goal.md item 2 and
-// item 6). Black-box contract tests written from the CONTRACT ALONE, before
-// `src/core/tddGo.ts` exists. Covers:
+// Blind oracle: the Go TDD leg (docs/architecture/tdd-language-seam.md, "Go";
+// goal item 2 and item 6). Black-box contract tests written from the CONTRACT
+// ALONE, before `src/core/tddGo.ts` exists. Covers:
 //   §Placement      sibling foo_test.go, module root, packageArg, the go.work refusal
 //   §The command    -v, the anchored -run filter, and the anchoring as a REGEX PROPERTY
 //   §The parse      the measured failing run, and the detail-before-verdict ordering
@@ -197,8 +197,8 @@ const applyPlan = (existingText, plan) =>
 // Runner fixtures, JSON-LINES. The rung moved from `go test -v` text to
 // `go test -json` because the phase 2 review proved the text format forgeable
 // BY THE CODE UNDER TEST. Every capture below is real output recorded in
-// session-v31/scout-findings.md under "`go test -json`, measured after the
-// phase 2 review found the text format forgeable", go1.26.5. Two fixtures are
+// the scout's `go test -json` capture, measured after the phase 2 review found
+// the text format forgeable, go1.26.5. Two fixtures are
 // DERIVED rather than captured and say so on the line above them.
 // ---------------------------------------------------------------------------
 

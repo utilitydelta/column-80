@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v50 phase 2, "C#'s data-shape render".
 //
-// Binds to session-v50/contract-phase2.md and to nothing else. `csShapeBlock`
+// Binds to the phase-2 contract and to nothing else. `csShapeBlock`
 // and `goShapeBlock` in src/vscode/fnGen.ts were never opened, and neither was
 // csShapeGraphBlock's body in src/core/csExtraction.ts. What WAS read, and only
 // far enough to drive the render headlessly: the exported `CompletionMember`

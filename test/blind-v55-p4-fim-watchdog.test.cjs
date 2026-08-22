@@ -1,5 +1,5 @@
 // Blind oracle, session-v55 phase 4: a hung FIM stream releases single-flight.
-// Written from session-v55/contract-phase4.md ALONE, INCLUDING its "Amendment
+// Written from the phase-4 contract ALONE, INCLUDING its "Amendment
 // before the oracle", which replaces the queue's one-AbortSignal.timeout shape
 // with a SILENCE watchdog: armed at the request, re-armed on every chunk.
 // Nothing here was written from the fix; only the seam is read (generateFim's

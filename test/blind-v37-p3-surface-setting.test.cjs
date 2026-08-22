@@ -46,8 +46,8 @@
 // silently.
 //
 // What replaced the contract is `test/blind-v48-p1-context-dial.test.cjs`, 54
-// rows written blind against `session-v48/contract-phase1.md`. What survives
-// here is the reversal, asserted rather than described.
+// rows written blind against the context-dial contract. What survives here is
+// the reversal, asserted rather than described.
 //
 // Run: SKIP_LIVE=1 node --test test/blind-v37-p3-surface-setting.test.cjs
 

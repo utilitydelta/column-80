@@ -1,6 +1,6 @@
 // Blind oracle: the serving-window and reasoning config the v34 scout left
-// uncommitted (session-v34/goal.md, "Already changed, uncommitted, needs
-// ratifying or reverting"). That section is the whole contract for this file:
+// uncommitted, under the goal's heading "Already changed, uncommitted, needs
+// ratifying or reverting". That section is the whole contract for this file:
 // maxTokens 2048, testMaxTokens 8192, numCtx 16384, and a `think` field,
 // because ollama's unset default of 2048 bounds prompt and generation together
 // and a model that reasons by default spends the answer's budget on the trace.

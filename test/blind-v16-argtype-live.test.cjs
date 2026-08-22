@@ -15,7 +15,7 @@
 // and merely MENTIONS Tile; `Tile` is defined in `Atlas.cs`. That two-file split
 // is exactly the trap, and it is real code rather than a hand-written payload.
 //
-// Written against the surface docs and session-v16/goal.md. Never reads src/**.
+// Written against the surface docs and the session goal. Never reads src/**.
 //
 // Run: node --test test/blind-v16-argtype-live.test.cjs
 //      SKIP_LIVE=1 node --test ...   (skipped)

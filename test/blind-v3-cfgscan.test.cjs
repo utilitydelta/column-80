@@ -1,5 +1,5 @@
 // Blind oracle: cfg-gate source scan against the FROZEN phase-2 contract
-// [session-v3/phase2-cfgscan-contract.md]. Three pure functions over strings:
+// [the phase-2 cfg-scan contract]. Three pure functions over strings:
 //   scanCfgGates(libRsSource)         -> Map<module, gate TOKEN>
 //   resolvePublicFeature(features, token, moduleName) -> public feature | undefined
 //   buildGatingFeatures(libRsSource, features)        -> Map<module, public feature>

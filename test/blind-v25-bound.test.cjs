@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v25 fixes 1 and 7: the plain-continuation bound.
-// Black-box contract test for `src/core/fimBound.ts` written against
-// `session-v25/contract-bound.md` ONLY. This file has never read the
+// Black-box contract test for `src/core/fimBound.ts` written against the
+// bound contract ONLY. This file has never read the
 // implementation and must not be edited to make one pass (AGENTS.md "Rules").
 //
 // The surface under test: MAX_BOUND_LINES, boundContinuation, boundReached,

@@ -3,12 +3,13 @@
 // `resolveCrossFileShape` buys a definition(), a hover and a documentSymbol for
 // every collaborator it reaches. `walkDataShape`, which renders the block, walks
 // at most B_MAX distinct LOCAL field types per node. Measured over 20 real pgx
-// roots (`session-v51/hover-A.txt`): 117 types gathered, 86 of them inside the
+// roots (`docs/architecture/surface-injection.md`, "The hover fan-out: what it
+// gathers against what reaches the prompt"): 117 types gathered, 86 inside the
 // render's own BFS, 63 actually rendered. 31 types - 26% of everything gathered,
 // 11 of the 26 on `pgx.Conn` - sat outside the render's BFS, so no budget at any
 // stop could ever have spent them. Each cost three round trips, and a hover into
 // a package gopls has not type-checked measured 71ms and 76ms against 0.15ms
-// warm (`session-v51/hover-C.txt`).
+// warm, recorded in that same section.
 //
 // `CrossFileBound.B_MAX` is the opt-in that stops that. These rows hold three
 // things, and the third is the one that matters:

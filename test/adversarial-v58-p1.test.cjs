@@ -1,5 +1,5 @@
 // Adversarial review: session-v58 phase 1, the channel keeps the raw body
-// (roadmap item 69, first shape; contract at session-v58/contract-phase1.md).
+// (roadmap item 69, first shape; bound to the phase-1 contract).
 //
 // Written AFTER the implementation and after the blind oracle
 // (test/blind-v58-p1-raw-channel.test.cjs, 50 rows green). Its job is the

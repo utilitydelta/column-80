@@ -1,8 +1,8 @@
 // Blind oracle, session-v57 phase 1: "one bounded error-body budget, three
-// transports" (roadmap item 63, first string). Contract:
-// session-v57/contract-phase1.md. Written BEFORE the fix, against the contract
-// only. Nothing in this file reads safeText, any bound constant, any throw
-// statement, or any interpolation site. The three transports are driven only
+// transports" (roadmap item 63, first string). Written BEFORE the fix, against
+// the phase-1 contract only. Nothing in this file reads safeText, any bound
+// constant, any throw statement, or any interpolation site. The three
+// transports are driven only
 // through their exported entry points and the config shapes those entry points
 // declare.
 //

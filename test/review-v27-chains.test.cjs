@@ -1,4 +1,4 @@
-// review-v27-chains: phase-3 adversarial review rows (session-v27/review-p3.md).
+// review-v27-chains: phase-3 adversarial review rows.
 // Target 3 of the review order: fill placement and gate integrity. The blind
 // oracle owns the facade contract; these rows pin what the fill may NEVER do
 // to the surfaces AROUND it in resolveInjection (completionProvider.ts:510):

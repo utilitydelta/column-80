@@ -4,10 +4,9 @@
 // record so triage does not re-run the hunts.
 //
 // Sections:
-//   CN - census truth: the 7 junk example blocks in
-//        session-complxity-research/data/results-v41-census2.json (real
-//        corpus rows), each fed to the shipped predicate. Skipped when the
-//        artifact is absent.
+//   CN - census truth: the 7 junk example blocks in the v41 census2 results
+//        (real corpus rows), each fed to the shipped predicate. Skipped when
+//        the artifact is absent.
 //   M  - the matcher (exampleNamesItsType), including the RULING the
 //        coordinator asked for on comment-only mentions.
 //   E  - the enclosing-impl refusal (prioritizedTypes + the brace-balance

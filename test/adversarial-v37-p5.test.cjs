@@ -21,7 +21,7 @@
 // EVERY refusal row carries a control that DOES change, out of the same fixture
 // or the same shape. A row that passes because the function died proves nothing.
 //
-// THE INDEPENDENT ORACLE behind sections A and C. `session-v37/spike-16` scores
+// THE INDEPENDENT ORACLE behind sections A and C. The v37 spike scores
 // the product against its own author's second parser and reports 224 of 224. The
 // rows here were found by a THIRD oracle that shares no author with either:
 // `rustdoc +nightly --output-format json` emits, for every enum variant, rustc's
@@ -72,8 +72,8 @@ const {
 } = mod;
 test.after(cleanup);
 
-// rust-analyzer's own elision, byte-verified against
-// session-v37/spike-10-elision-rust.txt.
+// rust-analyzer's own elision, byte-verified against the Rust elision spike
+// capture.
 const elided = (name) => `${name}( /* … */ ),`;
 const show = (v) => JSON.stringify(v);
 

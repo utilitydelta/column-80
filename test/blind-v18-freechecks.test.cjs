@@ -1,5 +1,5 @@
 // BLIND ORACLE - v18 phase 4, "two checks that need no server"
-// [session-v18/phase4-surface.md, as amended 2026-07-21]. Written against the
+// [the phase-4 surface, as amended 2026-07-21]. Written against the
 // contract only. Never reads src/**: the entries re-export the modules and
 // esbuild resolves them at bundle time only.
 //

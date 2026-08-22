@@ -1,11 +1,11 @@
 // IMPLEMENTER tests - session-v45 phase 3: the per-language aggregate render
-// budget. Contract: session-v45/contract-phase3.md.
+// budget.
 //
 // The phase ships a MECHANISM at the shipped value, so its load-bearing claim is
 // a negative one: nothing changes yet. These pin the resolution rule and the
 // no-op; the proof that the rig's knob still REACHES C# is empirical and lives
-// in the funnel arms (session-v45/funnel-report-cs.md), because a constant that
-// looks wired and is not reads as "the budget was not the lever after all".
+// in the C# funnel arms, because a constant that looks wired and is not reads
+// as "the budget was not the lever after all".
 //
 // Run: SKIP_LIVE=1 node --test test/impl-v45-p3-budget.test.cjs
 

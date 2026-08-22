@@ -1,6 +1,6 @@
 // Blind oracle, session-v56 phase 3: "the FIM discard toast becomes a channel
-// line" (roadmap item 64, mechanical half). Contract:
-// session-v56/contract-phase3.md. Written BEFORE the fix.
+// line" (roadmap item 64, mechanical half). Written BEFORE the fix, against
+// the phase-3 contract.
 //
 // WHAT THIS FILE PINS. A background repair session started by a FIM accept
 // that loses the document-version race to the user's own typing must put its

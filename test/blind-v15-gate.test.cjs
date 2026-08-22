@@ -1,5 +1,5 @@
 // BLIND ORACLE - the member-site output gate, membership-only
-// [session-v19/gate-membership-only-surface.md]. Black-box over two pure
+// [the v19 membership-only gate surface]. Black-box over two pure
 // functions in src/core/fimInject.ts. Never reads src/**: the entry re-exports
 // the module and esbuild resolves it at bundle time only. Written against the
 // CONTRACT, not against the code.

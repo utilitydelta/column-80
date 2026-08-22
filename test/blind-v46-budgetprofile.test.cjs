@@ -1,11 +1,11 @@
 // Blind oracle: phase 0b budget-profile seam
-// [session-v46/contract-phase0b.md]. Black-box against the written contract
-// only: `modelClassFor(provider, modelTag)` and `budgetProfileFor(cls,
-// languageId)` from the new core module (contract's suggested name
-// src/core/budgetProfile.ts - if the implementer picks another name, the
-// contract requires it exported through the same paths, so this import is the
-// contract's default). Never read src/**; expected RED until the module
-// exists - that is the TDD state, not a regression.
+// [`docs/constants.md`, "The derivation seam's contract"]. Black-box against
+// the written contract only: `modelClassFor(provider, modelTag)` and
+// `budgetProfileFor(cls, languageId)` from the new core module (contract's
+// suggested name src/core/budgetProfile.ts - if the implementer picks another
+// name, the contract requires it exported through the same paths, so this
+// import is the contract's default). Never read src/**; expected RED until the
+// module exists - that is the TDD state, not a regression.
 //
 // Run: SKIP_LIVE=1 node --test test/blind-v46-budgetprofile.test.cjs
 

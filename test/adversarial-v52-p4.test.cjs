@@ -4,8 +4,9 @@
 // one originally asserted the OBSERVED behaviour, so the file was green against
 // the code as reviewed: a fix flips the assertion, which is the point.
 //
-// FLIPPED 2026-08-12 by the implementer, after `session-v52/triage-p4.md`. Every
-// row below now asserts the RIGHT answer instead of the observed one. The
+// FLIPPED 2026-08-12 by the implementer, after the phase-4 triage recorded in
+// `docs/architecture/tighten-doc-comment.md`. Every row below now asserts the
+// RIGHT answer instead of the observed one. The
 // original observation is kept in each comment as `WAS:`, because a regression
 // witness that no longer says what it caught is a test nobody can read.
 //
@@ -425,9 +426,9 @@ test("D11 parallel list items that NEGATE each other do not fire", () => {
 // ---------------------------------------------------------------------------
 
 test("SOUND ship condition 1: 0.33 / 0.79 / 1.00 survive the splitter fix", () => {
-  // INLINED 2026-08-12. This used to readFileSync the fixture out of
-  // session-v52/spikes/validate-detector.cjs, and `session*/` is GITIGNORED, so on a
-  // clean clone the read throws and CI goes red. This repo has shipped that exact
+  // INLINED 2026-08-12. This used to readFileSync the fixture out of the
+  // detector-validation spike, and `session*/` is GITIGNORED, so on a clean
+  // clone the read throws and CI goes red. This repo has shipped that exact
   // defect once already. A test carries its own fixture.
   const ROUND2 =
     "Enforce SUMMARY_PAYLOAD_MAX_BYTES (already u64) by dropping per-aggregate\n" +

@@ -1,5 +1,5 @@
 // Blind oracle for S10: the rust-analyzer argument-snippet nudge
-// (session-v19/s10-surface.md). Written against the surface doc alone;
+// (the S10 surface). Written against the surface doc alone;
 // src/vscode/firstRun.ts, src/vscode/completionProvider.ts and
 // src/core/completionService.ts were never read. Expected red until the
 // feature exists.

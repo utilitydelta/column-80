@@ -513,9 +513,9 @@ test("B. an unchanged repeat selection is still PASSIVE: two identical selection
       );
 
       // Amended under the human design call 2026-07-26
-      // (session-v26/journeys/member-dot-flow.md): the 1.5s window is
-      // UNIFORM, so the arrowed session is on the same clock and the old
-      // contrast ("still scoped at the same elapsed time") is void. What the
+      // (docs/architecture/vscode-layer.md, "Measured records"): the 1.5s
+      // window is UNIFORM, so the arrowed session is on the same clock and the
+      // old contrast ("still scoped at the same elapsed time") is void. What the
       // arrow still earns is WHICH member the record holds: inside the
       // window the arrowed member governs, not the repeat's preselect.
       const activeClock = fakeClock();

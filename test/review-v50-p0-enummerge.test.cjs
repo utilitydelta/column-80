@@ -27,12 +27,11 @@
 // TWO FINDINGS OF THIS REVIEW HAVE NO ROW HERE and were ruled elsewhere. They
 // are findings 7 and 8 of the review, and they are NOT the [FINE] ROW 7 and
 // ROW 8 below, which are unrelated attack lines.
-//   finding 7, the Go max gate: restated in session-v50/progress.md. The gate
-//     is set over the 19 rows that render a member surface, p95 gate 130ms and
-//     max gate 130ms, with the hollow `ParseConfigOptions` row excluded and
-//     named there.
-//   finding 8, spelled variant order against the member cap: deferred in
-//     session-v50/scraps.md as S50-1.
+//   finding 7, the Go max gate: the gate is set over the 19 rows that render a
+//     member surface, p95 gate 130ms and max gate 130ms, with the hollow
+//     `ParseConfigOptions` row excluded by name.
+//   finding 8, spelled variant order against the member cap: deferred as scrap
+//     S50-1.
 //
 // Nothing here needs a language server or the private measurement rig, so it
 // runs identically on a clean clone. Run:
@@ -242,7 +241,7 @@ test("[RECORD] the merged list feeds `csSignatureRefTypes`, and its reached type
 // ---------------------------------------------------------------------------
 // ROW 2 [RECORD]. What the probe's `--dark` arm really blinds for C#.
 //
-// `session-v50/probe/latency-baseline.cjs` (goal item 2, progress.md item 2):
+// The latency-baseline probe (goal item 2) blinds a dark run like this:
 //   const blind = (hooks) => (DARK ? { ...hooks, parseFields: () => [], fieldTypeCursor: () => undefined } : hooks);
 // The claim as it was first cut: the probe's comment said a dark run has "no
 // candidate queued, so the walk reaches the root type and stops", and that is

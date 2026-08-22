@@ -13,7 +13,8 @@
 // invariant (write the candidate to disk = the consented-write invariant; read
 // the language server back = the one-way-diagnostics invariant), so the check
 // stays where every other check on that page is, and what the build refuses is
-// the SILENCE. See the AMENDMENT at the end of session-v29/goal.md.
+// the SILENCE. See `docs/architecture/compiler-oracle.md`, "Refine: what the
+// MANUAL gesture does on a clean build (v29)".
 //
 // The extractor and span-surface resolver are stubs: what the real reference
 // provider returns against a real server is the live suite's question, and this

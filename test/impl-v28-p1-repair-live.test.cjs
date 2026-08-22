@@ -1,7 +1,7 @@
 // IMPLEMENTATION oracle (LIVE) for session-v28 phase 1: capture B, replayed end
 // to end against the real Roslyn language server and the real local 30b.
 //
-// The acceptance bar, session-v28/goal.md item 1 verbatim: at the captured
+// The acceptance bar, the phase goal's item 1 verbatim: at the captured
 // `RegionLodCount` site, `tile.Lod == LodBand.Region` under the doc comment "how
 // many tiles where LodBand is Region" repairs to `tile.Band == LodBand.Regional`
 // in ONE round, with both Tile and LodBand surfaces present in the prompt.

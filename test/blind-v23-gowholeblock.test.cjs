@@ -1,8 +1,8 @@
 // BLIND ORACLE — session-v23 phase 3: the Go whole-block site detector
 // (`goWholeBlockSite`), its types-in-play scan (`goTypesInPlay`), the
 // `wholeBlockSiteFor("go")` registry row (dispatch-map row 3), and the v22
-// arm-C render fit driven with Go shapes. Black-box: written from
-// session-v23/goal.md + dispatch-map.md and the exported surface of
+// arm-C render fit driven with Go shapes. Black-box: written from the session
+// goal, its dispatch map, and the exported surface of
 // src/core/fimWholeBlock.ts AS SHIPPED TODAY (the Rust/TS/C#/Python siblings
 // and renderWholeBlockInjection); the Go implementation is never opened.
 //

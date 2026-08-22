@@ -1,10 +1,10 @@
 // BLIND ORACLE - session-v30 phase 2, the five diagnostic classifiers.
 //
-// Written from session-v30/goal.md and the scout's real captures
-// (session-v30/scout/captures/*.txt) BEFORE the implementation existed. Nothing
-// here was read out of src/core/compilerDirected.ts. Every diagnostic string
-// below is verbatim from a real checker run or from the frozen row of an
-// existing test file, so a row cannot be wrong about the shape.
+// Written from the phase goal and the scout's real checker captures BEFORE the
+// implementation existed. Nothing here was read out of
+// src/core/compilerDirected.ts. Every diagnostic string below is verbatim from a
+// real checker run or from the frozen row of an existing test file, so a row
+// cannot be wrong about the shape.
 //
 // This file is FROZEN. Fix the implementation, never the row.
 //
@@ -135,9 +135,9 @@ const sameClass = (actual, expected, why) => assert.deepEqual(dropUndefined(actu
 // ===========================================================================
 // P. PYTHON. classifyPyHallucination over pyright's real output.
 //
-// Capture: session-v30/scout/captures/python-v0.txt and python-v1.txt, run as
-// `npx pyright playground/repair_receiver.py`. pyright puts its rule name where
-// every other checker puts a code, and wraps the detail onto a second line.
+// Capture: two scout runs of `npx pyright playground/repair_receiver.py`.
+// pyright puts its rule name where every other checker puts a code, and wraps
+// the detail onto a second line.
 // ===========================================================================
 
 const PY_ATTR_MSG = 'Cannot access attribute "mirror" for class "Boxed[Shard]"\n    Attribute "mirror" is unknown';
@@ -207,8 +207,8 @@ for (const [name, spans] of [
 // ===========================================================================
 // G. GO. classifyGoHallucination over `go build -o /dev/null ./...` output.
 //
-// Capture: session-v30/scout/captures/go-v0.txt and go-v1.txt. Go emits NO
-// diagnostic codes, so `code` is undefined on every row here and the message
+// Capture: two scout runs of the Go checker. Go emits NO diagnostic
+// codes, so `code` is undefined on every row here and the message
 // text is the only key. GoOracle folds go's indented have/want continuation
 // lines into the message with a single space, which is why the arity message
 // arrives as one line.

@@ -1,6 +1,6 @@
 // BLIND ORACLE - session-v49 phase 0, "the free wins and the baselines".
 //
-// Binds to session-v49/contract-phase0.md and to nothing else. While writing the
+// Binds to that phase's contract and to nothing else. While writing the
 // assertions in this file, src/vscode/fnGen.ts and src/core/crossFileShape.ts
 // were never opened, and src/core/csExtraction.ts was opened ONLY far enough to
 // read the exported NAME and SIGNATURE of the member-signature rewrite
