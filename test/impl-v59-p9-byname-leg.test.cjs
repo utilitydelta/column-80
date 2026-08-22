@@ -209,11 +209,17 @@ test("workspaceSymbolCandidates: the ROLE comes from the calling transport's own
 });
 
 // ===========================================================================
-// 3. resolutionReachedWrongTree. THREE facts, and deleting any one of them
+// 3. resolutionReachedWrongTree. Three facts, and deleting any one of them
 // either lets the false statement through or refuses a legitimate question.
 //
 // The tree below is the trap's shape: a helper class `Fim` whose method
 // `TileSite` mentions `Tile`, which is declared in another file entirely.
+//
+// The DECLARATION HEAD shapes - a base list, a primary-constructor parameter,
+// a constraint, an attribute - are adversarial-v59-p9-declhead, over a symbol
+// tree captured from a live Roslyn. The third fact used to be "the cursor is
+// inside one of the container's members", which those five shapes sit outside;
+// it is now "the word is not a C# syntax word".
 // ===========================================================================
 
 const SK = { Class: 4, Method: 5 };
@@ -263,7 +269,7 @@ const WRONG_TREE_ROWS = [
     expect: false,
   },
   {
-    why: "a definition answer landing on the `public` of `public class Tile` is NOT a wrong tree: the declaration head is outside every member's range",
+    why: "a definition answer landing on the `public` of `public class Tile` is NOT a wrong tree: a C# syntax word references nothing",
     at: [TYPE_TREE, TYPE_LINES, 0, 2],
     expect: false,
   },

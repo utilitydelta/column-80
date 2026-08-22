@@ -196,7 +196,7 @@ const FUNCTION_KINDS = new Set<vscode.SymbolKind>([
 ]);
 
 // Type targets, admitted only when compilerDirectedInjection is on, and
-// PER-LANGUAGE (session-v12 scout D1): the admit set differs by language and a
+// PER-LANGUAGE: the admit set differs by language and a
 // single global set would be wrong. A Rust trait, a C# interface (both reported
 // as Interface, both with bodyless members) must stay out — deepest-match would
 // splice a member body into a bodyless signature — while a TS interface is
@@ -410,7 +410,7 @@ export async function resolveFunctionOrRefusal(
  *  channel-only caller still does not: `tightenDocComment.ts:253` logs the
  *  cursor cause for every cause. It degrades and continues rather than
  *  refusing, so no toast lies, and routing the cause through it means changing
- *  the `wiring.resolveFunction` seam. Deferred, session-v55 scraps. */
+ *  the `wiring.resolveFunction` seam. Deferred. */
 export async function resolveFunctionAtCursor(
   document: vscode.TextDocument,
   position: vscode.Position,
@@ -607,8 +607,8 @@ function innermostFunction(
  * and the only thing a caller varies is the admitted `kinds` set.
  *
  * The attachment pass exists because four of the five servers EXCLUDE a doc
- * comment from the symbol's range (session-v32 scout finding 1), so a cursor
- * parked in one is outside every function: C# and a TS method resolve to the
+ * comment from the symbol's range, so a cursor parked in one is outside every
+ * function: C# and a TS method resolve to the
  * enclosing CLASS, while a top-level TS, Go or Python function resolves to
  * NOTHING and the gesture refuses. Both shapes are the same bug — the
  * developer's model is that the comment belongs to the declaration below it —
@@ -680,8 +680,8 @@ const BLOCK_KINDS = new Set<vscode.SymbolKind>([
  *
  * `firstLine` comes from `attachRunStart`, not from `symbol.range.start.line`,
  * so the block begins at the doc comment in all five languages rather than only
- * in Rust (session-v32 scout finding 4). Undefined when the cursor is outside
- * every admitted symbol, when no provider answers, or when the provider returns
+ * in Rust. Undefined when the cursor is outside every admitted symbol, when no
+ * provider answers, or when the provider returns
  * flat SymbolInformation[] — the gesture refuses plainly rather than falling
  * back to the whole file.
  */
@@ -801,7 +801,7 @@ export function pySignatureFromSpanText(spanText: string): string {
  * would splice a `{ ... }` (or `=> expr`) over a bodyless signature and produce
  * invalid code (a TS interface member can never carry a body; a C# abstract
  * method can never), so the command refuses honestly instead — the honest-degrade
- * non-negotiable (session-v12 review-phase1 MAJOR).
+ * non-negotiable.
  *
  * C# and TypeScript ONLY, and deliberately so: a Rust trait method signature
  * (`fn area(&self) -> f64;`) legally takes a generated DEFAULT body, so Rust must
@@ -818,7 +818,7 @@ export function pySignatureFromSpanText(spanText: string): string {
  * vocabulary (a unit `struct Foo;` / tuple `struct Foo(i32);`); the C# analog is
  * a positional `record Point(int X, int Y);` or `record struct Rgb(...)`, whose
  * members ARE the parameter list. Deliberate-dark: every language names its own
- * no-body shape rather than borrowing Rust's (session-v12 review DEFER-1).
+ * no-body shape rather than borrowing Rust's.
  */
 export function bracelessTypeShape(languageId: string, kind: GenKind): string {
   if (languageId === "csharp") {
@@ -839,7 +839,7 @@ export function bracelessTypeShape(languageId: string, kind: GenKind): string {
  * BY DESIGN — its bodies are indentation-delimited and it has no structurally-
  * empty class (a `pass`/`...`/docstring/one-liner body is always generatable), so
  * a Python type is NEVER brace-less-refused. Extracted so that dark fact is a
- * pinned predicate, not a buried `&&` clause (session-v12 review MINOR-1/2).
+ * pinned predicate, not a buried `&&` clause.
  *
  * Go needs no exclusion row: its only admitted type kinds (GO_TYPE_KINDS:
  * Struct, Interface) are ALWAYS braced — even `type X struct{}` carries the
@@ -966,7 +966,8 @@ export class ProposalPresenter {
   // so only user-driven closes read as gestures. `via` names which check
   // decided — the explicit gesture commands or the tab-close pruner — so a
   // reject's evidence line can say who refused (a bare outcome=reject left
-  // that unknowable; session-v27/capture-csharp-linq.md defect 2).
+  // that unknowable; the dark-reject record in
+  // `docs/architecture/fn-generation.md`).
   private readonly decisions = new Map<string, (decision: ProposalDecision, via: DecisionVia) => void>();
   private readonly changeEmitter = new vscode.EventEmitter<vscode.Uri>();
   private previewSeq = 0;
@@ -1075,8 +1076,8 @@ export class ProposalPresenter {
       // on this path writes it anywhere, so a reader who saw "the preview could
       // not be opened" had no way to find out what the editor actually said.
       // The five product-prose reasons pass nothing, because they are one line,
-      // are never cut, and the record they leave is the one the session-v56
-      // surface contract pinned.
+      // are never cut, and the record they leave is the one the surface
+      // contract pinned.
       service.logOutcome("discarded", detail === undefined ? undefined : { discardedBecause: detail });
       return "discarded";
     };
@@ -1408,11 +1409,11 @@ function buildCloudFnGenService(
   const config: FnGenConfig = { ...readFnGenConfig(), apiBase: cloud.baseUrl };
   delete config.numGpu;
   // `num_ctx` reaches nothing on a cloud transport (anthropicInstruct and the
-  // OpenAI-compatible client both document it as dead), and since session-v48
-  // its ABSENCE is what tells the service this class has no local window to
-  // arbitrate against. Leaving it set would have refused a frontier prompt
-  // against a 16384-token window the backend does not have - the exact
-  // inherited-constant hazard the budget profile exists to end.
+  // OpenAI-compatible client both document it as dead), and its ABSENCE is what
+  // tells the service this class has no local window to arbitrate against.
+  // Leaving it set would have refused a frontier prompt against a 16384-token
+  // window the backend does not have - the exact inherited-constant hazard the
+  // budget profile exists to end.
   delete config.numCtx;
   // `anthropic` alone takes the native Messages transport, because
   const missing =
@@ -1673,7 +1674,7 @@ function withVerifyStatus(p: Promise<void>): Promise<void> {
 
 // Round-1 pre-fill budget. The three caps that used to live here as module
 // constants (PREFILL_TYPE_CAP / PREFILL_RESOLVE_CAP / PREFILL_PROVENANCE_CAP)
-// moved to core/budgetProfile.ts with the context dial (session-v48 phase 1):
+// moved to core/budgetProfile.ts with the context dial:
 // they are three of the six numbers ONE stop resolves, and a per-language table
 // beside a per-stop table is two places for the same decision.
 //
@@ -1925,10 +1926,10 @@ function contextStopLine(lang: PrefillLang, budget: BudgetProfile, rootCap: numb
  * measurement has ever been taken against it. A language may not silently
  * inherit authority over a gesture nobody measured it on.
  *
- * Since the session-v46 phase-0 seam, resolvePrefill resolves the language slot
- * through the budget cell BEFORE calling here: `budgetProfileFor`'s csharp leg
- * already carries the language exception, so the value arriving in `lang` is
- * the resolved cell's and a moved cell (CELL_OVERRIDES) reaches the walk.
+ * resolvePrefill resolves the language slot through the budget cell BEFORE
+ * calling here: `budgetProfileFor`'s csharp leg already carries the language
+ * exception, so the value arriving in `lang` is the resolved cell's and a moved
+ * cell (CELL_OVERRIDES) reaches the walk.
  */
 /** Does this candidate take the SHAPE path rather than the worked-example one?
  *
@@ -1998,12 +1999,12 @@ function isClosedSurface(derived: DerivedType | undefined, memberCap: number): b
 /** Is this Rust type's resolved signature a DECLARATION THAT IS ITS OWN
  *  SURFACE - an enum with variants, or a trait with a recovered item body?
  *
- *  The admission test behind `RUST_PREFILL_LANG.admitsEmptyShape`: session-v38
- *  item 1 (the enum), extended by session-v41 phase 1 (the trait, whose members
- *  live in the SIGNATURE by construction - the recovery trigger only fires at
+ *  The admission test behind `RUST_PREFILL_LANG.admitsEmptyShape`. It started
+ *  as the enum, and was extended to the trait (whose members live in the
+ *  SIGNATURE by construction - the recovery trigger only fires at
  *  methods === 0, so a recovered trait always reaches this gate empty-handed
- *  and the signature is the only place its surface can be) and phase 2 (the
- *  type-alias line, the one form with no body to test - see the clause's own
+ *  and the signature is the only place its surface can be) and to the
+ *  type-alias line (the one form with no body to test - see the clause's own
  *  comment). A further self-describing form is one more clause here, not a
  *  second gate. Deliberately NOT
  *  `isClosedSurface`, which is a different question asked of a type that
@@ -2041,14 +2042,14 @@ function isClosedSurface(derived: DerivedType | undefined, memberCap: number): b
  *  enums are that shape.
  *
  *  Condition 1 is empirically equivalent, over all 237 acme rows, to the
- *  looser `/\benum\s/` the session-v38 arm measured: identical admissions,
+ *  looser `/\benum\s/` the arm measured: identical admissions,
  *  identical injected bytes. Condition 2 costs nothing on the same corpus - it
  *  holds zero rows back. Both ship because they were measured to agree with the
  *  arm, not instead of it.
  *
  *  What this does NOT promise: that the variant list is COMPLETE. rust-analyzer
  *  cuts it at five and the product injects the cut text verbatim, which is
- *  session-v38 scraps S38-5 and is not this predicate's to fix. */
+ *  not this predicate's to fix. */
 function isSelfDescribingDeclaration(derived: DerivedType): boolean {
   const sig = derived.signature;
   // A TYPE-ALIAS line (tier 1 of the v41 alias work): `type X = RHS` is its
@@ -2200,8 +2201,8 @@ function declaredGenericParams(signature: string): Set<string> {
  *  `impl<E, V, D> Holder<E, V, D>` uses E, V and D in its signature WITHOUT
  *  declaring them there - the signature text alone cannot tell them from real
  *  single-capital types, so they reach the candidate list, resolve to their
- *  own parameter chrome, and render junk blocks (session-v41 census: E/V/D
- *  reached the example leg down exactly this shape).
+ *  own parameter chrome, and render junk blocks (measured: E/V/D reached the
+ *  example leg down exactly this shape).
  *
  *  The enclosing impl is decided by SCOPE, not recency: over the
  *  comment/string-scrubbed source (offsets preserved), an `impl<...>` header
@@ -2396,7 +2397,7 @@ export function prioritizedTypes(
   excludeName?: string,
   spanText = "",
 ): string[] {
-  // session-v38 item 3. Three classes of name that cost a resolve round trip and
+  // Three classes of name that cost a resolve round trip and
   // a cap slot and can never repay either. Refused HERE, at candidate finding,
   // rather than at render: the budget is spent on this list, so a name filtered
   // downstream has already evicted a real type. Together they free about 56 slots
@@ -2429,7 +2430,7 @@ export function prioritizedTypes(
   // (tier: doc). referencedLocalSymbols adds a doc-only local type named by a bare
   // PascalCase word the backtick scan misses (`CohortRegister` / `T` in prose).
   push(typesNamedIn(signature, docComment, excludeName));
-  // The backticked names in the span's own comments (session-v36 item 1). BELOW
+  // The backticked names in the span's own comments. BELOW
   // the doc, unlike the repair ordering, and for the reason the manual states:
   // in fn-gen the doc comment is the instruction and the body sketch is the plan
   // for carrying it out. In repair the span is failing evidence and the doc is
@@ -2449,8 +2450,7 @@ export function prioritizedTypes(
 }
 
 /**
- * One prefill's rendered surface, WITH the handle the window arbitration needs
- * (session-v48 phase 2, contract-phase2.md P3).
+ * One prefill's rendered surface, WITH the handle the window arbitration needs.
  *
  * A shrink is not a substring operation: dropping a type block also narrows the
  * payload's own "only these types" instruction, so the smaller surface has to be
@@ -2459,8 +2459,7 @@ export function prioritizedTypes(
  * at full size and must not pay for a single one of them.
  */
 /**
- * What one pre-fill DID, as a record rather than as channel prose (session-v52
- * phase 2).
+ * What one pre-fill DID, as a record rather than as channel prose.
  *
  * The tighten command has to answer a question no existing hook answers: would
  * backticking this name change the injected set, or evict something for nothing?
@@ -2508,8 +2507,8 @@ export interface PrefillLedger {
  * HERE, next to the producer, rather than a wrong answer over there.
  *
  * THE MISMATCH BRANCH IS `false`, NOT `never`, and the first version of this got
- * it wrong (session-v52 adversarial defect 1). `never` is assignable to every
- * type including `true`, so `AssertTrue<never>` satisfies its own constraint and
+ * it wrong. `never` is assignable to every type including `true`, so
+ * `AssertTrue<never>` satisfies its own constraint and
  * a drifted shape compiled clean in both directions. A guard that cannot fail is
  * decoration. `test/impl-v52-p2-ledger.test.cjs` now drifts the shape in a copy
  * of the tree and asserts `tsc --noEmit` rejects it, in both directions, because
@@ -2558,7 +2557,7 @@ export async function resolvePrefill(
   opts?: {
     importTargetPath?: string;
     forConstruction?: boolean;
-    // The repair round's additions (session-v28 item 1). All three absent
+    // The repair round's additions. All three absent
     // reproduce the fn-gen prefill byte for byte, which the frozen v7/v24
     // oracles pin.
     //
@@ -2571,7 +2570,7 @@ export async function resolvePrefill(
     extraCandidates?: readonly string[];
     omitInstruction?: boolean;
     onDisclosed?: (types: DisclosedType[]) => void;
-    // session-v30 item 1: candidates that arrive WITH the cursor their
+    // Candidates that arrive WITH the cursor their
     // declaration sits at. `typeReference` anchors a candidate by searching the
     // TARGET file's text, and the type that owns a chained call is named nowhere
     // in that file - so a bare name for it dies at "no anchor found". A cursor
@@ -2587,12 +2586,12 @@ export async function resolvePrefill(
     // patch sites behaviourally. Neither can go through the setting, because no
     // setting value resolves to `shipped`.
     contextStop?: ContextStop;
-    // session-v48 phase 2: hand the caller the surface AS A SHRINKABLE THING,
+    // Hand the caller the surface AS A SHRINKABLE THING,
     // not just as a string, so the window arbitration can ask what it would
     // cost at a smaller size. Called once, with the finished surface, before
     // this function returns; absent (every other caller) changes nothing.
     onSurface?: (surface: PrefillSurface) => void;
-    // session-v52 phase 2: the whole ledger, for the caller that has to decide
+    // The whole ledger, for the caller that has to decide
     // whether a proposed backtick is a delta or an eviction. Additive and read
     // by nobody else, so the surface bytes every existing caller receives are
     // unchanged. Called once, with the finished record, before this returns.
@@ -2693,12 +2692,11 @@ export async function resolvePrefill(
     const job = receiver.job === "build" ? "the target constructs one" : "the target calls into it";
     log(`[fngen] pre-fill receiver \`${receiver.typeName}\` (enclosing type, ${job}) is first in the candidate list`);
   }
-  // THE TYPE CAP IS SPENT ON ADMISSION, not sliced off the front (session-v34
-  // item 1). A stdlib root renders nothing, and freeing its BYTE budget while it
-  // still held one of the four slots left the project type behind the cap
-  // dropped - the same selection problem the item diagnosed, one level up. So a
-  // candidate refused for provenance does not spend a slot and the next one moves
-  // up into it.
+  // THE TYPE CAP IS SPENT ON ADMISSION, not sliced off the front. A stdlib root
+  // renders nothing, and freeing its BYTE budget while it still held one of the
+  // four slots left the project type behind the cap dropped - the same selection
+  // problem one level up. So a candidate refused for provenance does not spend a
+  // slot and the next one moves up into it.
   //
   // Every other refusal DOES spend its slot, exactly as the slice did. That is
   // deliberate: a no-anchor candidate consuming a slot is pre-existing behaviour
@@ -2746,8 +2744,8 @@ export async function resolvePrefill(
   // the PER-PROMPT total (not just each walk) is bounded and a nested type shared
   // by two roots is emitted once across the whole prefill.
   //
-  // The language slot is resolved THROUGH THE BUDGET CELL first (session-v46
-  // phase 0). A language's own aggregate (C#'s CS_DATASHAPE_TOTAL_TOK) already
+  // The language slot is resolved THROUGH THE BUDGET CELL first.
+  // A language's own aggregate (C#'s CS_DATASHAPE_TOTAL_TOK) already
   // lives inside `budgetProfileFor`'s csharp leg, so handing prefillTotalTok
   // the raw table constant let a moved cell (CELL_OVERRIDES) change the
   // profile while the walk kept spending the constant - a frontier/csharp
@@ -2759,11 +2757,11 @@ export async function resolvePrefill(
   const sharedWalk: SharedWalkState = {
     visited: new Set<string>(),
     remainingChars: prefillTotalTok(langWalkBudget, profile, opts?.forConstruction === true) * 4,
-    // session-v48 phase 3. ONE ledger for the whole gesture, threaded exactly
+    // ONE ledger for the whole gesture, threaded exactly
     // where the shared budget is threaded, so the per-prompt drop list is
     // collected by the same seam that causes most of the drops.
     droppedBy: new Map(),
-    // session-v50 phase 2. Member-block dedup, kept APART from `visited`, which
+    // Member-block dedup, kept APART from `visited`, which
     // dedups data shapes. See SharedWalkState's own comment for what happened
     // when C# got a walk and the two shared one set.
     memberBlocks: new Set<string>(),
@@ -2861,7 +2859,7 @@ export async function resolvePrefill(
       opts?.extraCursors?.get(type) ??
       (isReceiver ? receiver.cursor : lang.typeReference(type, document, resolved, fullText, localTypeDefs));
     // Fallback (C#, Go): a collaborator named only in the doc-comment/body — for
-    // Go, session-v40 item 2's qualified-usage candidate leg is exactly this
+    // Go, the qualified-usage candidate leg is exactly this
     // case — or defined in another file/project has no in-span or same-file
     // cursor, so the pure per-file `typeReference` returns undefined. Resolve it
     // BY NAME through the extractor's workspace-symbol leg (Roslyn/gopls
@@ -2984,8 +2982,8 @@ export async function resolvePrefill(
         //
         // The type is NOT dropped: it still reaches the assembly and is still
         // accounted for by name in the noBlock ledger with its stdlib reason.
-        // Only the import line is withheld. Dropping it would revert
-        // session-v34 item 1, which is a different and much larger change.
+        // Only the import line is withheld. Dropping it would revert the
+        // root-provenance rule, which is a different and much larger change.
         if (t.defUri && isRustSysrootDef(t.defUri)) {
           sysrootHintsWithheld.add(name);
           continue;
@@ -3020,14 +3018,14 @@ export async function resolvePrefill(
       );
     }
     const derived = shape?.types.get(type);
-    // ROOT PROVENANCE (session-v34 item 1), decided HERE because this is where
+    // ROOT PROVENANCE, decided HERE because this is where
     // the slot is spent. A candidate PROVEN to be one the model has known since
     // pretraining renders nothing - no data shape, no member list, and no worked
     // example either - and it costs neither prompt bytes nor a slot.
     //
     // "Proven" is load-bearing and the rule reaches no further. The evidence is
     // `defUri`, so a candidate whose definition did not resolve is not refused;
-    // it keeps the pre-existing worked-example path. Item 1 forbids a name
+    // it keeps the pre-existing worked-example path. The rule forbids a name
     // blocklist, and a blocklist is the only thing that could refuse a type whose
     // provenance is unknown.
     //
@@ -3112,15 +3110,15 @@ export async function resolvePrefill(
     ...resolvedCandidates.filter((c) => !isClosedSurface(c.derived, profile.memberCap)),
   ];
 
-  // THE MEMBER FLOOR (session-v51 phase 0). The whole prompt's member blocks are
+  // THE MEMBER FLOOR. The whole prompt's member blocks are
   // priced HERE, before the loop below renders anything, because the aggregate is
   // spent across roots and a reservation taken inside a renderer arrives too late
-  // - session-v50 built that one and reverted it.
+  // - that one was built and reverted.
   //
   // What the floor buys: a member surface a developer had before the field leg is
   // never what the leg costs them. What it costs: at widths where the member half
   // alone nearly fills the aggregate, fewer data-shape blocks render than did
-  // before this session, and every one of them is named on the drop lines below.
+  // before the floor, and every one of them is named on the drop lines below.
   // That trade is one-directional on purpose. The shape block is new surface; the
   // member list is surface a developer already reads.
   //
@@ -3154,7 +3152,7 @@ export async function resolvePrefill(
     // they fail both tests above while the complete declaration sits in
     // `derived.signature`, resolved and paid for. The enum was measured at
     // +7.3 rows of 237 on the acme corpus for 122 more prompt bytes and no
-    // extra round trip (session-v38 item 1). The fastbloom bar is untouched: the
+    // extra round trip. The fastbloom bar is untouched: the
     // private-fields struct is not an enum, and answers no.
     if (takesShapePath(lang, derived)) {
       // THIS CANDIDATE'S OWN SHARE, named to the renderer before it runs and
@@ -3215,7 +3213,7 @@ export async function resolvePrefill(
     } catch {
       example = undefined;
     }
-    // THE GATE (session-v41 phase 3). A block whose code never names the type
+    // THE GATE. A block whose code never names the type
     // it is headed with is refused whole: its header ("Usage example for `X`")
     // would be a false sentence in a prompt whose other blocks say "do not
     // invent". Refused means not emitted - the type falls to the same honest
@@ -3259,7 +3257,7 @@ export async function resolvePrefill(
         )
       : undefined;
 
-  // THE PER-GESTURE DROP LEDGER (session-v48 phase 3, contract-phase2.md P8).
+  // THE PER-GESTURE DROP LEDGER.
   // The walk has always recorded the types a cap dropped ENTIRELY; until now
   // only the per-walk lines above read it, and only on the two languages that
   // have a data-shape walk at all. This is the once-per-fn-gen list: what the
@@ -3274,7 +3272,8 @@ export async function resolvePrefill(
   const droppedLedger = [...(sharedWalk.droppedBy ?? new Map<string, DroppedType>()).values()];
   if (droppedLedger.length > 0 && !forConstruction) {
     const named = droppedNames(droppedLedger, profile.dataShape);
-    // TWO CLASSES SINCE session-v51, and the sentence has to tell them apart.
+    // TWO CLASSES SINCE THE MEMBER FLOOR, and the sentence has to tell them
+    // apart.
     // A cap drop costs a type its whole presence; a member-floor refusal costs
     // it only its data shape, because the floor exists precisely so its member
     // list survives. One word, "entirely", covering both would tell a developer
@@ -3306,10 +3305,10 @@ export async function resolvePrefill(
     );
   }
 
-  // THE LEDGER, BUILT ONCE AND HANDED OVER FROM BOTH EXITS (session-v52
-  // adversarial defect 2). `surface` is the only field that differs between
-  // them, so it is the only parameter: the no-block exit returns `undefined`
-  // and the ledger's surface is the empty string.
+  // THE LEDGER, BUILT ONCE AND HANDED OVER FROM BOTH EXITS. `surface` is the
+  // only field that differs between them, so it is the only parameter: the
+  // no-block exit returns `undefined` and the ledger's surface is the empty
+  // string.
   //
   // Why the early exit needs it at all. The walk has already run by the time
   // control reaches here: `noBlock`, `notLookedAt` and `droppedBy` are full and
@@ -3356,7 +3355,7 @@ export async function resolvePrefill(
     );
   }
 
-  // The surface AT A CHOSEN SIZE (session-v48 phase 2). `renderSurface(blocks.length)`
+  // The surface AT A CHOSEN SIZE. `renderSurface(blocks.length)`
   // is the whole surface and is what this function returns, so the fits case is
   // byte-identical to what it always was; a smaller argument is the shrink, and
   // it RE-RENDERS rather than slicing because the firm instruction's scope has
@@ -3556,7 +3555,7 @@ const CALL_OWNER_CAP = 2;
  * The types that own the member calls a span makes, nearest the diagnostic
  * first.
  *
- * This is session-v30 item 1. `spanTypesInPlay` reads the types a span NAMES,
+ * `spanTypesInPlay` reads the types a span NAMES,
  * and the receiver of a chained call is named nowhere: in the live capture the
  * failing call was `metadata.write.to_shard_log_header(...)`, whose receiver is
  * a `LogSegmentCursor`, and all 3710 bytes of the repair prompt carried no
@@ -3650,7 +3649,7 @@ export async function resolveCallOwners(
     // it sits in no stop set and it is capitalized - so it was pushed with a
     // cursor and spent one of the two KEEP slots, which under a cap is an
     // eviction of something real. NOTHING DOWNSTREAM REFUSED IT, and the
-    // contract this phase was written from said something else: session-v34's
+    // contract this was written from said something else: the
     // provenance rule tests `defUri` against the rust sysroot
     // (`crossFileShape.ts:252`, wired at `fnGen.ts:4274`, applied at
     // `fnGen.ts:2915`), and a parameter anchored at a workspace impl header has
@@ -3762,15 +3761,15 @@ function groupByType(
 // and then evicted by the shared data-shape budget was reported as "nothing
 // renderable" while the line above it said the walk had dropped it: two lines
 // about one type, disagreeing, in the channel every zero-byte count in this
-// project is derived from (session-v38, 7 rows over 5 enums).
+// project is derived from (7 rows over 5 enums).
 //
-// The THIRD reason is the same defect one door over, found in session-v39 while
+// The THIRD reason is the same defect one door over, found while
 // measuring the budget. `sharedWalk.visited` is shared across a prompt's walks BY
 // DESIGN, so a type an earlier walk already emitted makes its own walk emit
 // nothing — and was being reported as starved by the budget while its declaration
 // sat in the prompt. Four rows on the acme corpus, identical at every budget
 // from 300 to 1200 and identical in the v38 baseline, which is how they were
-// caught: no budget moved them. They inflated this session's own starvation count
+// caught: no budget moved them. They inflated the starvation count
 // from 17 to 21 before anyone read the surface they were supposed to be missing.
 //
 // `visited` can only hold this type from an EARLIER walk here: a walk that emitted
@@ -3987,16 +3986,16 @@ interface PrefillLang {
   dataShapeTotalTok?: number;
 
   // THE THREE CAPS ARE NOT HERE ANY MORE. `typeCap`, `resolveCap` and
-  // `provenanceCap` used to be per-language fields on this interface; since
-  // session-v48 phase 1 they are three of the six numbers ONE context stop
-  // resolves, and they arrive through `budgetProfileFor`.
+  // `provenanceCap` used to be per-language fields on this interface; they are
+  // now three of the six numbers ONE context stop resolves, and they arrive
+  // through `budgetProfileFor`.
   //
   // The per-language measurements that put them here are not refuted, they are
   // outranked. Go's own cap ladder (907 authored rows, six repositories) put
   // its knee at 8 against Rust's shipped 4, and the ruling of 2026-08-10 was to
   // bring every language up rather than keep a per-language table: Rust's own
   // 4->12 ladder measured FLAT only because it ran with the token budget
-  // pinned, and session-v45 showed that raising the cap alone just relocates
+  // pinned, and raising the cap alone was measured to only relocate
   // the loss. In the dial roots and budget move together, so the condition
   // under which Rust measured flat does not hold.
 
@@ -4077,14 +4076,14 @@ interface PrefillLang {
    *  container walk reports the declaring symbol's bare name and there is no
    *  field type as written to read a `.` out of.
    *
-   *  WHAT IT REACHES TODAY IS NOTHING, and the blind oracle of session-v55 phase
-   *  10 measured it rather than assuming it: `resolveCallOwners` resolves no
+   *  WHAT IT REACHES TODAY IS NOTHING, and a blind oracle measured it rather
+   *  than assuming it: `resolveCallOwners` resolves no
    *  owner for Go at all, for any type. `GO_RULES.containerName` is `() =>
    *  undefined` (`receiver.ts:332`) because a Go method is declared at package
    *  scope with its receiver in the signature, so every Go call reaches the
    *  free-function line before any name filter runs. This flag guards a shut
-   *  door, exactly as `goShapeHooks.skipCandidate` did before session-v49 lit
-   *  the field leg. It is here so that opening the door is a deliberate red row
+   *  door, exactly as `goShapeHooks.skipCandidate` did before the field leg was
+   *  lit. It is here so that opening the door is a deliberate red row
    *  rather than a silent regression on `testing.T`. */
   singleLetterOwnerIsReal?: boolean;
   /** Is a ROOT candidate whose definition is at this URI one the model already
@@ -4131,7 +4130,7 @@ interface PrefillLang {
    *  WHY THE CALLER OWNS THIS and `csShapeBlock` cannot. The aggregate is spent
    *  ACROSS ROOTS: by the time a starved root is rendered, the earlier roots'
    *  shape blocks have already taken it. A reservation inside the renderer was
-   *  built in session-v50 and reverted for exactly that reason. */
+   *  built and reverted for exactly that reason. */
   priceMemberBlocks?: (
     candidates: readonly { type: string; shape: CrossFileShape | undefined }[],
     profile: PrefillProfile,
@@ -4188,9 +4187,10 @@ interface PrefillLang {
    *  own member block, reachable by the field BFS or not, so the gather is its
    *  supply and capping it would delete prompt bytes.
    *
-   *  Measured before it was wired (session-v51 phase 2, `session-v51/hover-A.txt`):
-   *  over 20 real `pgx` roots the Go gather resolved 117 types, of which 31 were
-   *  outside the render's BFS at any budget - 11 of the 26 on `Conn` alone. Each
+   *  Measured before it was wired. The capture file did not survive, so this
+   *  comment is the record: over 20 real `pgx` roots the Go gather resolved 117
+   *  types, of which 31 were outside the render's BFS at any budget - 11 of the
+   *  26 on `Conn` alone. Each
    *  one costs a definition, a hover and a documentSymbol, and a hover into a
    *  package gopls has not type-checked measured 71-76ms. */
   gatherBreadth?: boolean;
@@ -4466,8 +4466,8 @@ export function csLocalTypeDefinitions(source: string): Map<string, { line: numb
 }
 
 // The C# candidate list, mirroring the TS prioritization: signature/doc
-// PascalCase first, then doc-referenced local types, then — session-v40 item 2
-// — a `using`-qualified reference mined from signature/doc/body, LAST, same
+// PascalCase first, then doc-referenced local types, then a `using`-qualified
+// reference mined from signature/doc/body, LAST, same
 // position the Rust/TS ambient-import tier occupies. A plain `using` brings a
 // NAMESPACE, not a type, so unlike Rust/TS there is no type name to read off
 // the `using` LINE itself; csTypesFromQualifiedUsage instead reads the
@@ -4594,9 +4594,8 @@ function shedFromDefs(
  *  the first candidate's collaborators are charged before the last candidate's
  *  own type is reached, so a tail root prices ZERO, is owed nothing, and an
  *  earlier candidate's shape block then spends exactly what that root's member
- *  list needed. Measured by the session-v51 phase 0 review at 6 roots x 20
- *  fields with one shared 12-field collaborator: `Foxes` ended with neither
- *  block.
+ *  list needed. Measured at 6 roots x 20 fields with one shared 12-field
+ *  collaborator: `Foxes` ended with neither block.
  *
  *  Roots first is the fix because it matches what the floor is FOR. The
  *  guarantee is that a member surface a developer had BEFORE the field leg is
@@ -4693,7 +4692,7 @@ function csShapeBlock(
   // C# is the one language whose member blocks spend the shared per-prompt
   // budget: `csShapeGraphBlock` renders a block per collaborator and stops when
   // the budget runs out. Data-shape blocks spend the same budget and they spend
-  // it first, so until session-v51 a fat graph could take a member block a
+  // it first, so until the floor a fat graph could take a member block a
   // developer had before the field leg existed. Measured at 8 types x 15 fields
   // on the install default: two types lost the member block they had and one
   // ended up in the prompt with neither. That was P4-7 in
@@ -4899,7 +4898,7 @@ const CS_PREFILL_LANG: PrefillLang = {
   exampleFallback: false,
   firmInstruction: CS_FIRM_INSTRUCTION,
   memberVisibility: visibilityFor("csharp"),
-  // WALK, as of session-v50 phase 2. `csShapeBlock` now runs `walkDataShape` over
+  // WALK. `csShapeBlock` now runs `walkDataShape` over
   // `csShapeHooks`, whose def renderer synthesises a field body from the members
   // Roslyn returns, so breadth, depth and the total-type cap all reach this
   // language the way they reach Rust, TypeScript and Go. Changed in the SAME
@@ -5015,7 +5014,7 @@ function pyShapeBlock(
   if (cappedLine !== undefined) {
     log(cappedLine);
   }
-  // THE DATA SHAPE (session-v50 phase 3), same shape and same guards as Go's and
+  // THE DATA SHAPE, same shape and same guards as Go's and
   // C#'s. No fields, no block: a service class whose members are all callables
   // would otherwise carry a second block repeating its own `class Foo` line.
   const parts: string[] = [];
@@ -5072,7 +5071,7 @@ const PY_PREFILL_LANG: PrefillLang = {
   // No memberVisibility: Python spells visibility nowhere, and the standing
   // decision to keep single-underscore members is a human call, not a filter.
   firmInstruction: PY_FIRM_INSTRUCTION,
-  // WALK, as of session-v50 phase 3. `pyShapeHooks.parseFields` derives fields
+  // WALK. `pyShapeHooks.parseFields` derives fields
   // from the resolved members and `pyShapeBlock` runs `walkDataShape` over them,
   // so depth, breadth and the total-type cap all reach this language now. This
   // line drives `contextStopLine`, and while it said `signatures` every Python
@@ -5111,7 +5110,7 @@ export function goLocalTypeDefinitions(source: string): Map<string, { line: numb
 }
 
 // The Go candidate list, C#-shaped (signature/doc first, then doc-referenced
-// local types), plus — session-v40 item 2 — a `pkg.`-qualified reference mined
+// local types), plus a `pkg.`-qualified reference mined
 // from signature/doc/body, LAST, same position the Rust/TS ambient-import tier
 // occupies. A Go import line carries a package PATH, not a type name, so
 // unlike Rust/TS there is no type name to read off the import LINE itself;
@@ -5183,7 +5182,7 @@ function goFindTypeReference(
 // go-fenced. Sibling of tsShapeBlock now rather than of pyShapeBlock; the Rust
 // shapeBlock stays frozen.
 //
-// THE RENDER DECISION (session-v49 phase 1 goal: "decide which one ships").
+// THE RENDER DECISION.
 //
 // Go's member list already carries every field name AND its type — `pgConn
 // *pgconn.PgConn` has shipped as a member line since v23. So a rendered field
@@ -5280,7 +5279,7 @@ function goShapeBlock(
 // one — while the method surface rides membersOfType, which no hook touches.
 // This pre-fill entry renders SIGNATURES only and never reads a def, so the
 // renderer reaches it through the FIM whole-block leg alone.
-// GO'S 8-ROOT EXCEPTION IS GONE (ruled 2026-08-10, session-v48 goal). Go used
+// GO'S 8-ROOT EXCEPTION IS GONE (ruled 2026-08-10). Go used
 // to carry its own measured cap of 8 here against every other language's 4:
 // the authored-gesture funnel put the shipped 4 at the binding stage, with
 // 1116 of 3037 ground-truth types losing the cap lottery, and the ladder over
@@ -5306,8 +5305,8 @@ const GO_PREFILL_TYPE_CAP = PREFILL_TYPE_CAP === 4 ? 8 : PREFILL_TYPE_CAP;
 
 const GO_PREFILL_LANG: PrefillLang = {
   shippedRootCap: GO_PREFILL_TYPE_CAP,
-  // WALK, as of session-v49 phase 1, and this line moving is the whole reason
-  // the phase 0 tripwire exists. `goShapeBlock` now runs `walkDataShape` over
+  // WALK, and this line moving is the whole reason
+  // the tripwire exists. `goShapeBlock` now runs `walkDataShape` over
   // `goShapeHooks`, whose field parser reads a gopls struct hover, so every
   // number the dial carries reaches this language the way it reaches Rust and
   // TypeScript: depth and breadth bound the walk, the total-type cap bounds it,
@@ -5356,11 +5355,11 @@ const GO_PREFILL_LANG: PrefillLang = {
 // Exported so an oracle can drive the WHOLE funnel rather than its first stage.
 // A candidate name that reaches `candidates` still has to survive the type cap
 // and then ANCHOR at a real position through `typeReference`, and a test that
-// stops at extraction passes while Go injects nothing (session-v37 goal, "The
-// funnel stage nobody measured"). The five entries are the product's own, not a
-// re-derived mapping: a harness that rebuilt one inverted a v29 arm result.
-// `injectedTypeCap` AND `column80.injectedSurface` ARE GONE (session-v48 phase
-// 1). That setting scaled ONE of the four numbers - the root cap - and left
+// stops at extraction passes while Go injects nothing. The five entries are the
+// product's own, not a re-derived mapping: a harness that rebuilt one inverted
+// a v29 arm result.
+// `injectedTypeCap` AND `column80.injectedSurface` ARE GONE.
+// That setting scaled ONE of the four numbers - the root cap - and left
 // breadth, the total-type cap and the render budget where they were, which is
 // precisely the configuration the trap proof shows cannot change the prompt:
 // with the total at 6 and the budget at 200, more roots re-divide the same
@@ -5532,7 +5531,7 @@ export function registerFnGen(
   const injectionExtractor = (languageId: string): SurfaceExtractor | undefined =>
     readOracleConfig().injectionEnabled ? extractorFor(languageId) : undefined;
 
-  // `Column 80: Tighten Doc Comment` (session-v52). Registered from here
+  // `Column 80: Tighten Doc Comment`. Registered from here
   // because the presenter is the extension's ONE consent gate and lives in this
   // closure; everything else the command needs is passed rather than imported,
   // so `tightenDocComment.ts` carries no runtime edge back into this file and
@@ -5756,7 +5755,7 @@ export function registerFnGen(
       // the loop recovers). Gated on the extractor and the injection setting.
       // `let`, because the window arbitration below may shrink it: the developer
       // added their context blocks on purpose and ours is the part that gives
-      // ground (session-v48 phase 2).
+      // ground.
       let surface: PrefillSurface | undefined;
       let injectedSurface = await resolvePrefill(injectionExtractor(document.languageId), document, resolved, log, {
         onSurface: (s) => {
@@ -5894,7 +5893,7 @@ export function registerFnGen(
           },
         );
       } catch (err) {
-        // THE REFUSAL (session-v48 phase 2). Checked before every other error
+        // THE REFUSAL. Checked before every other error
         // branch, because it is not a failure: it is the product declining to
         // send a prompt the window would silently cut in half. No buffer write,
         // no proposal, no ghost - this sentence is the whole outcome, and it
@@ -6538,8 +6537,8 @@ export function registerFnGen(
       // trust invariant's spirit (no silent model write) holds.
       //
       // Creating the target FILE is the THIRD write path (S3), and it is the one
-      // gesture here that cannot be verified without a human at a keyboard; the
-      // steps to drive it are in session-v31/visual-residual.md.
+      // gesture here that cannot be verified without a human at a keyboard. The
+      // written steps for driving it did not survive.
       if (!placement.exists) {
         const created = await createTestFileWithSnippet({
           presenter,

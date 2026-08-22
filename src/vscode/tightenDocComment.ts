@@ -88,8 +88,7 @@ export const TIGHTEN_COMMAND_ID = "column80.tightenDocComment";
  *
  * `PROPOSER_SPAN_CAP` (12) times `RATIFY_QUERY_CAP` (9) is 108, and the first
  * version of this command could reach 85 of them serially with a second sweep
- * on top (session-v52 phase 5 adversarial, defect 8). Nothing capped the
- * product of the two caps.
+ * on top. Nothing capped the product of the two caps.
  *
  * TWELVE, which is one first query per span the developer could ever be shown.
  * The allocation is breadth before depth: every unresolved span gets its first
@@ -99,10 +98,11 @@ export const TIGHTEN_COMMAND_ID = "column80.tightenDocComment";
  *
  * SIZED AGAINST A MEASUREMENT, not against the ~500ms Roslyn floor the contract
  * quoted, which is for a REFERENCE call and is the wrong operation. Warm
- * `workspace/symbol` p95, measured in session-v52/ratify-query-cost.md: Roslyn
- * 0.9ms, gopls 4.4ms, rust-analyzer 5.3ms, tsserver `navto` 16.9ms. Twelve
- * queries is therefore about 0.2s at the slowest of the four, against a model
- * round of seconds and a pre-fill of ~285ms.
+ * `workspace/symbol` p95, recorded in `docs/architecture/tighten-doc-comment.md`
+ * under "What one query costs": Roslyn 0.9ms, gopls 4.4ms, rust-analyzer 5.3ms,
+ * tsserver `navto` 16.9ms. Twelve queries is therefore about 0.2s at the
+ * slowest of the four, against a model round of seconds and a pre-fill of
+ * ~285ms.
  */
 export const TIGHTEN_QUERY_BUDGET = 12;
 
@@ -332,8 +332,8 @@ export async function tightenDocComment(
   // 5 + 6. Identifier, delta gate, existence gate. Ordered by cost: the fold
   // against the disclosed surface is free and runs first, then ONE provider
   // query per span, then the sweep on a miss while the budget lasts (phase 3
-  // contract, "Cost", as re-sized by the latency measurement in
-  // session-v52/ratify-query-cost.md).
+  // contract, "Cost", as re-sized by the latency measurement recorded in
+  // `docs/architecture/tighten-doc-comment.md`).
   //
   // EVERY REFUSAL IS COLLECTED, not only logged: contract p5 says a refused
   // backtick is shown to the developer with the tier that refused it, and a
@@ -708,7 +708,8 @@ async function queryOnce(
 /**
  * The rest of the variants, for a phrase the first query missed.
  *
- * WHAT THIS IS WORTH, MEASURED (session-v52/ratify-query-cost.md): the marginal
+ * WHAT THIS IS WORTH, MEASURED (`docs/architecture/tighten-doc-comment.md`,
+ * "Query cost: one workspace-symbol query is the whole gate"): the marginal
  * recall of the whole sweep over the first query is 0 of 451 real type names,
  * on tsserver and on gopls. Amendment 5 kept the full nine "because it costs
  * nothing when the first query hits", and the phase 5 review was right that the

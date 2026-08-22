@@ -527,10 +527,12 @@ export class CsLspExtractor implements SurfaceExtractor {
       textDocument: { uri: defCursor.uri },
     });
     // The wrong-tree refusal, the product transport's sibling. A definition
-    // answer at the REFERENCE's own position lands inside the body of the
-    // method the reference was written in; the descent would then hand back the
-    // ENCLOSING class as if it were the named type. Refuse instead. A member
-    // site sits on no identifier and is not refused.
+    // answer at the REFERENCE's own position lands wherever the reference was
+    // written - a method body, or a declaration HEAD (a base list, a primary
+    // constructor parameter, a constraint, an attribute); the descent would
+    // then hand back the ENCLOSING class as if it were the named type. Refuse
+    // instead. A member site sits on no identifier and is not refused, and
+    // neither is a C# syntax word.
     const lineText = this.texts.get(defCursor.uri)?.split("\n")[defCursor.line];
     if (resolutionReachedWrongTree(symbols, defCursor, csLspSymbolRole, lineText)) {
       return [];

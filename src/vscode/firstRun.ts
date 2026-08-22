@@ -93,7 +93,7 @@ export async function resolveTier(
   if (tierConfig.hardwareTier === "auto") {
     // The probe's own verdict on whether the model shares one pool with the
     // toolchain rides through, for the one thing that hangs on it: no CUDA layer
-    // carve on Metal (session-v34 item 4).
+    // carve on Metal.
     const selection = computeTier(probe.vramMB, probe.ramMB, { unifiedMemory: probe.unifiedMemory });
     output.appendLine(tierLogLine(selection, probe.vramMB, probe.ramMB, "auto"));
     return { probe, selection };
@@ -351,7 +351,7 @@ export async function offerModelPull(
     // unclassified one returns no class sentence and falls through to the
     // anchored, carrier and substring passes. A 404 reading
     // `pull failed: generation was empty after postprocess` drew a generation
-    // reject's sentence here (session-v59 phase 1 review). This entry point can
+    // reject's sentence here. This entry point can
     // only ever answer with a class sentence or nothing.
     //
     // AND ITS OWN CONSEQUENCE CLAUSE. The diagnosis half is the same one every

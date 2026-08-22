@@ -1085,6 +1085,36 @@ function identifierAt(lineText: string, character: number): string {
   return lineText.slice(start, end);
 }
 
+/** The identifier a container's reported name starts with: `Box<T>` -> `Box`,
+ *  `Tile : ITile` -> `Tile`, `@class` -> `class`. Servers decorate a container
+ *  name with whatever they feel like - Roslyn hands back the generic clause and
+ *  suffixes a member's type - and a cursor's word never carries any of it, so
+ *  the two are compared at the identifier head or not at all. */
+function bareContainerName(name: unknown): string {
+  if (typeof name !== "string") {
+    return "";
+  }
+  const head = /^@?([A-Za-z_]\w*)/.exec(name.trim());
+  return head ? head[1] : "";
+}
+
+/** The words a C# declaration is built out of, as opposed to the type names it
+ *  references. Lowercase and compared case-sensitively: every C# keyword is
+ *  lowercase and type names are not, so the only thing this misses is a type
+ *  genuinely named `record`, and it misses it in the safe direction (no
+ *  refusal). Kept deliberately generous - a word wrongly listed here costs the
+ *  refusal one shape, a word wrongly absent costs a correct surface. */
+const CS_SYNTAX_WORDS = new Set([
+  "abstract", "as", "async", "base", "bool", "byte", "char", "class", "const", "decimal", "default",
+  "delegate", "double", "dynamic", "enum", "event", "explicit", "extern", "false", "file", "float",
+  "get", "global", "implicit", "in", "init", "int", "interface", "internal", "is", "long", "nameof",
+  "namespace", "new", "nint", "notnull", "nuint", "null", "object", "operator", "out", "override",
+  "params", "partial", "private", "protected", "public", "readonly", "record", "ref", "required",
+  "sbyte", "scoped", "sealed", "set", "short", "static", "string", "struct", "this", "true",
+  "typeof", "uint", "ulong", "unmanaged", "unsafe", "ushort", "using", "value", "var", "virtual",
+  "void", "volatile", "when", "where",
+]);
+
 /** Did a by-name type resolution reach the tree of some OTHER declaration?
  *
  *  `memberSymbolsOfType` cannot tell, because it only asks which container
@@ -1096,17 +1126,28 @@ function identifierAt(lineText: string, character: number): string {
  *  written in, rendered under a header reading `to build a X:`. That is a false
  *  statement the model then follows, and it is worse than injecting nothing.
  *
- *  Three facts have to hold together, and each one is load-bearing:
+ *  A correct resolution lands on the named type's own NAME TOKEN. Everything
+ *  else inside a container is some other declaration's business, so the test is:
  *
  *   1. The cursor sits on an IDENTIFIER. A member site (`stripe.|`) sits on
  *      none, and that is the shape the first caller asks from - it must not be
  *      refused.
- *   2. That identifier is not the enclosing container's own name. A genuine
- *      definition cursor lands on the type's name token, so the two agree.
- *   3. The cursor is inside one of the container's MEMBERS. Without this, a
- *      definition answer landing on the `public` of `public class Tile` reads
- *      as a wrong tree; the declaration head is outside every member's range,
- *      so it does not.
+ *   2. That identifier is not the enclosing container's own name, compared at
+ *      the identifier head so `Box` still answers a container Roslyn reports as
+ *      `Box<T>`.
+ *   3. That identifier is not a C# syntax word. This is what keeps a server
+ *      answering a whole-declaration span honest: asked for `Tile`, an answer
+ *      at character 0 of `public class Tile` lands on `public`, which is not a
+ *      reference to anything and must not cost the surface.
+ *
+ *  A MEMBER's range is not consulted, and that is the correction. It used to be
+ *  the third fact, on the ground that the declaration head sits outside every
+ *  member and is therefore safe. It is not: a base list, a primary-constructor
+ *  parameter, a generic constraint and an attribute all name OTHER types in the
+ *  head, and Roslyn (2.140.9, measured) emits no child covering any of them -
+ *  no constructor child for `class Seeded(Tile seed)` at all, and an attributed
+ *  class's range starts at the attribute. Those five shapes rendered the
+ *  enclosing class under `to build a Tile:` with the refusal watching.
  *
  *  The symbol tree resolves the scope and the text only supplies the word under
  *  the cursor - the standing split this file's `enclosingTypeName` states. No
@@ -1122,16 +1163,11 @@ export function resolutionReachedWrongTree(
     return false;
   }
   const word = identifierAt(lineText, cursor.character);
-  if (word === "") {
+  if (word === "" || CS_SYNTAX_WORDS.has(word)) {
     return false;
   }
   const found = findEnclosingContainer(symbols as DocumentSymbolLite[], cursor, role);
-  if (!found || found.container.name === word) {
-    return false;
-  }
-  return (found.container.children ?? []).some(
-    (child) => child?.range !== undefined && rangeContainsCursor(child.range, cursor),
-  );
+  return found !== undefined && word !== bareContainerName(found.container.name);
 }
 
 /** One workspace-symbol hit reduced to what a by-name type resolution needs.

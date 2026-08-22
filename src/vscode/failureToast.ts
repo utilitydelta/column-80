@@ -109,7 +109,7 @@ const SERVICE_REJECT_TOASTS: ReadonlyArray<RejectToast> = [
       "Anthropic: the stream ended before message_stop",
       "Anthropic: response has no body",
       "Cloud: response has no body",
-      // session-v58, roadmap item 67. Until these two throws existed, only the
+      // Roadmap item 67. Until these two throws existed, only the
       // Anthropic arm could FEEL a stream die mid-reply; the local and cloud
       // readers returned whatever text had arrived and the service accepted it,
       // so a half function was proposed as a complete generation. Same event as
