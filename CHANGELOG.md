@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.3.0
 
 The output channel keeps what the server actually said. Every unknown-error notification ends "The
 full message is in the output channel", and that had quietly stopped being true: once the width
@@ -47,7 +47,7 @@ showing you the provider's own message, because that message is usually the answ
 the model is not pulled, a 400 tells you the prompt was too long. A tidy sentence with a number in
 it would have been worse.
 
-A misbehaving server can no longer flood a notification on any backend. The last release bounded the
+A misbehaving server can no longer flood a notification on any backend. The bound started on the
 local path and left the Anthropic and cloud clients with byte-identical unbounded copies, so a 500
 with a 100KB body put the whole 100KB in a toast: measured at 102437 characters. The bound is one
 piece of code now and all three clients use it, on the body and on the HTTP reason phrase.
@@ -97,11 +97,9 @@ test generation, Tighten Doc Comment and the first-run download used to forward 
 object, `Error:` prefix and all. They now show the first line and say the full message is in the
 output channel.
 
-A misbehaving server can no longer flood a notification. An HTTP error body went into the error
-string whole, so 100KB of server JSON landed in a toast; the body and the status reason phrase are
-both bounded now. And a connection that times out on the way to a remote host is recognised as the
-server being unreachable, which is the message with the fix in it, instead of falling through to
-the raw error text.
+A connection that times out on the way to a remote host is recognised as the server being
+unreachable, which is the message with the fix in it, instead of falling through to the raw error
+text.
 
 A disabled hardware tier that arrived without a message rendered `Column 80: undefined`. It names
 the reason now.
