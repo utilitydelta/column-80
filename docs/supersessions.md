@@ -679,7 +679,7 @@ against `contract-phase1.md`) and `test/impl-v48-p1-context-dial.test.cjs`.
 
 ## S17. The prompt-versus-window estimate stops being `chars / 4`
 
-**NOT YET RATIFIED. Built 2026-08-10 in the session-v48 phase 2+3 adversarial-review loop-back
+**RATIFIED 2026-08-24 by the human, as shipped. Built 2026-08-10 in the session-v48 phase 2+3 adversarial-review loop-back
 (defect D6, triaged DO). Flagged here because it supersedes the written contract's own wording.**
 
 **What changed.** `session-v48/contract-phase2.md` P2 specifies "a `chars / 4` proxy, the same
@@ -830,7 +830,7 @@ wording. The measurement and the ruling are at the end of `session-v57/goal.md`.
 
 ## S21. The channel's raw body escapes its line breaks
 
-**NOT YET RATIFIED.** Narrowed 2026-08-22 in the session-v58 phase 1 review loop-back (a MEDIUM
+**RATIFIED 2026-08-24 by the human, as shipped.** Narrowed 2026-08-22 in the session-v58 phase 1 review loop-back (a MEDIUM
 finding, triaged DO). Flagged here because it narrows a clause of the contract written for that
 phase, and because the clause it narrows is the one the human's ruling is about.
 
@@ -877,7 +877,7 @@ re-cut to pin one physical row per dump and no product tag at the head of any re
 
 ## S22. The toast's channel pointer is earned by segment count, not by `trim()`
 
-**NOT YET RATIFIED.** Ruled 2026-08-22 as amendment 1 to `session-v58/contract-phase2.md`, after
+**RATIFIED 2026-08-24 by the human, as shipped.** Ruled 2026-08-22 as amendment 1 to `session-v58/contract-phase2.md`, after
 the phase-2 blind oracle proved the written clause undecidable. Flagged here because it changes a
 behaviour session-v57 shipped, on a sentence that appears on several toast surfaces.
 
@@ -913,7 +913,7 @@ comments stripped first, because the fix's own coupling comment quotes the expre
 
 ## S23. An HTTP status gets a crafted sentence only where the product knows a class
 
-**NOT YET RATIFIED.** Ruled 2026-08-22 in the session-v58 phase-7 review loop-back, after the
+**RATIFIED 2026-08-24 by the human, as shipped.** Ruled 2026-08-22 in the session-v58 phase-7 review loop-back, after the
 adversarial review found the first cut had made a toast WORSE than the string it replaced. Flagged
 here because it narrows clauses of that phase's own contract and one line of `goal.md`.
 
@@ -973,7 +973,7 @@ provider's reason survives to the screen - the property whose absence was the de
 
 ## S24. The C# re-indent freeze mask moves, and the count is the claim
 
-**NOT YET RATIFIED.** Session-v59 phase 5, closing roadmap item 60, AMENDED by that session's fix
+**RATIFIED 2026-08-24 by the human, as corrected.** Session-v59 phase 5, closing roadmap item 60, AMENDED by that session's fix
 round after an adversarial review drove three defects into the shipped work. The fix itself was
 ratified as a shape at filing time; what needs a call is the differential claim it falsifies.
 
@@ -1056,7 +1056,7 @@ because it is the shape a reader will ask about.
 
 ## S25. Two surfaces stop keeping their own failure wording
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 1, which closes S58-7 and S58-13.
+**RATIFIED 2026-08-24 by the human, as shipped.** Built 2026-08-23 in session-v59 phase 1, which closes S58-7 and S58-13.
 Flagged here because it spends a deferral one contract ruled deliberately, and it collapses a
 two-outcome row in another contract down to one.
 
@@ -1139,7 +1139,7 @@ which it did not before.
 
 ## S26. The Rust and C# test rungs stop filtering by substring
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 4, closing roadmap item 59. The fix
+**RATIFIED 2026-08-24 by the human, as corrected.** Built 2026-08-23 in session-v59 phase 4, closing roadmap item 59. The fix
 shape was ratified at filing time; what needs a call is that two BYTE-FROZEN command contracts and
 one seam's documented output shape move with it.
 
@@ -1222,7 +1222,7 @@ selects one. A second graded row drives `namespace @namespace` against real dotn
 
 ## S27. A cancelled tighten round is not a failed one, and it ends the gesture
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 3, which closes S58-11. Flagged here
+**RATIFIED 2026-08-24 by the human, as shipped.** Built 2026-08-23 in session-v59 phase 3, which closes S58-11. Flagged here
 because it narrows a clause of S25 one week after S25 was written, and because it stops a gesture
 that used to carry on.
 
@@ -1264,7 +1264,7 @@ the controls: a real failure still warns exactly once, and a server whose messag
 
 ## S28. "TypeScript and Python already refuse the wrong tree" was never true
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 9, which closes roadmap item 21.
+**RATIFIED 2026-08-24 by the human, as corrected.** Built 2026-08-23 in session-v59 phase 9, which closes roadmap item 21.
 
 **What changed.** Two legs landed. TypeScript and Python got the by-name workspace-symbol leg C#
 and Go already had (`resolveTypeCursorByName` on `TsCommandExtractor`, `PyCommandExtractor`, and
@@ -1372,7 +1372,7 @@ reads as a dark leg. Recorded on the method.
 
 ## S29. The anthropic round line stops taking "the first line" and takes the whole message, escaped
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 2, which closes S58-1, S58-2, S58-3,
+**RATIFIED 2026-08-24 by the human, as shipped.** Built 2026-08-23 in session-v59 phase 2, which closes S58-1, S58-2, S58-3,
 S58-6 and S58-9. Flagged here because it changes a SHIPPED channel format, not because anything
 narrowed.
 
@@ -1435,7 +1435,7 @@ keystroke is a broken server the user needs to see.
 
 ## S30. A Rust keyword or postfix item is dropped from the RENDER, not from the answer
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59 phase 8, closing roadmap item 7. The ruling
+**RATIFIED 2026-08-24 by the human, as shipped.** Built 2026-08-23 in session-v59 phase 8, closing roadmap item 7. The ruling
 this implements was ratified 2026-08-16; what needs a call is that a transport contract row, frozen
 since v27, moves with it.
 
@@ -1485,7 +1485,7 @@ list, `.await` and postfix `match` fail. The phase report carries both failure t
 
 ## S31. A failure's cause travels between surfaces; its consequence does not
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59, repairing phase 1. It narrows S25, which is
+**RATIFIED 2026-08-24 by the human, as shipped.** Built 2026-08-23 in session-v59, repairing phase 1. It narrows S25, which is
 this session's own contract, and it re-cuts a row in the phase 1 blind oracle that the narrowing
 makes impossible to satisfy.
 
@@ -1557,7 +1557,7 @@ three identical sentences would otherwise satisfy it.
 
 ## S32. The accept/reject accounting line cuts on the render break set, and a progress phrase cannot crash a download
 
-**NOT YET RATIFIED.** Built 2026-08-23 in session-v59, the phase 2 fix round, against three findings
+**RATIFIED 2026-08-24 by the human, as shipped.** Built 2026-08-23 in session-v59, the phase 2 fix round, against three findings
 from that phase's adversarial review. Flagged here because it changes a SHIPPED channel format and
 withdraws a written invariant, not because anything narrowed.
 

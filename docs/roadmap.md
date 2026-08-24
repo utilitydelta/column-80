@@ -19,10 +19,10 @@ of here when it ships.
 Five sections: features, decisions waiting on the human, measurements pending, deferred fixes, and
 the dogfood ledgers plus what has been rejected.
 
-Last caught up 2026-08-23 by session-v59, which struck items 7, 21, 22, 45, 59, 60 and 61 and filed
-item 70. Thirteen contract narrowings (S17, and S21 through S32) are recorded in
-`docs/supersessions.md` and every one of them is waiting on a human; they are indexed under Decisions
-below.
+Last caught up 2026-08-24 by the ratification batch. S17 and S21 through S32 are RATIFIED (S24, S26
+and S28 as corrected); the dated records are in `docs/supersessions.md`. Ten more rulings landed
+inside their own items, marked **RULED 2026-08-24**, and the batch filed items 71, 72 and 73.
+Session-v59 before it struck items 7, 21, 22, 45, 59, 60 and 61 and filed item 70.
 
 ## The list, at a glance
 
@@ -49,6 +49,10 @@ below.
 - **13.** nobody knows what the ratified tests miss
 - **14.** a failing test does not drive repair
 - **16.** an invented member on line 2 of a ghost is never judged
+- **64.** a drained FIM session holds its diff until the document is quiet - RULED, buildable
+- **72.** the model download joins the in-flight registry - RULED, buildable
+- **73.** thinking becomes a palette action, and numCtx becomes a setting - RULED, buildable
+- **71.** the wrong-tree refusal, extended to TypeScript and Python
 - **33.** the spike harness spliced on stale offsets: a record and three standing rules
 - **18.** the rest, unchanged in priority
 
@@ -87,10 +91,14 @@ REASONED as product-visible, not PROVEN: the resolver under test is the product'
 `resolvePrefill`, matched code-to-diff rather than instrumented, because instrumenting it needed
 `src/` and the phase that found it was forbidden that file.
 
-**Why it is a build and not a one-liner.** The remedy is the resolver refusing an incomplete index,
-which is a design call against a ratified budget - refusing costs a surface the model would otherwise
-get, and the budget was ratified on the assumption that a resolved type is a resolved type. See the
-decision line under Decisions.
+**Direction RULED 2026-08-24: refuse ambiguity.** The resolver refuses rather than serve a surface it
+cannot pin - consistent with honest-dark, and with S28's own "two sites are two things, guessing is
+the worse failure". The scout still prices the lost surface before the build ships; the ruling sets
+the direction, not the number.
+
+**Why it is a build and not a one-liner.** Refusing costs a surface the model would otherwise get,
+and the budget was ratified on the assumption that a resolved type is a resolved type. The build has
+to measure what the refusal costs on the C# arm before it lands.
 
 Falsify: two same-named types in two namespaces, the hint naming one of them, and the same member
 list every run.
@@ -202,7 +210,9 @@ the dominant shape in real code. Measured on `acme_crypto::create_ca`: injected 
 relative in the source (`fnGen.ts:3442-3444`). Re-running `session-v34/witness-prefill.cjs` on the
 same task would check it.
 
-See also G3 under Decisions: Go's import-anchor question is the same gap, asked as a design call.
+Go's half of this gap was G3, RULED 2026-08-24 leave-as-is (see the Go entry under Decisions): an
+imported Go type stays anchorable only when the signature or body names it. Python and C# are what
+this item still owns.
 
 ### 27. Items 1 and 2 of v34 exist for Rust only, and four languages have the same hole
 
@@ -469,10 +479,11 @@ neither of which any amount of reading would have surfaced. `codex-cli 0.144.4` 
 box and emits a JSONL event stream rather than a single result object, so its `result`-equivalent has
 to be found, not assumed. One spike call per CLI, recorded, then the adapter.
 
-The design fork, unresolved: one small adapter per CLI (honest per-CLI failure taxonomy, honest
-messages, N modules) versus one generic spawn-a-command backend driven by settings (covers everything
-at once, hands prompt-bearing argv to a user-supplied string, gives up the taxonomy that makes the
-disabled messages actionable). The session's instinct was per-CLI; the human has not ruled.
+The design fork is RULED 2026-08-24: one small adapter per CLI. Honest per-CLI failure taxonomy,
+honest messages, N modules; the generic spawn-a-command backend is rejected because it hands
+prompt-bearing argv to a user-supplied string and gives up the taxonomy that makes the disabled
+messages actionable. Every new CLI gets spiked live on the real box before its adapter is written -
+the rule that caught the fence trap and the MCP leak.
 
 ### 11. Include block, the recursive variant
 
@@ -756,6 +767,68 @@ stripe.probe()    // probe() is not a Stripe member; the gate never saw it
 Related and already pinned: the gate judges a dotted lead on its head alone (see Decisions, S59-7).
 That is a reach limit at a member site; this item is the continuation.
 
+### 64. A drained FIM session holds its diff until the document is quiet
+
+**RULED 2026-08-24: quiet-window drain.** A drained FIM-sourced repair session presents its diff only
+after the document has been quiet for a beat; against a document edited in the last N seconds it
+holds. The cancellation-is-a-primitive answer, now buildable.
+
+The mechanics it lands on: `column80.fimAccepted` (`fnGen.ts:6082`) runs the full post-accept oracle,
+a round captures `versionAtResolve` (`src/vscode/oracleSurface.ts:543`) and spends seconds in a model
+call while the user keeps typing. A second accept parks another session in the pending slot
+(`:299-310`, newest wins), the discarded session ends, `drainPending()` (`:325`) fires the parked one
+and a fresh "repair round 1 (preview)" opens against a document that has moved on. The discard is
+already quiet (S18); this closes the diff half.
+
+Falsify: a drained FIM-sourced session against a document edited in the last N seconds does not open
+a diff, and the same session against a quiet document still does.
+
+### 71. The wrong-tree refusal, extended to TypeScript and Python
+
+Approved 2026-08-24 as its own small slice. S28 (ratified) records the gap: a type referenced without
+an import line puts the anchor in a method body, and both transports hand back the enclosing class's
+members, exactly as C# did - `blind-v15`'s own green fixture row proves it.
+
+The build is the C# predicate carried over, and the reason it is a slice rather than a sweep: the
+question the refusal must not break - "what type am I writing inside" - has no oracle in either
+language yet, so the slice builds those oracles first. Sequenced after higher-value work; the leak
+fires only on no-import-line anchors.
+
+### 72. The model download joins the in-flight registry
+
+RULED 2026-08-24: one stop-everything action. Cancel Generation stops a download along with every
+model round; retitle the affordance if the wording grates once felt. Today the pull's cancel lives
+only inside a dismissable notification - dismiss it and the cancel is gone, on the longest operation
+the product has.
+
+The mechanics are in `session-v58/scraps.md` S58-10: lift the registry into `extension.ts`, pass it
+to both `registerFnGen` and `registerFirstRun`, one claim around `pull(...)` released in a `finally`.
+
+Two obligations ride with the build. Verify whether aborting the client fetch stops ollama's
+server-side pull - if it does not, the channel line must not claim it did. And `firstRun.ts`'s
+private `isAbort` greps `/abort/i` over the message (S57-3); a shared registry does not fix that and
+must not be read as fixing it.
+
+### 73. Thinking becomes a palette action, and numCtx becomes a setting
+
+RULED 2026-08-24. Two knobs leave the internal-defaults list.
+
+**Thinking is a quick action, not a settings knob.** Whether reasoning pays depends on the complexity
+of the function in front of you, so the control is a Command Palette action - enable thinking, with
+levels where the model honours them (low / medium / high) - off until toggled. TDD generation is the
+named beneficiary: the human's ruling singled it out, and adversarial test construction is exactly
+where reasoning earns its tokens.
+
+The budget coupling is the build's hard part. Thinking tokens bill to the same output budget as the
+answer - `qwen3.6:27b` spent all 2048 tokens on the trace and every generation died truncated - so
+toggling thinking on must scale `maxTokens`, and `num_ctx` bounds prompt plus output together, so the
+window has to follow. The build states which models honour levels rather than guessing.
+
+**`numCtx` is exposed as a setting.** Its right value is the user's hardware, and its failure mode
+without one is silent prompt truncation - the head of the prompt is the injection, so truncation
+discards the product's core value first. The two token budgets stay unexposed; their failure mode is
+a visible length reject.
+
 ### 33. The spike harness spliced generations as bodies, on stale offsets
 
 FIXED 2026-07-31. Kept for what it INVALIDATES and for the three rules it earned, not because there is
@@ -820,105 +893,47 @@ real bodies follow it. Nothing here has been ratified.
 
 ### The index
 
-**Contract narrowings in `docs/supersessions.md`, all NOT YET RATIFIED.** Read the numbered entry for
-the full record; each line below is the ask.
+**The 2026-08-24 ratification batch settled most of this section.** S17 and S21 through S32 are
+RATIFIED, per-entry records in `docs/supersessions.md`. The rulings that produced work live as items
+64, 71, 72 and 73 and under Deferred fixes; the ones that closed questions are marked in place
+below and in Rejected.
 
-- **S17** - the prompt-versus-window estimate stops being `chars / 4`. Carried in from session-v48.
-- **S21** - the channel's raw body escapes its line breaks. Carried in from session-v58.
-- **S22** - the toast's channel pointer is earned by segment count, not by `trim()`. From v58.
-- **S23** - an HTTP status gets a crafted sentence only where the product knows a class. From v58, and
-  it is the rule the five bad sentences of that session produced.
-- **S24** - the C# re-indent freeze mask moves, and the COUNT is the claim. Per-configuration counts
-  over 1,155,900 bodies: `856 / 211 / 1005 / 1005 / 0 / 60951` across
-  `(none) / @" / $@" / @$" / """ / $"""`, 64,028 total, 435 carrying no `$"` at all.
-- **S25** - two surfaces stop keeping their own failure wording; one throw class, one sentence.
-- **S26** - the Rust and C# test rungs stop filtering by substring.
-- **S27** - a cancelled tighten round is not a failed one, and it ends the gesture. Narrows S25.
-- **S28** - "TypeScript and Python already refuse the wrong tree" was never true. See the finding
-  below; this one changes what item 21 was.
-- **S29** - the anthropic round line takes the whole message, escaped, rather than its first line.
-- **S30** - a Rust keyword or postfix item is dropped from the RENDER, not from the answer.
-- **S31** - a failure's cause travels between surfaces; its consequence does not. Every sentence keeps
-  the shape `Column 80: <CAUSE>, so <CONSEQUENCE> - <REMEDY>` with the cause surface-independent and
-  the consequence supplied per surface. The generation gesture's sentences stay byte-identical.
-- **S32** - the accept/reject accounting line cuts on the render break set, and a progress phrase
-  cannot crash a download.
+**The v58 carryovers, all ruled 2026-08-24 except one.**
 
-**Rulings carried from session-v58, still open.**
+- **S58-12** - RULED, wording approved. The `agentic` sentence ships as its own entry; the approved
+  text and its trigger are under Deferred fixes.
+- **S58-10** - RULED, one stop-everything action. Now item 72.
+- **S58-2's residual** - RULED, forgeability accepted and recorded. See Rejected; the S59-12
+  non-injective-escape rider travels with it.
+- **S58-14 / S58-15** - WONTFIX. See Rejected.
+- **S58-16** - the two-cause 429, still DEFERRED, and the reason is evidence: no arm has ever
+  captured a real 429 body, and classifying on documentation is banned here. Build the enumerated
+  transport field the day a real capture exists. The channel pointer already carries the user to the
+  true cause.
 
-- **S58-12** - the `agentic` sentence's wording, plus its contract narrowing.
-- **S58-10** - does one in-flight registry mean "Cancel Generation" also kills a model download? The
-  tighten wiring added a fifth claimant to that registry in v59; all five are model rounds and no
-  download is involved, so it still did not force the question.
-- **S58-2's residual** - unforgeable channel frames (a nonce) against accepted-and-recorded
-  forgeability. **Add S59-12 to that decision:** `escapeBreaks` is not injective, so a server sending
-  the literal backslash-n is indistinguishable in the channel from one sending a newline. It cannot
-  forge a row, so it is not a defect, but the decision does not currently mention it.
-- **S58-14 / S58-15** - arm and gesture naming in the sentence tables.
-- **S58-16** - the two-cause 429.
+**From session-v59, one ruled and two standing notes.**
 
-**New this session.**
-
-- **Item 70 / S59-1** - should the C# resolver refuse an incomplete `workspace/symbol` index? Refusing
-  costs a surface the model would otherwise get, and the budget was ratified assuming a resolved type
-  is a resolved type. Full record: item 70 above.
-- **S59-7** - the gate judges a dotted lead on its head alone. `ghostRefs` (`src/core/fimInject.ts`)
-  judges the ghost's LEADING identifier and every later `receiver.NAME`, so
-  `await.add_tile_by_morton(m)` is judged on `await` alone and survives. **This is the gate's shape in
-  all five languages, not something the Rust legal list widened** - the same ghost written
-  `s.Insert(1).Bogus()` survives in C# for the same reason. It matters more in Rust because
-  rust-analyzer relabels EVERY member of a Future receiver as `await.<member>`, so the dotted form is
-  the server's own proposal at that site. Pinned as a `KNOWN REACH LIMIT` row in
-  `test/impl-v59-p8-rust-gate.test.cjs` rather than left implicit. **The obvious fix is wrong:**
-  reading a dotted lead as one reference puts `foo.bar` against a TypeScript legal list holding only
-  `foo` and false-suppresses four languages to catch one. A real fix judges the head against the legal
-  list and the tail against that list's own `await.`-prefixed entries, which is a per-language rule
-  wanting its own measurement.
+- **Item 70 / S59-1** - RULED, refuse ambiguity. The direction is in item 70 above; the scout prices
+  the lost surface before the build ships.
+- **S59-7** - still open, and it is a measurement rather than a ruling. The gate judges a dotted lead
+  on its head alone: `ghostRefs` (`src/core/fimInject.ts`) judges the ghost's LEADING identifier and
+  every later `receiver.NAME`, so `await.add_tile_by_morton(m)` is judged on `await` alone and
+  survives. The same shape in all five languages; pinned as a `KNOWN REACH LIMIT` row in
+  `test/impl-v59-p8-rust-gate.test.cjs`. **The obvious fix is wrong:** reading a dotted lead as one
+  reference false-suppresses four languages to catch one. The real fix judges the head against the
+  legal list and the tail against that list's own `await.`-prefixed entries - a per-language rule
+  wanting its own measurement before anyone builds it.
 - **S59-8** - no ruling needed, but read it before believing any headless Rust member count. Full
   record under Measurement debt.
-- **TypeScript and Python never had a wrong-tree refusal** (S28). The roadmap, session-v59's own goal
-  and its contract all said they "already refuse it". They do not. Their anchor lands on the
-  `import { Tile }` line, OUTSIDE the helper class, so the descent degraded for an unrelated reason
-  and looked like a refusal. A type referenced without an import line puts the anchor in a method body
-  and both leak exactly as C# did; `blind-v15`'s own green fixture row proves it. The refusal shipped
-  C#-only. **Extending it is a ruling, not a free extension**, because the question it must not break
-  has no oracle in those two languages.
+- The S28 extension question (TypeScript and Python never had a wrong-tree refusal) is RULED:
+  approved as its own slice, now item 71.
 
-**Questions that live inside a numbered item.**
+**Questions that live inside a numbered item.** Item 2, item 43 and item 47 were RULED 2026-08-24;
+the rulings sit inside their entries under Measurements pending. One stays open:
 
-- **Item 2's fragility ruling** - find when `blind-v16-argtype-live` regressed, or rule the row
-  fragile single-draw evidence. Either way, put the file where something runs it.
 - **Item 65's coverage-deletion trade** - withholding a hint on a type the model then invents is not
   obviously better than a `use` line that fails loudly, and nothing has measured which way it falls.
-- **Item 43's is-an-instrument-worth-it question** - decide whether the overflow frequency is worth
-  an instrument at all, before building one. This product has no telemetry by design.
-- **Item 47's priced refusal** - a probe-side fix cuts Python's pre-fill p95 from 1940ms to 1049ms,
-  still 4.2x the 250ms gate, and it widens the cold-index race phase 7 proved fires. Build it anyway,
-  or accept the gate as failed with a number on it?
-
-### 64. Should a drained FIM session open a diff against a document still being typed in
-
-The mechanical half shipped in session-v56: a repair discard in a `source: "fim"` session goes to the
-channel instead of a toast, and only the two PRE-CONSENT causes route there (S18). A post-Accept
-failure still toasts everywhere, because that is a consented write failing rather than a background
-race. What is left is the design question the toast fix was deliberately built around.
-
-`column80.fimAccepted` (`fnGen.ts:6082`) runs the full post-accept oracle, so accepting a ghost starts
-background repair rounds. A round captures `versionAtResolve` (`src/vscode/oracleSurface.ts:543`) and
-then spends seconds in a model call while the user keeps typing, which is the NORMAL case after
-accepting a ghost. Meanwhile a second accept parks another session in the pending slot (`:299-310`,
-newest wins). The discarded session ends, `drainPending()` (`:325`) fires the parked one, it re-checks
-the current file, and a fresh "repair round 1 (preview)" opens against a document that has moved on.
-The discard is quiet now. The diff still arrives.
-
-So: should a drained FIM-sourced session auto-present at all while the document is actively changing?
-Options include draining only after the document has been quiet for a beat, or making the diagnostics
-surface (already shown) the only automatic output and requiring a gesture before a diff opens. This is
-the cancellation-is-a-primitive family this product has met before: background work racing a live
-keystroke stream needs its interruption story designed, not patched.
-
-Falsify: a drained FIM-sourced session against a document edited in the last N seconds does not open a
-diff, and the same session against a quiet document still does.
+  Measure first: how many pre-fill collaborator types are cross-crate at all?
 
 ### Does round-1 generation carry derives, and is 12288 the right floor on Metal?
 
@@ -931,12 +946,9 @@ in quietly. **UNVERIFIABLE** (C248): the v34 row is gone; the same E0277 case is
 `src/vscode/oracleSurface.ts:2306-2309` but without the prompt contents, so "the field list was
 already in the round-1 prompt" cannot be read off anything. One fresh capture would check it.
 
-**Which serving knobs get settings.** Four are declared nowhere in `package.json` and no setting
-overrides any of them. `maxTokens` and `numCtx` come off the active backend's budget-profile cell
-(`src/vscode/config.ts:181-193`); `testMaxTokens` and `think` still read straight off the default
-object. Evidence and a recommendation per knob are under Deferred fixes, "Settings honesty". The short
-of it: `think` wants a default of false, `numCtx` wants a setting because its right value is the
-user's hardware and its failure mode is silent truncation, and the two token budgets want neither.
+**Which serving knobs get settings - RULED 2026-08-24, now item 73.** Thinking becomes a Command
+Palette quick action with levels; `numCtx` becomes a setting; the two token budgets stay internal.
+The evidence per knob stays under Deferred fixes, "Settings honesty", and item 73 carries the build.
 
 **`MIN_FNGEN_VRAM_MB` = 12288 on unified memory.** A 16GB Mac reports about 16384 and the human has
 TESTED that it works. Subtract any honest toolchain figure and it falls under the floor - VS Code
@@ -981,13 +993,15 @@ The rules worked as written. The question is how the output feels, and no test s
 
 ### The &self render contract (S17 of v19)
 
-The injected block renders Rust methods as `partition_by_lod(&self) -> u32`. The live e2e shows the
-model copying the receiver into the call: `s.enroll(&mut self, u64);`, which is not legal Rust.
+**RULED 2026-08-24: settle it with an arm.** Render both ways over the Rust arm rig and count
+receiver-copied-into-call errors against wrong-mutability errors. Fold into the next Rust arm
+session; the two frozen oracles move with the number, not before.
 
-- Two frozen blind files pin the opposite: keep `&self`, because it signals mutability.
-- Strip-against-keep is a real trade and the two oracles took opposite sides.
-- This blocks the Rust generation-quality fix; the attempted fix is reverted and waiting.
-- A "strip" ruling re-enters through the blind oracles for v15/v18.
+The record the arm decides: the injected block renders Rust methods as
+`partition_by_lod(&self) -> u32`, and the live e2e showed the model copying the receiver into the
+call - `s.enroll(&mut self, u64);`, not legal Rust. Two frozen blind files pin keep, because `&self`
+signals mutability. This blocks the Rust generation-quality fix; the attempted fix is reverted and
+waiting on the number.
 
 ### The v20 trio
 
@@ -1003,6 +1017,13 @@ this file older than 2026-08-10 is suspect: the leak scrub rewrote history.
   Not touched by v26, so this one is certainly still open.
 
 ### Go: two coupled decisions, and Go is not simply "the broken one"
+
+**G2 and G3 RULED 2026-08-24: leave as-is.** Go's qualifier-aware hook covers the real case
+(`*testing.T` survives and `t.Helper()` injects), no captured failure exists on any other leg, and
+the qualified-name pipeline rebuild is five-language regression risk for nothing measured. An
+imported Go type stays anchorable only when the signature or body names it. Reopen only on a real Go
+dogfood capture; the five duplicate copies of the rule still consolidate on next touch (S55-13). The
+record below stands for whoever reopens it. The GOENV housekeeping at the end is still open.
 
 **G2. What replaces the single-letter skip rule, in the general case?**
 
@@ -1102,7 +1123,12 @@ EnrollTile(new(0, 1))
   `test:live`'s explicit list (`package.json:537`). So it is in a list and no list ever EXECUTES it,
   which is the worse of the two states: it reads as covered.
 - Its sibling baseline row already skips itself, which supports the "fragile" reading.
-- The ruling is under Decisions. Either way: fix or re-cut, then put the file where something runs it.
+- **RULED 2026-08-24: fragile single-draw evidence; re-cut.** The frozen row re-cuts to what one
+  draw supports - the injected prompt contains Tile's construction facts, a deterministic assertion -
+  and the behavioural claim (the model actually builds a Tile) demotes to a multi-draw arm
+  measurement. No bisect: the oracle is stochastic and the model tag is not pinned by commit, so a
+  bisect cannot recover the old behaviour anyway. The file moves into `test:live` so something
+  executes it.
 
 ### 30. Item 1 needs a third arm before anyone knows what it did
 
@@ -1255,7 +1281,12 @@ circle-back retry, repair, refine and test-gen. The channel lines carry full tok
 **What survives is the whole item: how often does a real session actually overflow?** Nothing has run.
 If the answer is never, the guard is cheap insurance and this entry closes. If it is common, the
 budget itself needs revisiting, and `GEN_NUM_CTX = 16384` is measured at 12.4GB VRAM on the 16GB
-carve, so raising it is not free. The is-it-worth-an-instrument question is under Decisions.
+carve, so raising it is not free.
+
+**RULED 2026-08-24: no instrument.** The channel's refusal and shrink lines are the measurement. Read
+them during ordinary dogfood; if they never appear over a few weeks of real use, close this item as
+cheap insurance. No counter gets built - the product has no telemetry by design and this does not
+earn the exception.
 
 **The mechanism, which is what the measurement is measuring.** `GEN_NUM_CTX`
 (`src/core/budgetProfile.ts`) bounds the prompt AND the generation together, and `ollama.ts` says what
@@ -1291,10 +1322,10 @@ fix was pre-committed.
 hover time.** The other 20 cost 16ms between them. The cost is per-FILE, and it is
 `pyLspExtractor.ready()`'s unconditional `delay(300)` per URI plus a 150ms-granular diagnostics wait.
 
-**No fix built, and the refusal is priced.** A probe-side replica making that 300ms conditional on
-diagnostics having arrived cuts net p95 from **1940ms to 1049ms** - still **4.2x** the 250ms absolute
-gate. Not a gate-passer, and it widens the cold-index race phase 7 proved fires. The ruling is under
-Decisions.
+**RULED 2026-08-24: the fix ships, and the gate moves to the measured floor.** Build the probe-side
+fix with the cold-index race guarded, then set Python's gate at roughly 1.2x the measured post-fix
+p95 - the same shape as Go's accepted 1.2x miss. The gate becomes a regression tripwire rather than
+an aspiration; 250ms was a cross-language number pyright's architecture cannot meet.
 
 v50's headline for reference: Python p95 1957ms net against the 250ms gate.
 
@@ -1485,6 +1516,14 @@ every one of them at once.
 
 Each entry waits for its trigger, the next touch of the named file, not for a slice of its own.
 
+- **The `agentic` sentence (S58-12), wording APPROVED 2026-08-24.** `agentic` leaves the CLI-failed
+  group and ships as its own entry: "Column 80: the model went and did work instead of writing the
+  function, so nothing was written - run the gesture again." Three lines in `CLAUDE_CODE_SENTENCES`
+  plus a supersession entry; do on next touch of the sentence table.
+- **`test/blind-v59-p1-one-sentence-everywhere.test.cjs` C1: the re-cut is authorised.** S31 is
+  ratified (2026-08-24), so the four deliberately-red C1 rows re-cut onto the diagnosis - the shared
+  cause appears on all three surfaces, the generation consequence on neither of the other two. First
+  session that touches the suite does it.
 - **`src/core/crossFileShape.ts` (the settle-loop comment, session-v59 phase 7 residue).** The comment
   at `:1009` still reads "**41 cursors, ZERO recovered a renderable member**" and argues the bound
   from that. Phase 7 refuted it on a cold probe - 17 re-polled cursors and 2 recoveries in Python,
@@ -1684,18 +1723,12 @@ Each entry waits for its trigger, the next touch of the named file, not for a sl
   is false: `qwen3.6:27b` spent all 2048 output tokens on the trace and every generation was rejected
   as truncated without emitting code, because reasoning is billed to the same budget as the answer.
 
-  1. Ship `think: false` as a DEFAULT and leave it unexposed. **Recommended for `think`.** No shipped
-     model reasons, and a user who swaps in a reasoning model should not have to discover this knob
-     from a truncation toast.
-  2. Expose `numCtx` as a setting. **Recommended.** Its right value depends on the user's hardware
-     rather than on the product, a smaller box genuinely cannot afford 16384, and the failure mode
-     without it is silent truncation rather than an error the user can act on.
-  3. Expose `maxTokens`/`testMaxTokens` too. **Not recommended.** Their failure mode is a visible
-     `done_reason=length` reject, and v34 already showed the shipped values were the problem rather
-     than the exposure: 512 caused every one of 15 rejections across 189 generations.
-     **UNVERIFIABLE** (C333): that run survives only as a recitation at `src/core/config.ts:51-54`.
-  4. Leave all four as defaults. Today's behaviour. Defensible only while every shipped model behaves
-     like `qwen3-coder:30b`, and that is not a bet worth carrying once someone swaps the tag.
+  **RULED 2026-08-24, and the ruling is item 73:** thinking becomes a Command Palette quick action
+  with levels (off until toggled, budget scaled with it), `numCtx` becomes a setting, and
+  `maxTokens`/`testMaxTokens` stay internal - their failure mode is a visible `done_reason=length`
+  reject, and v34 already showed the shipped values were the problem rather than the exposure: 512
+  caused every one of 15 rejections across 189 generations. **UNVERIFIABLE** (C333): that run
+  survives only as a recitation at `src/core/config.ts:51-54`.
 
 ## 5. Dogfood ledgers and Rejected
 
@@ -1800,6 +1833,16 @@ OSS-corpus harness signal (cobra, gin, hugo, pinned clones), never dogfood typin
 
 ### Rejected - do not reopen without new evidence
 
+- **Unforgeable channel frames (a nonce in the elision marker).** RULED 2026-08-24: the forgeability
+  is accepted and recorded. Product-tag forgery is closed by the S21/S29 escapes; what remains only
+  fakes an elision claim on a diagnostic surface, and nonce machinery is the first-run lock's shape
+  again. Rider S59-12 travels with this: `escapeBreaks` is not injective, so a server sending the
+  literal backslash-n is indistinguishable from one sending a newline - it cannot forge a row, and it
+  is accepted with the rest.
+- **Naming the arm and the gesture in the crafted sentences (S58-14, S58-15).** WONTFIX 2026-08-24:
+  one backend runs at a time and readable off `column80.fnGenProvider`, the user ran the gesture a
+  second ago, and the next action differs by neither. The cheap implementation moment (the
+  translator-leaf lift) has already passed. Reopen only on a real captured confusion.
 - **A first-run lock across extension hosts.** WONTFIX, human ruling 2026-08-21: overengineering for
   this tool. The defect is real and ~100ms wide - two windows opened together can both show the tier
   picker, because `globalState` propagates between hosts through a debounced broadcast and `Memento`
