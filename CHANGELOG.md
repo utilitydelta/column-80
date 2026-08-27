@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased
+
+A rubric, not a bug hunter. **Column 80: Criticize Function** scores the function under your cursor
+against fifteen named dimensions of craft and prints a card. It writes nothing, changes nothing, and
+publishes nothing to the Problems panel.
+
+Two ways to read one card. Read the whole roster and it tells you which of fifteen questions your
+function answers badly, which is what you want when you are learning the craft. Read the elevated
+rows and stop, and it is a worklist. Each dimension names the principle behind it rather than the
+line alone: command-query separation, Meyer 1988, a function answers a question or changes the world
+and never both. Rust, Go, TypeScript, JavaScript, C# and Python.
+
+**Nine of the dimensions carry a blast radius.** The honest fix for "this reads the wall clock"
+changes the signature, and a signature change edits every call site, so those rows walk the call
+hierarchy one level up and report what a fix would reach. When the walk cannot finish you get no line
+rather than a zero: "touches 0 call sites" is a claim the walk never made, and you cannot tell a
+measured zero from an unmeasured one.
+
+**The findings are not the model's, and it cannot make them be.** Every finding comes from a
+deterministic detector reading your code, so pressing the gesture twice on bytes you have not touched
+gives you the same card twice. An earlier build let a model decide what the findings were and it
+never produced the same list twice on unchanged code: three functions, temperature zero, three runs
+each, zero agreements, and on one function ten findings a run with not one appearing in all three.
+What the model does now is explain ONE finding a detector already made. It sees that finding and
+nothing else, and it can neither add a row nor remove one. If your tier has model calls off, or the
+call fails, the card is complete without it and the channel says why.
+
+Every refusal names its cause. An unregistered language is refused by name. A cursor outside a
+function is refused rather than quietly scoring the file. A dimension the language cannot answer
+reports as blind with its reason and never as clean: TypeScript has no checked exceptions, so "can it
+fail in a way the signature never admits" has no answer there and says so, and Python's optional type
+hints make two dimensions report a coverage gap rather than a pass. A card with nothing elevated says
+this pass found nothing above the evidence bar, which is not the same sentence as "this function is
+clean".
+
+What was measured, and what was not, stated plainly because a grading tool that overclaims is worse
+than none. All fifteen dimensions are graded against a 138-row hand-labelled set. Fourteen of the
+fifteen produce no false positive on it, and eleven also find everything they should, scoring 100%
+precision with 100% recall. The four to know about are the filesystem detector at 100% precision and
+60% recall, the unadmitted-failure detector at 100% and 64%, the command/query detector at 100% and
+29%, and the pass-through detector at 86% and 50%, which owns the set's single false positive.
+Precision is the strong half and recall is the weak one, so a row that fires is worth acting on and a
+row that stays quiet is not a result. The set is thin in places, resting on as few as four positive
+examples for some dimensions.
+
+The honesty question is also not answered whole: the detectors do not find a function reading a
+variable bound outside itself, which needs scope resolution and is not in this release, and on the
+product's own canonical dishonest function they catch the clock read and miss both the module-state
+read and write. One dimension, the section comment as a tell for mixed abstraction levels, ships
+scored but never elevated at a measured 31.0% firing rate on real Rust, pending a decision about
+whose bar applies. One other, the unenforced-precondition detector, does elevate but cannot tell an
+obligation on the caller from a description of the function's own behaviour; it refuses rather than
+reporting clean when it cannot attribute the wording, and a quiet result from it is not evidence a
+contract is enforced. Nothing here was measured inside VS Code.
+
 ## 2.4.0
 
 Your own tests now drive repair. The compiler oracle cannot see a failing test, so a generated

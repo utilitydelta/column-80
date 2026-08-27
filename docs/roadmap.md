@@ -29,6 +29,16 @@ entries sit in `session-v60/ratification.md` awaiting the human, including the s
 ARCHITECTURE.md invariant 4's assertion clause, which the shipped code already relies on. Deferred
 findings are in `session-v60/scraps.md`, every one carrying its content.
 
+Session-v61 built **Criticize**, the read-only grading gesture: fifteen deterministic rubric
+dimensions across five languages, a blast radius on the nine signature-level rows, and a model leg
+that can explain a detector's finding and can never make one. Its subsystem doc is
+`docs/architecture/criticize.md`. It leaves four things behind, and all four are recorded below
+under "Criticize: what is not measured and what is not built" rather than as numbered items, because
+the numbers are the ratification batch's to mint.
+
+The un-ratified batch above is still un-ratified. Session-v61 must not be read as having settled any
+of it.
+
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
@@ -1045,6 +1055,53 @@ Both ship as built, both are defensible, neither is a bug. They need a human who
 A number from the harness is a hypothesis until the instrument that produced it has been looked at.
 Two independent rig defects once turned up in one session and each had been silently wrong for months.
 Most of what sits here is blocked on taking a number rather than on a design call.
+
+### Criticize: what is not measured and what is not built
+
+Filed by session-v61 as the honest bound on the gesture it shipped. None of these is a numbered item
+yet; the ratification batch mints the numbers.
+
+- **All fifteen dimensions are graded, and RECALL is the open work.** Against the 138-row
+  hand-labelled set, fourteen of fifteen have zero false positives and eleven read 100% precision
+  with 100% recall. The four that do not: `world` at 100.0% / 60.0%, `unadmitted-failure` at
+  100.0% / 64.3%, `cqs` at 100.0% / 28.6%, and `pass-through` at 85.7% / 50.0%, which owns the set's
+  one false positive. `unenforced-precondition` fires on no labelled positive, so its precision cell
+  is ungraded rather than passing. Reproduce with `session-v61/harness/grade.cjs`. The full table is
+  in `docs/architecture/criticize.md`.
+- **Raising recall is the next measurable item on this gesture.** `cqs` misses 71% of its labelled
+  positives and `world` misses 40%. Precision is already at the ceiling on almost every dimension, so
+  there is nothing left to buy there, and a clean card is currently not a certificate. Any recall
+  work has to be graded against the same set or it is a guess.
+- **The labelled set is thin in places and its own README names them.** `unenforced-precondition` and
+  `prng` rest on 4 positives each, `unused-param` on 6, `cqs` on 7. A 100% on four positives and a
+  100% on thirty read identically in the table and are not the same claim. Widening the set is
+  cheaper than any detector work and gates all of it.
+- **Every rate outside that grading is a SIGNAL rate,** on code the repo considers good, which says
+  the channel is quiet and says nothing about whether a flag is correct. The two are not
+  interchangeable and the docs keep them apart.
+- **Dimension 11's per-language signal-rate contrast was withdrawn, not replaced.** The architecture
+  doc argued from a Rust-versus-C# rate gap that ownership makes the violation culturally rare in
+  Rust. Those rates predate the phase-6 fix to that dimension and do not reproduce. A fresh census
+  with the shipped detector reads the gap in the OPPOSITE direction, but it ran on a
+  differently-defined population than the original, so it is not published as a replacement. Either
+  measurement is worth redoing properly on one instrument, or the claim stays withdrawn.
+- **The free-identifier half of the honesty question is not built.** "Does this function read a name
+  bound outside it" needs scope resolution through the symbol tree, and no name table can answer it
+  because the name is whatever the developer called their variable. PROVEN by running the name-table
+  detector on the product's own canonical dishonest function: it catches the clock read and misses
+  both the module-state read and the module-state write, which is the headline dishonesty in that
+  example. Priced as its own build. Until it exists, a quiet honesty block is not a certificate of
+  honesty and the surface must not imply otherwise.
+- **Nothing about Criticize was measured in the VS Code host.** Every detector grammar, every signal
+  rate and every precision number came from a headless run. The gesture's own order of operations,
+  its refusals and its blast-radius walk have unit coverage and no host coverage.
+- **Dimension 15 needs a ruling.** The section-comment tell fires on 31.0% of real Rust functions:
+  a nit flood under the professional's pre-commit bar and a legitimate teaching point under the
+  student's grading bar. It ships SCORED but NOT ELEVATED, which is the conservative default, and the
+  ruling moves one entry in `DEFAULT_ELEVATION` rather than any code.
+- **Full Sonar cognitive complexity was measured and refused.** Plain nesting depth agrees with it on
+  11 of the worst 15 Rust functions; its unique catch is long functions with many sequential branches
+  at moderate depth, worth 4 of 15. A later item with a number attached rather than a guess.
 
 ### 2. A frozen live test is red and nobody runs it
 

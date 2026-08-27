@@ -168,6 +168,73 @@ written twice, which is round 5's actual failure. Ship condition 1 is intact and
 held 29/29 across the change. Unit counts fell with the same fix (15/17/19 to 9/11/12) because
 those fixtures are hard-wrapped and several "sentences" were lines.
 
+## Criticize: the two thresholds a rubric dimension compares against
+
+Both are CHOSEN, in the word's full sense: nothing measured them, no corpus locates a knee, and
+what a long parameter list or a deep body costs a reader is a taste the audience dictates rather
+than a number the code can derive. They are recorded here so that stays visible. Both sit on the
+per-language profile (`CriticizeCraft` in `src/core/criticizeTypes.ts`, populated in
+`src/core/criticizeLang.ts`), so a later measurement can move ONE language without disturbing the
+other four; today all five carry the same value because nothing has measured a difference.
+
+The rates below were measured on 618 Rust functions (`celeriant_shard/src`, non-test), 781 methods
+of the production C# corpus, 1,790 TypeScript functions in this repo's own `src/`, 39,394 Go
+standard-library declarations and 4,412 Python functions. They are SIGNAL rates on code the repo
+considers good. A signal rate says how loud a threshold is, not whether a flag it produced is
+correct. Both dimensions gated by these two thresholds were separately graded for precision against
+the 138-row hand-labelled set and both read 100% precision with 100% recall there; that grading is in
+`docs/architecture/criticize.md` and it is a different measurement from the rates below.
+
+| constant | value | home | gates | verdict |
+|---|---|---|---|---|
+| `PARAM_COUNT_THRESHOLD` | 5 | `src/core/criticizeLang.ts`, read as `craft.paramCountThreshold` | rubric dimension 8 fires at or above this many parameters, receivers excluded | CHOSEN. Signal rates at this value, measured 2026-08-27: Rust 6.3%, C# 2.0%, Go 3.2%, TypeScript 1.7%, Python 2.7%. Those are the CONSEQUENCE of the choice, not evidence for it |
+| `NESTING_THRESHOLD` | 4 | `src/core/criticizeLang.ts`, read as `craft.nestingThreshold` | rubric dimension 13 fires at or above this block depth; braces in four languages, INDENTATION in Python | CHOSEN. Signal rates at this value, measured 2026-08-27: Rust 5.3%, C# 0.9%, Go 3.7%, TypeScript 5.0%, Python 6.4% |
+
+## Criticize: the bound on explanatory prose
+
+`EXPLANATION_MAX_LINES` is CHOSEN, and it is a safety bound rather than a tuning dial. The
+explainer hands a model exactly ONE detector finding and takes back prose about it; the model can
+never add a row or a finding, because `attachExplanations` iterates the detectors' rows and never
+the model's map. What a model CAN still do is mislead inside the one slot it was given: a long
+enough paragraph has room to claim a second defect, and a reader cannot tell that claim from a
+detector's.
+
+Four lines is enough to name a principle, say why it exists, and say what the flagged line does
+about it. It is not enough to hide a second verdict in. Nothing measured it and no corpus locates a
+knee: what a developer will read before skipping is a taste the audience dictates.
+
+Prose over the bound is DROPPED and the row degrades to its evidence line, which is the safe
+direction. The bound is enforced twice, in `explainFinding` and again in `attachExplanations`,
+because a prose map can be built by any caller and the last gate before a row is where a structural
+guard belongs.
+
+| constant | value | home | gates | verdict |
+|---|---|---|---|---|
+| `EXPLANATION_MAX_LINES` | 4 | `src/core/criticizeExplain.ts` | how many lines of model prose one scorecard row will accept, checked in `explainFinding` and again in `attachExplanations` | CHOSEN. Nothing measured it. It is sized to be too short to hide a second verdict in, not to fit an average answer |
+
+## Criticize: the gesture's own bounds
+
+Six more CHOSEN numbers, introduced with the Criticize gesture (`src/vscode/criticize.ts`,
+`src/core/criticizeBlast.ts`, `src/core/criticizeGesture.ts`, `src/core/criticizeSlice.ts`). Nothing
+measured any of them, and none was measured in the VS Code host: every number this session produced
+came from a headless run.
+
+Two of them are not really taste. `D_MAX` is definitional, because a blast radius IS the direct call
+sites and a signature change edits those lines and no others. `R_MAX` is 2 rather than 1 so that the
+DEPTH cap is what stops the walk: at 1 the request cap fires first, the walk reports that a budget
+cut it short, and a complete enumeration would be spelled the same as a truncated one. That
+distinction decides whether a number is printed at all, so it is worth a constant.
+
+| constant | value | home | gates | verdict |
+|---|---|---|---|---|
+| `MAX_DOC_WALK` | 200 | `src/core/criticizeSlice.ts` | how far above a declaration head the slicer walks looking for the doc block | CHOSEN. A doc block longer than this is real but vanishingly rare; the bound stops a malformed document turning the walk into a file scan |
+| `BLAST_BOUNDS.D_MAX` | 1 | `src/core/criticizeBlast.ts` | how deep the blast-radius walk goes | CHOSEN in name only: a blast radius is the DIRECT call sites |
+| `BLAST_BOUNDS.R_MAX` | 2 | `src/core/criticizeBlast.ts` | caller-resolution requests the walk may spend | CHOSEN. One more than the walk needs, so the depth cap rather than the request cap is what stops it and a complete walk is not reported as a truncated one |
+| `BLAST_BOUNDS.N_MAX` | 500 | `src/core/criticizeBlast.ts` | distinct callers admitted before the walk gives up | CHOSEN. Bounds a pathological fan-in; past it the walk reports NO number rather than a partial one |
+| `BLAST_HANG_GUARD_MS` | 5000 | `src/core/criticizeBlast.ts` | wall-clock guard on the blast-radius walk | CHOSEN. Set well above the one request this walk makes, and it never decides the answer: when it fires the answer is nothing |
+| `EXPLAIN_ROW_CAP` | 6 | `src/core/criticizeGesture.ts` | how many elevated rows may be sent to the explainer, one model round each | CHOSEN. Past six the elevated block is already longer than a developer reads in one glance, so further rounds buy prose nobody reaches. Rows beyond the cap keep their evidence lines |
+| `EXPLAIN_MAX_TOKENS` | 384 | `src/vscode/criticize.ts` | `maxTokens` for one explanation round | CHOSEN. Sized off the four-line prose bound rather than off a code budget, so a model that ignores the format cannot spend a minute per row before the drop |
+
 ## What is deliberately left alone
 
 `GO_PREFILL_TYPE_CAP = 8`, `MAX_BOUND_LINES = 4`, `REFINE_TARGET_CAP = 6` and the FIM deadline

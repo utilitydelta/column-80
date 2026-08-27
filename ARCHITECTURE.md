@@ -73,6 +73,7 @@ Testing discipline, carried from the build: the `test/blind*.test.cjs` files are
 | VS Code layer | Wiring, evidence channel, the core/vscode split, and the test harness | [docs/architecture/vscode-layer.md](docs/architecture/vscode-layer.md) |
 | TDD language seam | The contract every language leg of the test-authoring gesture is built to: placement, runner command, the three no-run outcomes, the blank-value rule, and the per-language locators | [docs/architecture/tdd-language-seam.md](docs/architecture/tdd-language-seam.md) |
 | Tighten Doc Comment | The re-wrap and backtick gesture: the fold, the workspace-symbol existence gate and its measured cost, the delta census behind the eviction argument, and the two prose flags | [docs/architecture/tighten-doc-comment.md](docs/architecture/tighten-doc-comment.md) |
+| Criticize | The read-only grading gesture: fifteen deterministic rubric dimensions across five languages, the blast radius, and the one-way door that stops the model deciding what a finding is | [docs/architecture/criticize.md](docs/architecture/criticize.md) |
 
 Layout rule underneath all of it: `src/core/` never imports `vscode` and holds every decision; `src/vscode/` is adapters and wiring. That split is what makes the contract oracles runnable headless.
 

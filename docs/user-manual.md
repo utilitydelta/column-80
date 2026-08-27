@@ -24,6 +24,7 @@ Five languages ride the full stack: **Rust, Go, TypeScript/JavaScript, C#, Pytho
 | Generate unit tests | [TDD tests](#tdd-tests) |
 | Run the tests your repo already has | [Covering tests](#covering-tests) |
 | Repair a function from a failing test | [Repair from a failing test](#repair-from-a-failing-test) |
+| Grade a function against a rubric | [Criticize](#criticize) |
 | Use Claude/GPT/Gemini instead of local | [Cloud function generation](#cloud-function-generation) |
 | Use your Claude subscription, no API key | [Claude Code](#claude-code-subscription-not-an-api-key) |
 | Read the logs | [The output channel](#the-output-channel) |
@@ -481,6 +482,59 @@ The after-run re-checks the compiler too. A repair that fixes an assertion and b
 
 **Its honest contract, which bounds every sentence it prints:** it finds what your repo's oracles can witness. It does not certify that your function is correct.
 
+## Criticize
+
+**Column 80: Criticize Function** scores the function under your cursor against a fifteen-dimension rubric and prints a card to the output channel. It writes nothing. It changes no bytes, offers no fix, and publishes nothing to the Problems panel: it is a reading, and what you do about it is yours.
+
+It is one gesture with two reading depths, and which one you use depends on why you pressed it.
+
+**If you are learning the craft, read the whole card.** The bottom half lists all fifteen dimensions with the state each one came back in, so you can see the questions that were asked as well as the ones that found something. A professor handing back an A+ still says why it is an A+, and a card where fourteen dimensions came back clean tells you which one to work on next. Each dimension names the principle behind it rather than just the line: not "line 14 mutates and returns" but command-query separation, Meyer 1988, a function answers a question or changes the world and never both. The principle is the part worth keeping.
+
+**If you are feeding a refactor effort, read the top half and stop.** Only rows above the evidence bar are elevated, and an elevated row carries the offending line, its number, and the principle it breaks. That is the worklist. The rows below the bar are there so you can tell a quiet dimension from an unasked one, not because you need to read them.
+
+**Nine of the fifteen dimensions can carry a blast radius**, and that is the number a refactor decision actually turns on. The honest fix for "this reads the wall clock" changes the signature, and a signature change edits every call site. So for those rows the gesture walks the call hierarchy one level up and reports what a fix would reach: *an honest fix to this signature reaches 14 call sites*. Six dimensions are body-local, the fix stays inside the function, and they carry no such line.
+
+When the walk cannot finish, **you get no line at all rather than a zero**. A cancelled walk, a rejected request from the language server, or a pathological fan-in all mean the same thing: nobody counted. "Touches 0 call sites" is a claim the walk never made, and you cannot tell a measured zero from an unmeasured one. A walk that ran and genuinely found nothing says so in words instead.
+
+### What the model does, and what it is not allowed to do
+
+The findings are not the model's. Every one of them comes from a deterministic detector reading your code, so pressing the gesture twice on bytes you have not touched gives you the same card twice.
+
+That is a deliberate reversal. An earlier build let a model decide what the findings were, and on three real functions at temperature zero, three runs each, not one produced the same finding set twice. On one of them the model returned ten findings on every run and not one appeared in all three.
+
+What the model does here is explain ONE finding a detector already made, in your terms, naming the principle. It is handed that finding and nothing else: not your function, not the other findings, not the card. It cannot add a row, it cannot remove one, and if it is unavailable, if your hardware tier has model calls turned off, or if the call fails, the card renders complete from the detectors and the channel says the explainer was skipped and why. The prose is a nicety on top of a finished output.
+
+### When it refuses
+
+Every refusal names its cause, in the channel and in the notification.
+
+- **An unregistered language** is refused by name: *Criticize does not know how to read ruby yet.* Rust, Go, TypeScript, JavaScript, C# and Python are what it reads.
+- **A cursor not inside a function** is refused. It will not score the file instead. The rubric is about one function.
+- **A dimension the language cannot answer** is reported as blind with its reason, never as clean. TypeScript has no checked exceptions, so "can it fail in a way the signature never admits" has no answer there and says so. Python type hints are optional, so the two dimensions that read a parameter's type report a coverage gap on unannotated code rather than a pass.
+- **A card with nothing elevated** says *this pass found nothing above the evidence bar*. It does not say the function is clean and it does not say it is correct. Those are claims this pass has no instrument for.
+
+### What it has not measured
+
+Read this before you treat a row as a verdict.
+
+All fifteen dimensions have now been graded against a 138-row hand-labelled set, and the useful way to read the result is that **precision is strong and recall is not**.
+
+Fourteen of the fifteen produce no false positives on that set. Eleven of them also find everything they should: the wall-clock, PRNG and environment detectors, both parameter-type dimensions, the unused-parameter and parameter-count dimensions, the undocumented-public dimension, nesting depth and the section-comment tell all score 100% precision with 100% recall. The remaining four are the ones to know about. "Reads the world" scores 100% precision and 60% recall. "Can it fail in a way the signature never admits" scores 100% precision and 64% recall. The command/query dimension scores 100% precision and 29% recall. The pass-through dimension scores 86% precision and 50% recall, and it is the one detector that produced a false positive.
+
+So: when a row fires, it is very likely right. **When a row stays quiet, that is not a result.** "Reads the world" misses two of every five cases in the labelled set, and the command/query dimension misses seven of ten. A card with nothing on it means this pass found nothing, which is a different sentence from "there is nothing here".
+
+The labelled set is 138 rows and it is thin in places. Some dimensions rest on as few as four positive examples, so a 100% there is a much weaker claim than a 100% on thirty.
+
+**The honesty question is not answered whole.** The detectors find reads of the clock, the PRNG, the environment and the filesystem, because each of those is a list of spellings. They do NOT find a function reading a variable bound outside itself, which needs scope resolution and is not in this build. On the product's own canonical example of a dishonest function, the detectors catch the clock read and miss both the module-state read and the module-state write, and the module state is the headline dishonesty in that example. A quiet honesty block is not a certificate of honesty.
+
+Everything else you may have read about how often these dimensions fire is a signal rate on code the repo considers good. It says the channel is quiet. It does not say a flag is correct.
+
+One dimension ships **scored but never elevated**, pending a decision: a section comment inside a body as the tell for mixed abstraction levels. It fires on 31.0% of real Rust functions, which is a nit flood at pre-commit and a legitimate teaching point on a graded assignment, and those two audiences give opposite answers. It appears on the roster with its state and stays out of the worklist.
+
+One more dimension deserves a warning even though it does appear on the worklist. "Does this state a precondition it never enforces" cannot reliably tell an obligation on you, the caller, from a plain description of what the function does. It now refuses to answer when it meets wording it cannot attribute, rather than reporting the function clean. **A quiet result from that dimension is not evidence your contract is enforced.**
+
+Nothing about this gesture was measured inside VS Code. Every number above came from a headless run.
+
 ## Cloud function generation
 
 Function generation can run against a cloud frontier model instead of your local Ollama. It is off by default, and turning it on is the only way any code leaves your machine. Two ways in: an API key with any of the four providers below, or your existing Claude Code subscription with [no key at all](#claude-code-subscription-not-an-api-key).
@@ -667,6 +721,7 @@ Every command is under the **Column 80** category in the palette.
 | Generate Tests (TDD) | editor right-click > Column 80 |
 | Run TDD Tests | editor right-click > Column 80 |
 | Run Covering Tests | editor right-click > Column 80 |
+| Criticize Function | palette |
 | Select Hardware Tier | palette |
 | Add File to Model Context | editor right-click, Explorer right-click, editor tab right-click, panel title |
 | Add Selection to Model Context | editor right-click (with a selection), panel title |
