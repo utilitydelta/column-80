@@ -168,7 +168,11 @@ function adjacentParams(fn: FunctionUnderReview, lang: CriticizeLang): Dimension
   if (clauses.length === 0) {
     return { state: "clean" };
   }
-  return headFinding("adjacent-params", read, `${clauses.join(", ")}, and the compiler cannot see them swapped at a call site`);
+  // "call site" is NOT spent here. That vocabulary belongs to the measured
+  // blast clause in `criticizeVoice.ts`, which only speaks when the caller walk
+  // actually ran; a detector that spends it makes an unmeasured comment read as
+  // a measured one. The sentence says the same thing without the phrase.
+  return headFinding("adjacent-params", read, `${clauses.join(", ")}, and the compiler cannot see them swapped`);
 }
 
 // ===========================================================================
