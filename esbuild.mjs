@@ -32,6 +32,17 @@ const productSurface = {
       // range is decided by the language server. Headless fixtures encode what
       // the servers were measured to do; only the tier can catch them drifting.
       `export { resolveFunctionAtCursor, resolveBlockAtCursor } from "./src/vscode/fnGen";`,
+      // session-v61: the criticize rubric. The tier grades ONE thing headless
+      // tests cannot reach - the span a live language server returns, fed to
+      // the real slicer. A slice that begins at the declaration head reads 29%
+      // of documented Rust functions as undocumented, and this session's rig
+      // hit that twice against fixtures. Only a real server can say whether the
+      // product's own span still walks up to the doc comment.
+      `export { sliceFunction } from "./src/core/criticizeSlice";`,
+      `export { scoreFunction, signatureLevel, DEFAULT_ELEVATION } from "./src/core/criticizeScore";`,
+      `export { criticizeLangFor } from "./src/core/criticizeLang";`,
+      `export { renderScorecard, HONEST_CONTRACT } from "./src/core/criticizeRender";`,
+      `export { CRITIQUE_PREFIX, RUBRIC_SIZE, NO_FUNCTION_REASON, unregisteredLanguageReason, unregisteredLanguageToast } from "./src/core/criticizeGesture";`,
     ].join("\n"),
     resolveDir: ".",
     loader: "ts",

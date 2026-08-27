@@ -23,8 +23,12 @@ const NOTHING_ELEVATED = "this pass found nothing above the evidence bar.";
 
 /** The last non-empty line of every card, without exception. It bounds the
  *  wording of everything above it: no row, no count and no explanation may
- *  claim more than this sentence allows. */
-const HONEST_CONTRACT =
+ *  claim more than this sentence allows.
+ *
+ *  EXPORTED so the VS Code tier can wait for the end of a card and assert on
+ *  it without keeping a copy. A retyped copy in a test is a second source of
+ *  truth for a ruled constant, and it goes on passing after the wording moves. */
+export const HONEST_CONTRACT =
   "It finds what the repo's oracles can witness, plus concretely-instanced advice. It does not certify correctness.";
 
 /** Column the roster's state text starts at. `unenforced-precondition` is the
