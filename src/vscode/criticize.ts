@@ -59,6 +59,8 @@ import {
   refusalLine,
   scoringLine,
   sliceRefusalReason,
+  staleCardLine,
+  staleEvidenceLine,
   summariseCard,
   summaryLine,
   unregisteredLanguageReason,
@@ -204,6 +206,13 @@ async function runCriticize(
     return;
   }
 
+  // The version the card is scored FROM. Steps 5 and 6 take real time, and a
+  // developer who types in between leaves every line number on the card
+  // pointing at bytes that moved. The card is not discarded for that, because
+  // it is still a true reading of what it read; what it must not do is present
+  // itself as a reading of the file as it now stands.
+  const scoredAtVersion = document.version;
+
   // 4. Score. Every dimension, always, and no model and no network are involved.
   //    This is the product; everything after it is enrichment.
   const policy = wiring.policy ?? DEFAULT_ELEVATION;
@@ -222,6 +231,11 @@ async function runCriticize(
 
   // 7. Render, and reveal.
   output.appendLine("");
+  if (document.version !== scoredAtVersion) {
+    log(staleEvidenceLine(scoredAtVersion, document.version));
+    output.appendLine(staleCardLine(card.name));
+    output.appendLine("");
+  }
   output.appendLine(renderScorecard({ ...card, rows: explained }, policy));
   output.show(true);
   void vscode.window.showInformationMessage(criticizeToast(card.name, summary));

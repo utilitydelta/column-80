@@ -174,6 +174,25 @@ export function explainerSkippedLine(reason: string): string {
  * correct" are claims this pass has no instrument for; what it can say is that
  * this pass found nothing above its own bar.
  */
+/**
+ * The line a card carries when the document moved while it was being enriched.
+ *
+ * A card is scored from a snapshot, and the caller walk and the model rounds
+ * that follow it take real time. If the developer typed in between, every line
+ * number and every quoted line on the card describes bytes that are no longer
+ * there. The card is still a true reading of what it read, so it is not
+ * discarded: what would be false is presenting it as a reading of the file as
+ * it stands, and this sentence is the difference.
+ */
+export function staleCardLine(name: string): string {
+  return `The file changed while this card was being prepared, so the line numbers below describe ${name} as it read when the pass started, not as it reads now. Press again for a current card.`;
+}
+
+/** The same fact on the evidence channel. */
+export function staleEvidenceLine(from: number, to: number): string {
+  return `[critique] document moved during enrichment: version ${from} to ${to}, card is from the earlier bytes`;
+}
+
 export function criticizeToast(name: string, summary: CardSummary): string {
   if (summary.elevated === 0) {
     return `Column 80: on ${name}, this pass found nothing above the evidence bar. The full rubric is in the output channel.`;
