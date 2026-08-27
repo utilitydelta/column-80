@@ -19,6 +19,14 @@ session-v59 strikes" below before believing "closed" means more than it does - i
 REVERSING the finding this register had been quoting for two releases, and item 21's premise turned
 out to be false in two of the three languages it named.
 
+Caught up again on 2026-08-27 by session-v60: item **14** struck, shipped as 2.4.0. Read the gap
+below before believing "closed" means more than it does. The item asked for discovery in five
+languages and got four: TypeScript and JavaScript are refused by name, because tsserver resolves a
+call-hierarchy query to the FILE and no TS caller can be named as a test. The item's second half,
+coverage as an oracle, was never built and now lives in item 13. And the strike rests on a
+supersession the human has not ratified yet: ARCHITECTURE.md invariant 4's assertion clause. The
+shipped code already relies on it.
+
 Split out of the roadmap on 2026-08-21 by session-v56. Nothing here is an instruction. If a line
 here reads like work, it belongs back in the roadmap as a numbered item, not here.
 

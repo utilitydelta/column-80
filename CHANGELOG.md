@@ -1,5 +1,48 @@
 # Changelog
 
+## 2.4.0
+
+Your own tests now drive repair. The compiler oracle cannot see a failing test, so a generated
+function could write DER where every test reads PEM and the product would report success. That hole
+is closed, on a manual gesture and nowhere else.
+
+**Column 80: Run Covering Tests** walks the call hierarchy upward from the function under your cursor
+and runs the tests in your repo that actually reach it. Not a name match and not a body search: an
+AST call walk through your language server, so a test that gets there through five layers of shared
+harness is found and one that merely looks related is not. It reports how many hops away each test
+is, because that distance is a readout of your own design rather than a detail. Rust, Go, C# and
+Python. TypeScript and JavaScript are refused by name, and that refusal is the honest answer:
+tsserver resolves the query to a file rather than a test, so the walk cannot name a TypeScript test
+at all, and reporting an empty walk as "no test calls this" would be a false claim in the one place
+this design exists to refuse one.
+
+**Run Repair Function Body on the same function and the failures go into the prompt**, digested down
+to the assertion that failed and the source line it sits on. The tests then run again, automatically,
+and the compiler is re-checked alongside them so a repair that fixes an assertion and breaks the build
+is never reported as green.
+
+Two things had to both be true before a failing test could reach a model at all: you invoked the
+gesture on this target, and the failing test is in the walk's discovered set for it. A red test
+elsewhere in your repo is not your function's problem and authorises nothing. The automatic repair
+after an accept still cannot reach this class of failure, structurally. The two-round cap is
+unchanged and now shared: compiler rounds and the test leg are mutually exclusive, so one press is
+still at most two model calls.
+
+Test-repair stays banned. No gesture edits a test.
+
+Some of your tests are refused before they run. Discovered tests are whatever your repo happens to
+contain, and this gesture runs them and then runs them again. On one real C# corpus 45 of 257 tests
+sit in a class whose shared fixture drops tables in a live Postgres and recursively deletes a
+hardcoded path inside the user's home directory. A test carrying that kind of marker is discovered,
+reported with the marker that gave it away, and left alone. The filter reads declarations, so treat
+it as a floor: a test that quietly binds a socket with nothing in its declaration to say so still
+runs.
+
+**Run TDD Tests stops dead-ending.** It runs the tests you ratified, found by the fence Generate
+Tests wrote, and on a function whose tests you wrote by hand there is no fence. It used to answer
+that with "run Generate Tests (TDD) first", which is wrong advice for someone who already has tests.
+It now names Run Covering Tests as well, and only in languages where that gesture actually works.
+
 ## 2.3.0
 
 The output channel keeps what the server actually said. Every unknown-error notification ends "The

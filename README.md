@@ -92,6 +92,12 @@ Column-80 supports Rust, .Net/C#, Python, Typescript and Go. If your language of
 2. Tab through the holes and type each answer yourself. The model's guess is never inserted.
 3. Run `Column 80: Run TDD Tests`. Green, or the failing assertions in your own words.
 
+### 7. Let your own tests drive the repair
+
+1. Run `Column 80: Run Covering Tests`. It walks the call hierarchy upward from your function and runs the tests in your repo that actually reach it. No name matching, and it tells you how many hops away each one is.
+2. Run `Column 80: Repair Function Body` on the same function. The failing assertions go into the prompt with the source lines they sit on, and the tests run again straight after.
+3. Only your function is ever rewritten. Tests are never edited, by any gesture.
+
 That is the whole tool. No chat thread, no history, no agent to babysit. Every model write goes through a diff you accept.
 
 The [user manual](https://github.com/utilitydelta/column-80/blob/main/docs/user-manual.md) covers the rest, including every setting, every command, and the known limits.

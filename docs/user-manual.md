@@ -22,6 +22,8 @@ Five languages ride the full stack: **Rust, Go, TypeScript/JavaScript, C#, Pytho
 | Compile errors and auto-repair | [Compiler check and repair](#compiler-check-and-repair) |
 | Make the model match your codebase style | [Refine](#refine-repair-on-a-clean-build) |
 | Generate unit tests | [TDD tests](#tdd-tests) |
+| Run the tests your repo already has | [Covering tests](#covering-tests) |
+| Repair a function from a failing test | [Repair from a failing test](#repair-from-a-failing-test) |
 | Use Claude/GPT/Gemini instead of local | [Cloud function generation](#cloud-function-generation) |
 | Use your Claude subscription, no API key | [Claude Code](#claude-code-subscription-not-an-api-key) |
 | Read the logs | [The output channel](#the-output-channel) |
@@ -44,6 +46,8 @@ Per language, so you know what you get before you install.
 | Gated repair | yes | partial (see limits) | yes | yes | yes |
 | TDD test generation | yes | yes | yes | yes | yes |
 | Test runner rung | libtest | `go test` | vitest, jest | MSTest, xUnit, NUnit | pytest, unittest |
+| Covering-test discovery | crate | module | no (see limits) | project | project |
+| Repair from a failing test | yes | yes | no | yes | yes |
 
 Any other language: FIM only, and only if you add its language id to `column80.fimLanguages`. See [Where FIM runs](#where-fim-runs).
 
@@ -343,7 +347,7 @@ The compiler's own output is the input of record. VS Code's diagnostics API is n
 
 - **At most 2 rounds, structurally.** The round counter cannot represent a third model call. No reset, no second counter.
 - **Only errors touching your function.** Diagnostics are scoped to the accepted function's byte range. Pre-existing errors elsewhere are surfaced, never fed to the model.
-- **Never assertion failures.** Wrong-value repair measured useless even at 30B, so anything assertion-shaped is refused with a logged reason, always.
+- **Never assertion failures, on this path.** The automatic check-and-repair after an accept is compiler-only: an assertion-shaped diagnostic is refused with a logged reason, and it is refused structurally, not by policy. A failing test reaches a repair prompt only through the manual gesture, and only when it is in the walk's discovered set for your function. See [Repair from a failing test](#repair-from-a-failing-test).
 - **Never warnings, never span-less diagnostics.**
 - **Same consent gate.** Every repair proposal goes through the identical diff preview. Reject ends the session and the remaining diagnostics stay on screen. Repair has no insertion path of its own.
 
@@ -390,6 +394,8 @@ The test file is created if it does not exist. This is the extension's one file-
 
 **Column 80: Run TDD Tests** runs exactly the tests generated for the function under your cursor.
 
+It finds them by the fence Generate Tests wrote (`column80-tests:<name>:begin`), so it selects tests you ratified and nothing else. A red here means your expected values disagree with the implementation, and you decide which one is wrong. On a function with hand-written tests and no fence it refuses and points you at [Run Covering Tests](#covering-tests), which is the gesture for tests Column 80 did not write.
+
 | Language | Runner | Parsed from |
 |---|---|---|
 | Rust | `cargo test --lib` | libtest output |
@@ -410,7 +416,70 @@ Refusal is the feature. From the signature and doc comment alone, a function is 
 
 **Expect a lot of refusals, and know the numbers before you judge it.** Measured on real corpora: 7 of 89 Python functions survived; the TypeScript corpus refused every one of its 157 functions, mostly because it documents 7% of them; the C# corpus refused all 251, because the clearest test targets there are private and the solution has no `InternalsVisibleTo`. All four legs ship exactly as specified. Relaxing a leg to manufacture survivors is a human decision, not a tuning.
 
-Wrong-value repair from a red test is banned. Test-repair is banned. A wrong test is a human re-type.
+Test-repair is banned everywhere. No gesture edits a test, ever, and a wrong test is a human re-type. Repairing the *function* from a red test is a different thing and it now ships, behind the manual gesture only: see [Repair from a failing test](#repair-from-a-failing-test).
+
+## Covering tests
+
+Your repo's own tests, the ones Column 80 never wrote and cannot recognise by name. Two gestures use them, and both find them the same way through one mechanism, so what you just looked at is exactly what the model gets.
+
+**Column 80: Run Covering Tests** walks the call hierarchy upward from the function under your cursor and runs every caller that classifies as a test.
+
+It is an AST call walk through your language server, not a name match and not a body-mention search. A test that reaches your function through five layers of shared harness is found. A test whose name merely resembles the function is not.
+
+| Language | Scope of the walk | A caller counts as a test when |
+|---|---|---|
+| Rust | the crate | the attribute above it is `#[test]` or a test macro |
+| Go | the module | its own name and file say so (`TestX` in `_test.go`) |
+| C# | the project | the attribute above it is a `[Test]`, `[Fact]`, `[Theory]` or MSTest one |
+| Python | the project | its own name and file say so (`test_x` in a test file) |
+
+Classification reads text on purpose. Measured: the call-hierarchy protocol cannot say whether a caller is a test. Every item comes back as a plain function with no tags and a bare signature, so the attribute or the name has to be read from the file.
+
+**Depth is confidence, and the surface shows it.** Graded against execution on a real 534-test crate, with the target rigged so every test that truly runs it fails:
+
+| Distance from your function | Selected | Really execute it |
+|---|---|---|
+| 2 hops | 6 | 6 (100%) |
+| 4 hops | 71 | 64 (90%) |
+| 7 hops | 305 | 272 (89%) |
+| 8 hops | 307 | 274 (100% of all executors) |
+
+Nothing that executes the function is missed. The false positives are callers that reach it only on some branches, which static reachability cannot see, and they stay under ~11% at every depth.
+
+Read the distance as a readout of your own design. A function that touches the world only through its signature is called directly by its tests and answers at depth 1 with a small set. A function buried under a shared harness needs seven hops, and by then the honest answer is most of the suite. The tool will not invent a narrower answer than the one that is there.
+
+**The bound is a request cap, not a clock.** Measured on the same code and the same server with only the cache differing, a 500ms budget found 6 tests and a 2000ms budget found 303. A wall clock turns server warmth into a different answer for the same code, so the walk is bounded by requests and nodes instead. A generous wall-clock timeout still sits behind it as a hang guard, and it says so when it fires.
+
+**Some discovered tests are refused before they run.** Your repo's tests are not a ratified population; they are whatever the repo happens to contain, and this gesture runs them, then a repair round re-runs the same set. Measured on a real C# corpus: 45 of 257 tests sit in a class whose shared fixture drops tables in a live Postgres and recursively deletes a hardcoded absolute path inside the user's home directory. Firing that up to three times because you asked for one function's tests is not a cost you agreed to.
+
+So a test carrying a shared-fixture or destructive marker is discovered, reported with the marker that excluded it, and not run. Reading the enclosing type is what makes this work: the destructive test above declares only `[SkippableFact]`, and the `[Collection("postgres")]` that gives it away sits on the class.
+
+Treat the filter as a floor, not a guarantee. It sees declaration text and nothing else, so a test that quietly binds a socket or writes to a fixed `/tmp` path with nothing in its declaration to say so is not caught. Where it cannot follow a base class into another file it excludes the test by name rather than guessing.
+
+Nothing ran is never reported as a pass. A build error, a filter that matched nothing, a missing runtime and a run that executed zero tests are each named as themselves.
+
+### Repair from a failing test
+
+The flow, and it is entirely manual:
+
+1. Run Covering Tests. See the failures.
+2. Run **Repair Function Body** on the same function. It discovers and runs the same tests, puts the failure evidence in the prompt, and asks for a fix.
+3. The tests run again automatically, straight after.
+
+The evidence is a digest, not a dump: the assertion that failed, the source line it sits on with a line either side, and the harness frames stripped. Measured on four seeded defects against the default local 30B, evidence alone fixed 1 of 4 and evidence plus the receiver's real API surface fixed 3 of 4. Failure evidence says what is wrong; injected surface says what to write. They are not substitutes, so the test payload gets its own budget and never evicts the type surface to fit.
+
+The guards, all structural:
+
+- **Manual gesture only.** The automatic path after an accept cannot reach this class of repair. It takes two facts to open it, both required on the signature: you invoked Repair Function Body, and the failing test is in the walk's discovered set for this function.
+- **A red test elsewhere in your repo is not your function's problem.** Failures outside the discovered set are logged and authorise nothing.
+- **At most two model calls per press**, sharing the same cap the compiler rounds use. Compiler rounds and the test leg are mutually exclusive.
+- **One write, spanning your function only.** Through the same diff preview as everything else. The walk seeds itself with the target so a test can never become the thing that gets rewritten.
+- **A newly-red test drives the next round**, under that same cap.
+- **Every count you are shown is the discovered set's.** Rust test filters are substring-matching, so a spawn can execute tests the walk never selected. Those are excluded from the numbers before they reach you or the model.
+
+The after-run re-checks the compiler too. A repair that fixes an assertion and breaks the build is not reported as green.
+
+**Its honest contract, which bounds every sentence it prints:** it finds what your repo's oracles can witness. It does not certify that your function is correct.
 
 ## Cloud function generation
 
@@ -597,6 +666,7 @@ Every command is under the **Column 80** category in the palette.
 | Repair Function Body | editor right-click > Column 80 |
 | Generate Tests (TDD) | editor right-click > Column 80 |
 | Run TDD Tests | editor right-click > Column 80 |
+| Run Covering Tests | editor right-click > Column 80 |
 | Select Hardware Tier | palette |
 | Add File to Model Context | editor right-click, Explorer right-click, editor tab right-click, panel title |
 | Add Selection to Model Context | editor right-click (with a selection), panel title |
@@ -652,8 +722,11 @@ Stated plainly. Most have the fix direction already recorded.
 
 - **Refusal rates are high on real code**, and that is the design. See [when it refuses](#when-it-refuses).
 - **Nothing measures what the ratified tests miss.** No coverage, no mutation testing. A green suite can be hollow.
-- **A failing test does not drive repair.** The strongest oracle in the product is report-only, on purpose, until the blame-assignment design lands.
-- **Rust test filters are substring, not exact**, so `tests::add` also runs `tests::add_more`.
+- **Rust test filters are substring, not exact**, so `tests::add` also runs `tests::add_more`. Pairing `--exact` with the bare name the call hierarchy gives is worse: measured on a real crate, `--exact` selected 0 tests where the substring filter selected the right 1. The counts you are shown are scoped to the discovered set to compensate; the spawn still runs the neighbours.
+- **Covering tests are not built for TypeScript or JavaScript.** tsserver resolves a call-hierarchy query to the file, not to the test, so no TS caller can be named as a test. Both gestures refuse those language ids by name rather than reporting an empty walk as "no test calls this", which would be a false claim in the one place this design exists to refuse one. The file-granular runner path is the missing piece.
+- **The walk selects ~11% callers that do not execute your function.** They reach it only on some branches, and static reachability cannot tell. Nothing that does execute it is missed.
+- **A function whose only callers live in another crate discovers nothing.** Rust's walk stops at the crate boundary, and that is the intended answer, not a bug.
+- **The destructive-test filter reads declarations only.** It catches marked shared fixtures and refuses to run them. It cannot see a body, so 5 tests in the measured Rust crate bind a real loopback socket and 57 share a hardcoded `/tmp` path with nothing in their declaration to say so, and all 62 run. A base class declared in another file cannot be read at all; those tests are excluded by name instead, which is safe but coarse. Nested classes follow only the nearest container's bases.
 
 **Editor**
 

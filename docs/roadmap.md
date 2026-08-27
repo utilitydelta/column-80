@@ -24,6 +24,11 @@ and S28 as corrected); the dated records are in `docs/supersessions.md`. Ten mor
 inside their own items, marked **RULED 2026-08-24**, and the batch filed items 71, 72 and 73.
 Session-v59 before it struck items 7, 21, 22, 45, 59, 60 and 61 and filed item 70.
 
+Session-v60 struck item **14** and shipped it as 2.4.0. Its ratification batch is NOT ratified: 13
+entries sit in `session-v60/ratification.md` awaiting the human, including the supersession of
+ARCHITECTURE.md invariant 4's assertion clause, which the shipped code already relies on. Deferred
+findings are in `session-v60/scraps.md`, every one carrying its content.
+
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
@@ -47,7 +52,6 @@ Session-v59 before it struck items 7, 21, 22, 45, 59, 60 and 61 and filed item 7
 - **8.** injection works on an idle box and vanishes on a busy one
 - **9.** nobody knows the injection landing rate on any machine
 - **13.** nobody knows what the ratified tests miss
-- **14.** a failing test does not drive repair
 - **16.** an invented member on line 2 of a ghost is never judged
 - **64.** a drained FIM session holds its diff until the document is quiet - RULED, buildable
 - **72.** the model download joins the in-flight registry - RULED, buildable
@@ -668,79 +672,18 @@ The mocking question, answered honestly or not at all:
 - Measure the refusal rate on real C# first. Then choose: interface-stub scaffolds the human fills, or
   accept the gesture is for leaf logic.
 
-All of it sits behind item 14, which builds the machinery they reuse.
+Item 14 shipped in 2.4.0 and the machinery all of this reuses now exists: the call walk discovers a
+function's covering tests in four languages, and both executors run a discovered set rather than only
+a generated one. The dependency is discharged.
+
+Item 14's surviving half lands here, unbuilt: **coverage as an oracle**, where untested branches seed
+test generation and exercised paths inform repair. A signal to the human, never a model target. Its
+own scout question is coverage tooling cost and latency, and it is the same question rung 3 above
+asks, so they are one piece of work.
 
 None of this reduces how much the developer has to think and it must not be sold that way. Green
 currently tells them nothing, so suspicion spreads evenly over everything a generation produced. One
 line saying *this suite survives a stub* collapses that into one place to look.
-
-### 14. A failing test does not drive repair
-
-fn-repair converges on compile errors only. A ratified test fails after accept and the loop does
-nothing with it. The strongest oracle in the product is report-only.
-
-The resolved safety design (never naive converge-to-green):
-
-- The HUMAN assigns blame.
-- "Impl wrong": fn-repair runs against the human-ratified test, hard cap, stop-and-surface.
-- "Test wrong": the human re-types it. Test-repair stays banned.
-- Gate unchanged: the v1 spikes measured wrong-value-assertion repair useless. That stands until
-  beaten. The spikes were deleted at `b124ffc` and survive in git history under
-  `prior-art/spike-harness/` at `7d97d2d`; cite the history commit, not a working-tree path.
-
-**The tests that already exist are the bigger half, and nothing reaches them.** Everything above
-assumes a RATIFIED test. The common case is the opposite: a real repository already has human-written
-tests covering the target, the product has never seen them, and it cannot run them.
-
-PROVEN 2026-07-30 on `acme-db/acme_crypto/src/pki.rs::create_ca`. The repair round ended:
-
-```
-[oracle] check done ms=190 errors=0 warnings=1 success=true
-[repair] outcome round=1 result=clean
-```
-
-and `cargo test -p acme_crypto --lib` then failed 8 of 11, including `test_create_ca`, which was
-sitting in the same file the whole time. The generated body wrote DER where the tests read PEM and
-dropped two requirements the doc comment states in words. The compiler oracle cannot see any of it, so
-the product reported success on code that does not work.
-
-**UNVERIFIABLE** (C229-C231): the capture is gone, so the two channel lines above, the `cargo test`
-result and the DER-versus-PEM diagnosis are recitations. A different run on the same function survives
-at `session-v35/repair-g2.log:50`. The FINDING does not rest on the capture - the compiler oracle
-structurally cannot see a failing test, which is the item - but the vividness does, and vividness is
-what got this item filed. A fresh dogfood capture re-witnesses the class.
-
-**What already exists, and it is most of the machinery.** `tddLang.ts` carries a five-language,
-nine-framework runner (libtest, gotest, vitest, jest, pytest, unittest, mstest, xunit, nunit) behind
-`tddLangFor(languageId)`, with two executors, `runTestOracleAt` and `runFrameworkTestsAt`, returning a
-structured `TestRunParse`. None of that needs building.
-
-**One hole in it.** Reading structured report FILES rather than stdout is the stated rationale, and it
-is written into the code (`TestRunCommand.outputFile`, declared at `src/core/tddLang.ts:285` under the
-docblock at `:265-284`, read back at `compilerOracle.ts:1185`), but the mechanism is per-framework,
-not the runner's rule: "Rust, Go, vitest and jest leave it unset and are unaffected"
-(`tddLang.ts:276`). **Four of the nine frameworks parse stdout**, and a printing test can forge a
-report on every one of them.
-
-**What is missing is the INPUT.** Both executors take test NAMES, and today those only ever come from
-tests the product itself just generated - `fnGen.ts` refuses with "run Generate Tests (TDD) first".
-Nothing discovers which EXISTING tests cover an arbitrary function.
-
-**The human's constraint, 2026-07-30: do NOT run crate-level tests on every generation.** That rules
-out the cheap answer (run the whole enclosing target and diff) on latency grounds, and makes covering
--test DISCOVERY the actual work.
-
-Discovery is per-language and must be scouted as five, not one, or it ships for Rust and is forgotten:
-a same-file `#[cfg(test)] mod tests` sibling naming the target, pytest's `test_<name>` convention,
-xunit/nunit attributes, Go's `TestXxx` in `_test.go`, vitest/jest describe blocks. Each is a heuristic
-with its own false-positive shape, and a filter that selects NOTHING is the false green this design
-already guards against.
-
-Second half, coverage-as-oracle: untested branches seed test-gen, exercised paths inform repair; a
-signal to the human, never a model target. Its own scout question is coverage tooling cost and latency
-on the post-accept path.
-
-Sequencing: discovery first, then blame assignment. Build this before item 13.
 
 ### 16. An invented member on line 2 of a ghost is never judged
 

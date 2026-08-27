@@ -2,7 +2,7 @@
   "name": "column-80",
   "displayName": "Column 80",
   "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "publisher": "utilitydelta",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -65,6 +65,12 @@
       {
         "command": "column80.runTddTests",
         "title": "Run TDD Tests",
+        "category": "Column 80",
+        "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+      },
+      {
+        "command": "column80.runTests",
+        "title": "Run Covering Tests",
         "category": "Column 80",
         "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
       },
@@ -252,6 +258,10 @@
           "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
         },
         {
+          "command": "column80.runTests",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        },
+        {
           "command": "column80.contextRemove",
           "when": "false"
         },
@@ -319,6 +329,11 @@
         {
           "command": "column80.runTddTests",
           "group": "2_generate@4",
+          "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+        },
+        {
+          "command": "column80.runTests",
+          "group": "2_generate@5",
           "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
         }
       ],
