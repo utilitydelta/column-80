@@ -190,14 +190,24 @@ async function runCriticize(
   }
 
   const documentLines = document.getText().split(/\r?\n/);
-  // THE SPAN THE PRODUCT RESOLVES BEGINS AT THE DECLARATION HEAD, AND THE
-  // DETECTOR SLICE MUST NOT. `sliceFunction` walks UPWARD from the head over
-  // contiguous doc and annotation lines, so the doc comment is inside the unit.
-  // Handing it `span.start` and letting it walk is the whole fix: measured on
-  // the graded set, a slice that begins at the declaration head reads 29% of
-  // documented Rust functions as undocumented, and dimensions 9 and 10 both go
-  // silently and permanently wrong. This session's rig hit that twice.
-  const headLine = document.positionAt(resolved.span.start).line + 1;
+  // THE SLICE STARTS AT THE DECLARATION HEAD, AND `span.start` IS NOT ALWAYS IT.
+  // `sliceFunction` walks UPWARD from the head over contiguous doc and
+  // annotation lines, so the doc comment is inside the unit. Handing it the head
+  // and letting it walk is the whole fix: measured on the graded set, a slice
+  // that begins BELOW the doc reads 29% of documented Rust functions as
+  // undocumented, and dimensions 9 and 10 both go silently and permanently
+  // wrong. This session's rig hit that twice.
+  //
+  // IT READS `headOffset`, NEVER `span.start`. The span is the WRITABLE region,
+  // and Python's Fork A moves it past a leading docstring so that generation
+  // rewrites only the body. Slicing from there put the start BELOW the `def`,
+  // left no declaration in the range for `findHead`, and refused the function
+  // outright: measured in the v61 host tier at 7 of the 10 functions in a real
+  // Python file, against 0 of 13 in TypeScript, 0 of 11 in Rust, 0 of 10 in Go
+  // and 0 of 11 in C#. Every one of the seven had a docstring, which is to say
+  // the gesture refused Python's documented functions and scored only its
+  // undocumented ones.
+  const headLine = document.positionAt(resolved.headOffset).line + 1;
   const endLine = document.positionAt(resolved.span.end).line + 1;
   const unit = sliceFunction(documentLines, headLine, endLine, resolved.symbolName, lang);
   if (unit === undefined) {

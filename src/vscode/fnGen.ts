@@ -173,6 +173,18 @@ export interface ResolvedFunction {
    *  reindent. Captured here because the span may start past the docstring, so it
    *  can no longer be read back off span.start. */
   headerIndent: string;
+  /** Offset of the DECLARATION HEAD, which `span.start` is not.
+   *
+   *  Python Fork A moves `span.start` PAST a leading docstring so generation
+   *  rewrites only the body, and after that the span no longer begins at the
+   *  `def`. Every reader that wants the declaration rather than the writable
+   *  region needs this instead, and session-v61's host tier found the first one
+   *  that did: the criticize gesture sliced from `span.start`, found no
+   *  declaration head in the range, and REFUSED 7 of the 10 functions in a real
+   *  Python file, which is to say every function carrying a docstring.
+   *
+   *  Equal to `span.start` for every non-bodyOnly target. */
+  headOffset: number;
   /** The body's actual indentation for a bodyOnly target: the leading whitespace
    *  of the DOCSTRING line (the docstring is the first body statement, so its
    *  column IS the body column). Used verbatim to indent the generated body, so a
@@ -536,6 +548,8 @@ function resolveFromSymbolTree(
   // (`class Big(\n  Mixin,\n  Enum,\n):`) still carries its enum base. Decorators
   // are absent from the signature and never change the class-vs-enum answer.
   let kind = genKind(symbol.kind, document.languageId);
+  // The head, taken BEFORE any language fork is allowed to move `span.start`.
+  const headOffset = span.start;
   let bodyOnly = false;
   let docstringRefusal: string | undefined;
   let bodyIndent = "";
@@ -561,6 +575,9 @@ function resolveFromSymbolTree(
       // statement), read from its line — never a hardcoded 4 spaces.
       const lineStart = spanText.lastIndexOf("\n", doc.start - 1) + 1;
       bodyIndent = spanText.slice(lineStart, doc.start);
+      // AFTER THIS LINE `span.start` IS NOT THE DECLARATION HEAD. `headOffset`
+      // is captured above precisely because this moves the writable region and
+      // nothing else about the target.
       span.start += doc.end;
       bodyOnly = true;
     }
@@ -574,6 +591,7 @@ function resolveFromSymbolTree(
     languageId: document.languageId,
     kind,
     bodyOnly,
+    headOffset,
     headerIndent,
     bodyIndent,
     symbols,

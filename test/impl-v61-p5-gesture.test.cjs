@@ -395,3 +395,84 @@ test("the gesture is registered under one command id and no keybinding", () => {
   );
   assert.equal(bindings.length, 0, "a gesture a developer asks for gets no default key");
 });
+
+// ---------------------------------------------------------------------------
+// 8. The seam between the resolved span and the detector slice
+//
+// Found by the session-v61 VS Code host tier, which is the only place it could
+// be found: it needs a real language server to produce the span. Python's Fork
+// A moves `span.start` PAST a leading docstring so that generation rewrites only
+// the body, and the criticize gesture was slicing from `span.start`. The start
+// then sat BELOW the `def`, `findHead` had no declaration in its range, and the
+// slicer refused the function outright.
+//
+// Measured in the host tier over the dogfood repos: 7 of the 10 functions in a
+// real Python file refused, against 0 of 13 in TypeScript, 0 of 11 in Rust,
+// 0 of 10 in Go and 0 of 11 in C#. Every one of the seven carried a docstring,
+// so the gesture refused Python's documented functions and scored only its
+// undocumented ones - on a rubric one of whose fifteen dimensions is whether a
+// function is documented.
+// ---------------------------------------------------------------------------
+
+test("a slice starting below the declaration head is refused, which is why the seam matters", () => {
+  const lang = criticizeLangFor("python");
+  const lines = [
+    "def span_probe(first: int, second: int) -> int:",
+    '    """Probe.',
+    "",
+    "    Takes two bounds.",
+    '    """',
+    "    started = time.time()",
+    "    return first + second + int(started)",
+  ];
+  // From the head: a unit, and it carries the doc.
+  const fromHead = sliceFunction(lines, 1, 7, "span_probe", lang);
+  assert.ok(fromHead !== undefined, "a slice from the declaration head must build");
+
+  // From below the docstring, which is exactly where `span.start` lands for a
+  // Python target with a docstring. There is no `def` in the range.
+  const fromBody = sliceFunction(lines, 6, 7, "span_probe", lang);
+  assert.equal(
+    fromBody,
+    undefined,
+    "a slice that begins below the head has no declaration to find, so it refuses. This is the "
+      + "behaviour that made the gesture refuse every documented Python function.",
+  );
+});
+
+test("the gesture slices from the declaration head, never from the writable span", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "src", "vscode", "criticize.ts"),
+    "utf8",
+  );
+  // A source pin, because the alternative is a host and a live Pylance. The
+  // distinction is one identifier wide and silent when it is wrong: both
+  // spellings compile, both produce a line number, and only one of them is the
+  // declaration.
+  assert.ok(
+    source.includes("resolved.headOffset"),
+    "criticize.ts must derive its slice start from `headOffset`, the declaration head",
+  );
+  assert.ok(
+    !/positionAt\(resolved\.span\.start\)/.test(source),
+    "criticize.ts must not derive its slice start from `span.start`: that is the WRITABLE region, "
+      + "and Python's Fork A moves it past a leading docstring",
+  );
+});
+
+test("headOffset is declared on the resolved record and is set before any fork moves the span", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "src", "vscode", "fnGen.ts"),
+    "utf8",
+  );
+  assert.ok(/headOffset: number;/.test(source), "ResolvedFunction must carry the declaration head");
+  const capture = source.indexOf("const headOffset = span.start;");
+  const shift = source.indexOf("span.start += doc.end;");
+  assert.ok(capture > 0, "the head must be captured");
+  assert.ok(shift > 0, "the docstring shift must still be there");
+  assert.ok(
+    capture < shift,
+    "the head must be captured BEFORE the docstring shift moves span.start, or it records the "
+      + "same wrong offset the shift produces",
+  );
+});
