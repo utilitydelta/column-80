@@ -1,0 +1,39 @@
+test_add_method (test_widget.WidgetCase.test_add_method) ... FAIL
+test_raises (test_widget.WidgetCase.test_raises) ... FAIL
+test_odd (test_deep.DeepCase.test_odd) ... ERROR
+
+======================================================================
+ERROR: test_odd (test_deep.DeepCase.test_odd)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/test_deep.py", line 11, in test_odd
+    self.assertEqual(Odd(), 1)
+  File "/usr/lib/python3.12/unittest/case.py", line 885, in assertEqual
+    assertion_func(first, second, msg=msg)
+  File "/usr/lib/python3.12/unittest/case.py", line 875, in _baseAssertEqual
+    if not first == second:
+           ^^^^^^^^^^^^^^^
+  File "/repo/test_deep.py", line 6, in __eq__
+    raise RuntimeError("comparison exploded")
+RuntimeError: comparison exploded
+
+======================================================================
+FAIL: test_add_method (test_widget.WidgetCase.test_add_method)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/test_widget.py", line 16, in test_add_method
+    self.assertEqual(add(2, 3), 5)
+AssertionError: -1 != 5
+
+======================================================================
+FAIL: test_raises (test_widget.WidgetCase.test_raises)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/test_widget.py", line 19, in test_raises
+    with self.assertRaises(TypeError):
+AssertionError: TypeError not raised
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (failures=2, errors=1)

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="3" skipped="0" tests="4" time="0.041" timestamp="2026-08-26T11:45:30.794208+10:00" hostname="build"><testcase classname="test_widget" name="test_add" time="0.000"><failure message="assert -1 == 5&#10; +  where -1 = add(2, 3)">def test_add():
+&gt;       assert add(2, 3) == 5
+E       assert -1 == 5
+E        +  where -1 = add(2, 3)
+
+test_widget.py:7: AssertionError</failure></testcase><testcase classname="test_boom" name="test_boom" time="0.000"><failure message="TypeError: unsupported operand type(s) for -: 'int' and 'NoneType'">def test_boom():
+&gt;       assert compute(3) == 3
+               ^^^^^^^^^^
+
+test_boom.py:9: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_boom.py:5: in compute
+    return add(n, None)
+           ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+a = 3, b = None
+
+    def add(a, b):
+&gt;       return a - b
+               ^^^^^
+E       TypeError: unsupported operand type(s) for -: 'int' and 'NoneType'
+
+widget.py:2: TypeError</failure></testcase><testcase classname="test_fix" name="test_uses" time="0.000"><error message="failed on setup with &quot;RuntimeError: fixture exploded&quot;">@pytest.fixture
+    def broken():
+&gt;       raise RuntimeError("fixture exploded")
+E       RuntimeError: fixture exploded
+
+test_fix.py:6: RuntimeError</error></testcase><testcase classname="test_int2" name="test_raises_bad" time="0.000"><failure message="TypeError: Expected a BaseException type, but got 'str'">def test_raises_bad():
+&gt;       with pytest.raises("nope"):
+
+test_int2.py:5: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/repo/.venv/lib/python3.12/site-packages/_pytest/raises.py:624: in __init__
+    self.expected_exceptions = tuple(
+/repo/.venv/lib/python3.12/site-packages/_pytest/raises.py:625: in &lt;genexpr&gt;
+    self._parse_exc(e, expected="a BaseException type")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'RaisesExc' object has no attribute 'expected_exceptions'") raised in repr()] RaisesExc object at 0x77adc6e11fd0&gt;
+exc = 'nope', expected = 'a BaseException type'
+
+&gt;       raise TypeError(msg + repr(type(exc).__name__))
+E       TypeError: Expected a BaseException type, but got 'str'
+
+/repo/.venv/lib/python3.12/site-packages/_pytest/raises.py:454: TypeError</failure></testcase></testsuite></testsuites>

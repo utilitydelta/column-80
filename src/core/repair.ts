@@ -71,6 +71,54 @@ export interface EligibilityHooks {
   assertionShaped?: (diagnostic: Diagnostic) => boolean;
 }
 
+/**
+ * THE ONE-WAY DOOR. What opens `classifyEligibility`'s two assertion refusals,
+ * and it takes BOTH halves.
+ *
+ * ARCHITECTURE.md invariant 4 refused assertion failures outright, on a v1
+ * measurement of const-eval assertion TEXT with no test run, no location and no
+ * receiver surface. Session-v60 measured the new input directly on the default
+ * local model, `qwen3-coder:30b`, over four seeded compiling defects with a
+ * positive control on every arm:
+ *
+ *   no evidence                                 0/4
+ *   the bare-message shape the old ADR measured 0/4
+ *   the specced failure evidence                1/4
+ *   evidence PLUS the receiver's API surface    3/4
+ *
+ * so the clause moves, and only that clause. The 2-round cap does not change,
+ * and assertion failures stay refused on the AUTOMATIC path, where neither half
+ * below can ever be true: nothing there runs a test.
+ *
+ * Both fields are REQUIRED and plain. A conditional spread is invisible to tsc
+ * (v58's lesson), and this is the guard that decides whether a model gets to
+ * rewrite a function because a test went red.
+ */
+export interface TestRepairAuthorization {
+  /** The developer invoked Repair Function on this target THEMSELVES. Never
+   *  true on the automatic post-fn-gen path, which runs no tests at all. */
+  manualRepairGesture: boolean;
+  /** This failing test is in the call walk's discovered set for THIS target:
+   *  it reaches the function, directly or through callers the walk followed.
+   *  A red test elsewhere in the repo is not this function's problem. */
+  inDiscoveredSet: boolean;
+}
+
+/** Unauthorized. The value every existing call site means, spelled once so the
+ *  intent is legible at each of them. */
+export const NO_TEST_REPAIR: TestRepairAuthorization = {
+  manualRepairGesture: false,
+  inDiscoveredSet: false,
+};
+
+function testRepairOpen(auth: TestRepairAuthorization | undefined): boolean {
+  // Runtime-undefined is UNAUTHORIZED, the safe direction. The parameter is
+  // required so tsc forces every TypeScript call site to state its stance;
+  // the frozen contract oracles call this with one argument from plain JS and
+  // must keep meaning exactly what they always meant.
+  return auth !== undefined && auth.manualRepairGesture && auth.inDiscoveredSet;
+}
+
 function scopeResolvePath(scope: RepairScope, fileName: string): string {
   return scope.resolvePath
     ? scope.resolvePath(scope.crateRoot, fileName)
@@ -100,13 +148,23 @@ function primarySpanInScope(span: DiagnosticSpan, scope: RepairScope): boolean {
  *  fixed so the logged reason is always the honest one. */
 export function classifyEligibility(
   diagnostic: Diagnostic,
-  scope?: RepairScope,
-  hooks?: EligibilityHooks,
+  scope: RepairScope | undefined,
+  hooks: EligibilityHooks | undefined,
+  auth: TestRepairAuthorization,
 ): EligibilityDecision {
-  if (diagnostic.kind === "assertion-failure") {
+  // The authorization opens EXACTLY these two branches, and they are the only
+  // two a test failure trips. `warning`, `no-location` and `out-of-span` below
+  // keep applying unchanged, and a synthesised test-failure diagnostic cannot
+  // trip them by construction: it is error-level and its primary span IS the
+  // target function's span. Setting that span to the PANIC LOCATION instead
+  // would have been the quiet way to break this - an `assert_eq!` panics in the
+  // TEST file, which is out of span, so almost every real assertion failure
+  // would have been refused by a branch this session promised to leave alone.
+  const open = testRepairOpen(auth);
+  if (diagnostic.kind === "assertion-failure" && !open) {
     return { eligible: false, reason: "assertion-failure" };
   }
-  if ((hooks?.assertionShaped ?? rustcAssertionMessage)(diagnostic)) {
+  if (!open && (hooks?.assertionShaped ?? rustcAssertionMessage)(diagnostic)) {
     return { eligible: false, reason: "assertion-failure" };
   }
   if (diagnostic.level === "warning") {
@@ -287,6 +345,19 @@ export interface RepairPromptInput {
    *  the doc the code's column strips a level the docstring never had, out of
    *  the prose - and in Fork A the docstring IS the spec (review D2). */
   docIndent?: string;
+  /** ADDED v60. The rendered failing-test evidence, from
+   *  `renderFailureEvidence`. Present ONLY on a manually-invoked Repair Function
+   *  whose covering tests went red; the automatic post-fn-gen path never runs a
+   *  test and never sets it.
+   *
+   *  When present, `diagnostics` is normally EMPTY: the failing-test round has no
+   *  compiler errors to show, and the evidence block replaces the diagnostics
+   *  block rather than sitting beside an empty fence. Absent reproduces the v1
+   *  repair bytes exactly, which the frozen identity oracles pin. */
+  failureEvidence?: string;
+  /** ADDED v60. Which oracle produced the failure, which decides the intro
+   *  sentence and the instruction. Omitted means "compiler", the v1 bytes. */
+  oracle?: "compiler" | "tests";
   /** The user's manually-added context, same list the generate path injects.
    *  Rendered as leading `Context:` sections so a repair round sees what the
    *  human staged, not just the failing code. Undefined or empty reproduces the
@@ -332,11 +403,18 @@ export function assembleRepairPrompt(input: RepairPromptInput): string {
   // (which would be spliced into the body-only span and duplicate the header —
   // review BLOCKER 1).
   const isType = input.kind !== undefined && input.kind !== "function";
+  // A test round's failing code COMPILES. Saying it "failed the compiler check"
+  // would be false on its face and would point the model at the wrong kind of
+  // fault, so the test leg gets its own sentence. It says the tests disagree
+  // with the implementation and stops there: which of the two is wrong is not
+  // something a test run settles, and test repair stays banned.
+  const testOracle = input.oracle === "tests";
+  const failedWhat = testOracle ? "compiles, but the tests that cover it fail" : "failed the compiler check";
   const intro = input.bodyOnly
-    ? `The body below (of ${isType ? "a type" : "a function"} whose header and docstring are already written) failed the compiler check:`
+    ? `The body below (of ${isType ? "a type" : "a function"} whose header and docstring are already written) ${failedWhat}:`
     : isType
-      ? `The ${input.kind} definition below failed the compiler check:`
-      : `The function below failed the compiler check:`;
+      ? `The ${input.kind} definition below ${failedWhat}:`
+      : `The function below ${failedWhat}:`;
   // The doc comment is repository prose and can hold a fenced example of its
   // own; the span can be a docstring body. One rule, stated in
   // instructPostprocess beside the reader that decides what closes a block.
@@ -352,12 +430,30 @@ export function assembleRepairPrompt(input: RepairPromptInput): string {
   // line carrying a fence arrives here too.
   const diagFence = fenceFor(body);
   const diagnosticsSection = `Compiler diagnostics:\n${diagFence}\n${body}${diagFence}`;
+  // The evidence block REPLACES the diagnostics block when there are no
+  // diagnostics, rather than sitting beside an empty fence. A test round
+  // normally has exactly that shape.
+  const evidence = input.failureEvidence;
+  const evidenceSection =
+    evidence === undefined || evidence.trim().length === 0
+      ? undefined
+      : (() => {
+          const text = normalizeBlock(evidence);
+          const fence = fenceFor(text);
+          return `Test failures:\n${fence}\n${text}${fence}`;
+        })();
 
-  const instruction = input.bodyOnly
+  const testInstruction = input.bodyOnly
+    ? `Fix the body so the failing tests pass. Reply with one fenced code block containing ONLY the corrected body - do not repeat the signature, the header, or the docstring, and add no code before or after the body. Do NOT change any test. Output nothing outside the code block.`
+    : isType
+      ? `Fix the ${input.kind} so the failing tests pass, staying strictly inside this one type. Reply with one fenced code block containing the corrected complete ${input.kind} definition. Do NOT change any test. Output nothing outside the code block.`
+      : `Fix the function so the failing tests pass. Reply with one fenced code block containing the corrected complete function definition, signature and body. Do NOT change any test, and do not weaken the function to satisfy one: the tests below are the specification. Output nothing outside the code block.`;
+  const compilerInstruction = input.bodyOnly
     ? `Fix the body below. Reply with one fenced code block containing ONLY the corrected body — do not repeat the signature, the header, or the docstring, and add no code before or after the body. Output nothing outside the code block.`
     : isType
       ? `Fix the ${input.kind}. Reply with one fenced code block containing the corrected complete ${input.kind} definition, staying strictly inside this one type. Output nothing outside the code block.`
       : "Fix the function. Reply with one fenced code block containing the corrected complete function definition, signature and body. Output nothing outside the code block.";
+  const instruction = testOracle ? testInstruction : compilerInstruction;
 
   // The user's manually-added context leads, exactly as it does in generation
   // (assembleFnGenPrompt), then the v2 compiler-directed surface, then the
@@ -373,7 +469,13 @@ export function assembleRepairPrompt(input: RepairPromptInput): string {
     ...(input.surface ? [input.surface] : []),
     ...(input.usage ?? []),
     codeSection,
-    diagnosticsSection,
+    // Failure evidence goes where the compiler diagnostics go, so the model
+    // reads "here is the code, here is what went wrong, fix it" in one shape
+    // whichever oracle produced the wrongness. When both exist, diagnostics
+    // lead: an error is a harder fact than a red test.
+    ...(input.diagnostics.length > 0 ? [diagnosticsSection] : []),
+    ...(evidenceSection === undefined ? [] : [evidenceSection]),
+    ...(input.diagnostics.length === 0 && evidenceSection === undefined ? [diagnosticsSection] : []),
     instruction,
   ];
   return sections.join(SECTION_SEPARATOR);
@@ -424,6 +526,10 @@ export class RepairSession {
     private readonly enabled: boolean,
     private readonly log?: LogFn,
     private readonly hooks?: EligibilityHooks,
+    /** Defaults to UNAUTHORIZED, so a session constructed the way every shipped
+     *  call site constructs it refuses assertion failures exactly as before.
+     *  Only the manual Repair Function gesture's test leg passes anything else. */
+    private readonly auth: TestRepairAuthorization = NO_TEST_REPAIR,
   ) {}
 
   get roundsUsed(): 0 | 1 | 2 {
@@ -449,7 +555,7 @@ export class RepairSession {
     const eligible: Diagnostic[] = [];
     let refusedOutOfSpan = 0;
     for (const error of errors) {
-      const decision = classifyEligibility(error, scope, this.hooks);
+      const decision = classifyEligibility(error, scope, this.hooks, this.auth);
       if (decision.eligible) {
         eligible.push(error);
       } else {

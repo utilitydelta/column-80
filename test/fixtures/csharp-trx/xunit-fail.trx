@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="00000000-0000-0000-0000-000000000000" name="build 2026-08-26" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+<Results>
+    <UnitTestResult executionId="d0f3ecfa-4520-493a-8240-5a43fa953499" testId="3257a85d-0dba-43bb-2a79-4c7d089fa8ba" testName="Widget.Tests.CalcTests.Add_TwoAndThree_IsFive" computerName="build" duration="00:00:00.0017210" startTime="2026-08-26T11:49:21.2004655+10:00" endTime="2026-08-26T11:49:21.2005054+10:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d0f3ecfa-4520-493a-8240-5a43fa953499">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ
+Expected: 5
+Actual:   -1</Message>
+          <StackTrace>   at Widget.Tests.CalcTests.Add_TwoAndThree_IsFive() in /repo/WidgetTests.cs:line 10
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="db1590d6-29cb-40ad-b011-bd11527dd7f9" testId="5b293486-a990-0bf0-3eb9-b006a6e7a530" testName="Widget.Tests.CalcTests.Add_Throws_WhenAsked" computerName="build" duration="00:00:00.0038778" startTime="2026-08-26T11:49:21.1825427+10:00" endTime="2026-08-26T11:49:21.1941016+10:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="db1590d6-29cb-40ad-b011-bd11527dd7f9">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.InvalidOperationException)</Message>
+          <StackTrace>   at Widget.Tests.CalcTests.Add_Throws_WhenAsked() in /repo/WidgetTests.cs:line 16
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <ResultSummary outcome="Failed">
+    <Counters total="2" executed="2" passed="0" failed="2" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

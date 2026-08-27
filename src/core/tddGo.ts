@@ -18,6 +18,7 @@
 import * as path from "path";
 import { GO_SPAWN_ENV, GoOracle } from "./goOracle";
 import type { TestCaseResult, TestFailureDetail, TestOutcome } from "./compilerOracle";
+import type { FailureLocation } from "./failureDigest";
 import {
   LiteralProfile,
   TestInsertionPlan,
@@ -774,9 +775,68 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// ===========================================================================
+// The failure hooks (session-v60 phase B2)
+// ===========================================================================
+
+/**
+ * `go test`'s failure LOCATION, out of what parseGoTestOutput left in the
+ * message.
+ *
+ * The shape, from the committed capture at test/fixtures/gotest/fail.json:
+ *
+ *     widget_test.go:8: Add(2, 3) = -1, want 5
+ *
+ * The FIRST such line wins: `t.Errorf` does not stop the test, so a message can
+ * carry several and the first is the first thing that went wrong. Go reports no
+ * COLUMN, so the field stays absent rather than being invented.
+ *
+ * Three things this DECLINES on, and each of them is a wrong location avoided:
+ *
+ *  - a line that is not INDENTED. `go test` indents every location line it
+ *    writes, one level per subtest depth, so a flush-left match is something the
+ *    code under test printed. The same forgery reasoning that put this leg on
+ *    `-json` in the first place applies to the text inside an output event.
+ *  - a file that is not a `.go` file. The location go reports is always a Go
+ *    source file, and requiring the extension is what separates it from
+ *    `config.yaml:12:` in a message a test wrote.
+ *  - `host:port:` shapes, which fall out of the same rule for free.
+ */
+export function goTestFailureLocation(message: string): FailureLocation | undefined {
+  // The path may hold spaces but never a colon: go writes it relative to the
+  // package directory, and the colon is the field separator.
+  const m = /^[ \t]+([^\s:][^:\n]*?\.go):(\d+):(?: |$)/m.exec(message ?? "");
+  return m === null ? undefined : { filePath: m[1], line: Number(m[2]) };
+}
+
+/**
+ * `go test`'s own framing: the `--- FAIL: Name (0.00s)` verdict lines and the
+ * `=== RUN Name` markers. What is left is what the test itself printed.
+ *
+ * parseGoTestOutput already drops the pair naming the test the message BELONGS
+ * to, so what this catches is the framing go attributes to a test that is not
+ * the one it frames - a parent whose subtest verdicts are indented under it -
+ * plus any text-format output that did not come through the `-json` parse.
+ *
+ * The package trailer (`FAIL`, `ok example.com/widget 0.001s`) is NOT touched:
+ * those are package-scoped output events, so they never reach a failure message,
+ * and a bare `FAIL` line inside one is something the test printed.
+ */
+export function goTestStripHarnessFrames(message: string): string {
+  return (message ?? "")
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*--- (?:FAIL|PASS|SKIP):\s+\S+\s+\([\d.]+s\)\s*$/.test(l))
+    .filter((l) => !/^\s*=== (?:RUN|PAUSE|CONT|NAME)\s+\S+\s*$/.test(l))
+    .join("\n")
+    .replace(/\s+$/, "");
+}
+
 const GO_TESTING: TestFramework = {
   id: "gotest",
   displayName: "go test (testing)",
+
+  failureLocation: goTestFailureLocation,
+  stripHarnessFrames: goTestStripHarnessFrames,
 
   // Always. `testing` is in the standard library, so a resolved module root IS
   // the framework: there is nothing to look for, nothing to install and nothing
@@ -991,6 +1051,39 @@ const GO_TDD_LANG: TddLang = {
       placement.packageName = packageName;
     }
     return { ok: true, placement };
+  },
+
+  // `go test -run ^(a|b)$ <packageArg>` from the module root: the package
+  // argument is what one spawn is scoped to, so tests in two packages are two
+  // runs and tests in one package are one.
+  runScope: "package",
+
+  // The module root the CHECK resolves, deliberately: a discovered test that
+  // resolved a different module from the one `go build` uses would run under
+  // resolution rules the human never sees. The workspace refusal rides along
+  // with it, which is why the detail comes from describeMissingRoot.
+  runTargetForTestFile(testFilePath: string, deps: TddDeps): PlacementResult {
+    const oracle = new GoOracle({ fileExists: fileExistsOf(deps), readFile: readFileOf(deps), log: deps.log });
+    const moduleRoot = oracle.detectCrateRoot(testFilePath);
+    if (moduleRoot === undefined) {
+      const why = oracle.describeMissingRoot?.(testFilePath) ?? `no go.mod above ${testFilePath}`;
+      return {
+        ok: false,
+        refusal: { reason: "no-project-root", detail: `${why}; \`go test\` has no module to run ${path.basename(testFilePath)} in` },
+      };
+    }
+    // No packageName and no importLine: nothing is written, so there is no
+    // package clause to declare and nothing to reach for.
+    return {
+      ok: true,
+      placement: {
+        targetPath: testFilePath,
+        exists: true,
+        mode: "same-file",
+        runRoot: moduleRoot,
+        packageArg: packageArgFor(moduleRoot, path.dirname(testFilePath)),
+      },
+    };
   },
 
   scaffold(input: ScaffoldInput): TestInsertionPlan {

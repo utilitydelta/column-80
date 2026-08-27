@@ -31,6 +31,7 @@
 import * as os from "os";
 import * as path from "path";
 import type { TestCaseResult, TestFailureDetail, TestOutcome } from "./compilerOracle";
+import type { FailureLocation } from "./failureDigest";
 import { resolvePythonInterpreter } from "./pyOracle";
 import {
   LiteralProfile,
@@ -783,6 +784,125 @@ function reportedMessage(xml: string, tag: XmlTag): string {
  * about a test that passed. The setup and teardown cases are the human's OWN
  * code; only collection is the environment.
  */
+// ===========================================================================
+// The Python failure hooks (session-v60 phase B2)
+// ===========================================================================
+
+/** A traceback frame that belongs to the HARNESS, not to the code under test.
+ *  Naming one as the failure location points the model at pytest's or the
+ *  stdlib's own source, which is the wrong-location failure the whole
+ *  decline-rather-than-guess rule exists to stop. MEASURED on the committed
+ *  capture: `with pytest.raises("nope")` puts `_pytest/raises.py:454` in the
+ *  INNERMOST position, so the last-frame-wins rule alone gets it wrong. */
+const PY_HARNESS_FRAME = /[\\/](?:_pytest|pluggy)[\\/]|[\\/]unittest[\\/](?:case|loader|suite|runner)\.py$/;
+
+/** pytest's OWN frame line, which is not the stdlib traceback shape at all.
+ *
+ *  MEASURED against pytest 9.1.0 through the shipped parsePytestJunitXml rather
+ *  than against the raw report: what lands in `TestFailureDetail.message` is
+ *
+ *    test_boom.py:5: in compute          an intermediate frame
+ *    widget.py:2: TypeError              the innermost frame
+ *
+ *  and NOT the `File "<path>", line <n>` form the phase contract's table names.
+ *  That form appears only under `--tb=native`, which this leg's buildCommand
+ *  does not pass, so both are accepted and neither is assumed.
+ *
+ *  The frame line starts at column ZERO, names a `.py` file, and is followed by
+ *  a colon. Everything pytest quotes FROM the source is indented or carries an
+ *  `E`/`>` marker, so the anchor is what keeps a path a test printed out of the
+ *  answer. */
+const PYTEST_FRAME = /^(\S[^:\n]*\.py):(\d+):(?:\s|$)/;
+
+/** The stdlib traceback frame, which unittest writes and pytest can. Indented
+ *  by the traceback module itself, so leading space is expected here. */
+const PY_FILE_FRAME = /^\s*File "(.+)", line (\d+)(?:,|\s*$)/;
+
+/** Every frame a Python message names, in ARRIVAL order, harness frames
+ *  dropped. Shared because pytest and unittest disagree about which shape they
+ *  write and agree about which frames are worth naming. */
+function pyFrames(message: string): FailureLocation[] {
+  const out: FailureLocation[] = [];
+  for (const line of (message ?? "").split(/\r?\n/)) {
+    const m = PYTEST_FRAME.exec(line) ?? PY_FILE_FRAME.exec(line);
+    if (m === null || PY_HARNESS_FRAME.test(m[1])) {
+      continue;
+    }
+    out.push({ filePath: m[1], line: Number(m[2]) });
+  }
+  return out;
+}
+
+/**
+ * pytest's failure LOCATION: the INNERMOST frame that is not pytest's own.
+ *
+ * Innermost, because that is where the failure surfaced. On the committed
+ * capture the test asserts in `test_boom.py:9` and the exception is raised in
+ * `widget.py:2`, and the second one is the line worth quoting to a model asked
+ * to repair the function.
+ *
+ * Neither pytest shape carries a COLUMN, so the field stays absent.
+ */
+export function pytestFailureLocation(message: string): FailureLocation | undefined {
+  const frames = pyFrames(message);
+  return frames.length === 0 ? undefined : frames[frames.length - 1];
+}
+
+/**
+ * pytest's own frames, removed. A frame is its header LINE plus the source
+ * pytest echoes under it, which is indented, so the block ends at the next
+ * unindented line.
+ *
+ * Deliberately narrow: the `_ _ _ _` rules pytest draws between frames are left
+ * alone. They are furniture, but they are furniture the extractor does not read
+ * and the digest's whitespace collapsing already flattens, and a stripper that
+ * starts editing the body is one that can delete what the code under test said.
+ */
+export function pytestStripHarnessFrames(message: string): string {
+  const lines = (message ?? "").split(/\r?\n/);
+  const keep: string[] = [];
+  let dropping = false;
+  for (const line of lines) {
+    const frame = PYTEST_FRAME.exec(line) ?? PY_FILE_FRAME.exec(line);
+    if (frame !== null) {
+      dropping = PY_HARNESS_FRAME.test(frame[1]);
+    } else if (dropping && line.trim().length > 0 && !/^\s/.test(line)) {
+      // An unindented non-frame line ends the frame's echoed source.
+      dropping = false;
+    }
+    if (!dropping) {
+      keep.push(line);
+    }
+  }
+  return keep.join("\n").replace(/\s+$/, "");
+}
+
+/**
+ * unittest's failure LOCATION: the LAST traceback frame that is not the
+ * stdlib's own assertion machinery.
+ *
+ * The shape, from the committed capture at test/fixtures/unittest/fail.txt:
+ *
+ *   File "/repo/test_deep.py", line 6, in __eq__
+ *
+ * unittest usually hides its own frames (`__unittest = True`), but not always:
+ * a comparison that raises inside `assertEqual` puts two `unittest/case.py`
+ * frames in the middle of the traceback, and the human's own `__eq__` after
+ * them. Last-wins is right there; last-wins WITHOUT the harness filter would
+ * have been right there too and wrong the moment the innermost frame is the
+ * stdlib's. Filtering costs nothing and removes the case entirely.
+ */
+export function unittestFailureLocation(message: string): FailureLocation | undefined {
+  const frames = pyFrames(message);
+  return frames.length === 0 ? undefined : frames[frames.length - 1];
+}
+
+/** unittest's own frames, removed, the same block rule pytest's stripper uses:
+ *  the `File "…unittest/case.py"…` line and the source line indented under it. */
+export function unittestStripHarnessFrames(message: string): string {
+  return pytestStripHarnessFrames(message);
+}
+
 function errorPhaseOf(message: string): "setup" | "teardown" | "collection" {
   if (/^failed on setup\b/i.test(message)) {
     return "setup";
@@ -988,6 +1108,9 @@ function nodeIdPath(placement: TestPlacement): string {
 const PYTEST: TestFramework = {
   id: "pytest",
   displayName: "pytest",
+
+  failureLocation: pytestFailureLocation,
+  stripHarnessFrames: pytestStripHarnessFrames,
 
   // The project's interpreter is ASKED: `-c "import pytest"` through the probe
   // dep, which is the same question `python -m pytest` will answer at run time
@@ -1251,6 +1374,9 @@ function unittestFilter(name: string): string {
 const UNITTEST: TestFramework = {
   id: "unittest",
   displayName: "python -m unittest",
+
+  failureLocation: unittestFailureLocation,
+  stripHarnessFrames: unittestStripHarnessFrames,
 
   // Always. `unittest` ships with the interpreter, so a resolved project root IS
   // the framework: nothing to look for, nothing to install and nothing to be
@@ -1811,6 +1937,49 @@ function pyPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
   };
 }
 
+/**
+ * Where a DISCOVERED Python test file runs from.
+ *
+ * `pyPlacementFor` derives a `test_<stem>.py` under the project's test
+ * directory, which is the right answer for a source file and the wrong one for
+ * a file that already holds tests: a `check_widget.py` full of tests becomes
+ * `test_check_widget.py` somewhere else entirely. The run target is the file
+ * itself, and the only thing that has to be resolved is the root pytest runs
+ * from, plus the interpreter it runs on, which is carried for the reason
+ * `TestPlacement.interpreter` exists at all: `buildCommand` takes a placement
+ * and no deps, so anything about the project has to ride here.
+ */
+function pyRunTargetForTestFile(testFilePath: string, deps: TddDeps): PlacementResult {
+  const exists = fileExistsOf(deps);
+  const root = detectProjectRoot(testFilePath, exists);
+  if (root === undefined) {
+    return {
+      ok: false,
+      refusal: {
+        reason: "no-project-root",
+        detail:
+          `no pyproject.toml, setup.py, setup.cfg or tox.ini in ${path.dirname(testFilePath)} or any parent ` +
+          `directory, so there is no project to run ${path.basename(testFilePath)} in`,
+      },
+    };
+  }
+  // The same venv resolution placementFor performs, and for the harder reason:
+  // pytest itself is installed in that environment, so a run on a different
+  // interpreter is a different run.
+  const interpreter = resolvePythonInterpreter(root, exists);
+  return {
+    ok: true,
+    placement: {
+      targetPath: testFilePath,
+      exists: true,
+      mode: "same-file",
+      runRoot: root,
+      // No importLine: nothing is written, so there is nothing to import.
+      ...(interpreter === undefined ? {} : { interpreter }),
+    },
+  };
+}
+
 // ===========================================================================
 // The language
 // ===========================================================================
@@ -1820,6 +1989,13 @@ const PY_TDD_LANG: TddLang = {
   displayName: "Python",
 
   placementFor: pyPlacementFor,
+
+  // Both frameworks take the FILE: pytest through `<path>::<name>` node ids and
+  // unittest through the module path beside its `-k` filters. One spawn covers
+  // one file.
+  runScope: "file",
+
+  runTargetForTestFile: pyRunTargetForTestFile,
 
   scaffold: pyScaffold,
 

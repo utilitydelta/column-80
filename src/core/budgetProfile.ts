@@ -222,6 +222,20 @@ export const refineTotalCharsFor = (surfaceBudgetTok: number): number => Math.ro
  *  single wide type can never spend the whole prompt's shape budget. */
 export const walkTokMaxFor = (surfaceBudgetTok: number): number => Math.round((surfaceBudgetTok * 2) / 3);
 
+/** The failing-test evidence allowance: 100 tokens per 300 budget tokens.
+ *
+ *  Sized from the measurement, not chosen: deduped failure shapes plus the panic
+ *  location cost 60 tokens on a real 40-failure run, and test names cost about
+ *  11 each, so 100 at identity buys the whole breadth pass and a few names,
+ *  while the default `small` stop's 200 buys a dozen.
+ *
+ *  ADDITIONAL to `surfaceBudgetTok`, NEVER carved out of it. Measured:
+ *  evidence-only fixed 1 of 4 seeded defects and evidence-plus-receiver-surface
+ *  fixed 3 of 4, so the surface being there IS the difference between the
+ *  feature working and not. Failure evidence says WHAT IS WRONG; injected
+ *  surface says WHAT TO WRITE, and they are not substitutes. */
+export const failureTokMaxFor = (surfaceBudgetTok: number): number => Math.round(surfaceBudgetTok / 3);
+
 // Transport ceilings. Not fractions of the budget - they bound the REPLY and
 // the window, not the injected surface - but they live in the same table
 // because they were tuned against the same local 30B and phase 4's arms move
@@ -286,6 +300,7 @@ export interface BudgetProfile {
   surfaceCap: number;
   refineTotalChars: number;
   walkTokMax: number;
+  failureTokMax: number;
   maxTokens: number;
   numCtx: number;
   timeoutMs: number;
@@ -345,6 +360,7 @@ export function budgetProfileFor(cls: ModelClass, languageId: string, stop: Cont
     surfaceCap: cell.surfaceCap ?? surfaceCapFor(surfaceBudgetTok),
     refineTotalChars: cell.refineTotalChars ?? refineTotalCharsFor(surfaceBudgetTok),
     walkTokMax: cell.walkTokMax ?? walkTokMaxFor(surfaceBudgetTok),
+    failureTokMax: cell.failureTokMax ?? failureTokMaxFor(surfaceBudgetTok),
     maxTokens: cell.maxTokens ?? MAX_TOKENS_BY_CLASS[cls],
     numCtx: cell.numCtx ?? GEN_NUM_CTX,
     timeoutMs: cell.timeoutMs ?? GEN_TIMEOUT_MS,

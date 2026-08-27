@@ -4,6 +4,7 @@ import {
   CompilerOracle,
   Diagnostic,
   OracleCheckResult,
+  TestOracleResult,
   oracleFor,
   resolveDiagnosticPath,
   runOracleCheck,
@@ -14,6 +15,36 @@ import { oneLineWithPointer } from "./toastText";
 // Type only: no runtime edge from this surface to the registry, which is
 // constructed in fnGen.ts and passed in.
 import type { InFlightClaim } from "./inFlight";
+// The one exception, and it is a leaf predicate rather than the registry:
+// `isCancellation` is the product's single definition of "this throw was the
+// user's own stop", and the covering-test run leg has to tell that apart from a
+// runner that could not spawn. A second copy here would be a second definition.
+import { isCancellation } from "./inFlight";
+// The product's one line-bound definition, for the same reason: the shared
+// covering-test runner renders a spawn failure with it.
+import { firstLine } from "./toastText";
+// The call-hierarchy transport. `callHierarchy.ts` imports vscode and nothing
+// else in this layer, so this edge cannot cycle back through fnGen.
+import { makeLineReader, makeResolveCallers, prepareCallRoot } from "./callHierarchy";
+import { discoverCoveringTests } from "../core/testDiscovery";
+import {
+  coveringTestPlan,
+  discoveredFilters,
+  failuresOf,
+  outcomesThatDidNotRun,
+  runCoveringGroups,
+  runTotals,
+  withinDiscoveredSet,
+} from "../core/coveringTestRun";
+import { GroupOutcome } from "../core/runTestsReport";
+import { FailureLocation, digestFailures, renderFailureEvidence } from "../core/failureDigest";
+import {
+  runDelta,
+  shapesWithinDiscoveredSet,
+  testCheckResult,
+  testFailureDiagnostics,
+  worseThanBeforeMessage,
+} from "../core/testRepairEvidence";
 import { CrateResolution } from "../core/compilerDirected";
 import { buildResolution } from "../core/crateResolution";
 import { fetchMetadataJson, resolveHostTriple } from "../core/catalog";
@@ -23,6 +54,7 @@ import {
   GenerationSource,
   RepairScope,
   RepairSession,
+  TestRepairAuthorization,
   assembleRepairPrompt,
   spanScopedMessage,
   spanScopedVerdict,
@@ -60,6 +92,7 @@ import {
   usageHeaderFor,
   usageSitesOutsideSpan,
 } from "../core/refine";
+import { orderSurfaceByRelevance } from "../core/surfaceRelevance";
 import { collectUsageWindows, renderUsageSection } from "../core/usageWindows";
 import { spanTypesInPlay, stopNamesFor } from "../core/repairTypes";
 import { PY_STDLIB_MODULES, pyOwnedImportEdit } from "../core/pyExtraction";
@@ -985,12 +1018,44 @@ async function executeSession(
     // refine, and the human who switched repair off and pressed the command got
     // no word about it at all.
     if (gateClosed) {
-      log("[repair] refine skipped: the hardware tier gate is closed, so no model round can run");
+      log("[repair] the test leg and the refine are both skipped: the hardware tier gate is closed, so no model round can run");
     } else if (!readOracleConfig().repairEnabled) {
-      log("[repair] refine skipped: column80.repairEnabled is off, and the refine rides that switch");
+      log("[repair] the test leg and the refine are both skipped: column80.repairEnabled is off, and both ride that switch");
     } else {
-      await runRefine(ctx, oracle, log, resolved, check, filePath, modelTag);
+      // THE TEST LEG EVALUATES FIRST. `runRefine`'s own comment gives its reason
+      // as nothing else having had work to do, and red covering tests are work
+      // to do, so the refine keeps exactly the case where the tests passed, none
+      // were found, or the leg did not run.
+      const leg = await runTestLeg(
+        ctx,
+        oracle,
+        log,
+        resolved,
+        filePath,
+        check.crateRoot,
+        modelTag,
+        !gateClosed && readOracleConfig().repairEnabled,
+        resolvePath,
+      );
+      if (leg === "not-run") {
+        await runRefine(ctx, oracle, log, resolved, check, filePath, modelTag);
+      }
     }
+  } else if (ctx.manualRefine === true && action.why === "clean" && session.roundsUsed > 0) {
+    // The guard above stays `roundsUsed === 0` deliberately: the test leg fires
+    // only when the compile was ALREADY CLEAN when the gesture ran, which is the
+    // ruled flow (fn-gen, the automatic compiler repair, then the developer
+    // presses Repair Function on code that now compiles). It also holds the
+    // total model calls for one gesture at invariant 4's two, because the test
+    // leg runs its own `RepairSession` with its own cap.
+    //
+    // Said rather than silently skipped: from where the developer sits, a press
+    // that ran a compiler round and then did nothing else is indistinguishable
+    // from a press that did nothing at all.
+    log(
+      `[tests] the covering tests were not run: this press spent ${session.roundsUsed} compiler repair round(s)` +
+        ` getting the build clean. Press Repair Function again to run them against the code as it stands now.`,
+    );
   }
 
   // The give-up. The rounds ran out (route-exhausted) or hit the cap
@@ -1283,6 +1348,727 @@ const refineCharBudget = (ctx: PostAcceptContext, log: (line: string) => void): 
   // at the local-30B point, so a pin here is a silent refusal of the thing they
   // asked for.
   budgetProfileFor(fnGenModelClass(log), ctx.document.languageId, injectedContextStop(log)).refineTotalChars;
+
+/**
+ * What one press of Repair Function's TEST LEG did, for the caller's one
+ * decision: whether the refine still has work to do.
+ *
+ * "not-run" means the leg reached no failing covering test, so the refine branch
+ * keeps exactly the case its own comment describes - nothing else had work to do.
+ */
+type TestLegVerdict = "ran" | "not-run";
+
+/**
+ * The call-hierarchy root position for a resolved function.
+ *
+ * The document-symbol tree the resolution was cut out of already holds the NAME
+ * token's range (`selectionRange`), which is the position a call-hierarchy
+ * prepare wants; `span.start` is the declaration HEAD, and for a Python
+ * body-only target it is not even that - it is the first line of the body, below
+ * the `def`. A prepare at either can come back empty, and an empty prepare here
+ * reads as "no test calls this function", which is the false sentence this
+ * feature exists to refuse.
+ *
+ * No tree (a record built outside fnGen's resolver) degrades to the span start,
+ * which is what the gesture would have had anyway.
+ *
+ * SHARED BY BOTH GESTURES, AND THAT SHARING IS LOAD-BEARING (adversarial review
+ * row A2). Run Covering Tests used to prepare the hierarchy at the RAW cursor
+ * while the repair leg normalised here, and `vscode.prepareCallHierarchy`
+ * answers for the symbol AT the position: a cursor sitting on `foo.bar()` inside
+ * a body resolves to `bar`, and a cursor on whitespace resolves to nothing at
+ * all. So one press of Run Covering Tests and one press of Repair Function
+ * discovered two different functions' covering tests for one cursor, and the
+ * whole design rests on the developer seeing exactly what the model gets.
+ * Exported rather than copied: a second normalisation would be a second answer.
+ */
+export function callRootPosition(document: vscode.TextDocument, resolved: ResolvedFunction): vscode.Position {
+  const at = document.positionAt(resolved.span.start);
+  const tree = resolved.symbols;
+  if (tree === undefined) {
+    return at;
+  }
+  let best: vscode.DocumentSymbol | undefined;
+  const visit = (symbols: readonly vscode.DocumentSymbol[]): void => {
+    for (const symbol of symbols) {
+      if (!symbol.range.contains(at)) {
+        continue;
+      }
+      // Deepest wins: a method's own range sits inside its class's, and the
+      // class's name token would prepare the hierarchy for the wrong symbol.
+      best = symbol;
+      visit(symbol.children ?? []);
+    }
+  };
+  visit(tree);
+  return best?.selectionRange.start ?? at;
+}
+
+/** The groups' results as ONE result, for `runDelta`.
+ *
+ *  Concatenation, not a re-derivation: `runDelta` keys on the runner's own case
+ *  names and only compares names present in both runs, so a group that ran
+ *  before and failed to spawn after simply drops out of the comparison rather
+ *  than being reported as broken. `crateRoot` is the first group's, and it is
+ *  display detail here - nothing downstream of this merge reads it. */
+function mergeRunResults(outcomes: readonly GroupOutcome[]): TestOracleResult | undefined {
+  const results = outcomes.map((o) => o.result).filter((r): r is TestOracleResult => r !== undefined);
+  if (results.length === 0) {
+    return undefined;
+  }
+  return {
+    ran: results.some((r) => r.ran),
+    success: results.every((r) => r.success),
+    cases: results.flatMap((r) => r.cases),
+    failures: results.flatMap((r) => r.failures),
+    passed: results.reduce((n, r) => n + r.passed, 0),
+    failed: results.reduce((n, r) => n + r.failed, 0),
+    ignored: results.reduce((n, r) => n + r.ignored, 0),
+    durationMs: results.reduce((n, r) => n + r.durationMs, 0),
+    crateRoot: results[0].crateRoot,
+  };
+}
+
+/**
+ * Repair Function's TEST LEG: the manual gesture's clean-compile case, when the
+ * repo's own covering tests are red.
+ *
+ * `runRefine`'s comment gives its reason as nothing else having had work to do.
+ * RED TESTS ARE WORK TO DO, so this evaluates first and refine keeps exactly the
+ * case where the tests passed, none were found, or this leg did not run.
+ *
+ * The flow is dictated (goal.md, human 2026-08-26) and not up for redesign:
+ * discover and run - which is free, because the round needs the failures to
+ * build its prompt anyway - repair, then re-run THE SAME discovered set
+ * automatically. A newly red test drives the next round under the existing cap.
+ *
+ * WHAT OPENS THE ONE-WAY DOOR. `classifyEligibility` refuses an
+ * `assertion-failure` diagnostic unless BOTH halves of `TestRepairAuthorization`
+ * are true, and both are COMPUTED here rather than assumed: the developer
+ * invoked this gesture themselves (`ctx.manualRefine`), and the failing test is
+ * in the walk's own discovered set for THIS target. The automatic post-fn-gen
+ * path constructs its session with the default `NO_TEST_REPAIR` and runs no
+ * test, so neither half can ever be true there.
+ *
+ * MEASURED (session-v60 scout, `qwen3-coder:30b`, four seeded compiling defects,
+ * positive control on every arm): no evidence 0/4, the bare-message shape the
+ * old ADR measured 0/4, the specced failure evidence 1/4, evidence PLUS the
+ * receiver's API surface 3/4. That is why the surface below is not optional and
+ * why its allowance is ADDITIONAL to `surfaceBudgetTok` rather than carved out
+ * of it - evidence says WHAT IS WRONG, injected surface says WHAT TO WRITE, and
+ * they are not substitutes.
+ */
+async function runTestLeg(
+  ctx: PostAcceptContext,
+  oracle: CompilerOracle,
+  log: (line: string) => void,
+  resolved: ResolvedFunction | undefined,
+  filePath: string,
+  crateRoot: string,
+  modelTag: string,
+  enabled: boolean,
+  resolvePath: (crateRoot: string, fileName: string) => string,
+): Promise<TestLegVerdict> {
+  if (!resolved) {
+    log(`[tests] test leg skipped: no function resolved at the cursor`);
+    return "not-run";
+  }
+  // BOTH gestures gate on a function target, and they must agree (adversarial
+  // review row A2b). Without this the leg would run a repair round on a struct
+  // or class that Run Covering Tests refuses outright, so one press of each on
+  // the same cursor would do two different things. `column80.runTddTests` has
+  // gated the same way since it shipped, and what a type target's "covering
+  // tests" even means is not something anyone has measured.
+  if (resolved.kind !== "function") {
+    log(`[tests] test leg skipped: the target is a ${resolved.kind}, and covering tests are only defined for a function here`);
+    return "not-run";
+  }
+  // The tier gate and the repair switch, refused the same way the refine branch
+  // refuses them, and BEFORE anything spawns: a closed gate means no round can
+  // run, and discovering and running a whole suite to then say so would spend
+  // the developer's seconds proving something known up front.
+  if (!enabled) {
+    log(`[tests] test leg skipped: repair rounds are unavailable, so a red test could not be acted on`);
+    return "not-run";
+  }
+  // ONE mechanism, two entry points. Same bounds, same scope predicate, same
+  // run-target resolution as Run Covering Tests, because what the developer just
+  // looked at has to be exactly what the model gets.
+  const plan = coveringTestPlan({ languageId: ctx.document.languageId, targetFilePath: filePath, log });
+  if (plan === undefined) {
+    log(`[tests] test leg skipped: no covering-test leg registered for ${ctx.document.languageId}`);
+    return "not-run";
+  }
+
+  const symbolName = resolved.symbolName;
+  const controller = new AbortController();
+  const runClaim = ctx.inFlight?.begin(`Running covering tests for ${symbolName}`, controller);
+  let discovery;
+  let outcomes: GroupOutcome[];
+  try {
+    const target = await prepareCallRoot(ctx.document, callRootPosition(ctx.document, resolved), log);
+    if (target === undefined) {
+      // A RESULT, not an error, and emphatically not a zero: the server could
+      // not place this cursor, so the search never started.
+      log(
+        `[tests] the ${ctx.document.languageId} language server could not place ${symbolName} for a` +
+          ` call-hierarchy query, so no covering test was searched for`,
+      );
+      return "not-run";
+    }
+    discovery = await discoverCoveringTests({
+      target,
+      lang: plan.classifyLang,
+      resolveCallers: makeResolveCallers(log),
+      readLines: makeLineReader(),
+      inScope: plan.inScope,
+      bounds: plan.bounds,
+      runScope: plan.runScope,
+      resolveTarget: plan.resolveTarget,
+      signal: controller.signal,
+      hangGuardMs: plan.hangGuardMs,
+      log,
+    });
+    if (discovery.groups.length === 0) {
+      // SAID, never green, and never treated as a pass: nothing ran, so nothing
+      // about this function's behaviour was checked. The refine still has its
+      // own work to do, so the caller falls through to it.
+      log(
+        `[tests] no covering ${plan.classifyLang === "typescript" ? "test file" : "test"} could be run for ${symbolName}` +
+          ` in this ${plan.scopeWord}; the repair had no test evidence to work from`,
+      );
+      return "not-run";
+    }
+    const before = await runCoveringGroups({
+      groups: discovery.groups,
+      frameworkAt: plan.frameworkAt,
+      signal: controller.signal,
+      isCancellation,
+      firstLine,
+      log,
+    });
+    if (before.cancelled) {
+      log(`[tests] the covering-test run for ${symbolName} was cancelled; no repair round ran`);
+      return "not-run";
+    }
+    outcomes = before.outcomes;
+  } finally {
+    runClaim?.release();
+  }
+
+  // A RUN THAT DID NOT RUN IS NOT A PASS, and it is not evidence either
+  // (phaseB1 wording rule 9, adversarial review row A1). `buildError`,
+  // `environmentError`, `filterMatchedNothing` and a runner that executed zero
+  // tests all enumerate NO failing test, so a leg that read its verdict off the
+  // failure list alone would take every one of them for "nothing is red".
+  // `outcomesThatDidNotRun` names WHICH of the four it was, in the vocabulary
+  // `runTestsReport.ts` already ships, rather than inventing a fifth.
+  //
+  // Refused rather than partially continued: the before-state is what the
+  // after-run is compared against, and a delta measured against a state that was
+  // never established is not a result about the repair.
+  const beforeNotRun = outcomesThatDidNotRun(outcomes);
+  if (beforeNotRun.length > 0) {
+    for (const notRun of beforeNotRun) {
+      log(`[tests] ${notRun.frameworkName}: ${notRun.detail}`);
+    }
+    log(
+      `[tests] the covering tests for ${symbolName} did not run (${beforeNotRun.map((n) => n.reason).join(", ")}),` +
+        ` so there is no failure evidence and nothing here authorises a repair round`,
+    );
+    return "not-run";
+  }
+
+  // THE AUTHORIZATION, both halves computed and neither assumed.
+  //
+  // `inDiscoveredSet` is membership of the FAILING tests in the set the walk
+  // just produced, tested through `caseMatchesFilter` inside
+  // `shapesWithinDiscoveredSet` rather than by string identity: libtest reports
+  // `shard_wal::tests::x` for a filter the call hierarchy named `x`, and a
+  // `Set.has` membership test matched zero of 40 real failures when it was tried.
+  const filters = discoveredFilters(discovery.groups);
+  const failures = failuresOf(outcomes);
+  // THE NUMBERS MUST BE THE DISCOVERED SET'S (adversarial review rows A4 and
+  // A5). A bare Rust name makes `buildTestCommand` skip `--exact`, so libtest
+  // substring-matches and the spawn executes tests the walk never selected.
+  // Unscoped, those cases became the "N of 3 covering test(s) failed" header the
+  // MODEL reads, the "N covering test(s) now pass" toast the DEVELOPER reads,
+  // and the population `runDelta` blamed the repair over - which let one press
+  // warn that the repair made things worse about a neighbour and inform that the
+  // covering tests now pass, in the same breath. The substring behaviour itself
+  // stays (session-v60/scraps.md S60-2); a count that claims to be the covering
+  // set and is not does not.
+  const scoped = withinDiscoveredSet(outcomes, filters, plan.classifyLang);
+  const totals = runTotals(scoped);
+  // The digest's per-framework hooks: the failure LOCATION extractor and the
+  // wrapper-frame strip. Taken from the FIRST group, because one gesture is one
+  // language and `frameworkFor` answers the same way for every root in it in
+  // every layout measured. A repo that really did resolve two frameworks across
+  // two roots would digest the second one's output with the first one's hooks,
+  // and both hooks DECLINE safely (`tryHook` treats a throw or an undefined as
+  // "no location, no strip"), so the cost is a coarser digest rather than a
+  // wrong one.
+  const framework = plan.lang.frameworks.find((f) => f.id === discovery.groups[0].frameworkId);
+  const shapes = shapesWithinDiscoveredSet(
+    digestFailures(failures, {
+      strip: framework?.stripHarnessFrames,
+      locate: framework?.failureLocation,
+    }),
+    filters,
+    plan.classifyLang,
+  );
+  const admitted = new Set(shapes.flatMap((s) => s.names));
+  const admittedFailures = failures.filter((f) => admitted.has(f.name));
+  log(
+    `[tests] before: ran=${totals.ran} passed=${totals.passed} failed=${totals.failed}` +
+      ` discovered-filters=${filters.size} in-set-failures=${admittedFailures.length} shapes=${shapes.length}`,
+  );
+  if (admittedFailures.length === 0) {
+    if (failures.length > 0) {
+      // A red test somewhere else in the repo is not this function's problem and
+      // must not become evidence about it.
+      log(
+        `[tests] ${failures.length} test(s) failed but none of them is in the walk's discovered set for ${symbolName};` +
+          ` nothing here authorises a repair round`,
+      );
+    } else {
+      log(`[tests] every covering test for ${symbolName} passed, so the test leg has nothing to repair`);
+    }
+    return "not-run";
+  }
+  const auth: TestRepairAuthorization = {
+    manualRepairGesture: ctx.manualRefine === true,
+    inDiscoveredSet: admittedFailures.length > 0,
+  };
+  log(`[tests] authorization manual=${auth.manualRepairGesture} in-discovered-set=${auth.inDiscoveredSet}`);
+
+  // A round's evidence is bounded by `failureTokMax`, which is ADDITIONAL to
+  // `surfaceBudgetTok` and never carved out of it. The test payload must not
+  // evict the type surface to fit: that trade is the difference between 1/4 and
+  // 3/4 on the measured arms.
+  const budget = budgetProfileFor(fnGenModelClass(log), ctx.document.languageId, injectedContextStop(log));
+  const readLines = makeLineReader();
+  const readSourceLine = (loc: FailureLocation): { line: string; before?: string; after?: string } | undefined => {
+    // Runner locations are usually relative to the run root, so they are tried
+    // against every root this gesture actually ran in. An absolute path resolves
+    // on the first hit.
+    const roots = [...new Set(discovery.groups.map((g) => g.placement.runRoot))];
+    for (const candidate of [loc.filePath, ...roots.map((r) => `${r}/${loc.filePath}`)]) {
+      const lines = readLines(candidate);
+      if (lines === undefined || loc.line < 1 || loc.line > lines.length) {
+        continue;
+      }
+      return {
+        line: lines[loc.line - 1],
+        before: loc.line >= 2 ? lines[loc.line - 2] : undefined,
+        after: loc.line < lines.length ? lines[loc.line] : undefined,
+      };
+    }
+    return undefined;
+  };
+
+  const session = new RepairSession(
+    ctx.source,
+    enabled,
+    log,
+    { assertionShaped: (d) => oracle.isAssertionShaped(d) },
+    auth,
+  );
+  let scope = byteScope(ctx.document, filePath, crateRoot, resolved.span, resolvePath);
+  let beforeResult = mergeRunResults(scoped);
+  let evidence = renderFailureEvidence({
+    shapes,
+    tokMax: budget.failureTokMax,
+    readSourceLine,
+    ran: totals.ran,
+    passed: totals.passed,
+  });
+  log(
+    `[tests] evidence tok=${evidence.spentTok}/${budget.failureTokMax} reached=${evidence.reached.join(",") || "none"}` +
+      ` dropped-names=${evidence.droppedNames}`,
+  );
+  let action = session.next(
+    testCheckResult(
+      testFailureDiagnostics({
+        failures: admittedFailures,
+        filePath,
+        byteStart: scope.byteStart,
+        byteEnd: scope.byteEnd,
+        evidence: evidence.section,
+      }),
+      crateRoot,
+    ),
+    scope,
+  );
+  if (action.kind !== "repair") {
+    // The session refused before any model call. Said, never silent: the
+    // developer pressed a button and is owed the reason.
+    log(`[tests] no repair round ran why=${action.why}`);
+    void vscode.window.showWarningMessage(
+      `Column 80: ${admittedFailures.length} covering test(s) fail for ${symbolName}, and no repair round could run (${action.why}). See the output channel.`,
+    );
+    return "ran";
+  }
+
+  let stillRed = admittedFailures.length;
+  let fixedCount = 0;
+  // The LAST run's numbers, so the verdict below reports what is true now rather
+  // than what was true before the first round.
+  let nowPassing = totals.passed;
+  while (action.kind === "repair") {
+    const round = action.round;
+    const outcome = (result: string) => log(`[tests] repair outcome round=${round} result=${result}`);
+    const versionAtResolve = ctx.document.version;
+    const code = ctx.document.getText(
+      new vscode.Range(ctx.document.positionAt(resolved.span.start), ctx.document.positionAt(resolved.span.end)),
+    );
+
+    // The API surface, resolved exactly as a compiler repair round resolves it:
+    // the span's types-in-play through the pre-fill engine, plus the receivers
+    // that OWN the member calls the span makes, closed by ONE firm instruction
+    // naming every type that rendered. `resolveSurfaceInjection` runs over the
+    // eligible diagnostics the same way, and contributes nothing on this leg by
+    // construction - a synthesised test failure names no type - which is exactly
+    // why the span and owner legs above are the ones that carry the round.
+    //
+    // RELEVANCE ORDERING IS LOAD-BEARING HERE, and `orderSurfaceByRelevance`
+    // below is where it happens. Measured on the real Rust corpus with a seeded
+    // defect, `qwen3-coder:30b` at temperature 0, three repetitions per arm,
+    // every candidate fix spliced back and verified by `cargo test`: evidence
+    // alone 0/3 green, evidence plus a SOURCE-ordered surface 0/3, evidence plus
+    // a RELEVANCE-ordered surface 3/3. Same 100 signatures, same budget, same
+    // model. Only the order differs. The source-ordered arms wrote a member that
+    // does not exist, or a real but wrong one.
+    //
+    // It is not that the needed member came earlier: relevance order put it at
+    // index 66 where source order had it at 14. What earns the 3/3 is that the
+    // members semantically near the failure sit at the top. Truncating the same
+    // relevance-ordered list to its top 16 was 0/3, so the cap and the order are
+    // one decision and this leg orders WITHOUT narrowing.
+    //
+    // The compiler repair round is deliberately untouched: it has its own
+    // anchor-based ordering through `roundCallTargets`, its own frozen
+    // prompt-identity oracles, and nothing measured here says anything about it.
+    let surface: string | undefined;
+    const disclosed: DisclosedType[] = [];
+    if (ctx.extractor) {
+      const spanTypes = spanTypesInPlay({
+        languageId: resolved.languageId,
+        signature: resolved.signature,
+        docComment: resolved.docComment,
+        code,
+        diagnosticTypes: [],
+        excludeName: resolved.symbolName,
+      });
+      const { targets: callTargets, anchor } = roundCallTargets(ctx, resolved, code, action.eligible);
+      const callOwners = await resolveOwnersForRound(ctx, callTargets, anchor, new Set(spanTypes), log);
+      const ownerCursors = new Map<string, SourceCursor>(callOwners.map((o) => [o.name, o.cursor]));
+      const allTypes = [...callOwners.map((o) => o.name), ...spanTypes].filter((t, i, all) => all.indexOf(t) === i);
+      const spanSurface =
+        ctx.resolveSpanSurface !== undefined
+          ? await ctx.resolveSpanSurface(ctx.extractor, ctx.document, resolved, log, {
+              extraCandidates: allTypes,
+              omitInstruction: true,
+              onDisclosed: (types) => disclosed.push(...types),
+              extraCursors: ownerCursors,
+            })
+          : undefined;
+      const skipTypes = new Set(disclosed.map((d) => d.name));
+      const diagSurface = await resolveSurfaceInjection(
+        ctx.extractor,
+        ctx.document,
+        action.eligible,
+        log,
+        undefined,
+        undefined,
+        undefined,
+        {
+          skipTypes,
+          omitInstruction: true,
+          onDisclosed: (types) => {
+            for (const t of types) {
+              if (!disclosed.some((d) => d.name === t.name)) {
+                disclosed.push(t);
+              }
+            }
+          },
+        },
+      );
+      const parts = [spanSurface, diagSurface].filter((p): p is string => p !== undefined && p !== "");
+      if (parts.length > 0) {
+        // Ordered BEFORE the firm instruction is appended, so the sentence that
+        // names the permitted types can never be caught up in a member reorder.
+        // The seam identifies a member line structurally rather than by shape:
+        // only the lines between the fence that `assembleSurfacePayload` opens
+        // under its own "API surface for `T` (real signatures...)" header move,
+        // and each block is ordered on its own so a signature never drifts out
+        // from under the header naming its owner. Data shapes, usage examples,
+        // import hints and constructor blocks carry different headers and are
+        // left byte-identical.
+        const combined = orderSurfaceByRelevance(parts.join("\n\n"), {
+          targetText: code,
+          evidenceText: evidence.section,
+          docComment: resolved.docComment,
+        });
+        surface = disclosed.length > 0 ? `${combined}\n\n${firmInstructionFor(disclosed.map((d) => d.name))}` : combined;
+      }
+      log(
+        `[tests] round ${round} surface: types=${disclosed.length}` +
+          `${disclosed.length > 0 ? ` (${disclosed.map((d) => d.name).join(", ")})` : " (nothing resolved)"}` +
+          ` ordered=relevance`,
+      );
+    }
+
+    const repairBlocks = await ctx.readContextBlocks?.();
+    const prompt = assembleRepairPrompt({
+      languageId: resolved.languageId,
+      docComment: resolved.docComment,
+      code,
+      // EMPTY, and that is the point: the failing code COMPILES. The evidence
+      // block replaces the diagnostics block rather than sitting beside an empty
+      // fence, and the intro sentence changes with `oracle`.
+      diagnostics: [],
+      failureEvidence: evidence.section,
+      oracle: "tests",
+      surface,
+      kind: resolved.kind,
+      bodyOnly: resolved.bodyOnly,
+      spanIndent: (resolved.bodyOnly ? resolved.bodyIndent : resolved.headerIndent) ?? "",
+      docIndent: resolved.bodyOnly ? "" : resolved.headerIndent ?? "",
+      contextBlocks: repairBlocks,
+    });
+    log(
+      `[tests] round ${round}/2 model=${modelTag} route=${action.route} failing=${action.eligible.length}` +
+        `${surface ? " surface=injected" : ""}`,
+    );
+
+    const roundController = new AbortController();
+    const claim = ctx.inFlight?.begin(`Repairing ${symbolName}`, roundController);
+    let result;
+    try {
+      result = await ctx.service.generateRaw(prompt, {
+        docComment: resolved.docComment,
+        signature: resolved.signature,
+        span: resolved.span,
+        bodyOnly: resolved.bodyOnly,
+        contextBlocks: repairBlocks,
+      }, roundController.signal);
+    } catch (err) {
+      if (isPromptWindowError(err)) {
+        void vscode.window.showWarningMessage(err.message);
+        outcome("failed");
+        return "ran";
+      }
+      outcome("failed");
+      return "ran";
+    } finally {
+      claim?.release();
+    }
+    if (!result) {
+      outcome("aborted");
+      return "ran";
+    }
+    result.text = placeGeneratedReply(result.text, {
+      languageId: resolved.languageId ?? ctx.document.languageId,
+      bodyOnly: resolved.bodyOnly,
+      headerIndent: resolved.headerIndent ?? "",
+      bodyIndent: resolved.bodyIndent ?? "",
+    });
+    if (isNoOpRepair(code, result.text)) {
+      // MEASURED TWICE in the scout, on the blame cases: given a correct
+      // function and one corrupted test, the model left the function
+      // BYTE-IDENTICAL rather than bending it to satisfy the bad test. That is
+      // the honest outcome, and the still-red run below is the blame signal.
+      log(`[tests] round ${round} returned the function unchanged; not proposed`);
+      outcome("no-change");
+      void vscode.window.showWarningMessage(
+        `Column 80: the repair left ${symbolName} unchanged, and ${stillRed} covering test(s) still fail. See the output channel.`,
+      );
+      return "ran";
+    }
+    const refusal = undisclosedMemberRefusal(result.text, disclosed);
+    if (refusal !== undefined) {
+      log(`[tests] round ${round} refused: ${refusal}`);
+      outcome("refused");
+      break;
+    }
+
+    // The ONE write path. No second insertion route exists for this leg any more
+    // than for a compiler round.
+    const proposal = await ctx.presenter.present({
+      document: ctx.document,
+      span: resolved.span,
+      versionAtResolve,
+      title: `${symbolName}: repair from failing tests, round ${round} (preview)`,
+      text: result.text,
+      service: ctx.service,
+    });
+    if (proposal === "discarded") {
+      outcome("discarded");
+      return "ran";
+    }
+    if (proposal !== "accept") {
+      outcome("rejected");
+      void vscode.window.showInformationMessage(
+        `Column 80: ${symbolName} is unchanged. ${stillRed} covering test(s) still fail.`,
+      );
+      return "ran";
+    }
+
+    if (ctx.document.isDirty && !(await ctx.document.save())) {
+      outcome("failed");
+      throw new Error(`could not save ${ctx.document.uri.fsPath} before the covering tests were re-run`);
+    }
+    // WAVE SEMANTICS, the same rule the compiler loop above follows: re-check
+    // after every executed splice, and never assume a splice the human accepted
+    // still compiles (adversarial review row A1, HIGH). A repair that broke the
+    // build made every runner answer `buildError`, which enumerates no failing
+    // test, which read as "every covering test now passes" on code that does not
+    // compile. Checking here also spares the developer a whole test spawn on a
+    // crate that cannot build, and names the ERRORS, which a runner's build
+    // output does not.
+    const rechecked = await runOracleCheck(oracle, filePath, { log, envReason: surfaceEnvReason });
+    const errorsAfterSplice = rechecked?.diagnostics.filter((d) => d.level === "error").length ?? 0;
+    if (rechecked !== undefined && errorsAfterSplice > 0) {
+      surfaceCheck(ctx, rechecked, oracle);
+      outcome(`broke-the-build=${errorsAfterSplice}`);
+      log(
+        `[tests] the repair of ${symbolName} left ${errorsAfterSplice} compiler error(s), so the covering tests were` +
+          ` not re-run and nothing at all can be said about them`,
+      );
+      void vscode.window.showWarningMessage(
+        oneLineWithPointer(
+          `Column 80: the repair of ${symbolName} left ${errorsAfterSplice} compiler error(s), so the covering tests` +
+            ` were not re-run. Nothing passed. See the output channel.`,
+        ),
+      );
+      return "ran";
+    }
+    // THE SAME `RunGroup[]` OBJECT the first run used. Not a re-derived filter:
+    // the function changed, but "which tests cover it" was answered before the
+    // change, and re-answering mid-loop would compare two different sets and
+    // call the difference a result.
+    const afterController = new AbortController();
+    const afterClaim = ctx.inFlight?.begin(`Re-running covering tests for ${symbolName}`, afterController);
+    let after;
+    try {
+      after = await runCoveringGroups({
+        groups: discovery.groups,
+        frameworkAt: plan.frameworkAt,
+        signal: afterController.signal,
+        isCancellation,
+        firstLine,
+        log,
+      });
+    } finally {
+      afterClaim?.release();
+    }
+    if (after.cancelled) {
+      outcome("after-run-cancelled");
+      log(`[tests] the re-run was cancelled, so nothing can be said about what the repair did to the tests`);
+      return "ran";
+    }
+    // The same rule 9 guard on the AFTER run. The compiler re-check above catches
+    // the build error; this catches the rest of the four, and a run that
+    // executed nothing. Never a green: the tests were not proved to pass, they
+    // were not asked.
+    const afterNotRun = outcomesThatDidNotRun(after.outcomes);
+    if (afterNotRun.length > 0) {
+      for (const notRun of afterNotRun) {
+        log(`[tests] ${notRun.frameworkName}: ${notRun.detail}`);
+      }
+      outcome(`after-run-did-not-run=${afterNotRun.map((n) => n.reason).join(",")}`);
+      void vscode.window.showWarningMessage(
+        oneLineWithPointer(
+          `Column 80: the covering tests for ${symbolName} were re-run and did not run` +
+            ` (${afterNotRun[0].detail}). Nothing passed and nothing failed, so nothing is known about what the` +
+            ` repair did. See the output channel.`,
+        ),
+      );
+      return "ran";
+    }
+    const afterScoped = withinDiscoveredSet(after.outcomes, filters, plan.classifyLang);
+    const afterResult = mergeRunResults(afterScoped);
+    // ONE population for both claims. `broke` and `stillRed` used to be computed
+    // over different sets, which is how one press could say both (review row A4).
+    const delta = runDelta(beforeResult, afterResult);
+    fixedCount = delta.fixed.length;
+    const broke = worseThanBeforeMessage(delta, symbolName);
+    const afterTotals = runTotals(afterScoped);
+    nowPassing = afterTotals.passed;
+    const afterFailures = failuresOf(after.outcomes);
+    const afterShapes = shapesWithinDiscoveredSet(
+      digestFailures(afterFailures, {
+        strip: framework?.stripHarnessFrames,
+        locate: framework?.failureLocation,
+      }),
+      filters,
+      plan.classifyLang,
+    );
+    const afterAdmitted = new Set(afterShapes.flatMap((s) => s.names));
+    const afterAdmittedFailures = afterFailures.filter((f) => afterAdmitted.has(f.name));
+    stillRed = afterAdmittedFailures.length;
+    outcome(stillRed === 0 ? "all-green" : `still-red=${stillRed}`);
+    log(
+      `[tests] after: ran=${afterTotals.ran} passed=${afterTotals.passed} failed=${afterTotals.failed}` +
+        ` fixed=${delta.fixed.length} broken=${delta.broken.length} still-red=${delta.stillRed.length}`,
+    );
+    if (broke !== undefined) {
+      // Said in those words, at warning severity, because the alternative is a
+      // developer discovering it later by reading their own test output.
+      log(`[tests] ${broke}`);
+      void vscode.window.showWarningMessage(oneLineWithPointer(`Column 80: ${broke}`));
+    }
+
+    // The splice moved bytes: re-resolve so the next round's scope is the
+    // repaired function as it sits now.
+    const anchorStart = resolved.span.start;
+    const reresolved = await ctx.resolveFunction(ctx.document, ctx.document.positionAt(anchorStart));
+    resolved = reresolved ?? resolved;
+    scope = byteScope(ctx.document, filePath, crateRoot, resolved.span, resolvePath);
+    beforeResult = afterResult;
+    evidence = renderFailureEvidence({
+      shapes: afterShapes,
+      tokMax: budget.failureTokMax,
+      readSourceLine,
+      ran: afterTotals.ran,
+      passed: afterTotals.passed,
+    });
+    action = session.next(
+      testCheckResult(
+        testFailureDiagnostics({
+          failures: afterAdmittedFailures,
+          filePath,
+          byteStart: scope.byteStart,
+          byteEnd: scope.byteEnd,
+          evidence: evidence.section,
+        }),
+        crateRoot,
+      ),
+      scope,
+    );
+  }
+
+  // The verdict. Never that the function is CORRECT: the tests that pass are the
+  // tests the walk found, and finding them is not the same as covering the
+  // behaviour.
+  if (stillRed === 0) {
+    log(`[tests] every covering test for ${symbolName} now passes; this says nothing about whether the function is right`);
+    void vscode.window.showInformationMessage(
+      `Column 80: ${nowPassing} covering test(s) for ${symbolName} now pass. They are the tests the call walk found for it, which is not a statement that the function is right.`,
+    );
+    return "ran";
+  }
+  const why = action.kind === "surface" ? action.why : "cap-exhausted";
+  log(`[tests] give-up why=${why} still-red=${stillRed} fixed=${fixedCount}`);
+  void vscode.window.showWarningMessage(
+    oneLineWithPointer(
+      `Column 80: ${stillRed} covering test(s) for ${symbolName} still fail after the repair rounds` +
+        `${fixedCount > 0 ? ` (${fixedCount} were fixed)` : ""}. See the output channel.`,
+    ),
+  );
+  return "ran";
+}
 
 /**
  * The refine round: what the manual repair gesture does when the build is

@@ -11,6 +11,7 @@
  */
 
 import * as fs from "fs";
+import { FailureLocation } from "./failureDigest";
 import * as path from "path";
 import { spawn } from "child_process";
 import { LogFn } from "./completionService";
@@ -926,6 +927,53 @@ const ANSI_ESCAPE = /\x1b\[[0-9;]*m|\x1b\(B/g;
  * Tolerant of ANSI colour and CRLF; never throws (garbage → an empty,
  * did-not-run result).
  */
+/**
+ * libtest's failure LOCATION, out of a panic block's free text.
+ *
+ * The shape, from the committed capture at test/fixtures/rustc/assertion-panic.txt:
+ *
+ *   thread 'task15::tests::size_hint_exact' (3740764) panicked at src/task15.rs:26:9:
+ *
+ * The LAST such header wins. A test that panics inside a `catch_unwind` or a
+ * spawned thread prints the inner panic first and the harness's own re-panic
+ * after, and the one that names product code is the inner one - but a message
+ * carrying only one header is the common case and the rule agrees with itself
+ * there. DECLINES rather than guesses: a wrong location gets QUOTED by the
+ * prompt builder, which is worse than naming none.
+ */
+export function libtestFailureLocation(message: string): FailureLocation | undefined {
+  const re = /panicked at ([^\s:][^\n]*?):(\d+):(\d+):/g;
+  let found: FailureLocation | undefined;
+  for (let m = re.exec(message); m !== null; m = re.exec(message)) {
+    found = { filePath: m[1], line: Number(m[2]), column: Number(m[3]) };
+    break;
+  }
+  return found;
+}
+
+/**
+ * libtest's own noise: the panic HEADER, whose thread name, pid and location
+ * repeat what the surface already says, and the `note: run with RUST_BACKTRACE`
+ * line every block carries. What is left is what the code under test said.
+ *
+ * MEASURED on test/fixtures/rustc/assertion-panic.txt: the header plus the note
+ * are 60% of a `not implemented` block's characters and carry nothing the
+ * extracted location and the test name do not.
+ *
+ * The location extractor reads the RAW message, so removing the header here
+ * costs nothing: the two hooks are independent transforms of the same input.
+ */
+export function libtestStripHarnessFrames(message: string): string {
+  return message
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*thread\s+'[^']*'(?:\s*\([^)]*\))?\s+panicked at\s/.test(l))
+    .filter((l) => !/^\s*note: run with `?RUST_BACKTRACE/.test(l))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+/, "")
+    .replace(/\s+$/, "");
+}
+
 export function parseLibtestOutput(stdout: string): LibtestParse {
   const lines = (stdout ?? "").replace(ANSI_ESCAPE, "").split(/\r?\n/);
   let ran = false;

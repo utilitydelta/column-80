@@ -35,6 +35,7 @@
 import * as os from "os";
 import * as path from "path";
 import type { TestCaseResult, TestFailureDetail, TestOutcome } from "./compilerOracle";
+import type { FailureLocation } from "./failureDigest";
 import { CsOracle, dotnetEnv } from "./csOracle";
 import {
   LiteralProfile,
@@ -1291,6 +1292,83 @@ export function parseTrx(report: string, stderr: string, exitCode: number): Test
   return parse;
 }
 
+// ===========================================================================
+// The C# failure hooks (session-v60 phase B2)
+// ===========================================================================
+
+/**
+ * One .NET stack frame carrying a source position:
+ *
+ *      at Contoso.DataModel.Service.SiteValidation.ValidateTimeZone(String timezone) in /repo/SiteValidation.cs:line 30
+ *   1)    at Widget.Tests.CalcTests.Add_Throws_WhenAsked() in /repo/WidgetTests.cs:line 16
+ *
+ * The optional `N)` is NUnit, which repeats the frame under a numbered marker.
+ * The leading whitespace is OPTIONAL because of what the shipped parser does to
+ * it: `errorInfoOf` joins the `<Message>` and `<StackTrace>` elements after
+ * trimming each, so the first frame of the trace arrives flush left and every
+ * later one keeps its three spaces. An extractor that required the indent read
+ * the real capture and found nothing.
+ *
+ * `:line ` is the marker and it is not translated by the adapters measured; a
+ * localised test host spells it differently and this DECLINES there, which is
+ * the right answer for a shape that only looks familiar.
+ */
+const TRX_FRAME = /^\s*(?:\d+\)\s*)?at\s+(\S[^\n]*?)\s+in\s+(.+?):line (\d+)\s*$/;
+
+/** A frame belonging to the test FRAMEWORK rather than to the code under test.
+ *  Matched against the frame's type-and-method text, which is what the adapters
+ *  namespace: `Xunit.Assert.Equal[T](…)`, `NUnit.Framework.Assert.That(…)`,
+ *  `Microsoft.VisualStudio.TestTools.UnitTesting.Assert.AreEqual[T](…)`. */
+const TRX_FRAMEWORK_FRAME = /^(?:Xunit\.|NUnit\.|Microsoft\.VisualStudio\.TestTools)/;
+
+/**
+ * The failure LOCATION out of a TRX failure message: the FIRST frame that is
+ * not framework code.
+ *
+ * First, not last, and that is the opposite of the Python rule for a reason:
+ * .NET prints the stack innermost-first, so the first frame IS the innermost
+ * one. On the committed MSTest capture it is `SiteValidation.cs:line 30`, the
+ * product line that threw, one frame below the test that called it.
+ *
+ * The frames the runtime adds below the test (`System.Reflection.
+ * MethodBaseInvoker…`) carry no `in <path>:line <n>` at all, so they can never
+ * become an answer and need no rule of their own.
+ *
+ * TRX reports no COLUMN, so the field stays absent rather than being invented.
+ */
+export function trxFailureLocation(message: string): FailureLocation | undefined {
+  for (const line of (message ?? "").split(/\r?\n/)) {
+    const m = TRX_FRAME.exec(line);
+    if (m === null || TRX_FRAMEWORK_FRAME.test(m[1])) {
+      continue;
+    }
+    return { filePath: m[2], line: Number(m[3]) };
+  }
+  return undefined;
+}
+
+/**
+ * The adapters' OWN frames, removed, leaving the assertion text and the frames
+ * in the human's code.
+ *
+ * NOT MEASURED ON A REAL CAPTURE, and said so: xunit 2.9.3, NUnit 4.6.0 and
+ * MSTest all trimmed their own frames out of the trace in the three captures
+ * committed here, because their assemblies ship without the PDBs that would put
+ * a line number on one. The filter is kept because a framework built from
+ * source does emit them and because it costs nothing when there are none: a
+ * message with no framework frame comes back byte for byte.
+ */
+export function trxStripHarnessFrames(message: string): string {
+  return (message ?? "")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const m = /^\s*(?:\d+\)\s*)?at\s+(\S[^\n]*)$/.exec(line);
+      return m === null || !TRX_FRAMEWORK_FRAME.test(m[1]);
+    })
+    .join("\n")
+    .replace(/\s+$/, "");
+}
+
 /** `<Output><ErrorInfo><Message>…</Message><StackTrace>…</StackTrace></ErrorInfo></Output>`
  *  for the result at `at`, as one message. Bounded by the NEXT `UnitTestResult`
  *  so a sibling's failure can never be attributed to this test. */
@@ -1472,6 +1550,8 @@ const MSTEST: TestFramework = {
 
   buildCommand: buildCsCommand,
   parseOutput: parseTrx,
+  failureLocation: trxFailureLocation,
+  stripHarnessFrames: trxStripHarnessFrames,
 
   assertionInstruction:
     "Assert with `Assert.AreEqual(<expected>, <call>)`: the EXPECTED value is the FIRST argument and the " +
@@ -1493,6 +1573,8 @@ const XUNIT: TestFramework = {
 
   buildCommand: buildCsCommand,
   parseOutput: parseTrx,
+  failureLocation: trxFailureLocation,
+  stripHarnessFrames: trxStripHarnessFrames,
 
   assertionInstruction:
     "Assert with `Assert.Equal(<expected>, <call>)`: the EXPECTED value is the FIRST argument and the " +
@@ -1514,6 +1596,8 @@ const NUNIT: TestFramework = {
 
   buildCommand: buildCsCommand,
   parseOutput: parseTrx,
+  failureLocation: trxFailureLocation,
+  stripHarnessFrames: trxStripHarnessFrames,
 
   assertionInstruction:
     "Assert with `Assert.That(<call>, Is.EqualTo(<expected>))`: the EXPECTED value is the argument of " +
@@ -1863,6 +1947,57 @@ function csPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
       // its using, and `frameworkImportLine` goes ABSENT the moment the project
       // carries a `global using` for it — which the corpus does. Carrying the id
       // is what keeps `[TestClass]` correct in exactly that case.
+      ...(framework === undefined ? {} : { frameworkId: framework.id }),
+    },
+  };
+}
+
+/**
+ * Where a DISCOVERED C# test file runs from, and this is the leg the seam's new
+ * member exists for.
+ *
+ * `csPlacementFor` above searches OUTWARD for a project that TESTS the one the
+ * file sits in, because its question is where a new test file goes. Asked that
+ * question about a file already inside a test project, it either refuses (the
+ * corpus shape: nothing tests the tests) or walks out to a `<Name>.Tests.Tests`
+ * project the tests are not in. Neither answer runs this file.
+ *
+ * So this walks UP to the nearest `.csproj` instead, which is the project that
+ * COMPILES the file, and that project is what `dotnet test` is pointed at.
+ */
+function csRunTargetForTestFile(testFilePath: string, deps: TddDeps): PlacementResult {
+  const oracle = new CsOracle({
+    fileExists: fileExistsOf(deps),
+    readFile: readFileOf(deps),
+    readDir: (dir) => readDirOf(deps)(dir) ?? [],
+    log: deps.log,
+  });
+  // The SAME project resolution the check and csPlacementFor use, SDK floor
+  // included: one C# project resolution beats two that can disagree about which
+  // project owns a file.
+  const projectDir = oracle.detectCrateRoot(testFilePath);
+  if (projectDir === undefined) {
+    return refuse(
+      "no-project-root",
+      `${oracle.describeMissingRoot(testFilePath) ?? `no .csproj above ${testFilePath}`}, so there is no project to run ${path.basename(testFilePath)} from`,
+    );
+  }
+  const csproj = findCsproj(projectDir, deps);
+  if (csproj === undefined) {
+    return refuse("no-project-root", `no .csproj in ${projectDir}, so there is no project to run ${path.basename(testFilePath)} from`);
+  }
+  const framework = detectedFramework(projectDir, deps);
+  return {
+    ok: true,
+    placement: {
+      targetPath: testFilePath,
+      exists: true,
+      mode: "same-file",
+      runRoot: projectDir,
+      // Relative to runRoot, which is how every shipped consumer joins it back.
+      packageArg: path.basename(csproj),
+      // No packageName and no importLine: nothing is written, so there is no
+      // namespace to declare and nothing to reach for.
       ...(framework === undefined ? {} : { frameworkId: framework.id }),
     },
   };
@@ -2303,6 +2438,12 @@ const CS_TDD_LANG: TddLang = {
   displayName: "C#",
 
   placementFor: csPlacementFor,
+
+  // `dotnet test <project> --filter A|B` from the test project's directory: one
+  // spawn covers one PROJECT, whatever files the tests in it sit in.
+  runScope: "package",
+
+  runTargetForTestFile: csRunTargetForTestFile,
 
   scaffold: csScaffold,
 

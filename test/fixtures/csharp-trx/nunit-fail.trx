@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="00000000-0000-0000-0000-000000000000" name="build 2026-08-26" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+<Results>
+    <UnitTestResult executionId="c86bfd92-4875-4761-b887-d3aea16e6541" testId="c9d6f5b1-1a17-0668-af4b-800700cf0586" testName="Add_TwoAndThree_IsFive" computerName="build" duration="00:00:00.0014270" startTime="2026-08-26T11:49:50.2222250+10:00" endTime="2026-08-26T11:49:50.2236519+10:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c86bfd92-4875-4761-b887-d3aea16e6541">
+      <Output>
+        <ErrorInfo>
+          <Message>  Assert.That(Calc.Add(2, 3), Is.EqualTo(5))
+  Expected: 5
+  But was:  -1
+</Message>
+          <StackTrace>   at Widget.Tests.CalcTests.Add_TwoAndThree_IsFive() in /repo/WidgetTests.cs:line 10
+
+1)    at Widget.Tests.CalcTests.Add_TwoAndThree_IsFive() in /repo/WidgetTests.cs:line 10
+
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="9a68a60e-544d-4620-a2af-0a3e4ef93ac3" testId="61ff380d-dc01-0b44-8504-91bc3dbb6ae5" testName="Add_Throws_WhenAsked" computerName="build" duration="00:00:00.0187100" startTime="2026-08-26T11:49:50.2028969+10:00" endTime="2026-08-26T11:49:50.2215680+10:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9a68a60e-544d-4620-a2af-0a3e4ef93ac3">
+      <Output>
+        <ErrorInfo>
+          <Message>  Assert.That(caughtException, expression)
+  Expected: &lt;System.InvalidOperationException&gt;
+  But was:  null
+</Message>
+          <StackTrace>   at Widget.Tests.CalcTests.Add_Throws_WhenAsked() in /repo/WidgetTests.cs:line 16
+
+1)    at Widget.Tests.CalcTests.Add_Throws_WhenAsked() in /repo/WidgetTests.cs:line 16
+
+</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <ResultSummary outcome="Failed">
+    <Counters total="2" executed="2" passed="0" failed="2" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

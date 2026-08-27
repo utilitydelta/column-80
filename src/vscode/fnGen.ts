@@ -31,7 +31,7 @@ import { hasModel, listModels } from "../core/ollama";
 import { makeCloudInstruct } from "../core/cloudInstruct";
 import { makeAnthropicInstruct } from "../core/anthropicInstruct";
 import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/claudeCodeInstruct";
-import { runPostAcceptOracle } from "./oracleSurface";
+import { callRootPosition, runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
 import { firstLine, hasMoreThanOneLine, oneLineWithPointer, tierDisabledToast } from "./toastText";
@@ -117,6 +117,13 @@ import { StructFieldShape } from "../core/tabstop";
 // testability classifier and the assertion idiom — comes off the resolved leg.
 import { TddDeps, TestPlacement, blankExpectedValues, frameworkFor, tddLangFor, tddLanguageIds } from "../core/tddLang";
 import { TestOracleResult, oracleFor, runFrameworkTestsAt, runOracleCheck } from "../core/compilerOracle";
+// The Run Covering Tests gesture: the walk and its transport, the classifier's
+// language names, the grouper's target resolution, and the ONE pure module that
+// owns every sentence the gesture can say about a result.
+import { discoverCoveringTests } from "../core/testDiscovery";
+import { coveringTestPlan, runCoveringGroups } from "../core/coveringTestRun";
+import { RunTestsReport, renderRunTestsReport } from "../core/runTestsReport";
+import { makeLineReader, makeResolveCallers, prepareCallRoot } from "./callHierarchy";
 import { baselineCheck, describeEnvironment, isMissingImportsStorm } from "../core/pyOracle";
 import {
   fenceFor,
@@ -5415,6 +5422,25 @@ function announceOnce(): DroppedAnnouncer {
   return { pending: true };
 }
 
+/**
+ * The bounds, the per-language rows, the scope predicate and the run-target
+ * resolution all live in `src/core/coveringTestRun.ts` now, because Repair
+ * Function's test leg runs the SAME discovery and the SAME groups. One
+ * mechanism, two entry points: a second derivation of "which tests cover this
+ * function" would let the two gestures disagree about the set, and the developer
+ * would be told about a run the model never saw.
+ */
+
+/** What one invocation of Run Covering Tests ended as. Three outcomes rather
+ *  than one, because "the server could not place the cursor" and "you cancelled"
+ *  are NOT results the report module can speak for: the first means discovery
+ *  never started, and reporting it through the report would put the proven-zero
+ *  sentence on a search that never ran. */
+type RunTestsOutcome =
+  | { kind: "report"; report: RunTestsReport }
+  | { kind: "no-call-root" }
+  | { kind: "cancelled" };
+
 export function registerFnGen(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
@@ -6729,8 +6755,29 @@ export function registerFnGen(
       // FILE contributes, which only the crate layout knows.
       const testNames = lang.generatedTestNames(testFileText, resolved.symbolName, { placement, deps: tddDeps });
       if (testNames.length === 0) {
+        // "Generate some" was the ONLY exit this sentence offered, and on a file
+        // that already has hand-written tests for the target it is wrong advice:
+        // the developer does not want tests written, they want the ones they have
+        // run. This rung cannot run those - it selects by the fence it wrote, and
+        // nothing fenced them - but its SIBLING discovers them through the call
+        // graph, so name it. Only when the language actually has that leg:
+        // `coveringTestPlan` is undefined for a languageId with no row in
+        // RUN_TESTS_LANGS, and pointing someone at a gesture that will refuse them
+        // is a worse dead end than the one being fixed.
+        const sibling = coveringTestPlan({
+          languageId: document.languageId,
+          targetFilePath: document.uri.fsPath,
+          log,
+        });
+        const alternative =
+          sibling === undefined
+            ? ""
+            : ` Run "Column 80: Run Covering Tests" instead to run this repo's own tests that reach it.`;
+        output.appendLine(
+          `[tdd] run refused: no marked region for ${resolved.symbolName} in ${placement.targetPath}`,
+        );
         void vscode.window.showInformationMessage(
-          `Column 80: no generated tests for ${resolved.symbolName} — run "Generate Tests (TDD)" first.`,
+          `Column 80: no generated tests for ${resolved.symbolName} - run "Generate Tests (TDD)" to write some.${alternative}`,
         );
         return;
       }
@@ -6811,6 +6858,207 @@ export function registerFnGen(
       void vscode.window.showWarningMessage(
         `Column 80: ${res.failed} test(s) failed (${res.passed} passed) for ${resolved.symbolName} — divergence between the ratified tests and the implementation. See the output channel.`,
       );
+    }),
+
+    // Run Covering Tests - the REPO's OWN tests for the function under the
+    // cursor, found by walking the call hierarchy UPWARD from it and keeping
+    // every caller that classifies as a test.
+    //
+    // A SIBLING of `column80.runTddTests`, never a rename of it, and the two
+    // differ in WHOSE tests they run. That one runs the tests this product
+    // GENERATED, selected by name through `generatedTestNames` off the marked
+    // region it wrote, so a red there is this function's own test-vs-impl
+    // divergence. This one runs tests the product never wrote and cannot
+    // recognise by name, which is exactly why they have to be DISCOVERED
+    // through the call graph rather than looked up.
+    //
+    // Report only. It reads, it spawns the repo's runner, and it writes no
+    // document of any kind.
+    vscode.commands.registerCommand("column80.runTests", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        void vscode.window.showWarningMessage("Column 80: no active editor.");
+        return;
+      }
+      const document = editor.document;
+      // The same per-language gate as the TDD rung, worded the same way: the
+      // refusal is about the LANGUAGE having no leg, never about a missing
+      // runner, because "no test rung for ruby" would imply the gesture exists
+      // here. A languageId with a TDD leg but no row in RUN_TESTS_LANGS has no
+      // leg for THIS gesture either, so both gaps get the one honest sentence.
+      const plan = coveringTestPlan({ languageId: document.languageId, targetFilePath: document.uri.fsPath, log });
+      if (plan === undefined) {
+        output.appendLine(`[tests] refused: no covering-test leg registered for ${document.languageId}`);
+        void vscode.window.showWarningMessage(
+          `Column 80: running covering tests is not built for ${document.languageId} - this gesture is only registered for ${tddLanguageIds().join(", ")}.`,
+        );
+        return;
+      }
+      const resolution = await resolveFunctionOrRefusal(document, editor.selection.active, false);
+      if (!resolution.ok) {
+        log(refusalLogLine(resolution.refusal, document.languageId));
+        void vscode.window.showWarningMessage(
+          refusalMessage(
+            resolution.refusal,
+            document.languageId,
+            "Column 80: place the cursor in the function whose covering tests you want to run.",
+          ),
+        );
+        return;
+      }
+      const resolved = resolution.fn;
+      // BOTH GESTURES GATE ON A FUNCTION TARGET (adversarial review row A2b).
+      // This one refused a type target while the Repair Function test leg
+      // accepted any kind, so a cursor on a struct or a class made one gesture
+      // refuse and the other run a repair round off tests the developer was
+      // never shown. The two are one mechanism and must answer the same question
+      // the same way, so the leg now gates as well. Refusing rather than
+      // accepting is the direction taken because what a type target's "covering
+      // tests" means is not something anyone has measured, and both gestures
+      // spend real seconds (one spawns runners, the other calls a model).
+      // `column80.runTddTests` keeps its own kind gate untouched.
+      if (resolved.kind !== "function") {
+        void vscode.window.showWarningMessage(
+          "Column 80: place the cursor in the function whose covering tests you want to run.",
+        );
+        return;
+      }
+      //
+      // NO `tierGate()` HERE, AND THAT IS DELIBERATE. Every neighbouring gesture
+      // consults it because every one of them ends in a model call; this one
+      // discovers and runs and prompts nothing, so whether a hardware tier can
+      // generate has no bearing on whether the repo's tests may be run. Gating
+      // it would refuse a gesture the tier is irrelevant to.
+      //
+      // NO `document.save()` EITHER, and the TDD rung's one is not an oversight
+      // there: it is about to run tests IT generated into that buffer. This
+      // gesture writes no document, and saving one is a write. Discovery reads
+      // the OPEN buffer through `makeLineReader`, so an unsaved edit still
+      // decides what is excluded; the runner reads the disk, which is the
+      // ordinary meaning of running a repo's tests.
+      let outcome: RunTestsOutcome;
+      try {
+        outcome = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Finding the tests that cover ${resolved.symbolName}…`,
+            cancellable: true,
+          },
+          async (_p, token): Promise<RunTestsOutcome> => {
+            const controller = new AbortController();
+            token.onCancellationRequested(() => controller.abort());
+            // A discovery walk and a spawned test run both claim, for the same
+            // reason the TDD rung does: this is work the product started, and a
+            // hung server or a hung runner behind a dismissed notification must
+            // still be stoppable from the status bar.
+            const claim = inFlight.begin(`Running covering tests for ${resolved.symbolName}`, controller);
+            try {
+              // THE SAME NORMALISATION THE REPAIR LEG USES, and the sharing is
+              // the point (adversarial review row A2). This line read
+              // `prepareCallRoot(document, editor.selection.active, log)` - the
+              // RAW cursor - and `vscode.prepareCallHierarchy` answers for the
+              // symbol AT the position, so a cursor inside the body on
+              // `foo.bar()` resolved to `bar` and a cursor on whitespace
+              // resolved to nothing. Two gestures, one cursor, two different
+              // functions' covering tests. `callRootPosition` is imported from
+              // the leg's own module rather than copied, because a second
+              // normalisation would be a second answer.
+              const target = await prepareCallRoot(document, callRootPosition(document, resolved), log);
+              if (target === undefined) {
+                // A RESULT, not an error, and emphatically not a zero: the
+                // server could not place this cursor, so the search never
+                // started. Falling through to discovery here would report "no
+                // test calls this" about a walk that never made one request.
+                return { kind: "no-call-root" };
+              }
+              const discovery = await discoverCoveringTests({
+                target,
+                lang: plan.classifyLang,
+                resolveCallers: makeResolveCallers(log),
+                readLines: makeLineReader(),
+                inScope: plan.inScope,
+                bounds: plan.bounds,
+                runScope: plan.runScope,
+                resolveTarget: plan.resolveTarget,
+                signal: controller.signal,
+                hangGuardMs: plan.hangGuardMs,
+                log,
+              });
+              // The SAME sequential run the repair leg's before- and after-runs
+              // use, so the two gestures cannot disagree about what "running the
+              // covering tests" means. Each group is ONE `runFrameworkTestsAt`
+              // spawn, in order, and a cancel between groups comes back as
+              // `cancelled` rather than as a spawn that failed - which is the
+              // distinction the catch below turns on.
+              const run = await runCoveringGroups({
+                groups: discovery.groups,
+                frameworkAt: plan.frameworkAt,
+                signal: controller.signal,
+                isCancellation,
+                firstLine,
+                log,
+              });
+              if (run.cancelled) {
+                return { kind: "cancelled" };
+              }
+              // EVERY sentence about what was found and what happened comes off
+              // this one pure function. Nothing here composes a second one.
+              return {
+                kind: "report",
+                report: renderRunTestsReport({
+                  symbolName: resolved.symbolName,
+                  languageId: document.languageId,
+                  discovery,
+                  outcomes: run.outcomes,
+                  scopeWord: plan.scopeWord,
+                }),
+              };
+            } finally {
+              claim.release();
+            }
+          },
+        );
+      } catch (err) {
+        // A cancel is not a failure, and this arm is cancellable from the status
+        // bar as well as from the notification, so the throw arriving here can
+        // be the user's own action. Silent, with the channel keeping the record.
+        if (isCancellation(err)) {
+          output.appendLine(`[tests] the covering-test run for ${resolved.symbolName} was cancelled`);
+          return;
+        }
+        output.appendLine(`[tests] the covering-test run for ${resolved.symbolName} could not finish: ${String(err)}`);
+        void vscode.window.showErrorMessage(
+          `Column 80: the covering-test run for ${resolved.symbolName} could not finish - ${firstLine(String(err))}. See the output channel.`,
+        );
+        return;
+      }
+      if (outcome.kind === "cancelled") {
+        output.appendLine(`[tests] the covering-test run for ${resolved.symbolName} was cancelled`);
+        return;
+      }
+      if (outcome.kind === "no-call-root") {
+        output.appendLine(
+          `[tests] no call-hierarchy root for ${resolved.symbolName} at ${document.uri.fsPath}:${editor.selection.active.line + 1}; discovery did not start`,
+        );
+        void vscode.window.showWarningMessage(
+          `Column 80: the ${document.languageId} language server could not place the cursor on ${resolved.symbolName} for a call-hierarchy query, so the search for covering tests never started. Nothing was searched and nothing ran.`,
+        );
+        return;
+      }
+      output.appendLine(outcome.report.channel);
+      // The severity the report ASKED for. A zero comes back as a warning, and
+      // showing it as information would make it read like a pass.
+      switch (outcome.report.severity) {
+        case "error":
+          void vscode.window.showErrorMessage(outcome.report.toast);
+          break;
+        case "warning":
+          void vscode.window.showWarningMessage(outcome.report.toast);
+          break;
+        default:
+          void vscode.window.showInformationMessage(outcome.report.toast);
+          break;
+      }
     }),
   );
 }

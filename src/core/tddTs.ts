@@ -25,6 +25,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { TestCaseResult, TestFailureDetail, TestOutcome } from "./compilerOracle";
+import type { FailureLocation } from "./failureDigest";
 import {
   LiteralProfile,
   TestInsertionPlan,
@@ -1368,6 +1369,94 @@ export function parseJestJson(stdout: string, stderr: string, _exitCode: number)
   return parseNodeTestJson(stdout, stderr, JEST_BUILD_MARKERS);
 }
 
+// ===========================================================================
+// The node failure hooks (session-v60 phase B2)
+// ===========================================================================
+
+/**
+ * One V8 stack frame, in BOTH forms the two runners actually emit. From the
+ * committed captures:
+ *
+ *       at /repo/widget.test.js:6:23                             vitest, bare
+ *       at Object.toBe (/repo/widget.test.js:5:23)               jest, named
+ *       at runWithCancel (file:///repo/node_modules/…:2323:10)   a URL frame
+ *
+ * The path is taken as the runner SPELLED it, `file://` scheme included, which
+ * is what FailureLocation asks for. `at new Promise (<anonymous>)` matches
+ * neither form and needs no rule.
+ */
+const NODE_FRAME = /^\s*at (?:.*?\s\((.+?):(\d+):(\d+)\)|(.+?):(\d+):(\d+))\s*$/;
+
+/** A frame in code the human did not write. `node_modules` is the runner and
+ *  every library under it; `node:` is the RUNTIME's own internals, which jest
+ *  puts in the middle of a stack (`at processTicksAndRejections
+ *  (node:internal/process/task_queues:103:5)`) and which no repair can act on. */
+const NODE_HARNESS_FRAME = /(?:^|[\\/])node_modules[\\/]|^node:/;
+
+/** The frame's path, whichever of the two forms matched, or undefined. */
+function nodeFramePath(m: RegExpExecArray): { filePath: string; line: number; column: number } {
+  return m[1] !== undefined
+    ? { filePath: m[1], line: Number(m[2]), column: Number(m[3]) }
+    : { filePath: m[4], line: Number(m[5]), column: Number(m[6]) };
+}
+
+/**
+ * The failure LOCATION out of a vitest or jest failure message: the FIRST frame
+ * that is not the runner's own.
+ *
+ * First, because V8 prints the stack innermost-first. On both committed
+ * captures that frame is the test file and every frame under it is
+ * `node_modules`, which is the ordinary shape: an expectation fails INSIDE the
+ * assertion library and the library's own frames are what `node_modules` names.
+ *
+ * ONE pair serves both runners because they share the stack format and, in this
+ * file, the parser: `parseVitestJson` and `parseJestJson` are both
+ * `parseNodeTestJson`. A second copy would be a second thing to keep true.
+ *
+ * DECLINES when every frame is the runner's, which is what a failure raised
+ * entirely inside the harness looks like, and when nothing frame-shaped is
+ * there at all. `connect ECONNREFUSED 127.0.0.1:5432` carries a frame's
+ * colon-digit-colon shape and is not a frame; requiring the `at ` prefix is
+ * what separates them.
+ */
+export function nodeStackFailureLocation(message: string): FailureLocation | undefined {
+  for (const line of (message ?? "").split(/\r?\n/)) {
+    const m = NODE_FRAME.exec(line);
+    if (m === null) {
+      continue;
+    }
+    const frame = nodeFramePath(m);
+    if (NODE_HARNESS_FRAME.test(frame.filePath)) {
+      continue;
+    }
+    return frame;
+  }
+  return undefined;
+}
+
+/**
+ * Every `node_modules` frame, removed.
+ *
+ * MEASURED on the committed vitest capture: the message is one assertion line
+ * and ten stack frames, nine of them inside `@vitest/runner`. They say where
+ * the runner was, never where the code under test was, and they are 85% of the
+ * message's characters.
+ *
+ * The runtime's own `node:` frames are LEFT, because the contract names
+ * `node_modules` and because a `node:` frame occasionally carries the only
+ * clue about an async boundary. They cost one line each.
+ */
+export function nodeStackStripHarnessFrames(message: string): string {
+  return (message ?? "")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const m = NODE_FRAME.exec(line);
+      return m === null || !/(?:^|[\\/])node_modules[\\/]/.test(nodeFramePath(m).filePath);
+    })
+    .join("\n")
+    .replace(/\s+$/, "");
+}
+
 const VITEST_IMPORT = "import { describe, expect, it } from 'vitest';";
 const JEST_IMPORT = "import { describe, expect, it } from '@jest/globals';";
 
@@ -1393,6 +1482,8 @@ const VITEST: TestFramework = {
     };
   },
   parseOutput: parseVitestJson,
+  failureLocation: nodeStackFailureLocation,
+  stripHarnessFrames: nodeStackStripHarnessFrames,
   assertionInstruction: TS_ASSERTION_INSTRUCTION,
   expectedValueSpans: tsExpectedValueSpans,
   classifiesBuildError: true,
@@ -1427,6 +1518,8 @@ const JEST: TestFramework = {
     };
   },
   parseOutput: parseJestJson,
+  failureLocation: nodeStackFailureLocation,
+  stripHarnessFrames: nodeStackStripHarnessFrames,
   assertionInstruction: TS_ASSERTION_INSTRUCTION,
   expectedValueSpans: tsExpectedValueSpans,
   classifiesBuildError: true,
@@ -1740,6 +1833,36 @@ function tsPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
 }
 
 /**
+ * Where a DISCOVERED TypeScript test file runs from.
+ *
+ * `tsPlacementFor` already answers same-file for a `.test.ts`, so this leg's
+ * disagreement with it is narrower than C#'s, but only by accident of naming.
+ * A test file the call walk found is a test file whatever it is CALLED, and
+ * `helpers.ts` full of `it(...)` would get a `helpers.test.ts` sibling that does
+ * not exist and cannot be run.
+ */
+function tsRunTargetForTestFile(testFilePath: string, deps: TddDeps): PlacementResult {
+  const dir = path.dirname(testFilePath);
+  const runRoot = nearestPackageRoot(dir, deps);
+  if (runRoot === undefined) {
+    return {
+      ok: false,
+      refusal: {
+        reason: "no-project-root",
+        detail: `no package.json in ${dir} or any parent directory, so there is no project to run ${path.basename(testFilePath)} in`,
+      },
+    };
+  }
+  // The NEAREST package.json, not the workspace root: the runner binary and its
+  // config live beside the package that declares them.
+  //
+  // No importLine and no frameworkImportLine: nothing is written, so there is
+  // nothing to import. Which framework runs it is `frameworkFor`'s question,
+  // asked at the run root this carries.
+  return { ok: true, placement: { targetPath: testFilePath, exists: true, mode: "same-file", runRoot } };
+}
+
+/**
  * One TddLang per registered languageId. `typescriptreact`, `javascript` and
  * `javascriptreact` share every rule with `typescript`: the placement, the
  * frameworks and the locator are all about the MODULE SYSTEM and the test
@@ -1753,6 +1876,13 @@ function makeTsLang(languageId: string, displayName: string): TddLang {
     displayName,
 
     placementFor: tsPlacementFor,
+
+    // Both runners take the test FILE (vitest as a positional path, jest
+    // through `--runTestsByPath`) plus a `-t` title filter. One spawn covers
+    // one file.
+    runScope: "file",
+
+    runTargetForTestFile: tsRunTargetForTestFile,
 
     scaffold: tsScaffold,
 

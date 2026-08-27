@@ -1,0 +1,18 @@
+{"Time":"2026-08-26T11:45:10.266842004+10:00","Action":"start","Package":"example.com/widget"}
+{"Time":"2026-08-26T11:45:10.267915485+10:00","Action":"run","Package":"example.com/widget","Test":"TestAdd"}
+{"Time":"2026-08-26T11:45:10.267950625+10:00","Action":"output","Package":"example.com/widget","Test":"TestAdd","Output":"=== RUN   TestAdd\n"}
+{"Time":"2026-08-26T11:45:10.267980715+10:00","Action":"output","Package":"example.com/widget","Test":"TestAdd","Output":"    widget_test.go:8: Add(2, 3) = -1, want 5\n"}
+{"Time":"2026-08-26T11:45:10.267987175+10:00","Action":"output","Package":"example.com/widget","Test":"TestAdd","Output":"--- FAIL: TestAdd (0.00s)\n"}
+{"Time":"2026-08-26T11:45:10.267989835+10:00","Action":"fail","Package":"example.com/widget","Test":"TestAdd","Elapsed":0}
+{"Time":"2026-08-26T11:45:10.267992885+10:00","Action":"run","Package":"example.com/widget","Test":"TestAddSub"}
+{"Time":"2026-08-26T11:45:10.267994735+10:00","Action":"output","Package":"example.com/widget","Test":"TestAddSub","Output":"=== RUN   TestAddSub\n"}
+{"Time":"2026-08-26T11:45:10.267996766+10:00","Action":"run","Package":"example.com/widget","Test":"TestAddSub/negatives"}
+{"Time":"2026-08-26T11:45:10.267998006+10:00","Action":"output","Package":"example.com/widget","Test":"TestAddSub/negatives","Output":"=== RUN   TestAddSub/negatives\n"}
+{"Time":"2026-08-26T11:45:10.267999396+10:00","Action":"output","Package":"example.com/widget","Test":"TestAddSub/negatives","Output":"    widget_test.go:15: Add(-1, -1) = 0, want -2\n"}
+{"Time":"2026-08-26T11:45:10.268001896+10:00","Action":"output","Package":"example.com/widget","Test":"TestAddSub/negatives","Output":"--- FAIL: TestAddSub/negatives (0.00s)\n"}
+{"Time":"2026-08-26T11:45:10.268003296+10:00","Action":"fail","Package":"example.com/widget","Test":"TestAddSub/negatives","Elapsed":0}
+{"Time":"2026-08-26T11:45:10.268004906+10:00","Action":"output","Package":"example.com/widget","Test":"TestAddSub","Output":"--- FAIL: TestAddSub (0.00s)\n"}
+{"Time":"2026-08-26T11:45:10.268006356+10:00","Action":"fail","Package":"example.com/widget","Test":"TestAddSub","Elapsed":0}
+{"Time":"2026-08-26T11:45:10.268007856+10:00","Action":"output","Package":"example.com/widget","Output":"FAIL\n"}
+{"Time":"2026-08-26T11:45:10.268212838+10:00","Action":"output","Package":"example.com/widget","Output":"FAIL\texample.com/widget\t0.001s\n"}
+{"Time":"2026-08-26T11:45:10.268229008+10:00","Action":"fail","Package":"example.com/widget","Elapsed":0.001}

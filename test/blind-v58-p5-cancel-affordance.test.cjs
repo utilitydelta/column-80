@@ -462,16 +462,21 @@ const SITES = progressSites(fnGenSource);
 const CANCELLABLE = SITES.filter((s) => s.cancellable);
 const NON_CANCELLABLE = SITES.filter((s) => !s.cancellable);
 
-test("C5 [precondition: five sites, four cancellable]: the census the pin runs on", () => {
+test("C5 [precondition: six sites, five cancellable]: the census the pin runs on", () => {
+  // The census MOVED in session-v60: `column80.runTests` added a sixth
+  // withProgress site, and it is cancellable. The invariant this row guards is
+  // unchanged - every notification-location progress site is cancellable and
+  // exactly one window-location site is not - so the counts move with the code
+  // and the claim does not.
   assert.strictEqual(
     SITES.length,
-    5,
-    `the branch point has five withProgress calls in fnGen.ts; got ${SITES.length} at lines ${JSON.stringify(SITES.map((s) => s.line))}. If a site was added, the C5 pin below must cover it`,
+    6,
+    `the branch point has six withProgress calls in fnGen.ts; got ${SITES.length} at lines ${JSON.stringify(SITES.map((s) => s.line))}. If a site was added, the C5 pin below must cover it`,
   );
   assert.strictEqual(
     CANCELLABLE.length,
-    4,
-    `four of them are cancellable: ${JSON.stringify(SITES.map((s) => [s.line, s.cancellable]))}`,
+    5,
+    `five of them are cancellable: ${JSON.stringify(SITES.map((s) => [s.line, s.cancellable]))}`,
   );
   // The deliberate exclusion. withVerifyStatus is ProgressLocation.Window and
   // not cancellable, and the contract puts it out of scope; the pin must not
@@ -634,38 +639,76 @@ test("G [C5 detector]: the pin refuses every way a site can stop claiming", () =
   );
 });
 
-test("C6 [run-tests arm, source pin]: a cancelled test RUN must not be reported as a failed one", () => {
-  // The one arm this file cannot drive. `runFrameworkTestsAt` spawns a real
-  // runner and takes no injection seam, so its abort behaviour is only visible
-  // in the source. At the branch point its catch reports ANY throw - an abort
-  // included - as "the run could not start", which is an error toast on a
-  // cancellation and exactly what C6 forbids. The other three arms resolve to
-  // undefined on an abort and are covered behaviourally below.
-  const site = CANCELLABLE[CANCELLABLE.length - 1];
-  assert.match(site.text, /runFrameworkTestsAt/, `harness: the last cancellable site should be the test RUN; got line ${site.line}`);
-  const after = fnGenSource.slice(site.end, site.end + 1600);
-  assert.ok(after.indexOf("catch") >= 0, "harness: the run site is followed by a catch block");
-  const errorAt = after.indexOf("showErrorMessage");
-  assert.ok(errorAt >= 0, "harness: that catch reports through showErrorMessage today");
-  // From the site's own close-paren, not just from `catch`: an implementer may
-  // guard before the catch as easily as inside it, and both satisfy C6.
+test("C6 [run-tests arms, source pin]: a cancelled test RUN must not be reported as a failed one", () => {
+  // The arms this file cannot drive. A runner spawn is a real process and takes
+  // no injection seam, so its abort behaviour is only visible in the source.
+  // At the branch point the catch reports ANY throw - an abort included - as
+  // "the run could not start", which is an error toast on a cancellation and
+  // exactly what C6 forbids.
   //
-  // COMMENTS STRIPPED FIRST. Without this the row passes on a comment that
-  // merely mentions cancellation, which is a green bought with prose - and this
-  // file has no way to drive the arm and catch that. The guard has to be CODE.
+  // RE-CUT in session-v60, and the re-cut is the point. `column80.runTests`
+  // added a SECOND runner-spawning gesture and moved its spawn into
+  // `src/core/coveringTestRun.ts`, so "the last cancellable withProgress site in
+  // fnGen.ts" stopped being the runner site. Worse, that site's COMMENT mentions
+  // `runFrameworkTestsAt`, so a locator matching raw source text found it anyway
+  // and then ran the substantive assertion against the wrong body: a green
+  // bought with prose, in the one row whose whole design is about not doing that.
+  //
+  // So the locator strips comments too, and the row now quantifies over EVERY
+  // site that spawns a runner, wherever the spawn lives.
   const decommented = (text) => text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
-  const guard = decommented(after.slice(0, errorAt));
-  assert.match(
-    guard,
-    /abort|cancel/i,
-    "C6: aborting produces no error toast on ANY arm. The test-run site's catch reaches showErrorMessage without ever asking whether the throw was the user's own cancellation, so cancelling a run toasts \"the run could not start\"",
-  );
-  // And the strip is real, not decorative: a guard written only as a comment
-  // must not satisfy this row.
+
+  // Proof the strip works, asserted before it is relied on.
   assert.doesNotMatch(
     decommented("// this one is cancelled, honest\n/* cancellation, truly */\nvoid 0;"),
     /abort|cancel/i,
-    "harness: the comment strip must actually remove comments, or the row above can be satisfied by prose",
+    "harness: the comment strip must actually remove comments, or every row below can be satisfied by prose",
+  );
+
+  const spawnSites = CANCELLABLE.filter((s) =>
+    /runFrameworkTestsAt|runCoveringGroups/.test(decommented(s.text)),
+  );
+  assert.ok(
+    spawnSites.length >= 2,
+    `harness: two gestures spawn a test runner (runTddTests directly, runTests through runCoveringGroups); found ${spawnSites.length} at lines ${JSON.stringify(CANCELLABLE.map((s) => s.line))}`,
+  );
+
+  for (const site of spawnSites) {
+    const after = fnGenSource.slice(site.end, site.end + 2400);
+    assert.ok(after.indexOf("catch") >= 0, `harness: the site at line ${site.line} is followed by a catch block`);
+    const errorAt = after.indexOf("showErrorMessage");
+    if (errorAt < 0) {
+      continue; // a site that never error-toasts cannot violate C6
+    }
+    // From the site's own close-paren, not just from `catch`: an implementer may
+    // guard before the catch as easily as inside it, and both satisfy C6.
+    const guard = decommented(after.slice(0, errorAt));
+    assert.match(
+      guard,
+      /abort|cancel/i,
+      `C6: aborting produces no error toast on ANY arm. The runner site at line ${site.line} reaches showErrorMessage without ever asking whether the throw was the user's own cancellation, so cancelling a run toasts "the run could not start"`,
+    );
+  }
+});
+
+test("C6 [core spawn, source pin]: the shared covering-test run honours the signal between groups", () => {
+  // The spawn `column80.runTests` and the repair test leg share now lives in
+  // core, so the guard has to be pinned where it actually is. Both gestures run
+  // groups SEQUENTIALLY, and a cancel between two spawns must stop the walk
+  // rather than start the next runner.
+  const src = fs.readFileSync(path.join(__dirname, "..", "src", "core", "coveringTestRun.ts"), "utf8");
+  const decommented = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+  const body = decommented.slice(decommented.indexOf("export async function runCoveringGroups"));
+  assert.ok(body.length > 0, "harness: runCoveringGroups must exist in core");
+  assert.match(
+    body.slice(0, body.indexOf("runFrameworkTestsAt")),
+    /signal\.aborted/,
+    "C6: the loop must check the signal BEFORE spawning the next group, or a cancel starts one more runner",
+  );
+  assert.match(
+    body,
+    /isCancellation\(/,
+    "C6: a throw from the spawn must be classified as the user's cancel before it can be reported as a failure",
   );
 });
 

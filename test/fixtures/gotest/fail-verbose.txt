@@ -1,0 +1,11 @@
+=== RUN   TestAdd
+    widget_test.go:8: Add(2, 3) = -1, want 5
+--- FAIL: TestAdd (0.00s)
+=== RUN   TestAddSub
+=== RUN   TestAddSub/negatives
+    widget_test.go:15: Add(-1, -1) = 0, want -2
+--- FAIL: TestAddSub (0.00s)
+    --- FAIL: TestAddSub/negatives (0.00s)
+FAIL
+FAIL	example.com/widget	0.001s
+FAIL

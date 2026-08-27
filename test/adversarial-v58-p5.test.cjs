@@ -170,9 +170,15 @@ test("CLEAN A1: no keybinding anywhere in the manifest mentions the cancel comma
     }
   };
   walk(pkg, "$");
+  // INDEX-INDEPENDENT since session-v60, which added a sixth command and moved
+  // this one from 19 to 20. The claim was never about the index: it is that the
+  // ONLY place in the whole manifest naming the cancel command is a
+  // `contributes.commands[*].command` slot, so nothing binds it to a key.
+  // Pinning the literal index made an unrelated command registration look like a
+  // keybinding regression.
   assert.deepStrictEqual(
-    hits,
-    ["$.contributes.commands[19].command"],
+    hits.map((h) => h.replace(/\[\d+\]/, "[*]")),
+    ["$.contributes.commands[*].command"],
     `the v32 ruling: the cancel command is CONTRIBUTED and never BOUND. Every place the manifest names it: ${JSON.stringify(hits)}`,
   );
 });
@@ -221,8 +227,12 @@ test("CLEAN A5: every claim site releases, and the three .finally() sites releas
   // The failure this catches: `promise.finally(release); return promise;`
   // reads identically and is fine, but `promise; return other.finally(...)`
   // or a `.finally` attached to a promise that is not returned is a strand.
+  // The census moved in session-v60: `column80.runTests` takes a fifth claim and
+  // releases it in a finally BLOCK, so the split is 2 and 3 rather than 1 and 3.
+  // The claim this row makes is unchanged: EVERY site releases, and every
+  // `.finally()` site attaches to the promise it returns.
   const claims = [...FNGEN_SRC.matchAll(/const claim = inFlight\.begin\(/g)].map((m) => m.index);
-  assert.strictEqual(claims.length, 4, `all four sites take a claim; found ${claims.length}`);
+  assert.strictEqual(claims.length, 5, `all five sites take a claim; found ${claims.length}`);
   let awaited = 0;
   let chained = 0;
   for (const [i, at] of claims.entries()) {
@@ -230,8 +240,8 @@ test("CLEAN A5: every claim site releases, and the three .finally() sites releas
     if (/\}\s*finally\s*\{\s*\n?\s*claim\.release\(\);/.test(chunk)) awaited++;
     else if (/\.finally\(\(\) => claim\.release\(\)\)/.test(chunk)) chained++;
   }
-  assert.strictEqual(awaited + chained, 4, `every site must release; ${awaited} by finally-block and ${chained} by .finally()`);
-  assert.strictEqual(awaited, 1, "one site releases in a finally BLOCK (the async callback)");
+  assert.strictEqual(awaited + chained, 5, `every site must release; ${awaited} by finally-block and ${chained} by .finally()`);
+  assert.strictEqual(awaited, 2, "two sites release in a finally BLOCK (the async callbacks)");
   assert.strictEqual(chained, 3, "three release by chaining .finally() onto the promise they return");
 });
 

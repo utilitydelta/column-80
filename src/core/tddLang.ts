@@ -26,8 +26,11 @@ import {
   TestCaseResult,
   TestFailureDetail,
   buildTestCommand,
+  libtestFailureLocation,
+  libtestStripHarnessFrames,
   parseLibtestOutput,
 } from "./compilerOracle";
+import type { FrameStripper, LocationExtractor } from "./failureDigest";
 import {
   RustTestNameContext,
   TestInsertionPlan,
@@ -366,6 +369,14 @@ export interface TestFramework {
    *  Absent means the framework cannot say, which leaves the consumer's floor
    *  exactly the zero-hole one it already had. */
   unresolvedAssertions?(text: string): number;
+  /** ADDED v60. Pull the failure LOCATION out of `TestFailureDetail.message`.
+   *  Reads the RAW message. Absent leaves every location absent, which the
+   *  prompt builder handles. */
+  readonly failureLocation?: LocationExtractor;
+  /** ADDED v60. Drop this harness's own frames, leaving what the code under
+   *  test said. Reads the RAW message. Absent means the message already is
+   *  that. */
+  readonly stripHarnessFrames?: FrameStripper;
 }
 
 // ===========================================================================
@@ -382,12 +393,38 @@ export interface ScaffoldInput {
   placement: TestPlacement;
 }
 
+/** What ONE spawn of a language's runner covers, so discovered tests can be
+ *  grouped into the fewest runs that still say the truth. */
+export type TestRunScope = "root" | "package" | "file";
+
 export interface TddLang {
   readonly languageId: string;
   /** Named in every refusal, e.g. "Go", "TypeScript", "C#". */
   readonly displayName: string;
 
   placementFor(filePath: string, symbolName: string, deps: TddDeps): PlacementResult;
+
+  /** ADDED session-v60 phase A2. What ONE spawn of this language's runner
+   *  covers, MEASURED off the shipped `buildCommand` bodies rather than
+   *  asserted: cargo takes the crate root and a name list, `go test` and
+   *  `dotnet test` take a package/project argument, pytest, unittest, vitest and
+   *  jest all take the FILE. It decides the grouping key and nothing else. */
+  readonly runScope: TestRunScope;
+
+  /** ADDED session-v60 phase A2. The run target for an EXISTING test file the
+   *  call walk discovered.
+   *
+   *  DISTINCT FROM `placementFor`, which answers "where do NEW tests for this
+   *  source function GO" and DERIVES a test path from a source path. Handed a
+   *  test file, that derivation produces nonsense (a `Foo.Tests.Tests` project,
+   *  a `test_test_x.py`), because its question is about writing and this one is
+   *  about running. The file already holds the tests; all that is missing is
+   *  where to run it FROM.
+   *
+   *  A refusal means this file cannot be run, and the tests inside it are
+   *  REPORTED as unrunnable carrying the reason, never silently dropped, which
+   *  is why the detail must name what is missing. */
+  runTargetForTestFile(testFilePath: string, deps: TddDeps): PlacementResult;
 
   /** ADDED phase 6. WHERE the tests go when `placementFor` could not resolve a
    *  PROJECT — for a language whose tests live in the FILE UNDER THE CURSOR, and
@@ -553,6 +590,9 @@ const RUST_LIBTEST: TestFramework = {
     return { ...parseLibtestOutput(stdout), casesComplete: true };
   },
 
+  failureLocation: libtestFailureLocation,
+  stripHarnessFrames: libtestStripHarnessFrames,
+
   assertionInstruction:
     "Assert with `assert_eq!(<call>, <expected>)`: the EXPECTED value is the SECOND argument. " +
     "Write each expected value inline as the second argument of its own assert.",
@@ -704,6 +744,34 @@ const RUST_TDD_LANG: TddLang = {
   // nothing runs from it, because nothing runs at all until there is a crate.
   placementWithoutProject(filePath) {
     return { targetPath: filePath, exists: true, mode: "same-file", runRoot: path.dirname(filePath) };
+  },
+
+  // `cargo test --lib <name…>` in the crate root, and the name list is the ONLY
+  // narrowing it takes (buildTestCommand): one spawn covers every discovered
+  // test in the crate, whatever file each sits in.
+  runScope: "root",
+
+  // The same crate detection placementFor uses, and the same one the check rung
+  // uses, so a discovered test cannot be told it belongs to a different crate
+  // from the one that would compile it.
+  runTargetForTestFile(testFilePath, deps) {
+    const crateRoot = new RustOracle({ fileExists: fileExistsOf(deps), log: deps.log }).detectCrateRoot(testFilePath);
+    if (crateRoot === undefined) {
+      return {
+        ok: false,
+        refusal: {
+          reason: "no-project-root",
+          detail:
+            `no Cargo.toml in ${path.dirname(testFilePath)} or any parent directory, so there is no crate to ` +
+            `run ${path.basename(testFilePath)} in`,
+        },
+      };
+    }
+    // No packageArg: libtest filters by NAME, so the crate root IS the target.
+    // `exists` is true rather than probed because the input is a file the call
+    // walk read tests out of. A run target is not a write target, and asking
+    // the disk again would only invent a way to disagree with the walk.
+    return { ok: true, placement: { targetPath: testFilePath, exists: true, mode: "same-file", runRoot: crateRoot } };
   },
 
   scaffold(input) {
