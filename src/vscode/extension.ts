@@ -9,7 +9,8 @@ import { DOCUMENT_SCHEMES, canMintEntries, isDocumentScheme } from "./documentSc
 import { FimCompletionProvider, REAL_SCOPE_HOOKS } from "./completionProvider";
 import { registerContextPanel } from "./contextPanel";
 import { offerRaHoverCapFix, offerRaSnippetFix, registerFirstRun, startOllamaTerminal } from "./firstRun";
-import { registerFnGen } from "./fnGen";
+import { registerCriticize } from "./criticize";
+import { registerFnGen, resolveFunctionAtCursor } from "./fnGen";
 import { registerOracleSurface } from "./oracleSurface";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -133,8 +134,17 @@ export function activate(context: vscode.ExtensionContext): void {
   // time. It outlives config-change service rebuilds on purpose — a
   // settings tweak must not silently drop the user's chosen context.
   const store = new ContextBlockStore(log);
-  registerFnGen(context, output, store);
+  const modelGestures = registerFnGen(context, output, store);
   registerContextPanel(context, store);
+  // Criticize: READ ONLY, one command, no default keybinding. It reaches the
+  // tier gate, the transport and the in-flight registry through the record
+  // `registerFnGen` hands back, so the explainer sits behind the SAME fail-closed
+  // consult every other model-call gesture makes and this file takes no second
+  // copy of that decision.
+  registerCriticize(context, output, {
+    resolveFunction: resolveFunctionAtCursor,
+    ...modelGestures,
+  });
   registerOracleSurface(context, output);
   registerFirstRun(context, output);
 

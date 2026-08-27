@@ -27,7 +27,7 @@ import {
   walkTokMaxFor,
 } from "../core/budgetProfile";
 import { resolveTier, startOllamaTerminal } from "./firstRun";
-import { hasModel, listModels } from "../core/ollama";
+import { InstructGenerateFn, hasModel, listModels } from "../core/ollama";
 import { makeCloudInstruct } from "../core/cloudInstruct";
 import { makeAnthropicInstruct } from "../core/anthropicInstruct";
 import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/claudeCodeInstruct";
@@ -5441,6 +5441,27 @@ type RunTestsOutcome =
   | { kind: "no-call-root" }
   | { kind: "cancelled" };
 
+/**
+ * What a model-call gesture registered OUTSIDE this file needs from inside it.
+ *
+ * The tier decision, the tier's recorded reason, the tier-resolved transport
+ * and the in-flight registry all live in `registerFnGen`'s closure, and every
+ * one of them is read at INVOKE time rather than captured at activation: a
+ * settings change rebuilds the service and re-resolves the tier, and a gesture
+ * holding a stale instance would keep asking a model the human turned off.
+ *
+ * Returned rather than imported, so a gesture that only needs these four things
+ * can be registered from `extension.ts` beside the others without taking a
+ * runtime edge into this file.
+ */
+export interface ModelGestureWiring {
+  /** FAIL CLOSED. The same consult generate, repair, tighten and TDD make. */
+  tierGate: () => Promise<{ allowed: boolean; reason?: string }>;
+  tierMessage: () => string | undefined;
+  transport: () => InstructGenerateFn;
+  inFlight: () => InFlightRegistry | undefined;
+}
+
 export function registerFnGen(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
@@ -5450,7 +5471,7 @@ export function registerFnGen(
   // oracle still green.
   store: ContextBlockStore,
   deps: FnGenDeps = {},
-): void {
+): ModelGestureWiring {
   const log = (line: string) => output.appendLine(line);
   // Pre-tier placeholder so dispose paths always have a service. Every
   // model-call entry point below consults tierGate() first and fails CLOSED on
@@ -7061,6 +7082,17 @@ export function registerFnGen(
       }
     }),
   );
+
+  // The four things a model-call gesture registered elsewhere needs from this
+  // closure. Getters, not values: `tierReady` is re-run on every settings
+  // change and `service` is swapped for a fresh one, so a captured instance
+  // would answer for the configuration the human had at activation.
+  return {
+    tierGate,
+    tierMessage: () => tier?.message,
+    transport: () => service.transport,
+    inFlight: () => inFlight,
+  };
 }
 
 /**

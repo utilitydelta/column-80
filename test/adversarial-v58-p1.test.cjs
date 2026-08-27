@@ -833,8 +833,12 @@ test("CLEAN [src/vscode]: every channel tag a comment names is a tag some non-co
     }
   }
   assert.ok(emitted.has("http-body"), `precondition: the scan found real emitters, got ${emitted.size}`);
+  // The bound moves only when the PRODUCT gains a real channel tag, and by
+  // exactly one when it does. Session-v61 added `[critique]`, so 19 became 20 and
+  // the bound 20 became 21: the scan keeps the same one slot of slack it was
+  // written with, and a loosened regex still trips it.
   assert.ok(
-    emitted.size < 20,
+    emitted.size < 21,
     `precondition: the emitter scan must stay tight or the row cannot fail, got ${JSON.stringify([...emitted].sort())}`,
   );
 

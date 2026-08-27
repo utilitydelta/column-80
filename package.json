@@ -57,6 +57,12 @@
         "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
       },
       {
+        "command": "column80.criticizeFunction",
+        "title": "Criticize Function",
+        "category": "Column 80",
+        "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+      },
+      {
         "command": "column80.generateTests",
         "title": "Generate Tests (TDD)",
         "category": "Column 80",
