@@ -353,23 +353,33 @@ test("the walk is skipped when no elevated row could display its number", () => 
 });
 
 // ---------------------------------------------------------------------------
-// 7. It writes nothing
+// 7. It writes through the ONE consent gate, and reaches no other write
+//
+// REWRITTEN in session-v62, and rewritten rather than deleted. v61 shipped this
+// gesture writing nothing at all and this row banned the presenter's own names
+// along with every other write; the human reversed that ruling on 2026-08-28
+// ("it's useless as it is now"), so criticize now proposes a diff through
+// `ProposalPresenter.present()`.
+//
+// What the row is FOR did not change. The extension has three document write
+// paths and no more, and this is what keeps a fourth from arriving quietly:
+// criticize may reach the ONE consent gate and nothing else. Deleting the pin
+// because two of its names went out of date would have thrown away the check
+// that the other six still buy.
 // ---------------------------------------------------------------------------
 
-test("the gesture module reaches no document edit API on any branch", () => {
+test("the gesture module reaches the ONE consent gate and no other write on any branch", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "vscode", "criticize.ts"),
     "utf8",
   );
   // A source pin rather than a host row, and deliberately so: the contract is
-  // that no branch reaches a write, and a host test can only visit the branches
-  // it manages to provoke. Every write in this extension goes through one of
-  // these names, so their absence is the whole of the claim.
+  // that no branch reaches a write of its own, and a host test can only visit
+  // the branches it manages to provoke. Every write in this extension goes
+  // through one of these names, so their absence is the whole of the claim.
   for (const banned of [
     "WorkspaceEdit",
     "applyEdit",
-    "ProposalPresenter",
-    "presenter",
     ".edit(",
     "insertSnippet",
     "createDiagnosticCollection",
@@ -377,6 +387,15 @@ test("the gesture module reaches no document edit API on any branch", () => {
   ]) {
     assert.ok(!source.includes(banned), `criticize.ts must not reach ${banned}`);
   }
+  // And the other half of the same claim: the write it DOES make goes through
+  // the presenter, which it is handed rather than constructing. A second
+  // `ProposalPresenter` would mean a second preview registry, and the one
+  // `column80.proposalAccept` command would settle the wrong tab's diff.
+  assert.ok(/\.present\(/.test(source), "the proposal must go through the consent gate");
+  assert.ok(
+    !source.includes("new ProposalPresenter"),
+    "criticize.ts must be HANDED the presenter, never construct a second one",
+  );
 });
 
 test("the gesture is registered under one command id and no keybinding", () => {

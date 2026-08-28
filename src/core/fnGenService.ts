@@ -733,10 +733,17 @@ export class FnGenService {
    *  line because it was there before any reader existed. */
   logOutcome(
     outcome: "accept" | "reject" | "discarded",
-    detail?: { refusedBy: string; offered: string } | { discardedBecause: string },
+    detail?: { refusedBy: string; offered: string } | { discardedWhy?: string; discardedBecause?: string },
   ): void {
-    if (detail !== undefined && "discardedBecause" in detail) {
-      this.log?.(`[fngen] discarded: ${escapeBreaks(detail.discardedBecause)}`);
+    if (detail !== undefined && !("refusedBy" in detail)) {
+      // ONLY the half the product did not author. `discardedWhy` is the
+      // presenter's own one-line sentence, and fn-gen's record of it is the
+      // toast: a line here would add a row to a surface the contract pinned
+      // bare, on the one path whose bytes several oracles read. The gesture
+      // that routes its discards away from the toast renders it instead.
+      if (detail.discardedBecause !== undefined) {
+        this.log?.(`[fngen] discarded: ${escapeBreaks(detail.discardedBecause)}`);
+      }
       this.log?.(`[fngen] outcome=${outcome}`);
       return;
     }

@@ -14,6 +14,16 @@
 
 import { DimensionId } from "./criticizeTypes";
 import { ElevationPolicy, Scorecard, ScorecardRow, signatureLevel } from "./criticizeScore";
+// The proposal half of the gesture. `C80_TAG` and `lineCommentFor` are the SAME
+// two answers the planner strips with: a region that recognised this product's
+// own comments differently from the pass that removes them would reach back over
+// lines the strip never takes, or miss lines it does.
+import { C80_TAG } from "./criticizeVoice";
+// The SAME strip the planner runs before it plants. The gesture runs it before
+// it SLICES, so the rubric never scores this product's own comments.
+import { stripCriticism } from "./criticizePlan";
+import { escapeBreaks } from "./errorBound";
+import { lineCommentFor } from "./fimInject";
 
 /** Everything this gesture writes to the output channel carries it. One prefix
  *  per gesture is the product's convention: `[tighten]`, `[walk]`, `[critique]`. */
@@ -92,6 +102,132 @@ export const NO_FUNCTION_REASON =
  *  never in the input reads clean on every body dimension. */
 export function sliceRefusalReason(name: string): string {
   return `the slice for ${name} could not be built, and a half-built slice would read clean on every dimension it never examined`;
+}
+
+// ---------------------------------------------------------------------------
+// Step 4a: the document the rubric is allowed to read
+//
+// THE RUBRIC MUST NOT SCORE THIS PRODUCT'S OWN CRITICISM. S62-7 was one root
+// with three faces, all of them on the SECOND press:
+//
+//  - a documented Rust function read as UNDOCUMENTED, because `docLines` walks
+//    up from the head and stops at the first line that is not a doc line, and a
+//    planted `// C80 ...` block sits between the `///` and the head;
+//  - Go is the mirror and worse: `//` IS Go's doc prefix, so a planted comment
+//    read AS documentation and an undocumented function's finding vanished;
+//  - and `section-comment` fired on the product's own comment.
+//
+// So the scoring view is the document with those comments taken out, and the
+// slice, the score and the plan all read the SAME lines. The strip is the
+// planner's, imported rather than re-derived: a second answer to "what did this
+// product write" would drift from the pass that removes it.
+// ---------------------------------------------------------------------------
+
+/**
+ * The document as the rubric reads it, and the line map back to the file.
+ *
+ * `documentLine[i]` is the 1-based line of the file that `lines[i]` came from.
+ * The card the human reads, and the `scoring <name> at line <n>` evidence, are
+ * put back through this map, because a card citing line 41 while the editor
+ * shows line 47 is a new defect traded for an old one.
+ */
+export interface ScoringView {
+  /** The document's lines with every C80 comment of this product's own gone. */
+  lines: readonly string[];
+  /** The 1-based document line each view line came from. Strictly increasing. */
+  documentLine: readonly number[];
+}
+
+/** The view for one document. A document that carries no C80 comment produces
+ *  a view identical to it, with an identity map, which is why the FIRST press
+ *  is byte-for-byte what it was before this existed. */
+export function scoringView(
+  documentLines: readonly string[],
+  languageId: string,
+): ScoringView {
+  const stripped = stripCriticism(documentLines, languageId);
+  return {
+    lines: stripped.lines,
+    documentLine: stripped.sourceIndex.map((index) => index + 1),
+  };
+}
+
+/**
+ * The view line for a document line, reading DOWNWARD.
+ *
+ * Used for the range's START. A declaration head is never a C80 comment so it
+ * survives the strip and this is exact for it; the downward fallback is for the
+ * injection region, whose first line IS a planted comment on a second press and
+ * whose stripped first line is therefore the head below it.
+ */
+export function viewLineAtOrAfter(view: ScoringView, documentLine: number): number {
+  const map = view?.documentLine ?? [];
+  if (map.length === 0) {
+    return 1;
+  }
+  for (let i = 0; i < map.length; i++) {
+    if (map[i] >= documentLine) {
+      return i + 1;
+    }
+  }
+  return map.length;
+}
+
+/** The view line for a document line, reading UPWARD. Used for the range's END,
+ *  where the downward fallback would extend the range past the function. */
+export function viewLineAtOrBefore(view: ScoringView, documentLine: number): number {
+  const map = view?.documentLine ?? [];
+  if (map.length === 0) {
+    return 1;
+  }
+  for (let i = map.length - 1; i >= 0; i--) {
+    if (map[i] <= documentLine) {
+      return i + 1;
+    }
+  }
+  return 1;
+}
+
+/** The document line a view line came from. A number outside the view is
+ *  returned unchanged rather than clamped: it is not a line this map has an
+ *  answer for, and inventing one would put a confident wrong number on a card. */
+export function documentLineOf(view: ScoringView, viewLine: number): number {
+  const map = view?.documentLine ?? [];
+  return Number.isInteger(viewLine) && viewLine >= 1 && viewLine <= map.length
+    ? map[viewLine - 1]
+    : viewLine;
+}
+
+/**
+ * The same card, with every line number naming the file rather than the view.
+ *
+ * THE CARD IS THE PRIMARY PRODUCT, so this is the copy that is rendered, and the
+ * view-numbered card is the one the PLANNER keeps: the planner maps findings
+ * onto the stripped region, and a document-numbered finding over an
+ * already-commented region is the placement drift S62-7 measured. Two
+ * coordinate systems is the price of scoring a document the human is not
+ * looking at; one card in both would be a wrong number on one of the two
+ * surfaces.
+ */
+export function cardInDocumentLines(card: Scorecard, view: ScoringView): Scorecard {
+  return {
+    ...card,
+    headLine: documentLineOf(view, card.headLine),
+    rows: (card?.rows ?? []).map((row) =>
+      row.outcome.state !== "flagged"
+        ? row
+        : {
+            ...row,
+            outcome: {
+              state: "flagged" as const,
+              findings: row.outcome.findings.map((finding) => ({
+                ...finding,
+                line: documentLineOf(view, finding.line),
+              })),
+            },
+          },
+    ),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -231,4 +367,250 @@ export function wantsBlastRadius(card: Scorecard, policy: ElevationPolicy): bool
   return explainableRows(card, policy, Number.MAX_SAFE_INTEGER).some((row) =>
     signatureLevel(row.dimension),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Step 9: the proposal
+//
+// The card is already on the channel by the time any of this runs. What is left
+// is the half that can reach a person's file, and every decision on the way to
+// the consent gate lives here rather than in the `registerCommand` callback.
+// ---------------------------------------------------------------------------
+
+/**
+ * The bytes the presenter is asked to replace, and the lines the planner reads.
+ *
+ * FROM THE DECLARATION HEAD, NEVER FROM `span.start`. The span is the WRITABLE
+ * region and Python's Fork A moves its start past a leading docstring, so a
+ * region built from it has no `def` in it at all: `param-count`,
+ * `adjacent-params` and `undocumented` all fire ON the head line, and every one
+ * of their comments would fall outside the replaced range and land nowhere.
+ *
+ * TWO WIDENINGS, both upward, both about lines rather than about the span:
+ *
+ *  1. To the head's OWN LINE START, across the indent. `headOffset` points at
+ *     the `pub`, not at the four spaces before it, and the planner takes a
+ *     comment's column off the line it sits above. A region that began at the
+ *     head itself would hand it `pub fn ...` with no indent, and the head-line
+ *     criticism would land at column 0 inside an impl block. The bytes crossed
+ *     are whitespace and come back out unchanged, so the diff is untouched by
+ *     it. Code in front of the head on the same line stops the walk: `} fn f()`
+ *     is rare and eating half of it would be a rewrite nobody asked for.
+ *  2. Over the run of THIS PRODUCT'S OWN comments directly above the head. A
+ *     head-line comment planted by the last accept sits ABOVE the head, which is
+ *     exactly where the next press's `headOffset` no longer reaches, so without
+ *     this the strip pass never sees it and every head-line criticism doubles on
+ *     every press. Idempotence is the ruled property ("run twice, accept both
+ *     times, and the function has the same number of comments"), and it is a
+ *     property of the REGION as much as of the planner.
+ *
+ * The walk commits only at a `C80 ` head, so a hand-written comment above the
+ * declaration is never reached back over, and the marker is built from the same
+ * `lineCommentFor` the planner strips with: a second answer to "what is a
+ * comment in this language" is how the two passes start disagreeing about what
+ * they are allowed to remove.
+ *
+ * Total. Nonsense offsets clamp rather than throw, because the caller is a
+ * gesture a developer pressed.
+ */
+export interface InjectionRegion {
+  /** Offset of the first byte the presenter would replace. */
+  start: number;
+  /** Offset one past the last, which is `span.end` clamped to the text. */
+  end: number;
+  /** 1-based document line of `lines[0]`, which is what the planner subtracts
+   *  a finding's document line from. */
+  startLine: number;
+  /** The region's lines, `\r` already gone: the presenter re-applies the
+   *  document's own EOL to whatever comes back. */
+  lines: readonly string[];
+}
+
+export function injectionRegion(
+  text: string,
+  headOffset: number,
+  end: number,
+  languageId: string,
+): InjectionRegion {
+  const source = typeof text === "string" ? text : "";
+  const to = clampOffset(end, source.length, source.length);
+  const head = Math.min(clampOffset(headOffset, 0, source.length), to);
+  const atLineStart = lineStartAt(source, head);
+  // Whitespace only, or the head keeps the line to itself from where it stands.
+  const start =
+    source.slice(atLineStart, head).trim() === ""
+      ? reachBackOverPlanted(source, atLineStart, lineCommentFor(languageId))
+      : head;
+  return {
+    start,
+    end: to,
+    startLine: countNewlines(source, start) + 1,
+    lines: source.slice(start, to).split(/\r?\n/),
+  };
+}
+
+function clampOffset(value: unknown, fallback: number, limit: number): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : fallback;
+  return Math.min(Math.max(n, 0), limit);
+}
+
+function lineStartAt(text: string, offset: number): number {
+  const nl = text.lastIndexOf("\n", Math.max(offset - 1, 0));
+  return offset === 0 || nl < 0 ? 0 : nl + 1;
+}
+
+function countNewlines(text: string, before: number): number {
+  let count = 0;
+  for (let i = 0; i < before; i++) {
+    if (text[i] === "\n") {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** The topmost line of the run of planted C80 comments immediately above
+ *  `from`, or `from` when there is none. Continuation lines are walked over so a
+ *  wrapped comment comes back whole, but the region only ever OPENS at a head:
+ *  a continuation-shaped line with no head above it belongs to whoever wrote
+ *  it. */
+function reachBackOverPlanted(text: string, from: number, token: string): number {
+  const marker = `${token} ${C80_TAG}`;
+  const continuation = new RegExp(`^[ \\t]*${escapeForRegExp(token)} {4,}\\S`);
+  let at = from;
+  let top = from;
+  while (at > 0 && text[at - 1] === "\n") {
+    const lineStart = lineStartAt(text, at - 1);
+    const line = text.slice(lineStart, at - 1).replace(/\r$/, "");
+    if (line.trim().startsWith(marker)) {
+      top = lineStart;
+      at = lineStart;
+      continue;
+    }
+    if (continuation.test(line)) {
+      at = lineStart;
+      continue;
+    }
+    break;
+  }
+  return top;
+}
+
+/** The token is `//` or `#` today. Written for the general case anyway, because
+ *  the alternative is a regex that silently means something else the day a
+ *  language arrives with a token that is not two slashes. */
+function escapeForRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Whether there is a diff to show at all.
+ *
+ * `planted === 0 && stripped === 0` is NO PROPOSAL: no diff, no preview, no
+ * toast. An empty diff tab is worse than no diff tab, and the card the developer
+ * asked for is already on the channel.
+ *
+ * `planted === 0 && stripped > 0` IS a proposal, and collapsing the two loses a
+ * real one: the criticism was addressed and the stale comments should come out.
+ */
+export function hasProposal(plan: { planted?: unknown; stripped?: unknown } | undefined | null): boolean {
+  const planted = plan?.planted;
+  const stripped = plan?.stripped;
+  return (
+    (typeof planted === "number" && Number.isInteger(planted) && planted > 0) ||
+    (typeof stripped === "number" && Number.isInteger(stripped) && stripped > 0)
+  );
+}
+
+/** The diff tab's name. It sits beside fn-gen's `<name>: generated body
+ *  (preview)` and repair's, and a human with three tabs open has to be able to
+ *  tell them apart by their titles alone. */
+export function proposalTitle(name: string): string {
+  return `${name}: rubric (preview)`;
+}
+
+/**
+ * How many dimensions would put a comment in the file.
+ *
+ * ROWS, not findings: one dimension can fire several times on one function and
+ * the offered line reports both numbers, so a reader can tell four comments
+ * over one dimension from four over four. Held dimensions are not counted,
+ * because a held dimension scores and stays out of the source.
+ */
+export function injectingDimensions(card: Scorecard | undefined, policy: ElevationPolicy): number {
+  const held = new Set<DimensionId>(policy?.held ?? []);
+  return (card?.rows ?? []).filter(
+    (row) =>
+      row.outcome.state === "flagged" &&
+      !held.has(row.dimension) &&
+      row.outcome.findings.length > 0,
+  ).length;
+}
+
+/** `[critique] proposing 4 comments over 3 dimensions, stripping 2 stale
+ *  comments`. Both halves of the count, because the strip is a change to the
+ *  file the human is about to approve and a diff that only removes text needs a
+ *  sentence saying why. */
+export function proposalOfferedLine(
+  plan: { planted: number; stripped: number },
+  dimensions: number,
+): string {
+  return critiqueLine(
+    `proposing ${plural(plan.planted, "comment")} over ${plural(dimensions, "dimension")}, ` +
+      `stripping ${plural(plan.stripped, "stale comment")}`,
+  );
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** The line the gesture ends on when there is nothing to show. It names the
+ *  cause rather than the branch: a developer who pressed the gesture and got no
+ *  diff has to be able to tell "nothing was above the bar" from "the proposal
+ *  failed". */
+export const NO_PROPOSAL_LINE = critiqueLine(
+  "nothing to propose: no dimension above the bar plants a comment and the function carries no stale C80 comment, so no diff is offered",
+);
+
+/**
+ * What the channel says once the human has answered, and WHY IT IS NOT FN-GEN'S.
+ *
+ * The presenter's outcome sink used to be typed as the whole `FnGenService`,
+ * whose `logOutcome` writes `[fngen]` lines. Criticize logging through it would
+ * put `[fngen] outcome=accept` on the channel for a gesture that generated
+ * nothing, and - the part that costs more than the wording - fn-gen's
+ * accept/reject evidence is MEASURED. Oracles match `outcome=` tokens whole, so
+ * a second gesture's verdicts landing on those tokens do not confuse the reader,
+ * they corrupt the number.
+ *
+ * THE OUTCOME TOKEN STANDS ALONE ON ITS LINE for the same reason fn-gen's does:
+ * a reason suffixed onto it turns every whole-token match into a miss. A reject
+ * carries who refused, because a bare `outcome=reject` leaves "the human said
+ * no" and "the tab was closed" unknowable. It does NOT carry the offered text:
+ * fn-gen logs that because the model's first line is the diagnostic, and here
+ * the proposal is a deterministic function of a card the channel already holds.
+ */
+export function critiqueOutcomeLines(
+  outcome: "accept" | "reject" | "discarded",
+  detail?: { refusedBy: string; offered: string } | { discardedWhy?: string; discardedBecause?: string },
+): readonly string[] {
+  if (detail !== undefined && !("refusedBy" in detail)) {
+    // BOTH HALVES OF THE REASON, because this gesture routes its pre-consent
+    // discard away from the toast and the toast is where every other caller's
+    // reason lives. Without the `discardedWhy` half the channel said
+    // `outcome=discarded` and nothing else, and the sentence explaining it
+    // existed only in a notification that names a different gesture.
+    //
+    // Escaped: `discardedBecause` is the one string on the path the product did
+    // not author, and `appendLine` renders a break as a row.
+    const reason = [detail.discardedWhy, detail.discardedBecause]
+      .filter((part): part is string => typeof part === "string" && part.trim() !== "")
+      .join(" — ");
+    return reason === ""
+      ? [critiqueLine(`outcome=${outcome}`)]
+      : [critiqueLine(`discarded: ${escapeBreaks(reason)}`), critiqueLine(`outcome=${outcome}`)];
+  }
+  const suffix = detail === undefined ? "" : ` refused-by=${detail.refusedBy}`;
+  return [critiqueLine(`outcome=${outcome}${suffix}`)];
 }

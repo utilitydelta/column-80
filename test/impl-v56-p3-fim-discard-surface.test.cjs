@@ -222,7 +222,13 @@ test("first guard: a version race with onSystemDiscard goes to the callback, no 
   assert.strictEqual(outcome, "discarded");
   assert.deepStrictEqual(discards, ["the document changed during generation"]);
   assert.deepStrictEqual(__state.messages, [], "the callback replaces the toast, it does not add to it");
-  assert.deepStrictEqual(outcomes, [{ o: "discarded", extra: undefined }], "the record is untouched by the surface change");
+  assert.deepStrictEqual(
+    outcomes,
+    [{ o: "discarded", extra: { discardedWhy: "the document changed during generation", discardedBecause: undefined } }],
+    "the record is untouched by the surface change: the OUTCOME is still `discarded`, and the reason " +
+      "rides beside it since v62 F6 so a caller routed away from the toast still has it. What " +
+      "FnGenService writes for this detail is byte-identical (impl-v62-p5-reviewfixes row 15)",
+  );
 });
 
 test("control: with no race the same rig accepts, so the discards below are the guards' doing", async () => {
@@ -251,7 +257,11 @@ test("second guard re-pinned (amendment): a race inside the preview window is po
     ["warn: Column 80: generation discarded — the document changed while previewing."],
     "the toast fires with today's wording, seam or no seam",
   );
-  assert.deepStrictEqual(outcomes, [{ o: "discarded", extra: undefined }], "the record is unchanged by the surface split");
+  assert.deepStrictEqual(
+    outcomes,
+    [{ o: "discarded", extra: { discardedWhy: "the document changed while previewing", discardedBecause: undefined } }],
+    "the record is unchanged by the surface split: the outcome token, plus the v62 F6 reason",
+  );
 });
 
 test("editor refused the edit: post-Accept, toasts in every session, outcome log still discarded", async () => {
@@ -264,7 +274,9 @@ test("editor refused the edit: post-Accept, toasts in every session, outcome log
     __state.messages.map((m) => `${m.kind}: ${m.message}`),
     ["warn: Column 80: generation discarded — the editor refused the edit."],
   );
-  assert.deepStrictEqual(outcomes, [{ o: "discarded", extra: undefined }]);
+  assert.deepStrictEqual(outcomes, [
+    { o: "discarded", extra: { discardedWhy: "the editor refused the edit", discardedBecause: undefined } },
+  ]);
 });
 
 test("closed document discards through the seam, not a toast", async () => {

@@ -12,8 +12,8 @@
 // unreachable in phase 1 (with an EMPTY detail, on a 31-column code line, the
 // shortest of the fifteen phrases is 58 characters and nothing fits), and a
 // second shorter voice for a slot nobody asked for was refused. The strip pass
-// still takes a trailing C80 comment, because an older build could have planted
-// one and a person can hand-write one.
+// still takes a trailing C80 comment in this product's own shape, because an
+// older build could have planted one; a hand-written one is left alone.
 //
 // IDEMPOTENCE IS THE FEATURE, NOT A NICETY. The gesture is a proposal a
 // developer accepts, and a developer presses it again a minute later. So the
@@ -57,6 +57,26 @@ export interface InjectionPlan {
 }
 
 /**
+ * A region with this product's own comments taken out, and where the lines that
+ * survived came from.
+ *
+ * `sourceIndex[i]` is the index in the INCOMING array of the line now at `i`.
+ * That array is the LINE MAP, and it is what lets a caller score the
+ * comment-free document and still report the line numbers of the file the human
+ * is looking at. Without it the two coordinate systems are the same length only
+ * when nothing was stripped, which is the one case the second press is not.
+ */
+export interface StripResult {
+  /** The lines that survived, `\r` already normalised out. */
+  lines: readonly string[];
+  /** How many comment HEADS were removed. Heads, not lines: the caller reports
+   *  this to a human and a human counts criticisms. */
+  stripped: number;
+  /** For each surviving line, its index in the incoming array. */
+  sourceIndex: readonly number[];
+}
+
+/**
  * What a continuation line carries in place of the head's `C80 `.
  *
  * The separator space plus four columns, because `C80 ` is four columns wide,
@@ -96,8 +116,16 @@ const EMPTY_PLAN: InjectionPlan = { text: "", planted: 0, stripped: 0 };
  * `regionLines` runs from the DECLARATION HEAD to the end of the function, not
  * from `span.start`: Python's Fork A moves `span.start` past a leading
  * docstring, and `adjacent-params` and `param-count` both fire ON THE HEAD LINE.
- * `regionStartLine` is the 1-based document line of `regionLines[0]`, and
- * findings carry 1-based DOCUMENT lines, so the subtraction is the mapping.
+ *
+ * `regionStartLine` AND THE CARD'S FINDINGS ARE BOTH IN THE SCORING VIEW, which
+ * is the document with this product's own comments taken out. The findings are
+ * mapped onto the STRIPPED region, so the subtraction is only a mapping when the
+ * number it subtracts counts stripped lines too. On a first press the view and
+ * the document are the same lines and this is the document line; on a second
+ * press they are not, and `scoringView` in `criticizeGesture` is what puts both
+ * numbers in the same coordinate system. Handing this a document-numbered card
+ * over an already-commented region walks every finding below a planted comment
+ * down the body by the number of comment lines above it, which is S62-7.
  *
  * Total. A malformed card, a nonsense line number and an empty region all
  * produce a plan rather than a throw, because the caller is a gesture a
@@ -112,17 +140,10 @@ export function planInjection(
   if (!Array.isArray(regionLines) || regionLines.length === 0) {
     return EMPTY_PLAN;
   }
-  // The presenter normalises to the document's own EOL through
-  // `withDocumentEol`. A second answer to that question here is how the two
-  // drift, so this module works in `\n` and carries no `\r` at all.
-  const incoming = regionLines.map((line) =>
-    typeof line === "string" ? line.replace(/\r/g, "") : "",
-  );
+  const languageId = typeof card?.languageId === "string" ? card.languageId : "";
+  const token = lineCommentFor(languageId);
 
-  const token = lineCommentFor(typeof card?.languageId === "string" ? card.languageId : "");
-  const marker = `${token} ${C80_TAG}`;
-
-  const stripResult = stripC80(incoming, marker, token);
+  const stripResult = stripCriticism(regionLines, languageId);
   const lines = stripResult.lines;
 
   const planned = planComments(lines, regionStartLine, card, policy, token);
@@ -283,7 +304,17 @@ function indentOf(line: string): string {
 }
 
 /**
- * Every C80 comment out, so the second press replaces rather than stacks.
+ * Every C80 comment out, so the second press replaces rather than stacks, and
+ * so the RUBRIC never scores this product's own criticism.
+ *
+ * TWO CALLERS, ONE ANSWER. The planner strips before it plants, and the gesture
+ * strips before it SLICES: S62-7 was one root with two faces, a placement that
+ * drifted by the number of comment lines above a finding, and a card that read a
+ * documented Rust function as undocumented because a planted `// C80` block sat
+ * between the `///` and the head. Go was the mirror, where `//` is the doc
+ * prefix and a planted comment read AS documentation. A second strip written at
+ * the other caller is a second answer to "what did this product write", and the
+ * two would drift on the first day a comment shape changed.
  *
  * A comment is a HEAD and the continuation lines that immediately follow it. A
  * head is the token, the tag and one of the fifteen dimension ids; a
@@ -296,51 +327,88 @@ function indentOf(line: string): string {
  * that a head opened. That is why the hanging indent is an exact shape rather
  * than "some whitespace": it is the only thing separating this product's own
  * second line from a line somebody wrote.
+ *
+ * IT DELETES ONLY WHAT IT COUNTS, and that is one rule rather than two. An
+ * earlier build removed any line whose trimmed text opened with the tag and
+ * counted only the ones naming a dimension, so `// C80 is the column limit we
+ * keep to` was deleted while the offered line said `stripping 0 stale
+ * comments` - a human approving a deletion the product never mentioned, in the
+ * one gesture whose whole promise is that the diff is what lands. The head test
+ * now gates the removal as well as the count, so the number on the channel is
+ * the number of criticisms in the diff.
  */
-function stripC80(
+export function stripCriticism(
   lines: readonly string[],
-  marker: string,
-  token: string,
-): { lines: string[]; stripped: number } {
+  languageId: string,
+): StripResult {
+  const token = lineCommentFor(typeof languageId === "string" ? languageId : "");
+  const marker = `${token} ${C80_TAG}`;
   const out: string[] = [];
+  const sourceIndex: number[] = [];
   const continuation = new RegExp(
     `^[ \\t]*${escapeForRegExp(token)} {${CONTINUATION_MIN_SPACES},}\\S`,
   );
   let stripped = 0;
   let inComment = false;
 
-  for (const line of lines) {
+  const incoming = Array.isArray(lines) ? lines : [];
+  for (let at = 0; at < incoming.length; at++) {
+    // The presenter normalises to the document's own EOL through
+    // `withDocumentEol`. A second answer to that question here is how the two
+    // drift, so this module works in `\n` and carries no `\r` at all.
+    const line = typeof incoming[at] === "string" ? incoming[at].replace(/\r/g, "") : "";
+    const keep = (text: string) => {
+      out.push(text);
+      sourceIndex.push(at);
+    };
     const trimmed = line.trim();
     if (trimmed.startsWith(marker)) {
-      // A whole-line C80 comment. A tagged line that names no dimension is not
-      // a head, so it costs nothing in the count, but it is still this
-      // product's marker and it still goes.
       if (isHead(trimmed.slice(marker.length))) {
+        // A whole-line comment in THE SHAPE THIS PRODUCT EMITS: the token, the
+        // tag, and one of the fifteen dimension ids. It is deleted and it is
+        // counted, and those are the same test on purpose.
         stripped += 1;
+        inComment = true;
+        continue;
       }
-      inComment = true;
-      continue;
+      if (inComment) {
+        // THE SUPERSEDED SHAPE, and only ever inside a run a counted head
+        // opened. Amendment 4 moved continuations from `C80 ` to the hanging
+        // indent, so a build older than that planted the tag on every line and
+        // its second line names no dimension. Deleting it because a head is
+        // directly above is not "deleting what it does not count": it belongs
+        // to that head, which was counted. Left behind, an older build's
+        // comment comes out as an orphaned half-sentence.
+        continue;
+      }
+      // Tagged, no dimension, no head above it: not a shape this product has
+      // ever emitted, so it is somebody's own note and it stays.
     }
     if (inComment && continuation.test(line)) {
       continue; // the rest of the head above
     }
     inComment = false;
-    const at = markerIndex(line, marker);
-    if (at > 0 && line.slice(0, at).trim() !== "") {
-      // A legacy or hand-written trailing comment. The planner has not created
-      // one since the human dropped trailing placement, and an older build
-      // could have. The code line keeps its indent and loses the separator, so
-      // a strip never leaves a line ending in whitespace behind.
-      if (isHead(line.slice(at + marker.length))) {
-        stripped += 1;
-      }
-      out.push(tightenTrimEnd(line.slice(0, at)));
+    const markerAt = markerIndex(line, marker);
+    if (
+      markerAt > 0 &&
+      line.slice(0, markerAt).trim() !== "" &&
+      isHead(line.slice(markerAt + marker.length))
+    ) {
+      // A legacy trailing comment IN THIS PRODUCT'S SHAPE. The planner has not
+      // created one since the human dropped trailing placement, and an older
+      // build could have. The code line keeps its indent and loses the
+      // separator, so a strip never leaves a line ending in whitespace behind.
+      // The head test is the same one the whole-line branch applies, for the
+      // same reason: a `let n = 1; // C80 is the column limit` written by a
+      // person is not this product's text and the diff must not offer to cut it.
+      stripped += 1;
+      keep(tightenTrimEnd(line.slice(0, markerAt)));
       continue;
     }
-    out.push(line);
+    keep(line);
   }
 
-  return { lines: out, stripped };
+  return { lines: out, stripped, sourceIndex };
 }
 
 /** The token is `//` or `#`, so this has exactly one character to quote today.

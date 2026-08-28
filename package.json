@@ -135,13 +135,13 @@
       },
       {
         "command": "column80.proposalAccept",
-        "title": "Accept Generated Body",
+        "title": "Accept Proposal",
         "category": "Column 80",
         "icon": "$(check)"
       },
       {
         "command": "column80.proposalReject",
-        "title": "Reject Generated Body",
+        "title": "Reject Proposal",
         "category": "Column 80",
         "icon": "$(close)"
       },

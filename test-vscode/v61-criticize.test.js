@@ -162,6 +162,7 @@ const FIXTURES = {
     name: 'spanProbe',
     docNeedle: 'Probe for the v61 host tier.',
     cursorNeedle: 'const c80Started = Date.now();',
+    cleanNeedle: 'export function spanProbeCaller(): number {',
     text: [
       '',
       '/**',
@@ -175,6 +176,7 @@ const FIXTURES = {
       '  return first + second + c80Started;',
       '}',
       '',
+      '/** Adds the two bounds the probe was built to add. */',
       'export function spanProbeCaller(): number {',
       '  return spanProbe(1, 2);',
       '}',
@@ -188,6 +190,7 @@ const FIXTURES = {
     name: 'span_probe',
     docNeedle: 'Probe for the v61 host tier.',
     cursorNeedle: 'let c80_started = std::time::Instant::now();',
+    cleanNeedle: 'pub fn span_probe_caller() -> u64 {',
     text: [
       '',
       '/// Probe for the v61 host tier.',
@@ -198,6 +201,7 @@ const FIXTURES = {
       '    first + second + c80_started.elapsed().as_secs()',
       '}',
       '',
+      '/// Adds the two bounds the probe was built to add.',
       'pub fn span_probe_caller() -> u64 {',
       '    span_probe(1, 2)',
       '}',
@@ -211,6 +215,7 @@ const FIXTURES = {
     name: 'SpanProbe',
     docNeedle: 'SpanProbe is a probe for the v61 host tier.',
     cursorNeedle: 'c80Started := time.Now()',
+    cleanNeedle: 'func SpanProbeCaller() int64 {',
     text: [
       '',
       '// SpanProbe is a probe for the v61 host tier.',
@@ -221,6 +226,7 @@ const FIXTURES = {
       '\treturn first + second + c80Started.Unix()',
       '}',
       '',
+      '// SpanProbeCaller adds the two bounds the probe was built to add.',
       'func SpanProbeCaller() int64 {',
       '\treturn SpanProbe(1, 2)',
       '}',
@@ -240,6 +246,7 @@ const FIXTURES = {
     name: 'span_probe',
     docNeedle: 'Probe for the v61 host tier.',
     cursorNeedle: 'c80_started = time.time()',
+    cleanNeedle: 'def span_probe_caller() -> int:',
     text: [
       '',
       '',
@@ -255,6 +262,7 @@ const FIXTURES = {
       '',
       '',
       'def span_probe_caller() -> int:',
+      '    """Add the two bounds the probe was built to add."""',
       '    return span_probe(1, 2)',
       '',
       '',
@@ -267,6 +275,7 @@ const FIXTURES = {
     name: 'SpanProbe',
     docNeedle: 'Probe for the v61 host tier.',
     cursorNeedle: 'var c80Started = System.DateTime.UtcNow;',
+    cleanNeedle: 'public static long SpanProbeCaller()',
     text: [
       '',
       'public static class C80V61Probe',
@@ -280,7 +289,11 @@ const FIXTURES = {
       '        return first + second + c80Started.Ticks;',
       '    }',
       '',
-      '    public static long SpanProbeCaller() => SpanProbe(1, 2);',
+      '    /// <summary>Adds the two bounds the probe was built to add.</summary>',
+      '    public static long SpanProbeCaller()',
+      '    {',
+      '        return SpanProbe(1, 2);',
+      '    }',
       '}',
       '',
       `// ${MARKER}`,
@@ -336,11 +349,27 @@ async function openFixture() {
     pristine = doc.getText();
     pristineDirty = doc.isDirty;
   }
-  if (!doc.getText().includes(fixture.cursorNeedle)) {
+  // EVERY ROW STARTS FROM THE SAME BYTES. The accept rows plant real comments
+  // into this buffer, so a row that merely checked "is the needle present"
+  // would inherit whatever the previous row left. That is how row 10 first ran
+  // against a buffer three presses deep and reported a placement failure that
+  // was really a fixture failure. Reset to pristine, then insert.
+  // THE RESET IS APPEND-SHAPED, and that is not a style choice. Replacing the
+  // WHOLE document was the first cut and it broke Pylance: it went on serving a
+  // symbol tree from before the edit for the full 90 second readiness window,
+  // so `span_probe` was never in it and every python row skipped as a dead rig.
+  // The other four servers did not care. Only the region AFTER the pristine
+  // text is rewritten, which is the same edit shape that worked all along.
+  const wanted = pristine + fixture.text;
+  if (doc.getText() !== wanted) {
     const edit = new vscode.WorkspaceEdit();
-    edit.insert(uri, doc.positionAt(doc.getText().length), fixture.text);
+    edit.replace(
+      uri,
+      new vscode.Range(doc.positionAt(pristine.length), doc.positionAt(doc.getText().length)),
+      fixture.text,
+    );
     if (!(await vscode.workspace.applyEdit(edit))) {
-      throw new Error('applyEdit refused the fixture insertion');
+      throw new Error('applyEdit refused the fixture reset');
     }
   }
   const at = cursorOnProbe(doc);
@@ -565,7 +594,7 @@ suite(`V61CRITICIZE the criticize gesture in a real host [${LANG}]`, function ()
     );
   });
 
-  test('3: the gesture writes NOTHING, through a real editor', async function () {
+  test('3: nothing moves until the human accepts, and a reject moves nothing ever', async function () {
     if (!spec || !fixture) return this.skip();
     const state = await openFixture();
     const { doc, ready } = state;
@@ -583,12 +612,17 @@ suite(`V61CRITICIZE the criticize gesture in a real host [${LANG}]`, function ()
     const dirtyBefore = doc.isDirty;
     const onDisk = fs.readFileSync(fixturePath, 'utf8');
 
+    // FIRE, DO NOT AWAIT. The command now waits on a human verdict at the diff
+    // tab, so awaiting it here deadlocks the row: the decision it is waiting for
+    // is the one this test has not made yet.
     const mark = logMark();
-    await vscode.commands.executeCommand(COMMAND);
-    if (!NO_INSTRUMENT) await waitForCard(mark);
-    else await sleep(8000);
+    const running = vscode.commands.executeCommand(COMMAND);
+    const offered = await waitForLine(mark, '[critique] proposing', 60000);
+    const proposed = offered.includes('[critique] proposing');
 
-    assert.strictEqual(doc.getText(), before, 'the buffer must be byte-identical after a critique');
+    // THE FIRST HALF OF THE CONTRACT: a diff is on screen and the file has not
+    // moved. v61 asserted this and stopped here, because v61 never wrote at all.
+    assert.strictEqual(doc.getText(), before, 'the buffer must not move before the human has accepted');
     assert.strictEqual(doc.version, versionBefore, 'and its version must not have moved');
     assert.strictEqual(doc.isDirty, dirtyBefore, 'and the gesture must not change whether it is dirty');
     assert.strictEqual(fs.readFileSync(fixturePath, 'utf8'), onDisk, 'and nothing may reach the disk');
@@ -602,6 +636,262 @@ suite(`V61CRITICIZE the criticize gesture in a real host [${LANG}]`, function ()
       .getDiagnostics(doc.uri)
       .filter((d) => typeof d.source === 'string' && /column.?80/i.test(d.source));
     assert.deepStrictEqual(ours, [], 'the gesture must publish no diagnostics');
+
+    // THE SECOND HALF: reject, and it stays not-moved. Closing the tab is the
+    // walk-away gesture and settles as a reject too, but the explicit command is
+    // the one a human presses.
+    if (proposed) {
+      await decide('Reject');
+    }
+    await running;
+    assert.strictEqual(doc.getText(), before, 'a REJECTED proposal must leave the buffer byte-identical');
+    assert.strictEqual(doc.version, versionBefore, 'and must not move the version');
+    assert.strictEqual(fs.readFileSync(fixturePath, 'utf8'), onDisk, 'and must not reach the disk');
+    report(`V61 ${LANG} reject`, [`a proposal was offered: ${proposed}`, 'rejected, buffer byte-identical']);
+  });
+
+  // -------------------------------------------------------------------------
+  // The accept path. This is the half no headless row can reach: the splice
+  // happens inside `ProposalPresenter`, against a real document, through the
+  // editor's own edit API.
+  // -------------------------------------------------------------------------
+
+  /** Fires the gesture and settles it with `decision`, returning the channel
+   *  text. Never awaits the command before deciding: the command is waiting on
+   *  the decision. */
+  async function critiqueAndDecide(decision) {
+    const mark = logMark();
+    const running = vscode.commands.executeCommand(COMMAND);
+    const offered = await waitForLine(mark, '[critique] proposing', 60000);
+    if (!offered.includes('[critique] proposing')) {
+      await running;
+      return { offered: false, text: logSince(mark) };
+    }
+    await decide(decision);
+    await running;
+    return { offered: true, text: logSince(mark) };
+  }
+
+  /**
+ * Waits for the proposal's diff tab to actually be on screen.
+ *
+ * THE LOG LINE IS NOT THE TAB. `[critique] proposing ...` is written before
+ * `present()` opens the diff, and `column80.proposalAccept` invoked from a
+ * command (rather than from the tab's own title bar) resolves its target
+ * through the ACTIVE preview tab. Deciding as soon as the log line appears
+ * therefore races: the decision lands with no tab to attach to, nothing
+ * settles, and the gesture's promise never resolves. That is exactly how this
+ * suite hung for 280 seconds on ts and rust.
+ */
+async function waitForPreviewTab(ms = 30000) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const open = vscode.window.tabGroups.all
+      .flatMap((g) => g.tabs)
+      .filter((t) => t.input instanceof vscode.TabInputTextDiff
+        && t.input.modified.scheme === 'column80-fngen');
+    if (open.length > 0) return open[0].input.modified;
+    if (Date.now() > deadline) return undefined;
+    await sleep(200);
+  }
+}
+
+/**
+ * Settles a proposal the way the DIFF TAB'S OWN BUTTON does: with the preview
+ * URI in hand.
+ *
+ * `decideFromUi` falls back to the ACTIVE tab group's active tab when it is
+ * given no uri, and in this host the diff opens without taking focus, so the
+ * fallback finds nothing and the decision is dropped on the floor. The
+ * gesture's promise then never settles and the suite hangs until mocha's own
+ * 600s timeout, which is what it did twice before this helper existed.
+ *
+ * Passing the uri is not a workaround: it is what the title-bar button passes,
+ * so this drives the same path a human does.
+ */
+async function decide(decision) {
+  const uri = await waitForPreviewTab();
+  assert.ok(uri !== undefined, 'the gesture said it was proposing, so a diff tab must appear');
+  await vscode.commands.executeCommand(`column80.proposal${decision}`, uri);
+  return uri;
+}
+
+/** Every C80 head line in the text, with its 1-based line number. A head is a
+   *  tagged line naming a dimension; continuations hang under it and are not
+   *  counted, which is the same rule the planner strips by. */
+  function headsIn(text) {
+    return text.split('\n')
+      .map((line, i) => ({ line: i + 1, text: line }))
+      .filter((r) => /(\/\/|#)\s*C80 [a-z-]+:/.test(r.text));
+  }
+
+  test('8: ACCEPT plants the comments in the real buffer', async function () {
+    if (!spec || !fixture) return this.skip();
+    if (NO_INSTRUMENT) return this.skip();
+    const state = await openFixture();
+    const { doc, ready } = state;
+    if (!ready) return skipDeadServer(this, 'accept', state);
+    const editor = vscode.window.activeTextEditor;
+    const probeAt = cursorOnProbe(doc);
+    editor.selection = new vscode.Selection(probeAt, probeAt);
+    const before = doc.getText();
+    assert.deepStrictEqual(headsIn(before), [], 'the fixture must start with no C80 comments');
+
+    const { offered, text } = await critiqueAndDecide('Accept');
+    if (!offered) {
+      report(`V61 ${LANG} accept`, ['no proposal was offered on the authored fixture; SKIPPED']);
+      return this.skip();
+    }
+
+    const after = doc.getText();
+    const heads = headsIn(after);
+    report(`V61 ${LANG} accept`, [
+      `channel: ${(/\[critique\] proposing [^\n]*/.exec(text) || ['none'])[0]}`,
+      `outcome: ${(/\[critique\] outcome=[^\n]*/.exec(text) || ['none'])[0]}`,
+      `${heads.length} comment(s) planted: ${heads.map((h) => h.text.trim().slice(0, 46)).join(' | ')}`,
+    ]);
+
+    assert.ok(heads.length > 0, `ACCEPT planted nothing. The buffer is unchanged: ${after === before}`);
+    assert.notStrictEqual(after, before, 'accept must move the buffer');
+    // The code itself is untouched: every original line survives, in order.
+    const codeAfter = after.split('\n').filter((l) => !/(\/\/|#)\s*C80 /.test(l) && !/^\s*(\/\/|#)\s{5}\S/.test(l));
+    assert.deepStrictEqual(
+      codeAfter, before.split('\n'),
+      'accept may ADD comment lines and must not touch a byte of the code around them',
+    );
+    assert.ok(/\[critique\] outcome=accept/.test(text), 'the channel must record the accept, in critique words');
+    assert.ok(!/\[fngen\] outcome=/.test(text), 'and must NOT log through fn-gen, whose accept rate is measured');
+  });
+
+  test('9: ACCEPT twice does not stack the comments', async function () {
+    if (!spec || !fixture) return this.skip();
+    if (NO_INSTRUMENT) return this.skip();
+    const state = await openFixture();
+    const { doc, ready } = state;
+    if (!ready) return skipDeadServer(this, 'accept twice', state);
+    const editor = vscode.window.activeTextEditor;
+    const probeAt = cursorOnProbe(doc);
+    editor.selection = new vscode.Selection(probeAt, probeAt);
+
+    const first = await critiqueAndDecide('Accept');
+    if (!first.offered) return this.skip();
+    const afterFirst = doc.getText();
+    const headsFirst = headsIn(afterFirst);
+    if (headsFirst.length === 0) return this.skip();
+
+    // The cursor may now sit on a comment line the first press inserted, so put
+    // it back on the code line before the second press.
+    const probeAgain = cursorOnProbe(doc);
+    assert.ok(probeAgain !== undefined, 'the probe line must survive the first accept');
+    editor.selection = new vscode.Selection(probeAgain, probeAgain);
+
+    const second = await critiqueAndDecide('Accept');
+    const afterSecond = doc.getText();
+    const headsSecond = headsIn(afterSecond);
+
+    report(`V61 ${LANG} accept twice`, [
+      `first: ${headsFirst.length} heads`,
+      `second: ${headsSecond.length} heads, offered=${second.offered}`,
+      `stripped line: ${(/\[critique\] proposing [^\n]*/.exec(second.text) || ['none'])[0]}`,
+    ]);
+
+    assert.strictEqual(
+      headsSecond.length, headsFirst.length,
+      'a second accept must REPLACE the comments, never stack them. Ten presses must leave what one press left.',
+    );
+    assert.strictEqual(afterSecond, afterFirst, 'and the file must be byte-identical after the second accept');
+
+    // AND THE CARD MUST BE THE SAME CARD. S62-7: the rubric was scoring a
+    // document containing its own criticism, so a planted `//` block between a
+    // Rust `///` and the head made a documented function read as undocumented
+    // and the second press grew a finding that was never real. The card is the
+    // primary product; a wrong card is worse than a wrong diff, because the diff
+    // gets reviewed and the card gets believed.
+    const summaryOf = (t) => (/\[critique\] (\d+) of 15 dimensions elevated, (\d+) blind/.exec(t) || []).slice(1).join('/');
+    const s1 = summaryOf(first.text);
+    const s2 = summaryOf(second.text);
+    report(`V61 ${LANG} card across presses`, [`press 1: ${s1}`, `press 2: ${s2}`]);
+    assert.strictEqual(s2, s1, 'the second press must score the same card: the product must not read its own comments as the code');
+  });
+
+  test('10: the comment lands on the line the card named', async function () {
+    if (!spec || !fixture) return this.skip();
+    if (NO_INSTRUMENT) return this.skip();
+    const state = await openFixture();
+    const { doc, ready } = state;
+    if (!ready) return skipDeadServer(this, 'placement', state);
+    const editor = vscode.window.activeTextEditor;
+    const probeAt = cursorOnProbe(doc);
+    editor.selection = new vscode.Selection(probeAt, probeAt);
+
+    const { offered } = await critiqueAndDecide('Accept');
+    if (!offered) return this.skip();
+
+    // The fixture's clock read is the anchor: the `clock` comment must sit
+    // directly above THAT line, not somewhere in the vicinity.
+    const lines = doc.getText().split('\n');
+    const codeAt = lines.findIndex((l) => l.includes(fixture.cursorNeedle));
+    assert.ok(codeAt > 0, 'the probe line must still be in the file after accept');
+
+    // Walk up over the comment block that should be sitting on it.
+    let at = codeAt - 1;
+    const block = [];
+    while (at >= 0 && /^\s*(\/\/|#)/.test(lines[at])) { block.unshift(lines[at]); at -= 1; }
+
+    report(`V61 ${LANG} placement`, [
+      `probe line ${codeAt + 1}: ${lines[codeAt].trim()}`,
+      `${block.length} comment line(s) directly above it`,
+      block.map((b) => b.trim().slice(0, 60)).join(' | ') || '(none)',
+    ]);
+
+    assert.ok(block.length > 0, 'a comment must sit DIRECTLY above the line that earned it');
+    assert.ok(
+      /C80 clock:/.test(block[0]),
+      `the block above the clock read must be headed by the clock finding, not another dimension. Got: ${block[0]}`,
+    );
+    // And the code line itself is untouched: no trailing form exists.
+    assert.ok(
+      !/C80 /.test(lines[codeAt]),
+      'there is no trailing form: the code line must carry no comment of ours',
+    );
+  });
+
+  test('11: a function with nothing above the bar offers no diff at all', async function () {
+    if (!spec || !fixture) return this.skip();
+    if (NO_INSTRUMENT) return this.skip();
+    const state = await openFixture();
+    const { doc, ready } = state;
+    if (!ready) return skipDeadServer(this, 'no proposal', state);
+    const editor = vscode.window.activeTextEditor;
+    // The fixture's CALLER is the clean function: it takes no parameters, reads
+    // no world, nests one deep and is documented by nothing it needs.
+    const lines = doc.getText().split('\n');
+    const at = lines.findIndex((l) => l.includes(fixture.cleanNeedle));
+    if (at < 0) return this.skip();
+    editor.selection = new vscode.Selection(new vscode.Position(at, 4), new vscode.Position(at, 4));
+    const before = doc.getText();
+
+    const mark = logMark();
+    const running = vscode.commands.executeCommand(COMMAND);
+    const text = await waitForCard(mark);
+    await running;
+
+    const proposed = /\[critique\] proposing/.test(text);
+    report(`V61 ${LANG} no proposal`, [
+      `scored: ${(/\[critique\] scoring [^\n]*/.exec(text) || ['none'])[0]}`,
+      `summary: ${(/\[critique\] \d+ of 15[^\n]*/.exec(text) || ['none'])[0]}`,
+      `a proposal was offered: ${proposed}`,
+    ]);
+
+    // The card ALWAYS renders. Only the diff is conditional.
+    assert.ok(text.includes(CONTRACT_SENTENCE), 'the channel card renders whether or not a diff is offered');
+    if (!proposed) {
+      assert.strictEqual(doc.getText(), before, 'no proposal means no change');
+      assert.ok(
+        /nothing to propose/.test(text),
+        'and the channel must NAME the cause, so a developer can tell "nothing was above the bar" from "it failed"',
+      );
+    }
   });
 
   test('4: a real card carries all fifteen dimensions and the contract sentence', async function () {

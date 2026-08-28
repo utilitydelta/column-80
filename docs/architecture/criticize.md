@@ -323,16 +323,55 @@ The toast is one line, bounded, and never carries the card. A card with nothing 
 ruled wording: this pass found nothing above the evidence bar. "Clean" and "looks correct" are claims
 this pass has no instrument for.
 
-## It writes nothing
+## It proposes, and the human answers
 
-The gesture is READ ONLY. It never touches the document, so it never reaches the extension's one
-consent gate, and the three-write-path invariant is untouched because this adds no write path. It
-publishes no diagnostics either: the Problems panel belongs to the compiler, and this extension
-publishes none.
+**Reversed in session-v62.** v61 shipped this gesture writing nothing at all, and the human's verdict
+on that was short: it was useless. A card in a panel is knowledge you have to re-enter by hand, and a
+rubric that knows the line number can put the criticism on the line.
 
-`test/impl-v61-p5-gesture.test.cjs` pins the absence of every write name in `src/vscode/criticize.ts`
-rather than trying to provoke every branch in a host, because a host test can only visit the branches
-it manages to provoke and the claim is about all of them.
+The gesture now proposes a **code diff**: the function with a rubric comment planted above each
+failing line. Accept and the comments land. Reject and nothing was ever written.
+
+It goes through `ProposalPresenter.present()` and nothing else. That is the extension's ONE consent
+gate and ONE document write, which fn-gen and repair already share, so criticize is its third caller
+rather than a fourth write path and the three-write-path invariant is untouched. The presenter is
+HANDED to the gesture, never constructed by it: a second one would mean a second preview registry and
+one `column80.proposalAccept` settling the wrong tab's diff.
+
+It still publishes no diagnostics. The Problems panel belongs to the compiler.
+
+Nothing moves until Accept. The proposal is stamped with the document version captured BEFORE the
+symbol provider was asked anything, because the span offsets belong to the text that provider saw; a
+document that moved in between discards rather than splicing. Getting that capture one await late was
+a real defect in this build, and the cost was not a wrong card but a `pub fn` cut in half.
+
+`test/impl-v61-p5-gesture.test.cjs` still pins the write names, rewritten rather than deleted: every
+write name except the consent gate's is still banned from `src/vscode/criticize.ts`, and the positive
+half is pinned too. That is what keeps a fourth write path from arriving quietly.
+
+### The comments
+
+The words are a FIXED TABLE, one phrase per dimension, in `src/core/criticizeVoice.ts` and frozen at
+runtime. A model never writes them: a model that writes the comment is a model that can invent a
+finding. Bare contempt is the ruled register, dictated by the human. Name the defect, name what it
+costs, give the order, stop. No citations, no second person, no hedging.
+
+    // C80 clock: reads the wall clock through Instant::now. Hidden wall-clock
+    //     read. Untestable. Pass it in.
+    let start = Instant::now();
+
+Every comment goes ABOVE its offending line at that line's own indent. There is no trailing form:
+measured over all fifteen dimensions with no detector detail at all, on an 18-column code line, one
+fitted; with real details, none did.
+
+A head line carries the tag and the dimension; continuations hang under it. Tagging every line was
+tried first and made one criticism read as several with the sentence cut in half.
+
+**Press it twice and the file is the same.** Every press strips the comments the last one left before
+planting. That required scoring a comment-free VIEW of the document with a line map back to real
+coordinates, because otherwise the rubric reads its own criticism as the code: a planted `//` block
+between a Rust `///` and the head makes a documented function read as undocumented, and Go is the
+mirror, where `//` IS the doc prefix and a planted comment is read AS documentation.
 
 ## What was NOT measured, and must not be claimed
 

@@ -936,6 +936,29 @@ export function isServerUnreachable(err: unknown): boolean {
 
 const PREVIEW_SCHEME = "column80-fngen";
 
+/**
+ * Where a proposal's verdict is recorded. THE SMALLEST THING `present()` USES.
+ *
+ * It was `FnGenService` until session-v62, which was true and too wide: the
+ * presenter is the extension's ONE consent gate, criticize is now its third
+ * caller, and `FnGenService.logOutcome` writes `[fngen]` lines. A gesture that
+ * generates nothing logging `[fngen] outcome=accept` would misname itself, and
+ * the worse half is that fn-gen's accept/reject evidence is MEASURED: oracles
+ * match `outcome=` tokens whole, so a second gesture's verdicts landing on
+ * those tokens corrupt the number rather than merely confusing a reader.
+ *
+ * STRUCTURAL, so nothing at fn-gen's call sites moved: `FnGenService` satisfies
+ * this by being what it already was, and every byte it emits is unchanged
+ * (`blind2-service.test.cjs` pins those bytes, and the v62 phase 3 file pins
+ * them again beside the narrowing).
+ */
+export interface ProposalOutcomeSink {
+  logOutcome(
+    outcome: ProposalOutcome,
+    detail?: { refusedBy: string; offered: string } | { discardedWhy?: string; discardedBecause?: string },
+  ): void;
+}
+
 /** What present() needs to show one proposal and, on consent, splice it. */
 export interface ProposalRequest {
   document: vscode.TextDocument;
@@ -945,10 +968,18 @@ export interface ProposalRequest {
   versionAtResolve: number;
   /** Diff tab title, e.g. "name: generated body (preview)". */
   title: string;
+  /** The NOUN the discard sentence uses, when there is one to say. Absent is
+   *  fn-gen's own word, so fn-gen and repair emit the bytes they always have
+   *  and criticize stops being told its generation was discarded for a gesture
+   *  that generates nothing. It is a property of the REQUEST because the one
+   *  consent gate now serves three gestures, and a sentence that names one of
+   *  them is a sentence that is false for the other two. */
+  discardNoun?: string;
   /** The replacement function text that would land in the span. */
   text: string;
-  /** Evidence sink for accept/reject/discarded outcomes. */
-  service: FnGenService;
+  /** Evidence sink for accept/reject/discarded outcomes. NOT the service: see
+   *  `ProposalOutcomeSink`. fn-gen and repair still hand theirs over. */
+  service: ProposalOutcomeSink;
   /** Surface for PRE-CONSENT system discards ONLY: the document closed or
    *  changed during generation — the product's own doing, never a human
    *  verdict. Absent = today's warning toast, right for a gesture the user
@@ -962,6 +993,11 @@ export interface ProposalRequest {
    *  user never watched. The outcome log records "discarded" either way. */
   onSystemDiscard?: (why: string) => void;
 }
+
+/** The word fn-gen's discard sentence has always used, and the default for a
+ *  caller that names none. Named rather than written out twice, so the two
+ *  sites that say it cannot drift apart. */
+const FNGEN_DISCARD_NOUN = "generation";
 
 export type ProposalOutcome = "accept" | "reject" | "discarded";
 
@@ -1090,20 +1126,27 @@ export class ProposalPresenter {
         // period is the `tail`, which lands after the bracket rather than
         // inside it, and the channel pointer - now that the whole reason
         // reaches `logOutcome` below - is a promise with something behind it.
+        //
+        // THE NOUN IS THE CALLER'S. Interpolated rather than written out, so
+        // fn-gen's and repair's bytes are the ones they always were and the
+        // gesture that generates nothing can say what it actually lost.
+        const opening = `Column 80: ${request.discardNoun ?? FNGEN_DISCARD_NOUN} discarded — ${why}`;
         void vscode.window.showWarningMessage(
           detail === undefined
-            ? oneLineWithPointer(`Column 80: generation discarded — ${why}`, ".")
-            : oneLineWithPointer(`Column 80: generation discarded — ${why} (${detail}`, ")", "."),
+            ? oneLineWithPointer(opening, ".")
+            : oneLineWithPointer(`${opening} (${detail}`, ")", "."),
         );
       }
-      // THE REASON, and ONLY where there is one to lose. Without this the
-      // toast's cut destroyed the only copy of a multi-line error: nothing else
-      // on this path writes it anywhere, so a reader who saw "the preview could
-      // not be opened" had no way to find out what the editor actually said.
-      // The five product-prose reasons pass nothing, because they are one line,
-      // are never cut, and the record they leave is the one the surface
-      // contract pinned.
-      service.logOutcome("discarded", detail === undefined ? undefined : { discardedBecause: detail });
+      // THE REASON, BOTH HALVES, AND THE SINK DECIDES WHAT TO DO WITH THEM.
+      // `discardedBecause` is the half the product did NOT author - the caught
+      // error from a preview that would not open - and without it the toast's
+      // cut destroyed its only copy. `discardedWhy` is the product's own
+      // sentence, which fn-gen deliberately does not repeat (its bare
+      // `outcome=discarded` is a pinned surface, and the toast that carries the
+      // reason is fn-gen's own words) and which criticize DOES, because a
+      // background gesture routed away from the toast otherwise leaves the
+      // reason nowhere at all.
+      service.logOutcome("discarded", { discardedWhy: why, discardedBecause: detail });
       return "discarded";
     };
 
@@ -5468,9 +5511,10 @@ type RunTestsOutcome =
  * settings change rebuilds the service and re-resolves the tier, and a gesture
  * holding a stale instance would keep asking a model the human turned off.
  *
- * Returned rather than imported, so a gesture that only needs these four things
- * can be registered from `extension.ts` beside the others without taking a
- * runtime edge into this file.
+ * Returned rather than imported, so a gesture that only needs these can be
+ * registered from `extension.ts` beside the others without taking a runtime edge
+ * into this file. The presenter rides here for a different reason than the rest:
+ * not because it changes, but because there must never be a second one.
  */
 export interface ModelGestureWiring {
   /** FAIL CLOSED. The same consult generate, repair, tighten and TDD make. */
@@ -5478,6 +5522,12 @@ export interface ModelGestureWiring {
   tierMessage: () => string | undefined;
   transport: () => InstructGenerateFn;
   inFlight: () => InFlightRegistry | undefined;
+  /** THE consent gate, handed out rather than constructed twice. A second
+   *  `ProposalPresenter` would keep a second preview registry, and
+   *  `column80.proposalAccept` - one command, registered once per presenter -
+   *  would settle the wrong one's diff. A getter like the rest, for symmetry
+   *  rather than for freshness: this one instance outlives every rebuild. */
+  presenter: () => ProposalPresenter;
 }
 
 export function registerFnGen(
@@ -5734,7 +5784,7 @@ export function registerFnGen(
       const resolved = resolution.fn;
       if (document.version !== versionAtResolve) {
         void vscode.window.showWarningMessage(
-          "Column 80: generation discarded — the document changed while the function was being resolved.",
+          `Column 80: ${FNGEN_DISCARD_NOUN} discarded — the document changed while the function was being resolved.`,
         );
         service.logOutcome("discarded");
         return;
@@ -7101,15 +7151,18 @@ export function registerFnGen(
     }),
   );
 
-  // The four things a model-call gesture registered elsewhere needs from this
-  // closure. Getters, not values: `tierReady` is re-run on every settings
-  // change and `service` is swapped for a fresh one, so a captured instance
-  // would answer for the configuration the human had at activation.
+  // What a model-call gesture registered elsewhere needs from this closure.
+  // Getters, not values: `tierReady` is re-run on every settings change and
+  // `service` is swapped for a fresh one, so a captured instance would answer
+  // for the configuration the human had at activation. The presenter joins them
+  // as a getter for symmetry, not for freshness - it is constructed once above
+  // and there is deliberately only ever one of it.
   return {
     tierGate,
     tierMessage: () => tier?.message,
     transport: () => service.transport,
     inFlight: () => inFlight,
+    presenter: () => presenter,
   };
 }
 

@@ -136,11 +136,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const store = new ContextBlockStore(log);
   const modelGestures = registerFnGen(context, output, store);
   registerContextPanel(context, store);
-  // Criticize: READ ONLY, one command, no default keybinding. It reaches the
-  // tier gate, the transport and the in-flight registry through the record
-  // `registerFnGen` hands back, so the explainer sits behind the SAME fail-closed
-  // consult every other model-call gesture makes and this file takes no second
-  // copy of that decision.
+  // Criticize: one command, no default keybinding, and it PROPOSES A DIFF. It
+  // reaches the tier gate, the transport, the in-flight registry AND THE ONE
+  // PRESENTER through the record `registerFnGen` hands back, so the explainer
+  // sits behind the SAME fail-closed consult every other model-call gesture
+  // makes, this file takes no second copy of that decision, and the gesture
+  // becomes the third caller of the extension's single document write rather
+  // than a fourth write path. It wrote nothing in v61 and this comment said so;
+  // the human reversed that ruling in v62 and a stale claim above the call that
+  // hands over the write is worse than no claim at all.
   registerCriticize(context, output, {
     resolveFunction: resolveFunctionAtCursor,
     ...modelGestures,

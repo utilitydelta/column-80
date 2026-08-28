@@ -484,7 +484,17 @@ The after-run re-checks the compiler too. A repair that fixes an assertion and b
 
 ## Criticize
 
-**Column 80: Criticize Function** scores the function under your cursor against a fifteen-dimension rubric and prints a card to the output channel. It writes nothing. It changes no bytes, offers no fix, and publishes nothing to the Problems panel: it is a reading, and what you do about it is yours.
+**Column 80: Criticize Function** scores the function under your cursor against a fifteen-dimension rubric, prints a card to the output channel, and offers you a **diff**: the function with a blunt comment planted above each line that failed. Accept and the comments land in your source. Reject and nothing was written.
+
+    // C80 clock: reads the wall clock through Instant::now. Hidden wall-clock
+    //     read. Untestable. Pass it in.
+    let start = Instant::now();
+
+The words are fixed, one phrase per dimension, and no model writes them. They are deliberately rude and deliberately short: name the defect, name what it costs, give the order. There are no citations in your source file, no "you might consider", and no praise.
+
+Nothing moves until you accept. It publishes nothing to the Problems panel either.
+
+**Press it again and it replaces its own comments rather than stacking them**, so you can criticize, fix half of it, and criticize again without cleaning up after the tool. It strips only the comments it wrote: your own notes are left alone, including one that starts with the same marker.
 
 It is one gesture with two reading depths, and which one you use depends on why you pressed it.
 
