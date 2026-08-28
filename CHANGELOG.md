@@ -1,10 +1,28 @@
 # Changelog
 
-## Unreleased
+## 2.5.0
 
-A rubric, not a bug hunter. **Column 80: Criticize Function** scores the function under your cursor
-against fifteen named dimensions of craft and prints a card. It writes nothing, changes nothing, and
-publishes nothing to the Problems panel.
+A rubric that hands you a diff. **Column 80: Criticize Function** scores the function under your
+cursor against fifteen named dimensions of craft, prints a card, and offers you the function back
+with a blunt comment planted above every line that failed. Accept and the comments land in your
+source. Reject and nothing was written.
+
+    // C80 clock: reads the wall clock through Instant::now. Hidden wall-clock
+    //     read. Untestable. Pass it in.
+    let start = Instant::now();
+
+The words are fixed, one phrase per dimension, and no model writes them. They are short and
+deliberately rude: name the defect, name what it costs, give the order. There are no citations in
+your source file, no second person, and no "you might consider". The card in the panel keeps the
+principle and the teaching; the comment in your code keeps the instruction.
+
+**Press it again and it replaces its own comments rather than stacking them**, so you can criticize,
+fix half of it, and criticize again without cleaning up after the tool. It strips only what it wrote:
+your own notes survive, including one that starts with the same marker.
+
+Nothing moves until you accept. It goes through the same preview-and-confirm gate that function
+generation and repair already use, so it adds no new way for this extension to write to your files,
+and it still publishes nothing to the Problems panel.
 
 Two ways to read one card. Read the whole roster and it tells you which of fifteen questions your
 function answers badly, which is what you want when you are learning the craft. Read the elevated
@@ -20,40 +38,48 @@ measured zero from an unmeasured one.
 
 **The findings are not the model's, and it cannot make them be.** Every finding comes from a
 deterministic detector reading your code, so pressing the gesture twice on bytes you have not touched
-gives you the same card twice. An earlier build let a model decide what the findings were and it
-never produced the same list twice on unchanged code: three functions, temperature zero, three runs
-each, zero agreements, and on one function ten findings a run with not one appearing in all three.
-What the model does now is explain ONE finding a detector already made. It sees that finding and
-nothing else, and it can neither add a row nor remove one. If your tier has model calls off, or the
-call fails, the card is complete without it and the channel says why.
+gives you the same card and the same diff twice. An earlier build let a model decide what the
+findings were and it never produced the same list twice on unchanged code: three functions,
+temperature zero, three runs each, zero agreements, and on one function ten findings a run with not
+one appearing in all three. What the model does now is explain ONE finding a detector already made,
+in the panel only. It sees that finding and nothing else, and it can neither add a row nor remove
+one. If your tier has model calls off, or the call fails, the card is complete without it.
 
 Every refusal names its cause. An unregistered language is refused by name. A cursor outside a
 function is refused rather than quietly scoring the file. A dimension the language cannot answer
 reports as blind with its reason and never as clean: TypeScript has no checked exceptions, so "can it
 fail in a way the signature never admits" has no answer there and says so, and Python's optional type
-hints make two dimensions report a coverage gap rather than a pass. A card with nothing elevated says
-this pass found nothing above the evidence bar, which is not the same sentence as "this function is
-clean".
+hints make two dimensions report a coverage gap rather than a pass. A function with nothing above the
+bar gets no diff at all, and the channel says which of the two reasons that was.
 
 What was measured, and what was not, stated plainly because a grading tool that overclaims is worse
 than none. All fifteen dimensions are graded against a 138-row hand-labelled set. Fourteen of the
 fifteen produce no false positive on it, and eleven also find everything they should, scoring 100%
-precision with 100% recall. The four to know about are the filesystem detector at 100% precision and
+precision and 100% recall. The rest are the honest weak half: the world detector at 100% precision and
 60% recall, the unadmitted-failure detector at 100% and 64%, the command/query detector at 100% and
 29%, and the pass-through detector at 86% and 50%, which owns the set's single false positive.
 Precision is the strong half and recall is the weak one, so a row that fires is worth acting on and a
 row that stays quiet is not a result. The set is thin in places, resting on as few as four positive
 examples for some dimensions.
 
-The honesty question is also not answered whole: the detectors do not find a function reading a
-variable bound outside itself, which needs scope resolution and is not in this release, and on the
-product's own canonical dishonest function they catch the clock read and miss both the module-state
-read and write. One dimension, the section comment as a tell for mixed abstraction levels, ships
-scored but never elevated at a measured 31.0% firing rate on real Rust, pending a decision about
-whose bar applies. One other, the unenforced-precondition detector, does elevate but cannot tell an
-obligation on the caller from a description of the function's own behaviour; it refuses rather than
-reporting clean when it cannot attribute the wording, and a quiet result from it is not evidence a
-contract is enforced. Nothing here was measured inside VS Code.
+The honesty question is also not answered whole: the detectors read text, not types, so they do not
+find a function reading a variable bound outside itself, and they miss a clock reached through an
+aliased import or a field. On the product's own canonical dishonest function they catch the clock
+read and miss both the module-state read and write. One dimension, the section comment as a tell for
+mixed abstraction levels, ships scored but never elevated at a measured 31.0% firing rate on real
+Rust, pending a decision about whose bar applies. One other, the unenforced-precondition detector,
+does elevate but cannot tell an obligation on the caller from a description of the function's own
+behaviour; it refuses rather than reporting clean when it cannot attribute the wording, and a quiet
+result from it is not evidence a contract is enforced.
+
+The gesture is driven end to end in a real editor on TypeScript, Rust, Go and C#: the diff appears,
+the buffer does not move before Accept, Accept plants the comments and touches no other byte, a
+second Accept leaves the file identical, and the comment lands on the line the card named. **Python's
+editor rows did not run**, because Pylance would not start in the test profile; Python is covered
+headless at every layer but the live-server seam is unproven for it.
+
+Also in this release: the preview tab's buttons read Accept Proposal and Reject Proposal rather than
+naming a generated body, which they did for all three gestures that share them.
 
 ## 2.4.0
 
