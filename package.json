@@ -2,7 +2,7 @@
   "name": "column-80",
   "displayName": "Column 80",
   "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
-  "version": "2.5.0",
+  "version": "3.0.0",
   "publisher": "utilitydelta",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -59,6 +59,12 @@
       {
         "command": "column80.criticizeFunction",
         "title": "Criticize Function",
+        "category": "Column 80",
+        "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
+      },
+      {
+        "command": "column80.reviewFunctionModel",
+        "title": "Review Function (model)",
         "category": "Column 80",
         "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
       },
@@ -392,6 +398,11 @@
           "default": "qwen3-coder:30b",
           "description": "Model for per-function generation. An instruct/chat model. For the local (ollama) backend this is an ollama tag; for a cloud provider set it to that provider's model id (e.g. an OpenAI, Claude, Grok, or Gemini id from their docs)."
         },
+        "column80.fnGenThinking": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Reasoning mode for the generation model, passed straight through to it. **Leave empty unless you are experimenting.** Empty means the hardware tier decides, and every tier that ships a reasoning model turns reasoning off.\n\n**Reaches ollama and the OpenAI-compatible backends.** On OpenAI it becomes `reasoning_effort`: `off` sends `none`, and any other value is passed through as the provider's own level. `on` sends nothing there, because \"on\" has no portable spelling \u2014 the 5.6 line accepts only `none` and refuses `minimal`, so a guessed level would fail the request.\n\n**Anthropic and the Claude Code CLI ignore it, on purpose.** Anthropic has no value valid across its models (`{type:\"disabled\"}` is refused on some, while omitting the field never errors), and the CLI gives no control at all \u2014 its model decides. On those two backends a model that reasons by default spends part of its token budget doing so, and the shared pipeline rejects the resulting truncated reply rather than splicing half a function.\n\n**The default is measured, not cautious.** Twelve real C# generations, graded by `dotnet build`, `qwen3.8:27b`:\n\n| reasoning | token cap | compiled | per function | truncated |\n|---|---|---|---|---|\n| off | 2048 | **4 of 12** | **7.7s** | 0 |\n| on | 2048 | 1 of 12 | 68s | 9 of 12 |\n| on | 8192 | 3 of 12 | 86s | 0 |\n\nAt the shipped 2048 cap, reasoning eats the budget and the code is cut off before it is written (`done_reason=length`). Raising the cap fixes that completely \u2014 and reasoning still compiles no better while taking **eleven times longer**. It is not a truncation problem you can tune around; reasoning simply does not help this task.\n\n**A free string because the vocabulary belongs to the model, not to this extension.** Measured: `qwen3-coder:30b` refuses reasoning outright, `qwen3:8b` takes `on`, `qwen3.8:27b` takes `on` and `low`, and OpenAI's 5.6 line takes only `none` under a different field name. A fixed drop-down would be wrong the first time a model shipped a level it did not list.\n\n- *(empty)* \u2014 the tier decides. The shipped answer.\n- `off` \u2014 send reasoning off explicitly.\n- `on` \u2014 send reasoning on. Expect roughly ten times the wait, and raise `maxTokens` or the generation will be truncated.\n- anything else (`low`, `medium`, `high`, \u2026) \u2014 passed to the model verbatim. If it refuses the value, the output channel prints the model's own words."
+        },
         "column80.fnGenProvider": {
           "type": "string",
           "enum": [
@@ -404,7 +415,7 @@
             "openai-compatible"
           ],
           "default": "ollama",
-          "description": "Backend for per-function generation. 'ollama' is the default local, offline, first path. The others send your prompt (signature, doc comment, selected context, and injected crate surface) off the machine — 'claude-code' through your installed Claude Code CLI on your subscription, the rest to a cloud frontier model over an OpenAI-compatible API with an API key. FIM tab-completion is always local regardless of this setting.",
+          "description": "Backend for per-function generation. 'ollama' is the default local, offline, first path. The others send your prompt (signature, doc comment, selected context, and injected crate surface) off the machine \u2014 'claude-code' through your installed Claude Code CLI on your subscription, the rest to a cloud frontier model over an OpenAI-compatible API with an API key. FIM tab-completion is always local regardless of this setting.",
           "enumDescriptions": [
             "Local ollama. Offline after the one-time model pull. The default.",
             "Claude Code. Runs your installed `claude` CLI headless and bills your Claude subscription, no API key. Your prompt leaves the machine. Every call also carries the CLI's own agent harness on top of your prompt. Its built-in tools are disabled, which measured 23,217 tokens of context down to 3,471 on claude 2.1.224 with identical output. Set fnGenModel to a Claude model id; left at the ollama default the CLI picks its own, which measured as Opus. FIM stays local.",

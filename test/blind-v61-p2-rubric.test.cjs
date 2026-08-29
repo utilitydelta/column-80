@@ -422,8 +422,11 @@ test("D6 NEVER fires on a boolean RETURN type - it is a parameter dimension", ()
 });
 
 // ===========================================================================
-// DIMENSION 7 - unused parameter. The body is read MASKED, so a mention in a
-// comment or a string is not a use.
+// The unused-parameter dimension was DELETED 2026-08-29 (the developer's own
+// toolchain already reports it: clippy `unused_variables`, TS6133 with no
+// tsconfig, gopls `unusedparams`), and its five rows went with it. The fixtures
+// below stay: they are ordinary function slices that every remaining detector
+// is still swept over by the corpus rows at the end of this file.
 // ===========================================================================
 
 const tsUsedOnlyInCommentAndString = ts("typescript param named only in a comment and a string", [
@@ -483,32 +486,8 @@ const pyReceiverNotAParam = py("python self is not a parameter", [
   "    return \"[\" + label + \"]\"",
 ], { head: 0, body: 2 });
 
-test("D7 a parameter mentioned only in a comment and a string is UNUSED", () => {
-  const findings = expectFlagged("unused-param", tsUsedOnlyInCommentAndString, 1);
-  assert.match(findings[0].detail, /label/, `the detail must name the parameter: "${findings[0].detail}"`);
-});
-
-test("D7 a parameter genuinely used in the body is clean", () => {
-  expectClean("unused-param", tsUsedForReal);
-});
-
-test("D7 a _-prefixed parameter is exempt in Rust, Go and Python", () => {
-  expectClean("unused-param", rustUnderscoreParam);
-  expectClean("unused-param", goUnderscoreParam);
-  expectClean("unused-param", pyUnderscoreParam);
-});
-
-test("D7 C# has no _-prefix convention, so an unused C# parameter still fires", () => {
-  expectFlagged("unused-param", csUnderscoreParam, 1);
-});
-
-test("D7 a receiver is not a parameter, so an unmentioned self is not unused", () => {
-  expectClean("unused-param", rustReceiverNotAParam);
-  expectClean("unused-param", pyReceiverNotAParam);
-});
-
 // ===========================================================================
-// DIMENSION 8 - parameter count. The threshold is a CHOSEN constant, so these
+// DIMENSION 7 - parameter count. The threshold is a CHOSEN constant, so these
 // rows sit far either side of any plausible value rather than pinning it.
 // ===========================================================================
 
@@ -669,20 +648,33 @@ const pyPublicWithDoc = py("python public, documented", [
   "    return ast_from(text)",
 ], { head: 0, body: 2 });
 
-test("D9 Rust: pub and pub(crate) fire, a private fn is CLEAN", () => {
-  expectFlagged("undocumented", rustPubNoDoc, 1);
-  expectFlagged("undocumented", rustPubCrateNoDoc, 1);
-  expectClean("undocumented", rustPrivateNoDoc);
+// D9 DELEGATES IN RUST, C# AND PYTHON since 2026-08-29. Each of those languages
+// carries a rule that reports a missing doc comment - `missing_docs`, CS1591,
+// `D103` - and the human's ruling is that a question the developer's own
+// toolchain answers is not this product's to ask. The dimension REFUSES BY NAME
+// rather than disappearing, so the card still tells a reader where the real
+// check lives.
+//
+// The rows below are the old fire/clean pairs turned into the new contract: the
+// answer no longer depends on the CODE at all in these three languages, which is
+// exactly what makes them delegated rather than merely quiet.
+
+test("D9 Rust: DELEGATED to rustc, so pub, pub(crate), private and documented all refuse alike", () => {
+  for (const fixture of [rustPubNoDoc, rustPubCrateNoDoc, rustPrivateNoDoc, rustPubWithDoc]) {
+    const out = expectBlind("undocumented", fixture);
+    assert.match(
+      out.reason,
+      /missing_docs/,
+      "a delegated dimension must NAME the rule that answers it, or the developer learns nothing from the refusal",
+    );
+  }
 });
 
-test("D9 Rust: a documented pub fn is clean", () => {
-  expectClean("undocumented", rustPubWithDoc);
-});
-
-test("D9 C#: public and protected fire, private is CLEAN", () => {
-  expectFlagged("undocumented", csPublicNoDoc, 1);
-  expectFlagged("undocumented", csProtectedNoDoc, 1);
-  expectClean("undocumented", csPrivateNoDoc);
+test("D9 C#: DELEGATED to Roslyn, public, protected and private alike", () => {
+  for (const fixture of [csPublicNoDoc, csProtectedNoDoc, csPrivateNoDoc]) {
+    const out = expectBlind("undocumented", fixture);
+    assert.match(out.reason, /CS1591/, "the refusal names the Roslyn rule");
+  }
 });
 
 test("D9 TypeScript: export and export default fire, a module-local function is CLEAN", () => {
@@ -696,11 +688,17 @@ test("D9 Go: capitalisation is the public surface, lower case is CLEAN", () => {
   expectClean("undocumented", goUnexportedNoDoc);
 });
 
-test("D9 Python: a leading underscore is the convention, so _parse is CLEAN", () => {
-  expectFlagged("undocumented", pyPublicNoDoc, 1);
-  expectClean("undocumented", pyPrivateNoDoc);
-  expectClean("undocumented", pyPublicWithDoc);
+test("D9 Python: DELEGATED to ruff, so the underscore convention no longer decides anything here", () => {
+  for (const fixture of [pyPublicNoDoc, pyPrivateNoDoc, pyPublicWithDoc]) {
+    const out = expectBlind("undocumented", fixture);
+    assert.match(out.reason, /D103/, "the refusal names the ruff rule");
+  }
 });
+
+// THE TWO LANGUAGES THAT STILL ASK. Nothing in the Go or TypeScript toolchain,
+// default or opt-in, reports a missing doc comment, so the dimension is still
+// this product's to answer there. These two rows are what stops the delegation
+// spreading by accident: if a later change made D9 refuse everywhere, they fail.
 
 // ===========================================================================
 // DIMENSION 10 - states a precondition it never enforces. Guard vocabulary is
@@ -1438,13 +1436,13 @@ test("D15 the detector carries a HELD flag, and it is the only detector that doe
   const section = byDim("section-comment");
   assert.ok(
     isHeld(section),
-    `dimension 15 ships scored but not elevated, so the detector must carry the flag phase 3 reads. keys: ${JSON.stringify(Object.keys(section))}`,
+    `dimension 14 ships scored but not elevated, so the detector must carry the flag phase 3 reads. keys: ${JSON.stringify(Object.keys(section))}`,
   );
   const others = ALL_DETECTORS.filter((d) => d.dimension !== "section-comment" && isHeld(d));
   assert.deepEqual(
     others.map((d) => d.dimension),
     [],
-    "only dimension 15 is held pending the end-of-session ruling",
+    "only dimension 14 is held pending the end-of-session ruling",
   );
 });
 
@@ -1453,7 +1451,7 @@ test("D15 the detector carries a HELD flag, and it is the only detector that doe
 // ===========================================================================
 
 const EXPECTED_MODULE_DIMENSIONS = {
-  signature: ["adjacent-params", "bool-param", "unused-param", "param-count"],
+  signature: ["adjacent-params", "bool-param", "param-count"],
   contract: ["undocumented", "unenforced-precondition", "cqs"],
   altitude: ["pass-through", "nesting", "section-comment"],
   safety: ["unadmitted-failure"],
@@ -1466,12 +1464,12 @@ test("each module carries exactly the dimensions the contract assigns it", () =>
   }
 });
 
-test("the four modules cover dimensions 5 to 15 once each, and nothing else", () => {
+test("the four modules cover dimensions 5 to 14 once each, and nothing else", () => {
   const all = ALL_DETECTORS.map((d) => d.dimension).sort();
   const expected = [].concat(...Object.values(EXPECTED_MODULE_DIMENSIONS)).sort();
   assert.deepEqual(all, expected);
   assert.equal(new Set(all).size, all.length, "a dimension is served by two detectors");
-  assert.equal(all.length, 11);
+  assert.equal(all.length, 10);
 });
 
 test("every detector carries a non-empty source line and a valid axis", () => {

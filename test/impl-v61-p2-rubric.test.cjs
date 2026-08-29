@@ -103,6 +103,12 @@ test("signatureParts reads the result each language writes in its own place", ()
 // Masking: a template interpolation is CODE
 // ---------------------------------------------------------------------------
 
+// The row that followed this one read the same rule through the unused-parameter
+// dimension - a parameter mentioned only inside `${...}` must count as read.
+// That dimension was DELETED 2026-08-29 (clippy, TS6133 and gopls already report
+// it), and the row went with it: no surviving detector observes a parameter READ,
+// so there is nothing to repoint it at. The masking rule itself is unchanged and
+// is what the row below measures directly.
 test("maskLine keeps a template interpolation and blanks the text around it", () => {
   const line = "  return `id ${node.filePath} for ${node.line}`;";
   const masked = maskLine(line, criticizeLangFor("typescript"));
@@ -110,15 +116,6 @@ test("maskLine keeps a template interpolation and blanks the text around it", ()
   assert.match(masked, /node\.filePath/);
   assert.match(masked, /node\.line/);
   assert.ok(!masked.includes("id "), `the literal text must still be masked: "${masked}"`);
-});
-
-test("dimension 7 sees a parameter used only inside a template interpolation", () => {
-  const fn = unit("typescript", [
-    "export function nodeKey(node: CallerNode): string {",
-    "  return `${node.filePath}#${node.line}`;",
-    "}",
-  ]);
-  assert.deepEqual(run("unused-param", fn), { state: "clean" });
 });
 
 // ---------------------------------------------------------------------------

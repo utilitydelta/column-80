@@ -114,6 +114,28 @@ module.exports = {
     onDidRenameFiles: () => disposable(),
     onDidDeleteFiles: () => disposable(),
     get textDocuments() { return globalThis.__C80_OPEN_DOCS__ || []; },
+    // The workspace itself. __C80_WS_ROOT__ is the one folder; UNSET MEANS NO
+    // WORKSPACE, and a product that filters to the workspace then filters
+    // everything out. That is the safe default for a stub: a leg that needs a
+    // workspace has to say so, rather than inheriting one by accident.
+    // No backticks anywhere below: STUB_SOURCE is a String.raw template and one
+    // would close it.
+    get workspaceFolders() {
+      const root = globalThis.__C80_WS_ROOT__;
+      return root ? [{ uri: Uri.file(root), name: "stub", index: 0 }] : undefined;
+    },
+    getWorkspaceFolder: (uri) => {
+      const root = globalThis.__C80_WS_ROOT__;
+      const p = uri && uri.fsPath ? String(uri.fsPath) : "";
+      return root && p.startsWith(root) ? { uri: Uri.file(root), name: "stub", index: 0 } : undefined;
+    },
+    asRelativePath: (uri, includeWorkspaceFolder) => {
+      const root = globalThis.__C80_WS_ROOT__;
+      const p = uri && uri.fsPath ? String(uri.fsPath) : String(uri);
+      if (!root || !p.startsWith(root)) return p;
+      const rel = p.slice(root.length).replace(/^[\\/]+/, "");
+      return includeWorkspaceFolder ? "stub/" + rel : rel;
+    },
     openTextDocument: async (arg) => {
       const key = typeof arg === "string" ? arg : arg && arg.toString ? arg.toString() : String(arg);
       const docs = globalThis.__C80_DOCS__ || {};
@@ -123,7 +145,16 @@ module.exports = {
   },
   languages: {
     createDiagnosticCollection: (name) => ({ name, set() {}, delete() {}, clear() {}, dispose() {} }),
-    getDiagnostics: () => [],
+    // INJECTABLE, like every other surface in this stub. The model-authored
+    // review hands the developer's OWN diagnostics to the model, so a test that
+    // cannot put one there cannot exercise the leg that carries them.
+    getDiagnostics: (uri) => {
+      const all = globalThis.__C80_DIAGNOSTICS__;
+      if (all === undefined) return [];
+      if (Array.isArray(all)) return all;
+      const key = uri === undefined ? "" : String(uri.fsPath || uri);
+      return all[key] || [];
+    },
     onDidChangeDiagnostics: () => disposable(),
   },
   window: {
@@ -149,6 +180,21 @@ module.exports = {
       if (id === "vscode.executeSelectionRangeProvider") {
         const build = (globalThis.__C80_CHAINS__ || {})[key];
         return build ? build(arg2) : undefined;
+      }
+      // The call hierarchy, both directions. prepareCallHierarchy is keyed by
+      // the document's uri and answered with a builder so a test can place a
+      // different root per cursor; the two call directions are keyed by the
+      // prepared item's NAME, which is the identity a test can hold onto across
+      // the command boundary.
+      if (id === "vscode.prepareCallHierarchy") {
+        const build = (globalThis.__C80_CALL_ROOTS__ || {})[key];
+        return typeof build === "function" ? build(arg2) : build;
+      }
+      if (id === "vscode.provideIncomingCalls") {
+        return (globalThis.__C80_INCOMING__ || {})[uri && uri.name];
+      }
+      if (id === "vscode.provideOutgoingCalls") {
+        return (globalThis.__C80_OUTGOING__ || {})[uri && uri.name];
       }
       return undefined;
     },

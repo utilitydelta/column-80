@@ -62,12 +62,12 @@ function need(name) {
 // Fixtures. Built from the contract's type shapes only.
 // ---------------------------------------------------------------------------
 
-/** The fifteen DimensionIds of phase 1, in the card order phase 3 fixes:
- *  honesty (1-4), signature empathy (5-8), contract (9-11), altitude (12, 13,
- *  15), safety (14). */
+/** The fourteen DimensionIds of phase 1, in the card order phase 3 fixes:
+ *  honesty (1-4), signature empathy (5-7), contract (8-10), altitude (11, 12,
+ *  14), safety (13). */
 const CARD_ORDER = [
   "clock", "prng", "env", "world",
-  "adjacent-params", "bool-param", "unused-param", "param-count",
+  "adjacent-params", "bool-param", "param-count",
   "undocumented", "unenforced-precondition", "cqs",
   "pass-through", "nesting", "section-comment",
   "unadmitted-failure",
@@ -76,7 +76,7 @@ const CARD_ORDER = [
 const GROUP_OF = {
   clock: "honesty", prng: "honesty", env: "honesty", world: "honesty",
   "adjacent-params": "signature-empathy", "bool-param": "signature-empathy",
-  "unused-param": "signature-empathy", "param-count": "signature-empathy",
+  "param-count": "signature-empathy",
   undocumented: "contract", "unenforced-precondition": "contract", cqs: "contract",
   "pass-through": "altitude", nesting: "altitude", "section-comment": "altitude",
   "unadmitted-failure": "safety",
@@ -141,7 +141,7 @@ function twoFindingRows() {
   ];
 }
 
-/** A full fifteen-row card: every dimension present, in the fixed order, with
+/** A full fourteen-row card: every dimension present, in the fixed order, with
  *  one flagged row, one blind row, and thirteen clean rows. */
 function fullCard() {
   return CARD_ORDER.map((dimension) => {
@@ -236,7 +236,7 @@ test("2. a prose map missing every key still yields a complete set of rows", () 
 
   const after = attachExplanations(fullCard(), new Map());
 
-  assert.strictEqual(after.length, 15);
+  assert.strictEqual(after.length, 14);
   assert.deepStrictEqual(dimensionsOf(after), CARD_ORDER);
   assert.deepStrictEqual(after, before);
   for (const r of after) {
@@ -273,7 +273,7 @@ test("3. a transport that fabricates extra findings adds no row and no finding",
   const after = attachExplanations(fullCard(), new Map([[findingKey(CQS_FINDING), text]]));
 
   // The card gained prose, at most. It gained no row and no finding.
-  assert.strictEqual(after.length, 15);
+  assert.strictEqual(after.length, 14);
   assert.deepStrictEqual(dimensionsOf(after), CARD_ORDER);
   assert.strictEqual(findingCount(after), 1);
   assertDoorHeld(before, after);
@@ -341,7 +341,7 @@ test("5. attachExplanations never moves outcome, elevated, row count or finding 
   const after = attachExplanations(fullCard(), prose);
 
   assert.strictEqual(after.length, beforeRowCount);
-  assert.strictEqual(after.length, 15);
+  assert.strictEqual(after.length, 14);
   assert.strictEqual(findingCount(after), beforeFindingCount);
   assert.strictEqual(findingCount(after), 1);
   assert.deepStrictEqual(outcomesOf(after), beforeOutcomes);
@@ -385,7 +385,7 @@ test("7. prose over EXPLANATION_MAX_LINES is dropped, and the row stays complete
   assert.deepStrictEqual(after, before);
   // And degraded, not deleted: the row is present, complete, and still carries
   // its evidence line.
-  assert.strictEqual(after.length, 15);
+  assert.strictEqual(after.length, 14);
   const cqsRow = after.find((r) => r.dimension === "cqs");
   assert.strictEqual(cqsRow.outcome.state, "flagged");
   assert.strictEqual(cqsRow.outcome.findings.length, 1);
@@ -439,7 +439,7 @@ test("10. empty-string prose is dropped, and the row degrades to its evidence", 
   const after = attachExplanations(fullCard(), new Map([[findingKey(CQS_FINDING), ""]]));
 
   assert.deepStrictEqual(after, before);
-  assert.strictEqual(after.length, 15);
+  assert.strictEqual(after.length, 14);
   assert.strictEqual(findingCount(after), 1);
 });
 
@@ -529,7 +529,7 @@ test("15. two map entries for one key: the last wins, and only one attachment ha
 
   assert.deepStrictEqual(duplicated, single);
   assertDoorHeld(fullCard(), duplicated);
-  assert.strictEqual(duplicated.length, 15);
+  assert.strictEqual(duplicated.length, 14);
   assert.strictEqual(findingCount(duplicated), 1);
 });
 
@@ -641,9 +641,9 @@ test("22. degradation is a shipped state: no transport at all, and the card is s
   const before = fullCard();
   const after = attachExplanations(fullCard(), new Map());
 
-  assert.strictEqual(after.length, 15);
+  assert.strictEqual(after.length, 14);
   assert.deepStrictEqual(dimensionsOf(after), CARD_ORDER);
-  assert.strictEqual(new Set(dimensionsOf(after)).size, 15);
+  assert.strictEqual(new Set(dimensionsOf(after)).size, 14);
   assert.deepStrictEqual(after, before);
 
   for (const r of after) {
@@ -666,7 +666,7 @@ test("23. attaching prose never elevates a held dimension", () => {
   const findingKey = need("findingKey");
   const policy = need("DEFAULT_ELEVATION");
 
-  // Phase 3 holds dimension 15 pending a human ruling.
+  // Phase 3 holds dimension 14 pending a human ruling.
   assert.strictEqual(Array.isArray(policy.held), true);
   assert.strictEqual(policy.held.includes("section-comment"), true);
 

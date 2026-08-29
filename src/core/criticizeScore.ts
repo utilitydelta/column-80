@@ -1,5 +1,5 @@
 // ===========================================================================
-// The scorecard: fifteen dimensions, every function, every time.
+// The scorecard: fourteen dimensions, every function, every time.
 //
 // A rubric enumerates its dimensions in advance and scores every function on
 // all of them. That is what rescues determinism: the finding set stops being
@@ -16,6 +16,7 @@
 import { ALTITUDE_DETECTORS } from "./criticizeAltitude";
 import { CONTRACT_DETECTORS } from "./criticizeContract";
 import { HONESTY_DETECTORS } from "./criticizeHonesty";
+import { HonestyDimension } from "./criticizeHonestyModel";
 import { criticizeLangFor } from "./criticizeLang";
 import { SAFETY_DETECTORS } from "./criticizeSafety";
 import { SIGNATURE_DETECTORS } from "./criticizeSignature";
@@ -124,6 +125,35 @@ const RUBRIC: readonly { group: RubricGroup; detectors: readonly Detector[] }[] 
   { group: "safety", detectors: SAFETY_DETECTORS },
 ];
 
+/**
+ * The rubric as DATA, for a caller that has to describe it rather than run it.
+ *
+ * The model-authored path hands the fourteen dimensions to a model as prose, and
+ * a second hand-written list of them would be a third copy of the rubric that
+ * drifts from the detectors and from the card. This walks the same registry the
+ * scorer walks, so a dimension added, renamed or regrouped shows up in the
+ * prompt without anyone remembering to update it.
+ */
+export function rubricDimensions(): readonly {
+  dimension: DimensionId;
+  group: RubricGroup;
+  title: string;
+  source: string;
+}[] {
+  const out: { dimension: DimensionId; group: RubricGroup; title: string; source: string }[] = [];
+  for (const { group, detectors } of RUBRIC) {
+    for (const detector of detectors) {
+      out.push({
+        dimension: detector.dimension,
+        group,
+        title: TITLES[detector.dimension],
+        source: detector.source,
+      });
+    }
+  }
+  return out;
+}
+
 /** The dimension's own words, one fixed phrase each. A generated title would
  *  reintroduce exactly the run-to-run variance the rubric exists to remove. */
 const TITLES: Record<DimensionId, string> = {
@@ -133,7 +163,6 @@ const TITLES: Record<DimensionId, string> = {
   world: "touches the filesystem",
   "adjacent-params": "two neighbouring parameters share one type",
   "bool-param": "takes a boolean parameter",
-  "unused-param": "asks for a parameter the body never reads",
   "param-count": "asks the caller for a long parameter list",
   undocumented: "public and undocumented",
   "unenforced-precondition": "states a precondition it never enforces",
@@ -145,7 +174,7 @@ const TITLES: Record<DimensionId, string> = {
 };
 
 /** The dimensions whose honest fix changes the SIGNATURE and therefore ripples
- *  to every caller: the four honesty legs, the four signature-empathy legs,
+ *  to every caller: the four honesty legs, the three signature-empathy legs,
  *  and unadmitted failure. The other six are body-local, so a fix stays inside
  *  the function and a call-site count would be noise. */
 const SIGNATURE_LEVEL: ReadonlySet<DimensionId> = new Set<DimensionId>([
@@ -155,7 +184,6 @@ const SIGNATURE_LEVEL: ReadonlySet<DimensionId> = new Set<DimensionId>([
   "world",
   "adjacent-params",
   "bool-param",
-  "unused-param",
   "param-count",
   "unadmitted-failure",
 ]);
@@ -213,7 +241,7 @@ export function blastRadiusFor(input: BlastRadiusInput): number | undefined {
  *
  * `lang` may be omitted, in which case it is looked up from the unit's own
  * languageId. An unregistered language does not throw and does not return a
- * short card: it returns all fifteen rows as `blind`, each naming the
+ * short card: it returns all fourteen rows as `blind`, each naming the
  * language. A missing card and a clean card read the same to a human, and only
  * one of them means the question was asked.
  *
@@ -243,7 +271,7 @@ export function scoreFunction(
         group: block.group,
         source: detector.source,
         outcome,
-        elevated: outcome.state === "flagged" && !held.has(detector.dimension),
+        elevated: elevatedUnder(outcome, detector.dimension, held),
       };
       const radius = blastRadiusFor({ dimension: detector.dimension, callSites });
       if (radius !== undefined) {
@@ -259,6 +287,63 @@ export function scoreFunction(
     headLine: fn.startLine + fn.headIndex,
     rows,
   };
+}
+
+/**
+ * Whether one row is above the bar. THE ONLY DEFINITION of that, and both the
+ * scoring pass and `applyHonesty` call it.
+ *
+ * A second copy would drift, and it would drift silently: a card whose honesty
+ * rows were elevated by one rule and whose other ten were elevated by
+ * another reads exactly like a correct card.
+ */
+function elevatedUnder(
+  outcome: DimensionOutcome,
+  dimension: DimensionId,
+  held: ReadonlySet<DimensionId>,
+): boolean {
+  return outcome.state === "flagged" && !held.has(dimension);
+}
+
+/**
+ * Replace the four honesty rows' outcomes with a model round's answers.
+ *
+ * PURE, and it returns a NEW card: the synchronous pass's card is the thing a
+ * caller may already be rendering, and a mutation would change a card under a
+ * surface that had already drawn it.
+ *
+ * The row ORDER is preserved, because two cards are read side by side row for
+ * row, and every row that is not one of the four is handed back untouched,
+ * including its blast radius and any explanation already attached to it. A
+ * dimension absent from `outcomes` leaves its row exactly as it was, which is
+ * how a partial round degrades: the dimensions the model answered move, and the
+ * ones it did not keep their refusal.
+ *
+ * `policy` exists so the recomputed elevation is the same question the card was
+ * scored under. It defaults to the shipped policy, which is `scoreFunction`'s
+ * default too.
+ */
+export function applyHonesty(
+  card: Scorecard,
+  outcomes: Readonly<Record<HonestyDimension, DimensionOutcome>>,
+  // REQUIRED AND PLAIN, not defaulted. A default here is the second copy this
+  // function's own header warns about: a card scored under a custom policy and
+  // then passed through without one comes back holding TWO policies, its four
+  // honesty rows elevated under `DEFAULT_ELEVATION` and its other ten under
+  // the caller's. That reads exactly like a correct card. An optional field is
+  // invisible to tsc; a required one makes every call site say which policy it
+  // means. Found by the phase 12 adversarial review as a latent API trap.
+  policy: ElevationPolicy,
+): Scorecard {
+  const held = new Set(policy.held);
+  const rows = card.rows.map((row) => {
+    const replacement = (outcomes as Partial<Record<DimensionId, DimensionOutcome>>)[row.dimension];
+    if (replacement === undefined) {
+      return row;
+    }
+    return { ...row, outcome: replacement, elevated: elevatedUnder(replacement, row.dimension, held) };
+  });
+  return { ...card, rows };
 }
 
 /** The refusal every row carries when no profile is registered. It names the

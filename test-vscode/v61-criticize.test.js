@@ -20,7 +20,7 @@
 //   3. the whole gesture really writes nothing, through a real editor and a
 //      real document, rather than by a grep over the module's imports
 //   4. a real card, rendered end to end from a live symbol span, carries all
-//      fifteen dimensions and the closing contract sentence
+//      fourteen dimensions and the closing contract sentence
 //   5. the refusals name what they refuse, in the channel, in the host
 //
 // THE INSTRUMENT IS THE CHANNEL, teed to `C80_LOG_FILE`. No test can read an
@@ -45,6 +45,9 @@ const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
 const { SPECS } = require('./helpers/specs');
+// The fixture block lives in a helper so the model-authored review's host suite
+// presses its command at the SAME function this one does.
+const { FIXTURES, MARKER } = require('./helpers/criticize-fixtures');
 const { report } = require('./helpers/probe');
 
 const product = require('./.build/product.js');
@@ -117,7 +120,7 @@ const CONTRACT_SENTENCE = product.HONEST_CONTRACT;
 
 const DIMENSIONS = [
   'clock', 'prng', 'env', 'world',
-  'adjacent-params', 'bool-param', 'unused-param', 'param-count',
+  'adjacent-params', 'bool-param', 'param-count',
   'undocumented', 'unenforced-precondition', 'cqs',
   'pass-through', 'nesting',
   'unadmitted-failure',
@@ -154,153 +157,6 @@ const DIMENSIONS = [
 // the slice, the slicer walked up past the declaration head that the live
 // server's span begins at.
 // ---------------------------------------------------------------------------
-const MARKER = 'nothing below this line is inside a function';
-
-const FIXTURES = {
-  ts: {
-    file: 'playground/src/fim.ts',
-    name: 'spanProbe',
-    docNeedle: 'Probe for the v61 host tier.',
-    cursorNeedle: 'const c80Started = Date.now();',
-    cleanNeedle: 'export function spanProbeCaller(): number {',
-    text: [
-      '',
-      '/**',
-      ' * Probe for the v61 host tier.',
-      ' *',
-      ' * @param first the first bound',
-      ' * @param second the second bound',
-      ' */',
-      'export function spanProbe(first: number, second: number): number {',
-      '  const c80Started = Date.now();',
-      '  return first + second + c80Started;',
-      '}',
-      '',
-      '/** Adds the two bounds the probe was built to add. */',
-      'export function spanProbeCaller(): number {',
-      '  return spanProbe(1, 2);',
-      '}',
-      '',
-      `// ${MARKER}`,
-      '',
-    ].join('\n'),
-  },
-  rust: {
-    file: 'crates/playground/src/fim.rs',
-    name: 'span_probe',
-    docNeedle: 'Probe for the v61 host tier.',
-    cursorNeedle: 'let c80_started = std::time::Instant::now();',
-    cleanNeedle: 'pub fn span_probe_caller() -> u64 {',
-    text: [
-      '',
-      '/// Probe for the v61 host tier.',
-      '///',
-      '/// Takes two bounds and adds them.',
-      'pub fn span_probe(first: u64, second: u64) -> u64 {',
-      '    let c80_started = std::time::Instant::now();',
-      '    first + second + c80_started.elapsed().as_secs()',
-      '}',
-      '',
-      '/// Adds the two bounds the probe was built to add.',
-      'pub fn span_probe_caller() -> u64 {',
-      '    span_probe(1, 2)',
-      '}',
-      '',
-      `// ${MARKER}`,
-      '',
-    ].join('\n'),
-  },
-  go: {
-    file: 'playground/fim.go',
-    name: 'SpanProbe',
-    docNeedle: 'SpanProbe is a probe for the v61 host tier.',
-    cursorNeedle: 'c80Started := time.Now()',
-    cleanNeedle: 'func SpanProbeCaller() int64 {',
-    text: [
-      '',
-      '// SpanProbe is a probe for the v61 host tier.',
-      '//',
-      '// It takes two bounds and adds them.',
-      'func SpanProbe(first int64, second int64) int64 {',
-      '\tc80Started := time.Now()',
-      '\treturn first + second + c80Started.Unix()',
-      '}',
-      '',
-      '// SpanProbeCaller adds the two bounds the probe was built to add.',
-      'func SpanProbeCaller() int64 {',
-      '\treturn SpanProbe(1, 2)',
-      '}',
-      '',
-      `// ${MARKER}`,
-      '',
-    ].join('\n'),
-  },
-  python: {
-    // NOT `playground/fim.py`, and the reason is checked into that file: its
-    // line 52 is a deliberately unclosed `stripe.enroll_tile(`, an anchor the
-    // sticky-selection suite needs. The file does not parse, so Pylance reads
-    // everything appended below it as part of that unterminated call and hands
-    // back `gesture_site` for a cursor a hundred lines lower. A target for an
-    // insertion has to be a file that parses.
-    file: 'playground/fns.py',
-    name: 'span_probe',
-    docNeedle: 'Probe for the v61 host tier.',
-    cursorNeedle: 'c80_started = time.time()',
-    cleanNeedle: 'def span_probe_caller() -> int:',
-    text: [
-      '',
-      '',
-      'def span_probe(first: int, second: int) -> int:',
-      '    """Probe for the v61 host tier.',
-      '',
-      '    Takes two bounds and adds them.',
-      '    """',
-      '    import time',
-      '',
-      '    c80_started = time.time()',
-      '    return first + second + int(c80_started)',
-      '',
-      '',
-      'def span_probe_caller() -> int:',
-      '    """Add the two bounds the probe was built to add."""',
-      '    return span_probe(1, 2)',
-      '',
-      '',
-      `# ${MARKER}`,
-      '',
-    ].join('\n'),
-  },
-  csharp: {
-    file: 'src/Playground/Fim.cs',
-    name: 'SpanProbe',
-    docNeedle: 'Probe for the v61 host tier.',
-    cursorNeedle: 'var c80Started = System.DateTime.UtcNow;',
-    cleanNeedle: 'public static long SpanProbeCaller()',
-    text: [
-      '',
-      'public static class C80V61Probe',
-      '{',
-      '    /// <summary>Probe for the v61 host tier.</summary>',
-      '    /// <param name="first">the first bound</param>',
-      '    /// <param name="second">the second bound</param>',
-      '    public static long SpanProbe(long first, long second)',
-      '    {',
-      '        var c80Started = System.DateTime.UtcNow;',
-      '        return first + second + c80Started.Ticks;',
-      '    }',
-      '',
-      '    /// <summary>Adds the two bounds the probe was built to add.</summary>',
-      '    public static long SpanProbeCaller()',
-      '    {',
-      '        return SpanProbe(1, 2);',
-      '    }',
-      '}',
-      '',
-      `// ${MARKER}`,
-      '',
-    ].join('\n'),
-  },
-};
 
 const fixture = FIXTURES[LANG];
 const fixturePath = spec && fixture ? path.join(spec.repo, fixture.file) : undefined;
@@ -807,7 +663,7 @@ async function decide(decision) {
     // and the second press grew a finding that was never real. The card is the
     // primary product; a wrong card is worse than a wrong diff, because the diff
     // gets reviewed and the card gets believed.
-    const summaryOf = (t) => (/\[critique\] (\d+) of 15 dimensions elevated, (\d+) blind/.exec(t) || []).slice(1).join('/');
+    const summaryOf = (t) => (/\[critique\] (\d+) of 14 dimensions elevated, (\d+) blind/.exec(t) || []).slice(1).join('/');
     const s1 = summaryOf(first.text);
     const s2 = summaryOf(second.text);
     report(`V61 ${LANG} card across presses`, [`press 1: ${s1}`, `press 2: ${s2}`]);
@@ -879,7 +735,7 @@ async function decide(decision) {
     const proposed = /\[critique\] proposing/.test(text);
     report(`V61 ${LANG} no proposal`, [
       `scored: ${(/\[critique\] scoring [^\n]*/.exec(text) || ['none'])[0]}`,
-      `summary: ${(/\[critique\] \d+ of 15[^\n]*/.exec(text) || ['none'])[0]}`,
+      `summary: ${(/\[critique\] \d+ of 14[^\n]*/.exec(text) || ['none'])[0]}`,
       `a proposal was offered: ${proposed}`,
     ]);
 
@@ -894,7 +750,7 @@ async function decide(decision) {
     }
   });
 
-  test('4: a real card carries all fifteen dimensions and the contract sentence', async function () {
+  test('4: a real card carries all fourteen dimensions and the contract sentence', async function () {
     if (!spec || !fixture) return this.skip();
     if (NO_INSTRUMENT) {
       report(`V61 ${LANG} card`, ['SKIPPED: C80_LOG_FILE was unset and the extension was already active, so there is no instrument']);
@@ -916,7 +772,7 @@ async function decide(decision) {
       text.includes(CONTRACT_SENTENCE),
       `no card reached the channel in 60s. What did:\n${text.slice(0, 4000)}`,
     );
-    assert.ok(text.includes('The rubric, all fifteen dimensions'), 'the roster heading must be on the card');
+    assert.ok(text.includes('The rubric, all fourteen dimensions'), 'the roster heading must be on the card');
     const missing = DIMENSIONS.filter((d) => !text.includes(d));
     assert.deepStrictEqual(missing, [], 'every dimension scores always, so every id must appear on the card');
 

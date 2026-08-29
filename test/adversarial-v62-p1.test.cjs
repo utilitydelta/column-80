@@ -57,7 +57,7 @@ const {
 
 const DIMENSIONS = [
   "clock", "prng", "env", "world",
-  "adjacent-params", "bool-param", "unused-param", "param-count",
+  "adjacent-params", "bool-param", "param-count",
   "undocumented", "unenforced-precondition", "cqs",
   "pass-through", "nesting",
   "unadmitted-failure",
@@ -73,7 +73,6 @@ const DETAIL = {
   world: "opens a file through File::open",
   "adjacent-params": "first and second are neighbours of type Offset, and the compiler cannot see them swapped",
   "bool-param": "parameter recursive carries a decision the caller had already made",
-  "unused-param": "parameter depth never appears in the body",
   "param-count": "the signature takes more parameters than the chosen threshold for rust",
   undocumented: "the public signature carries no doc comment",
   "unenforced-precondition": "the doc states a precondition and the body checks nothing",
@@ -114,7 +113,7 @@ const moduleHalf = (text, detail) => (detail ? text.split(detail).join(" ") : te
 // 1. THE MODULE'S OWN TEXT - the scope Amendment 3 clause 2 rules
 // ===========================================================================
 
-test("module text: the fixed table spends no call-site vocabulary of its own, all fifteen", () => {
+test("module text: the fixed table spends no call-site vocabulary of its own, all fourteen", () => {
   // That vocabulary belongs to the measured blast clause. A phrase that spent
   // it would make an unmeasured comment read as a measured one, which is the
   // v61 two-state rule broken in the words rather than in the logic.
@@ -126,7 +125,7 @@ test("module text: the fixed table spends no call-site vocabulary of its own, al
   }
 });
 
-test("module text: an unmeasured radius adds no call-site clause, all fifteen, all three spellings of absent", () => {
+test("module text: an unmeasured radius adds no call-site clause, all fourteen, all three spellings of absent", () => {
   for (const dimension of DIMENSIONS) {
     for (const opts of UNMEASURED) {
       const text = criticizeComment(findingFor(dimension), opts);
@@ -141,7 +140,7 @@ test("module text: an unmeasured radius adds no call-site clause, all fifteen, a
 test("module text: rules 2, 3 and 4 hold on the module's half, with the detail stripped out", () => {
   // The rule Amendment 3 clause 2 actually ruled, tested as ruled: strip the
   // detector's detail, then apply the year ban, the banned-word list and the
-  // question-mark ban to what the module wrote. Walked over all fifteen
+  // question-mark ban to what the module wrote. Walked over all fourteen
   // dimensions and all seven blast-radius states, not spot-checked.
   for (const dimension of DIMENSIONS) {
     for (const opts of [...UNMEASURED, ...MEASURED]) {
@@ -190,7 +189,7 @@ test("amendment 7: a detail already carrying its own stop is not double-stopped"
   assert.ok(!text.includes(".."), `a second stop was appended: ${JSON.stringify(text)}`);
 });
 
-test("amendment 11: the comment ends on the table's fix beat, in every blast state, all fifteen", () => {
+test("amendment 11: the comment ends on the table's fix beat, in every blast state, all fourteen", () => {
   for (const dimension of DIMENSIONS) {
     const order = VOICE[dimension].split(". ").pop();
     for (const opts of [...UNMEASURED, ...MEASURED]) {
@@ -266,14 +265,16 @@ test("real detail: an everyday C# nullable parameter is LEGAL, and its question 
 });
 
 test("real detail: parameters named `you` and `we` are LEGAL, and the module's half stays clean", () => {
-  // FLIPPED, same ruling. `unused-param` interpolates the parameter NAMES
+  // FLIPPED, same ruling. `bool-param` interpolates the parameter NAMES
   // verbatim, and both are legal Python identifiers. Amendment 3 clause 2 scopes
   // the banned-word list to module-authored text, so the comment is legal and
-  // the module's own half must still be clean.
-  const outcome = runDetector("unused-param", "python", [
+  // the module's own half must still be clean. (It read `unused-param` until
+  // that dimension was deleted 2026-08-29; the ruling is about names reaching
+  // the comment, and any detector that interpolates one carries it.)
+  const outcome = runDetector("bool-param", "python", [
     '"""Renders."""',
-    "def render(node, you, we):",
-    "    return node",
+    "def render(node: int, you: bool, we: bool) -> int:",
+    "    return node if you and we else 0",
   ], 1);
   assert.equal(outcome.state, "flagged", `the detector did not fire: ${JSON.stringify(outcome)}`);
   const finding = outcome.findings[0];
@@ -460,7 +461,7 @@ test("wrap: backtick gluing is INHERITED and DEFERRED - S62-3, pinned as behavio
   );
 });
 
-test("wrap: all fifteen, seven indents, both tokens, measured radius - width, prefix and words", () => {
+test("wrap: all fourteen, seven indents, both tokens, measured radius - width, prefix and words", () => {
   for (const dimension of DIMENSIONS) {
     const text = criticizeComment(findingFor(dimension), { blastRadius: 231 });
     for (const indent of ["", "  ", "    ", "        ", "\t", "\t\t", "\t\t\t"]) {

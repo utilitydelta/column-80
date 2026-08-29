@@ -20,6 +20,8 @@ const { computeTier, applyTier, DEFAULT_FNGEN_CONFIG } = mod;
 test.after(cleanup);
 
 const MODEL_30B = "qwen3-coder:30b";
+// The 24GB row's model since 2026-08-29. See the row test below for why it moved.
+const MODEL_27B = "qwen3.8:27b";
 const MODEL_14B = "qwen2.5-coder:14b-instruct-q4_K_M";
 
 // FnGenConfig shape per the phase-2 surface (still in force); values default.
@@ -112,10 +114,17 @@ test("foreign tag drops the carve even when the input config carried a numGpu [s
 
 // ---- 24gb: full offload
 
-test("24gb tier: row tag, numGpu absent (full offload) [surface: table row 1 'absent (full offload)']", () => {
+test("24gb tier: row tag, numGpu absent (full offload), thinking off [surface: table row 1 'absent (full offload)']", () => {
   const out = applyPure(baseConfig(), SEL_24GB(), false);
-  assert.strictEqual(out.model, MODEL_30B);
+  // The 24GB row moved to `qwen3.8:27b` on 2026-08-29 by human ruling: a TIE with
+  // the 30b on function generation (4 of 12 compiled each) plus the only local
+  // model measured to reach the cloud tier's placement rate on the review path.
+  assert.strictEqual(out.model, MODEL_27B);
   assert.strictEqual(out.numGpu, undefined, "no layer cap on a card that fits both models");
+  // The row's think flag rides the model tag exactly as the carve does, so a
+  // user who overrode the model does not inherit a flag about a model they are
+  // not running.
+  assert.strictEqual(out.think, false, "qwen3.8 reasons by default and reasoning is billed to maxTokens");
 });
 
 // ---- low-RAM tier: fallbackModel resolution [surface: rule 2]

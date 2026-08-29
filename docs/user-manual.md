@@ -25,6 +25,7 @@ Five languages ride the full stack: **Rust, Go, TypeScript/JavaScript, C#, Pytho
 | Run the tests your repo already has | [Covering tests](#covering-tests) |
 | Repair a function from a failing test | [Repair from a failing test](#repair-from-a-failing-test) |
 | Grade a function against a rubric | [Criticize](#criticize) |
+| Have a model review a function | [Review Function (model)](#review-function-model) |
 | Use Claude/GPT/Gemini instead of local | [Cloud function generation](#cloud-function-generation) |
 | Use your Claude subscription, no API key | [Claude Code](#claude-code-subscription-not-an-api-key) |
 | Read the logs | [The output channel](#the-output-channel) |
@@ -482,9 +483,33 @@ The after-run re-checks the compiler too. A repair that fixes an assertion and b
 
 **Its honest contract, which bounds every sentence it prints:** it finds what your repo's oracles can witness. It does not certify that your function is correct.
 
+## Two ways to have a function reviewed
+
+There are two gestures and they are not versions of each other. Pick by what you want out of it.
+
+| | **Criticize Function** | **Review Function (model)** |
+|---|---|---|
+| Who decides the findings | fourteen detectors, plus a model on four of them | a model, entirely |
+| Who writes the words | a fixed phrase per dimension | the model |
+| Same code, pressed twice | same ten rows, same lines | can differ |
+| What it is good at | a repeatable worklist, and teaching the principle | advice about THIS function, in its own identifiers |
+| What it needs | nothing; it works with no model at all | a model, and a good one changes the answer a lot |
+| Read it like | a checklist | a colleague's review comments, which you check |
+
+**Use Criticize when you want the same answer twice.** Grading an assignment, working a refactor
+backlog, checking a function before a commit, or learning which of fourteen questions your code answers
+badly. Its words are fixed, so two people running it on the same code have the same conversation.
+
+**Use Review when you want something specific to this function.** It names your identifiers, your
+types and your actual failure modes, and it says things no fixed phrase can. It is also the one that
+can be confidently wrong, so read every comment before you accept it.
+
+Neither is gated. Both run whatever model you have configured, and both tell you on the output channel
+what they could and could not do.
+
 ## Criticize
 
-**Column 80: Criticize Function** scores the function under your cursor against a fifteen-dimension rubric, prints a card to the output channel, and offers you a **diff**: the function with a blunt comment planted above each line that failed. Accept and the comments land in your source. Reject and nothing was written.
+**Column 80: Criticize Function** scores the function under your cursor against a fourteen-dimension rubric, prints a card to the output channel, and offers you a **diff**: the function with a blunt comment planted above each line that failed. Accept and the comments land in your source. Reject and nothing was written.
 
     // C80 clock: reads the wall clock through Instant::now. Hidden wall-clock
     //     read. Untestable. Pass it in.
@@ -498,21 +523,96 @@ Nothing moves until you accept. It publishes nothing to the Problems panel eithe
 
 It is one gesture with two reading depths, and which one you use depends on why you pressed it.
 
-**If you are learning the craft, read the whole card.** The bottom half lists all fifteen dimensions with the state each one came back in, so you can see the questions that were asked as well as the ones that found something. A professor handing back an A+ still says why it is an A+, and a card where fourteen dimensions came back clean tells you which one to work on next. Each dimension names the principle behind it rather than just the line: not "line 14 mutates and returns" but command-query separation, Meyer 1988, a function answers a question or changes the world and never both. The principle is the part worth keeping.
+**If you are learning the craft, read the whole card.** The bottom half lists all fourteen dimensions with the state each one came back in, so you can see the questions that were asked as well as the ones that found something. A professor handing back an A+ still says why it is an A+, and a card where thirteen dimensions came back clean tells you which one to work on next. Each dimension names the principle behind it rather than just the line: not "line 14 mutates and returns" but command-query separation, Meyer 1988, a function answers a question or changes the world and never both. The principle is the part worth keeping.
 
 **If you are feeding a refactor effort, read the top half and stop.** Only rows above the evidence bar are elevated, and an elevated row carries the offending line, its number, and the principle it breaks. That is the worklist. The rows below the bar are there so you can tell a quiet dimension from an unasked one, not because you need to read them.
 
-**Nine of the fifteen dimensions can carry a blast radius**, and that is the number a refactor decision actually turns on. The honest fix for "this reads the wall clock" changes the signature, and a signature change edits every call site. So for those rows the gesture walks the call hierarchy one level up and reports what a fix would reach: *an honest fix to this signature reaches 14 call sites*. Six dimensions are body-local, the fix stays inside the function, and they carry no such line.
+**Eight of the fourteen dimensions can carry a blast radius**, and that is the number a refactor decision actually turns on. The honest fix for "this reads the wall clock" changes the signature, and a signature change edits every call site. So for those rows the gesture walks the call hierarchy one level up and reports what a fix would reach: *an honest fix to this signature reaches 14 call sites*. Six dimensions are body-local, the fix stays inside the function, and they carry no such line.
 
 When the walk cannot finish, **you get no line at all rather than a zero**. A cancelled walk, a rejected request from the language server, or a pathological fan-in all mean the same thing: nobody counted. "Touches 0 call sites" is a claim the walk never made, and you cannot tell a measured zero from an unmeasured one. A walk that ran and genuinely found nothing says so in words instead.
 
 ### What the model does, and what it is not allowed to do
 
-The findings are not the model's. Every one of them comes from a deterministic detector reading your code, so pressing the gesture twice on bytes you have not touched gives you the same card twice.
+**Ten of the fourteen findings are not the model's.** They come from deterministic detectors reading
+your code, so pressing the gesture twice on bytes you have not touched gives you the same ten rows
+twice.
 
-That is a deliberate reversal. An earlier build let a model decide what the findings were, and on three real functions at temperature zero, three runs each, not one produced the same finding set twice. On one of them the model returned ten findings on every run and not one appeared in all three.
+That is a deliberate reversal. An earlier build let a model decide every finding, and on three real
+functions at temperature zero, three runs each, not one produced the same finding set twice. On one of
+them the model returned ten findings on every run and not one appeared in all three.
 
-What the model does here is explain ONE finding a detector already made, in your terms, naming the principle. It is handed that finding and nothing else: not your function, not the other findings, not the card. It cannot add a row, it cannot remove one, and if it is unavailable, if your hardware tier has model calls turned off, or if the call fails, the card renders complete from the detectors and the channel says the explainer was skipped and why. The prose is a nicety on top of a finished output.
+**The other four are a model's judgement, and that changed in this release.** The honesty dimensions -
+does this function read the wall clock, a random generator, the process environment or a file - used
+to be 67 hardcoded patterns matching library calls someone had thought to write down. A row that came
+back `clean` meant "none of my patterns matched" while it read as "this function is honest". Those
+patterns are gone. A model reads the function instead and decides which of the four fire and on which
+lines.
+
+What that bought, measured against the patterns it replaced on 92 real functions: it found twenty
+things they could not see, including a project's own `unix_epoch_now_ms()` helper, a shell-out through
+`Command::new("ssh")`, a `Guid.NewGuid()` read as randomness, and two findings reached through a
+callee rather than the body. It missed **nothing** the patterns caught.
+
+What it costs is determinism on those four rows. They can differ between two presses on unchanged
+bytes, where the other ten cannot.
+
+**The model never writes the words and never moves a line.** It answers with line numbers. The
+comment's wording is the fixed phrase for that dimension, and the line it is planted above is read out
+of your document, so a comment can never quote a line you did not write.
+
+**No model, a closed tier, a failed call: those four rows come back `blind` with the reason, never
+`clean`.** A dimension nobody could judge is not a dimension that passed, and saying otherwise is the
+false certificate the patterns used to hand out. The other ten rows render complete regardless.
+
+### What this gives you that your linter does not
+
+The first question any developer asks, and it deserves a straight answer including the parts where
+your own toolchain wins.
+
+**Where your linter already answers, this product does not ask.** That is a rule rather than a
+preference, and it has already cost the rubric a dimension.
+
+- **`unused-param` was DELETED.** `cargo clippy` reports it out of the box as `unused_variables`, and
+  TypeScript reports it with no `tsconfig` at all - tsserver greys the parameter in your editor as
+  TS6133 before you have configured anything. C# has IDE0060 and Python has ruff's ARG001. What that
+  gives up, stated plainly: exported Go functions, which gopls skips because they may be address-taken
+  in another package, and Python projects that have not selected ARG.
+- **`undocumented` REFUSES in Rust, C# and Python**, naming the rule that answers it: `missing_docs`,
+  CS1591, `D103`. The row still appears on the card and says where to turn the real check on, which is
+  more use than quietly not asking. It still fires in **Go and TypeScript**, where nothing in either
+  toolchain reports a missing doc comment at all.
+
+**What no toolchain covers, measured rather than assumed.** One fixture per dimension per language,
+run through each language's own checker at the product's own thresholds:
+
+| dimension | why nothing else reports it |
+|---|---|
+| clock, prng, env, world | "does this read state the caller did not hand it" is a design question, not a rule violation |
+| adjacent-params | two neighbouring parameters of one type is a transposition HAZARD; `paint(y, x)` compiles fine |
+| bool-param | a boolean parameter is legal everywhere; the objection is that it names a decision the caller already made |
+| param-count | **clippy's `too_many_arguments` fires at 8 and this fires at 5**; ruff's `PLR0913` is opt-in and also looser. At five parameters, nothing in any of the five languages says a word |
+| nesting | **ruff's rule is opt-in AND preview-gated and fires at 6; this fires at 4.** Only Rust has a rule at all and it is restriction-tier plus a config file |
+| unenforced-precondition | it reads your doc comment and asks whether the body enforces what it promises |
+| cqs | answering a question and changing the world in one function breaks no compiler rule |
+| pass-through | forwarding arguments unchanged is valid code; the point is that the wrapper adds no depth |
+| unadmitted-failure | the function can fail in a way its signature never admits |
+| section-comment | a comment naming a section inside a body is the tell for mixed abstraction levels |
+
+**Three things it does that a linter architecturally cannot.**
+
+**It measures the blast radius.** Several dimensions carry a walk of the call hierarchy: *an honest fix
+to this signature reaches 14 call sites*. That number is what a refactor decision actually turns on
+and no lint rule computes it, because a lint rule is about one location.
+
+**It names the principle, not the line.** Not "line 14 mutates and returns" but command-query
+separation, Meyer 1988, a function answers a question or changes the world and never both.
+
+**It is about design, not correctness.** Every rule above is legal code that compiles and passes
+review. A linter tells you what is wrong. This tells you what is badly shaped, which is a different
+conversation and one your compiler will never start.
+
+**What it is NOT.** It is not a gate, it does not run in CI, it does not publish to the Problems
+panel, and it scores one function at a time. If you want something that fails a build, use a linter.
 
 ### When it refuses
 
@@ -527,15 +627,22 @@ Every refusal names its cause, in the channel and in the notification.
 
 Read this before you treat a row as a verdict.
 
-All fifteen dimensions have now been graded against a 138-row hand-labelled set, and the useful way to read the result is that **precision is strong and recall is not**.
+All fourteen dimensions have now been graded against a 138-row hand-labelled set, and the useful way to read the result is that **precision is strong and recall is not**. (The set was graded when the rubric still had fifteen; the deleted `unused-param` scored 100% precision and 100% recall on it, and its rows are simply gone from the counts below.)
 
-Fourteen of the fifteen produce no false positives on that set. Eleven of them also find everything they should: the wall-clock, PRNG and environment detectors, both parameter-type dimensions, the unused-parameter and parameter-count dimensions, the undocumented-public dimension, nesting depth and the section-comment tell all score 100% precision with 100% recall. The remaining four are the ones to know about. "Reads the world" scores 100% precision and 60% recall. "Can it fail in a way the signature never admits" scores 100% precision and 64% recall. The command/query dimension scores 100% precision and 29% recall. The pass-through dimension scores 86% precision and 50% recall, and it is the one detector that produced a false positive.
+Thirteen of the fourteen produce no false positives on that set. Nine of them also find everything they should: the wall-clock, PRNG and environment detectors, both parameter-type dimensions, the parameter-count dimension, the undocumented-public dimension, nesting depth and the section-comment tell all score 100% precision with 100% recall. The remaining four are the ones to know about. "Reads the world" scores 100% precision and 60% recall. "Can it fail in a way the signature never admits" scores 100% precision and 64% recall. The command/query dimension scores 100% precision and 29% recall. The pass-through dimension scores 86% precision and 50% recall, and it is the one detector that produced a false positive. The fourteenth, `unenforced-precondition`, is ungraded: the labelled set holds no positive for it, so it has no number in either column.
 
 So: when a row fires, it is very likely right. **When a row stays quiet, that is not a result.** "Reads the world" misses two of every five cases in the labelled set, and the command/query dimension misses seven of ten. A card with nothing on it means this pass found nothing, which is a different sentence from "there is nothing here".
 
 The labelled set is 138 rows and it is thin in places. Some dimensions rest on as few as four positive examples, so a 100% there is a much weaker claim than a 100% on thirty.
 
-**The honesty question is not answered whole.** The detectors find reads of the clock, the PRNG, the environment and the filesystem, because each of those is a list of spellings. They do NOT find a function reading a variable bound outside itself, which needs scope resolution and is not in this build. On the product's own canonical example of a dishonest function, the detectors catch the clock read and miss both the module-state read and the module-state write, and the module state is the headline dishonesty in that example. A quiet honesty block is not a certificate of honesty.
+**The honesty question is still not answered whole, and the precision and recall figures above no
+longer describe it.** Those four dimensions were graded when they were pattern lists; they are a
+model's judgement now, and nobody has re-run the labelled set against the new mechanism. What has been
+measured is the comparison in the section above: against the patterns, on 92 real functions, the model
+found twenty things they missed and missed nothing they caught. That is a comparison, not a precision
+figure, and it does not tell you the false-positive rate.
+
+A quiet honesty block is still not a certificate of honesty.
 
 Everything else you may have read about how often these dimensions fire is a signal rate on code the repo considers good. It says the channel is quiet. It does not say a flag is correct.
 
@@ -544,6 +651,100 @@ One dimension ships **scored but never elevated**, pending a decision: a section
 One more dimension deserves a warning even though it does appear on the worklist. "Does this state a precondition it never enforces" cannot reliably tell an obligation on you, the caller, from a plain description of what the function does. It now refuses to answer when it meets wording it cannot attribute, rather than reporting the function clean. **A quiet result from that dimension is not evidence your contract is enforced.**
 
 Nothing about this gesture was measured inside VS Code. Every number above came from a headless run.
+
+## Review Function (model)
+
+**Column 80: Review Function (model)** hands one function to a model and lets it write the review. It
+offers you the same kind of diff Criticize does: your function with comment blocks planted above the
+lines the model chose. Accept and they land. Reject and nothing was written.
+
+    // C80 unadmitted-failure: Three failure modes hide behind unwrap: no
+    //     argument, a non-numeric argument, and one too large for u128. All
+    //     three abort with a panic naming neither. main can return Result.
+    let id: u128 = std::env::args().nth(1).unwrap().parse().unwrap();
+
+### Why it exists
+
+Criticize's words are a lookup table. `Give them distinct types.` is byte-identical on every function
+in every repository forever. Two thirds of that comment is earned - the detector named the parameters
+and the types, and the caller walk measured the blast radius - and then the sentence that tells you
+what to DO is a constant.
+
+Only a model writes the other kind: *make `Shard(u64)` and `Lod(u64)` newtypes, so
+`warm_fs_metadata(lod, shard)` stops compiling.* It names this function's identifiers, this function's
+types, and the error you would actually get. A table cannot produce that and neither can a linter.
+
+### What the model is given
+
+Not just the function. Before it is asked anything, the gesture gathers:
+
+- **the diagnostics your own toolchain already published** for those lines - clippy, tsc, Roslyn, ruff.
+  It is told not to repeat them, because you can already read them.
+- **the function itself**, as you wrote it.
+- **the signature and doc comment of everything it calls**, resolved by your language server.
+- **the fourteen dimensions**, as prose, walked out of the same registry Criticize scores against, so
+  the two gestures are talking about the same rubric.
+
+### When to use it
+
+**Reach for it when the fixed phrase is not enough** and you want a second opinion on one function you
+are about to change. It is at its best on a function you already suspect, where you want the specific
+argument rather than the category.
+
+**Do not reach for it as a gate.** It is not repeatable enough to put in front of a commit, and it is
+not a linter. Criticize is the one that gives the same answer twice.
+
+### What it cannot do, measured
+
+Read this before you accept a comment.
+
+**It can be confidently wrong, and being specific makes that worse.** A generic true sentence is
+better in your source file than a specific false one, and this gesture produces the second kind. Real
+examples from a blind comparison, all of them rejected by an independent judge:
+
+- demanded a `Result` from a function whose body is `format!` on a string and a port number, inventing
+  a failure mode that cannot occur
+- called a function a shallow pass-through when the code visibly holds an init guard
+- recommended a discriminated union to C#
+
+**The model you point it at changes the answer more than anything else does.** Twenty real functions,
+comment blocks judged blind against Criticize's fixed phrases, judge never told which side was which:
+
+| model | won | lost |
+|---|---|---|
+| Opus | 19 | 1 |
+| GPT-5.6 (luna) | 12 | 8 |
+| Qwen3.8 27B, local | 10 | 10 |
+
+At the top of that table it beats the fixed phrases almost every time. At the bottom it is a coin
+flip against a lookup table. Every one of those models planted its comments successfully on ~100% of
+attempts, so **a review that lands cleanly tells you nothing about whether it is right**.
+
+**Press it twice on unchanged code and you can get a different review.** Three runs on the same
+twenty functions produced the same set of dimensions three times out of fifteen. The comment count
+moves too: six, then four, on code nobody touched. Criticize does not do this on its ten
+detector-decided rows, and that difference is the reason both gestures exist.
+
+**It is bounded.** At most six comment blocks per function and at most three above any one line, so a
+long function gets a review rather than a wall.
+
+**It never plants a comment on a line you did not write.** The model quotes the line its block belongs
+above, and the product finds that text in your function. A quote that matches nothing is dropped, and
+a quote matching two lines is dropped unless the model also names which. The output channel lists
+every block that was dropped and why.
+
+**A comment about your doc comment is dropped.** The gesture may only write inside the function, from
+its declaration down, so a block the model anchors on the doc block above it has nowhere to go. It is
+reported on the channel rather than silently discarded.
+
+**With no model it plants nothing** and says so. It does not fall back to the fixed phrases; that is
+Criticize's job and it is one press away.
+
+### It replaces its own comments, and Criticize's
+
+Both gestures strip every comment this product wrote before planting, so they cannot stack on each
+other. Criticize after Review replaces the review; Review after Criticize replaces the card's
+comments. Your own notes are untouched, including ones that open with the same marker.
 
 ## Cloud function generation
 
@@ -732,6 +933,7 @@ Every command is under the **Column 80** category in the palette.
 | Run TDD Tests | editor right-click > Column 80 |
 | Run Covering Tests | editor right-click > Column 80 |
 | Criticize Function | palette |
+| Review Function (model) | palette |
 | Select Hardware Tier | palette |
 | Add File to Model Context | editor right-click, Explorer right-click, editor tab right-click, panel title |
 | Add Selection to Model Context | editor right-click (with a selection), panel title |
@@ -750,6 +952,37 @@ Three keybindings ship, all three lifecycle:
 | `Escape` | dismiss the scoped ghost, when one is in force and the suggest widget is closed |
 
 The gestures ship with no default keybindings. Bind the ones you use through **Preferences: Open Keyboard Shortcuts** and search `column80`.
+
+## Reasoning and the local model
+
+Some local models reason before they answer. `column80.fnGenThinking` controls it and **the shipped
+answer is off**, which is measured rather than cautious.
+
+Twelve real C# functions generated and graded by `dotnet build`, `qwen3.8:27b`:
+
+| reasoning | token cap | compiled | per function | truncated |
+|---|---|---|---|---|
+| **off** | 2048 | **4 of 12** | **7.7s** | 0 |
+| on | 2048 | 1 of 12 | 68s | 9 of 12 |
+| on | 8192 | 3 of 12 | 86s | 0 |
+
+At the shipped cap, reasoning is billed to the same token budget as the answer, so the model reasons
+until the budget is gone and the code is cut off before it is written. Raising the cap fixes that
+completely, and reasoning still compiles no better while taking **eleven times longer**. It is not a
+truncation problem you can tune around.
+
+If you turn it on anyway, raise the token budget with it or you will get truncated bodies rather than
+slow ones.
+
+**The setting is a free string, not a drop-down, because the vocabulary belongs to the model.** In one
+afternoon: `qwen3-coder:30b` refuses reasoning outright, `qwen3:8b` accepts `on`, `qwen3.8:27b`
+accepts `on` and `low`, and OpenAI's 5.6 line accepts only `none` under a different field name. Any
+value this extension does not recognise is passed through verbatim, and if the model refuses it the
+output channel prints the model's own words.
+
+**It reaches the local (ollama) backend only.** Anthropic is sent no reasoning field on purpose: there
+is no single value valid across its models, and omitting it never errors. The Claude Code CLI offers
+no control at all - its model decides. Setting this while a cloud provider is selected does nothing.
 
 ## Known limits
 
@@ -782,6 +1015,14 @@ Stated plainly. Most have the fix direction already recorded.
 - **No context persistence.** Blocks die with the window, deliberately.
 - **Cancelling a Claude Code generation leaves orphans.** Escape kills the `claude` process, not its process group, so any tool subprocess it already spawned runs to completion. A process-group kill is not portable to Windows, so this ships as a known gap rather than a half-fix. Nothing has been observed writing into the CLI's working directory, which is checked and empty after every round measured so far.
 - **A block whose file changed while its document was closed is lost, not re-found.** The extension re-checks the recorded lines when it next reads them and gives up if they no longer match. There is no content search anywhere, in either direction, so a block that drifted while nobody was watching is never hunted for. Renames are the exception that is handled: a block follows its file. Deletes lose it, and so does saving an untitled buffer.
+
+**Review and criticize**
+
+- **The review gesture is not repeatable.** Two presses on unchanged code produced the same set of dimensions three times in fifteen, and the comment count moved between runs. Use Criticize when you need the same answer twice.
+- **The review gesture's quality tracks the model, hard.** Judged blind against the fixed phrases on twenty real functions: Opus won 19-1, GPT-5.6 12-8, a local 27B 10-10. All three planted their comments successfully about equally often, so a review that lands cleanly is no evidence it is right.
+- **A review comment about your doc comment is dropped.** The gesture may only write from the declaration line down, so a block anchored above it has nowhere to go. It is reported on the channel, not silently discarded.
+- **The four honesty dimensions are no longer covered by the labelled set.** They were graded as pattern lists and are a model's judgement now. The comparison against the patterns they replaced stands (twenty findings they missed, none of theirs lost); a false-positive rate for the new mechanism has not been measured.
+- **Nothing about either gesture was measured inside VS Code** beyond a smoke test that both commands register, complete a round, and never write to the file before you accept. Every quality number came from a headless run.
 
 **Tests**
 

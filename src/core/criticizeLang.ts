@@ -1,18 +1,25 @@
 /**
  * The five language profiles Criticize reads code through.
  *
- * ONE BUILD WITH FIVE TABLES, PROVEN BEFORE IT WAS BUILT. All five honesty
- * grammars were written side by side in the scout harness and not one of them
- * needed its own control flow: a clock is a list of spellings, and so are a
- * PRNG, the environment and a file read. The per-language cost in this
- * subsystem sits in the later dimensions, where "what is a parameter" and
- * "what does public mean" genuinely differ.
+ * WHAT A PROFILE MAY CONTAIN, ruled 2026-08-29 and recorded in the amendment
+ * at the end of session-v64/goal.md. Every pattern here describes the
+ * LANGUAGE'S OWN SYNTAX: how a comment opens, how a string that spans lines is
+ * spelled, how a parameter list is written, what enforces a precondition, what
+ * writes to state that outlives the call. That syntax is fixed and published,
+ * and it does not vary with what the developer imported.
+ *
+ * What a profile may NOT contain is a name table for a third party's API. The
+ * honesty block used to carry four of those per language, naming the library
+ * calls someone had thought to write down, plus a fifth naming logging calls.
+ * They decided dimensions 1 to 4, and a row that read `clean` meant only that
+ * none of the listed spellings appeared. All of it is gone; a model reads the
+ * function instead, in `criticizeHonestyModel.ts`.
  *
  * The registry is oracleFor's pattern, copied because it has survived five
  * languages: a strategy list, `undefined` for an unregistered language so the
  * caller refuses by NAMING the language rather than falling back to a guess.
  *
- * WHAT THE TABLES ARE AND ARE NOT. Every rate quoted below is a SIGNAL rate on
+ * WHAT THE RATES ARE AND ARE NOT. Every rate quoted below is a SIGNAL rate on
  * code the repo already considers good, measured by the scout across five real
  * corpora. It says the channel is quiet. It says nothing about whether any one
  * flag is correct; no detector's precision has been measured yet, and until a
@@ -64,7 +71,7 @@ const CS_VERBATIM_STRINGS: readonly VerbatimString[] = [
 ];
 
 /**
- * Dimension 8 fires at or above this many parameters.
+ * Dimension 7 fires at or above this many parameters.
  *
  * CHOSEN, not measured. Nothing in the scout's corpora says where the knee is,
  * and the honest position is that a threshold on parameter count is a taste
@@ -77,7 +84,7 @@ const CS_VERBATIM_STRINGS: readonly VerbatimString[] = [
 const PARAM_COUNT_THRESHOLD = 5;
 
 /**
- * Dimension 13 fires at or above this block depth.
+ * Dimension 12 fires at or above this block depth.
  *
  * CHOSEN, not measured, on the same terms as the parameter threshold. Depth 4
  * is two levels above the depth an ordinary guard-plus-loop body reaches, so a
@@ -90,49 +97,16 @@ const NESTING_THRESHOLD = 4;
 // ===========================================================================
 
 /**
- * Rust. The language already enforces most of the honesty frame mechanically:
- * `&` declares reading, `&mut` declares mutation. What it cannot declare is a
- * read of the universe, which is why the clock leg is Rust's highest at 3.6%.
+ * Rust. The language declares in its own syntax what most languages leave to
+ * a convention: `&` declares reading, `&mut self` declares mutation, and a
+ * `Result` declares failure. That is why `receiverMutation` is `mut-self` here
+ * and why the failure rule reads a panic against a missing `Result`.
  */
 export const RUST_CRITICIZE_LANG: CriticizeLang = {
   languageIds: ["rust"],
   displayName: "Rust",
-  honesty: {
-    clock: [
-      /\bInstant::now\s*\(/,
-      /\bSystemTime::now\s*\(/,
-      /\bUtc::now\s*\(/,
-      /\bLocal::now\s*\(/,
-    ],
-    // `rand::thread_rng` is covered by the bare spelling: `::` ends a word, so
-    // the boundary holds for both the qualified and the imported form.
-    prng: [
-      /\bthread_rng\s*\(/,
-      /\brand::random\s*(::<[^>]*>)?\s*\(/,
-      /\brand::rng\s*\(/,
-      /\bfrom_entropy\s*\(/,
-      /\bOsRng\b/,
-    ],
-    env: [
-      /\benv::var(_os)?\s*\(/,
-      /\benv::vars\s*\(/,
-      /\benv::args\s*\(/,
-    ],
-    world: [
-      /\bFile::open\s*\(/,
-      /\bfs::read(_to_string|_dir)?\s*\(/,
-      /\bfs::metadata\s*\(/,
-      /\bread_to_string\s*\(\s*&?\s*mut\b/,
-    ],
-  },
   lineComment: "//",
   verbatimStrings: [RUST_RAW_STRING],
-  logWrites: [
-    /\b(e)?print(ln)?!\s*\(/,
-    /\btracing::\w+!/,
-    /\blog::\w+!/,
-    /\b(info|warn|error|debug|trace)!\s*\(/,
-  ],
   craft: {
     paramStyle: "rust",
     boolTypes: ["bool", "&bool"],
@@ -143,7 +117,10 @@ export const RUST_CRITICIZE_LANG: CriticizeLang = {
     blocks: "braces",
     publicSurface: { kind: "keyword", pattern: /^\s*pub\b/ },
     undocumentedDetail: "public surface with no doc comment",
-    // `?` is a guard in exactly the sense dimension 10 means: it hands the
+    // rustc's own lint, allow-by-default and enabled with
+    // `#![warn(missing_docs)]`. Verified reporting this exact finding.
+    undocumentedRule: "rustc's `missing_docs`, enabled with `#![warn(missing_docs)]`",
+    // `?` is a guard in exactly the sense dimension 9 means: it hands the
     // failure back to the caller instead of letting a stated precondition go
     // unchecked. Rust is the one language of the five whose guard vocabulary
     // is mostly punctuation.
@@ -182,61 +159,18 @@ export const RUST_CRITICIZE_LANG: CriticizeLang = {
 
 /**
  * TypeScript, JavaScript and the two React dialects. One profile rather than
- * four, because the honesty spellings are the runtime's and the runtime is the
- * same one; the type system, which is what actually differs, is not what these
- * tables read.
+ * four, because everything a profile now carries is syntax the four dialects
+ * share: the same comment marker, the same backtick literal, the same
+ * parameter list, the same `export`. The type system is what actually differs
+ * between them, and nothing here reads it.
  */
 export const TS_CRITICIZE_LANG: CriticizeLang = {
   languageIds: ["typescript", "javascript", "typescriptreact", "javascriptreact"],
   displayName: "TypeScript",
-  honesty: {
-    clock: [
-      /\bDate\.now\s*\(/,
-      /\bnew Date\s*\(\s*\)/,
-      /\bperformance\.now\s*\(/,
-      /\bhrtime\s*(\.\w+)?\s*\(/,
-    ],
-    prng: [
-      /\bMath\.random\s*\(/,
-      /\brandomUUID\s*\(/,
-      /\brandomBytes\s*\(/,
-      /\bgetRandomValues\s*\(/,
-    ],
-    env: [
-      /\bprocess\.env\b/,
-      /\bprocess\.argv\b/,
-    ],
-    // RECEIVER-AWARE, and that is the whole difference between flagging a
-    // file read and flagging the fix for one. A bare `/\breadFile\(/` fires on
-    // `ctx.files.readFile(p)`, which is the honest shape this dimension's own
-    // source line prescribes: the reader came in through the signature. It was
-    // the only false positive on the 138-row labelled set (row ts-030), and in
-    // this repo's own src/ the bare pattern fires on 29 lines that are not
-    // `fs.`, three of which are interface member DECLARATIONS and not calls at
-    // all. `this.` is kept, and is not the same case: a read through the
-    // receiver's own state did not come through the signature either, and the
-    // labelled set's one TypeScript world true positive (ts-002) is exactly
-    // that wrapper spelling.
-    world: [
-      /\bfs(Promises|p)?\.read\w*\s*\(/,
-      /\bfs(Promises|p)?\.(exists|stat|lstat|open)\w*\s*\(/,
-      /\bfs(Promises|p)?\.createReadStream\s*\(/,
-      /\bthis\.read(File|Text|Bytes)\w*\s*\(/,
-      // The `Sync` suffix is node's own naming for the `fs` module function,
-      // so a bare one is the import rather than an injected reader; this
-      // repo's injected readers are all spelled `readFile`.
-      /(?<![\w.])readFileSync\s*\(/,
-    ],
-  },
   lineComment: "//",
   // JavaScript's only spanning literal is the backtick, which the shared
   // masker already carries.
   verbatimStrings: [],
-  logWrites: [
-    /\bconsole\.\w+\s*\(/,
-    /\blogger\.\w+\s*\(/,
-    /\blog\.\w+\s*\(/,
-  ],
   craft: {
     paramStyle: "typescript",
     boolTypes: ["boolean"],
@@ -266,47 +200,17 @@ export const TS_CRITICIZE_LANG: CriticizeLang = {
 // ===========================================================================
 
 /**
- * C#. `Guid.NewGuid` sits in the PRNG table on purpose: a fresh guid is a read
- * of a generator the signature never mentions, and it is why the C# PRNG leg
- * has anything to say at all where the bare `new Random` spelling is rare. The
- * per-language PRNG rates this comment used to quote were measured over one
- * chosen directory per language, and widening the Rust corpus to the whole
- * repository moved its 0.0% to a non-zero number, so the ordering they claimed
- * is not a fact about the languages.
+ * C#. Two knobs here are the language rather than a taste.
+ * `underscoreMeansUnused` is false because a leading underscore in C# names a
+ * FIELD and says nothing about an unused parameter, and the mutation rule has
+ * to demand a trailing semicolon, because an object-initializer clause is
+ * spelled exactly like a static write and ends in a comma or a brace instead.
  */
 export const CS_CRITICIZE_LANG: CriticizeLang = {
   languageIds: ["csharp"],
   displayName: "C#",
-  honesty: {
-    clock: [
-      /\bDateTime\.(Now|UtcNow|Today)\b/,
-      /\bDateTimeOffset\.(Now|UtcNow)\b/,
-      /\bStopwatch\.GetTimestamp\s*\(/,
-      /\bEnvironment\.TickCount\d*\b/,
-    ],
-    prng: [
-      /\bnew Random\s*\(/,
-      /\bRandom\.Shared\b/,
-      /\bGuid\.NewGuid\s*\(/,
-      /\bRandomNumberGenerator\.\w+\s*\(/,
-    ],
-    env: [
-      /\bEnvironment\.(GetEnvironmentVariable|GetEnvironmentVariables|GetCommandLineArgs|ExpandEnvironmentVariables)\s*\(/,
-    ],
-    world: [
-      /\bFile\.(Read|Open|Exists)\w*\s*\(/,
-      /\bnew StreamReader\s*\(/,
-      /\bDirectory\.(GetFiles|EnumerateFiles|Exists)\s*\(/,
-    ],
-  },
   lineComment: "//",
   verbatimStrings: CS_VERBATIM_STRINGS,
-  logWrites: [
-    /\bConsole\.(Write|WriteLine|Error)\b/,
-    /\b_?[Ll]og(ger)?\.\w+\s*\(/,
-    /\bDebug\.(Write|WriteLine|Log)\s*\(/,
-    /\bTrace\.\w+\s*\(/,
-  ],
   craft: {
     paramStyle: "csharp",
     boolTypes: ["bool", "Boolean", "bool?"],
@@ -320,6 +224,9 @@ export const CS_CRITICIZE_LANG: CriticizeLang = {
     blocks: "braces",
     publicSurface: { kind: "keyword", pattern: /\b(public|protected)\b/ },
     undocumentedDetail: "public surface with no doc comment",
+    // Roslyn reports this as CS1591 once `GenerateDocumentationFile` is set,
+    // which is the standard way a C# library ships its XML docs. Verified.
+    undocumentedRule: "Roslyn's CS1591, with `<GenerateDocumentationFile>true</GenerateDocumentationFile>`",
     guards: [
       /\bthrow\s+new\s+Argument\w*Exception\b/,
       /\bArgumentNullException\.ThrowIfNull\b/,
@@ -350,65 +257,18 @@ export const CS_CRITICIZE_LANG: CriticizeLang = {
 // ===========================================================================
 
 /**
- * Python. Two things about this profile are measured rather than chosen.
- *
- * `random.` carries a trailing dot so a variable a developer happened to call
- * `random_thing` is not a PRNG read; the dishonesty is the module, not the
- * name.
- *
- * The world table cannot ask for a mode argument even if it wanted to, because
- * the detector reads a MASKED line and a mode string is already spaces there.
- * So the question this leg asks is "is a file opened or read", not "is it
- * opened for reading", and it is the widest of the five legs as a result. It is
- * the loudest leg on every corpus measured, and it is the first place a larger
- * labelled set should look.
+ * Python. The profile that pays the most for not being a parser. Blocks are
+ * counted by INDENTATION, because a brace counter reads every Python function
+ * as depth zero and depth zero renders exactly like a clean function. Public
+ * surface is the leading-underscore convention, which the language enforces
+ * nowhere, so the detail line says so rather than the refusal.
  */
 export const PY_CRITICIZE_LANG: CriticizeLang = {
   languageIds: ["python"],
   displayName: "Python",
-  honesty: {
-    clock: [
-      /\btime\.time\s*\(/,
-      /\btime\.monotonic\s*\(/,
-      /\btime\.perf_counter\s*\(/,
-      /\bdatetime\.(now|utcnow|today)\s*\(/,
-      /\bdate\.today\s*\(/,
-    ],
-    prng: [
-      /\brandom\.\w+\s*\(/,
-      /\bnp\.random\.\w+/,
-      /\bnumpy\.random\.\w+/,
-      /\buuid4\s*\(/,
-      /\bsecrets\.\w+\s*\(/,
-    ],
-    env: [
-      /\bos\.environ\b/,
-      /\bos\.getenv\s*\(/,
-      /\bsys\.argv\b/,
-    ],
-    // `open` STAYS receiver-blind except through `self` and `cls`, and that is
-    // measured rather than assumed. Python's `open` is a builtin, so a bare
-    // call is never an injected reader, and the dotted forms in the corpus are
-    // `wave.open`, `zipfile.open` and `Path.open`, every one of them a real
-    // file read: tightening this leg the way TypeScript's needed cost 37 true
-    // positives on the measured Python corpus and removed no false one. The
-    // two receivers that could not be a module or a path are excluded.
-    world: [
-      /(?<!self\.)(?<!cls\.)\bopen\s*\(/,
-      /\.read_text\s*\(/,
-      /\.read_bytes\s*\(/,
-      /\bos\.listdir\s*\(/,
-    ],
-  },
   lineComment: "#",
   // Python's triple quotes are already the shared masker's spanning list.
   verbatimStrings: [],
-  logWrites: [
-    /\bprint\s*\(/,
-    /\blogg(ing|er)\.\w+\s*\(/,
-    /\bLOG(GER)?\.\w+\s*\(/,
-    /\bsys\.std(out|err)\.write\s*\(/,
-  ],
   craft: {
     paramStyle: "python",
     boolTypes: ["bool"],
@@ -423,6 +283,10 @@ export const PY_CRITICIZE_LANG: CriticizeLang = {
     publicSurface: { kind: "leading-underscore" },
     undocumentedDetail:
       "public by the leading-underscore convention, which python enforces nowhere, and no docstring",
+    // ruff reports this as `D103`, selected with `--select D` or a `[tool.ruff]`
+    // pydocstyle ruleset. Verified reporting this exact finding on a fixture
+    // that trips the detector below.
+    undocumentedRule: "ruff's `D103`, selected with `--select D`",
     guards: [/\braise\b/, /^\s*assert\b/],
     mutations: [/^\s*self\.\w+(\.\w+)*\s*(\+|-|\*|\/|\|)?=[^=]/, /^\s*global\s+\w/],
     receiverMutation: "none",
@@ -435,41 +299,19 @@ export const PY_CRITICIZE_LANG: CriticizeLang = {
 // ===========================================================================
 
 /**
- * Go. The quietest of the five on every honesty leg, and that is the language
- * doing its job: `(T, error)` returns and an explicit `os` package make most
- * reads of the world visible in the signature already.
+ * Go. The language says most of this in its own syntax: `(T, error)` returns
+ * make failure visible in the signature, a capital letter is what exports, and
+ * a pointer receiver is what declares a mutation. The failure rule reads a
+ * dropped error rather than a panic, which is measured: in the standard
+ * library 3.4% of functions drop an error against 4.3% that panic, and the
+ * dropped one is what a Go developer recognises as the craft failure.
  */
 export const GO_CRITICIZE_LANG: CriticizeLang = {
   languageIds: ["go"],
   displayName: "Go",
-  honesty: {
-    clock: [
-      /\btime\.Now\s*\(/,
-      /\btime\.Since\s*\(/,
-    ],
-    prng: [
-      /\brand\.(Int|Float|Perm|Read|New|Seed|Shuffle|Uint|N)\w*\s*\(/,
-    ],
-    env: [
-      /\bos\.Getenv\s*\(/,
-      /\bos\.LookupEnv\s*\(/,
-      /\bos\.Environ\s*\(/,
-      /\bos\.Args\b/,
-    ],
-    world: [
-      /\bos\.(Open|OpenFile|ReadFile|ReadDir|Stat|Lstat)\s*\(/,
-      /\bioutil\.Read(File|Dir|All)\s*\(/,
-    ],
-  },
   lineComment: "//",
   // Go's backtick literal is already the shared masker's spanning list.
   verbatimStrings: [],
-  logWrites: [
-    /\bfmt\.(Print|Fprint)\w*\s*\(/,
-    /\blog\.\w+\s*\(/,
-    /\bslog\.\w+\s*\(/,
-    /\bt\.Log\w*\s*\(/,
-  ],
   craft: {
     paramStyle: "go",
     boolTypes: ["bool"],
@@ -513,9 +355,9 @@ const PROFILES: readonly CriticizeLang[] = [
  * tables for it.
  *
  * `undefined` is the honest state and the caller must refuse by naming the
- * language. Handing back a neighbouring profile would run Python's spellings
- * over Rust and report a clean function that was never examined, which is the
- * silent zero this whole subsystem is built to avoid.
+ * language. Handing back a neighbouring profile would count Rust's braces by
+ * Python's indentation and report a clean function that was never examined,
+ * which is the silent zero this whole subsystem is built to avoid.
  */
 export function criticizeLangFor(languageId: string): CriticizeLang | undefined {
   return PROFILES.find((profile) => profile.languageIds.includes(languageId));
@@ -524,7 +366,7 @@ export function criticizeLangFor(languageId: string): CriticizeLang | undefined 
 // ===========================================================================
 // Reading a declaration head
 //
-// Dimensions 5 to 8, 11, 12 and 14 all need the same three facts about a
+// Dimensions 5 to 7, 10, 11 and 13 all need the same three facts about a
 // signature: what the parameters are, what it gives back, and what it is
 // called. Each of the five languages spells those in a different order, and
 // two of them put something in front of the parameter list that is NOT a

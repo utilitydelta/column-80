@@ -31,6 +31,40 @@
 // perfect quiet by doing nothing: a function that is blatantly dishonest in all
 // four ways at once must flag all four, in every language.
 //
+// WHAT WAS REMOVED FROM THIS FILE ON 2026-08-29, AND WHY.
+//
+// A human ruled that the product carries no hardcoded string table matching a
+// third party's code, and that dimensions 1 to 4 become a model's judgement
+// instead. The ruling is the amendment at the end of session-v64/goal.md,
+// ruling 3. The four honesty tables and the logWrites table are gone from
+// `CriticizeLang`, and `HONESTY_DETECTORS` now refuses out of the synchronous
+// pass: every leg is `blind` until a model round has run, which no `Detector`
+// can do because `run` is synchronous and pure.
+//
+// So every row below that asserted a SPELLING decided something asserts a
+// thing that no longer exists, and a row that cannot fail is worse than no row.
+// These were removed rather than weakened:
+//
+//   - `registry: every profile carries four non-empty honesty tables and a
+//     logWrites table` - both fields are deleted.
+//   - the 20 RECALL cells and `recall: the finding's line is a DOCUMENT line` -
+//     every one of them needed a spelling to fire.
+//   - `precision: a variable literally named random_thing is not a PRNG read` -
+//     there is no PRNG table to keep off it.
+//   - `quiet: the six log spellings the contract names are all silent` and the
+//     five per-language quiet rows that asserted dimension 4 stayed off a log
+//     write - the log guard was the logWrites table, and it went with it.
+//   - both `anti-collapse` rows - they measured a name table's recall floor.
+//
+// The fixtures those rows used are KEPT, because the masking, doc-harvest and
+// shape rows still read them, and because the finding-assembly half they used
+// to prove now lives in `criticizeHonestyModel.ts` with its own oracle.
+//
+// Reworked rather than deleted, and each says so at its own row: the precision
+// rows now assert against `maskLine` and `maskedBody` directly, which is the
+// infrastructure that stays and was always what they were really testing, and
+// `shape: the honesty block never refuses` INVERTED.
+//
 // Run: node --test test/blind-v61-p1-honesty.test.cjs
 
 const test = require("node:test");
@@ -145,14 +179,12 @@ function assertOutcomeShape(outcome, dimension, u) {
   );
 
   if (outcome.state === "blind") {
-    // The contract permits no blind leg in the honesty block, but if one ever
-    // appears it refuses BY NAME or it is a defect.
+    // A refusal names the CAUSE in a sentence. It no longer has to name the
+    // language: the v61 contract's only honesty refusal was "this language
+    // registers no spellings", and since 2026-08-29 the refusal is that no
+    // model round has run, which is true in all five languages at once.
     assert.equal(typeof outcome.reason, "string", `${where}: blind must carry a reason`);
     assert.ok(outcome.reason.trim().length > 0, `${where}: a blind outcome with an empty reason is a defect`);
-    assert.ok(
-      outcome.reason.includes(DISPLAY[u.languageId]),
-      `${where}: a blind reason names the language, got ${show(outcome.reason)}`,
-    );
     assert.ok(
       outcome.reason.trim().split(/\s+/).length >= 5,
       `${where}: a blind reason is a sentence naming the cause, got ${show(outcome.reason)}`,
@@ -218,35 +250,42 @@ function assertOutcomeShape(outcome, dimension, u) {
   }
 }
 
-function outcome(dimension, u) {
-  const o = run(dimension, u);
-  assertOutcomeShape(o, dimension, u);
-  return o;
-}
+/**
+ * The spellings the precision fixtures deliberately bury in a comment, a string
+ * literal or a doc example.
+ *
+ * This list is TEST DATA and not a detector. It exists so a precision row can
+ * name what it buried and prove the row is not vacuous: a fixture that lost its
+ * spelling would otherwise pass every masking assertion by containing nothing.
+ */
+const BURIED_SPELLINGS = [
+  "Instant::now", "SystemTime::now", "thread_rng", "env::var", "File::open",
+  "Date.now", "Math.random", "process.env", "fs.readFile",
+  "DateTime.UtcNow", "new Random(", "Environment.GetEnvironmentVariable", "File.ReadAllText",
+  "datetime.now", "random.seed", "random.random", "random.choice", "os.environ", "open(",
+  "time.Now", "rand.Int", "os.Getenv", "os.ReadFile",
+];
 
-function assertClean(dimension, u, why) {
-  const o = outcome(dimension, u);
-  assert.equal(
-    o.state,
-    "clean",
-    `${DISPLAY[u.languageId]} ${u.name}: ${dimension} must be clean - ${why} - got ${show(o)}`,
-  );
-}
+const buriedIn = (lines) => BURIED_SPELLINGS.filter((spelling) => lines.some((l) => l.includes(spelling)));
 
-function assertAllFourClean(u, why) {
-  for (const dim of HONESTY_DIMS) assertClean(dim, u, why);
-}
-
-/** The single-finding recall shape: exactly one finding, on the hit line. */
-function assertSingleHit(dimension, u) {
-  const o = outcome(dimension, u);
-  assert.equal(o.state, "flagged", `${DISPLAY[u.languageId]} ${u.name}: ${dimension} must fire - got ${show(o)}`);
-  assert.equal(o.findings.length, 1, `${DISPLAY[u.languageId]} ${u.name}: exactly one ${dimension} finding, got ${show(o.findings)}`);
-  const f = o.findings[0];
-  assert.equal(f.line, u.startLine + u.hitIndex, `${DISPLAY[u.languageId]} ${u.name}: the finding's DOCUMENT line`);
-  assert.equal(f.evidence, u.lines[u.hitIndex].trim(), `${DISPLAY[u.languageId]} ${u.name}: the finding's evidence`);
-  for (const other of HONESTY_DIMS) {
-    if (other !== dimension) assertClean(other, u, `only ${dimension} is present in this slice`);
+/**
+ * Nothing the fixture buried survives into the masked body.
+ *
+ * This is what the precision rows were always really asserting. Until
+ * 2026-08-29 they asserted it one step downstream, through four detectors that
+ * read the masked body through a name table; the tables are gone and the
+ * masker is not, so the row now reads the masker directly.
+ */
+function assertMaskedAway(u, why) {
+  const where = `${DISPLAY[u.languageId]} ${u.name}`;
+  const buried = buriedIn(u.lines);
+  assert.ok(buried.length > 0, `${where}: the fixture must contain a buried spelling or this row proves nothing`);
+  const body = maskedBody(unitOf(u), langFor(u.languageId)).join("\n");
+  for (const spelling of buried) {
+    assert.ok(
+      !body.includes(spelling),
+      `${where}: \`${spelling}\` must not survive into the masked body - ${why}`,
+    );
   }
 }
 
@@ -1448,25 +1487,9 @@ test("registry: javascript, typescriptreact and javascriptreact resolve to the T
   }
 });
 
-test("registry: every profile carries four non-empty honesty tables and a logWrites table", () => {
-  for (const id of LANGS) {
-    const lang = langFor(id);
-    assert.ok(lang.honesty && typeof lang.honesty === "object", `${id} has an honesty table`);
-    for (const dim of HONESTY_DIMS) {
-      const table = lang.honesty[dim];
-      assert.ok(Array.isArray(table), `${id}.honesty.${dim} is an array`);
-      assert.ok(table.length > 0, `${id}.honesty.${dim} is not empty`);
-      for (const re of table) {
-        assert.ok(re instanceof RegExp, `${id}.honesty.${dim} holds RegExps, got ${show(re)}`);
-      }
-    }
-    assert.ok(Array.isArray(lang.logWrites), `${id}.logWrites is an array`);
-    assert.ok(lang.logWrites.length > 0, `${id}.logWrites is not empty`);
-    for (const re of lang.logWrites) {
-      assert.ok(re instanceof RegExp, `${id}.logWrites holds RegExps, got ${show(re)}`);
-    }
-  }
-});
+// REMOVED 2026-08-29: `registry: every profile carries four non-empty honesty
+// tables and a logWrites table`. Both fields are deleted from CriticizeLang by
+// ruling 3 of the amendment at the end of session-v64/goal.md.
 
 test("registry: lineComment is `#` for Python and `//` for the other four", () => {
   for (const id of LANGS) {
@@ -1498,61 +1521,61 @@ test("detectors: every detector names its curriculum line and its axis", () => {
 });
 
 // ===========================================================================
-// RECALL - 20 cells
+// RECALL - REMOVED 2026-08-29
 // ===========================================================================
-
-for (const dim of HONESTY_DIMS) {
-  for (const id of LANGS) {
-    const u = RECALL[dim][id];
-    test(`recall: dimension ${dim} fires in ${DISPLAY[id]} (${u.name})`, () => {
-      assertSingleHit(dim, u);
-    });
-  }
-}
-
-test("recall: the finding's line is a DOCUMENT line, so a slice moved down the file moves with it", () => {
-  const low = clockRust;
-  const high = { ...unitOf(clockRust), startLine: 12_040 };
-  const lowLine = outcome("clock", low).findings[0].line;
-  assert.equal(lowLine, low.startLine + low.hitIndex, "the slice at line 41");
-
-  const o = detectorFor("clock").run(high, langFor("rust"));
-  assert.equal(o.state, "flagged", "the same slice 12,000 lines down still fires");
-  assert.equal(o.findings.length, 1, "still exactly one finding");
-  assert.equal(o.findings[0].line, 12_040 + clockRust.hitIndex, "the line moved with startLine");
-  assert.equal(o.findings[0].line - lowLine, 12_040 - low.startLine, "the offset is the startLine delta");
-});
+// The 20 recall cells and the document-line row all needed a spelling to fire,
+// and there are no spellings. Recall for dimensions 1 to 4 is now a property of
+// a model's answer, measured against a hand-labelled set rather than asserted
+// here, and the line arithmetic they pinned moved to `criticizeHonestyModel.ts`.
+// Ruling 3, the amendment at the end of session-v64/goal.md.
+//
+// The RECALL fixtures stay: the shape sweep and the inverted refusal row below
+// both read them.
 
 // ===========================================================================
 // PRECISION - masking decides this whole subsystem
 // ===========================================================================
 
+// Each of these four families asserted a clean detector outcome until
+// 2026-08-29, and now asserts the masker directly. The fixture, the buried
+// spelling and the property are unchanged; what moved is which layer answers.
+
 for (const u of LINE_COMMENT_MASKED) {
-  test(`masking: a clock/prng/env/world spelling inside a LINE COMMENT is clean (${DISPLAY[u.languageId]})`, () => {
-    assertAllFourClean(u, "the spellings sit inside line comments");
+  test(`masking: a spelling inside a LINE COMMENT does not reach the body (${DISPLAY[u.languageId]})`, () => {
+    assertMaskedAway(u, "the spellings sit inside line comments");
   });
 }
 
 for (const u of BLOCK_COMMENT_MASKED) {
-  test(`masking: spellings inside a multi-line BLOCK COMMENT are clean (${DISPLAY[u.languageId]})`, () => {
-    assertAllFourClean(u, "the spellings sit inside a block comment that spans lines");
+  test(`masking: spellings inside a multi-line BLOCK COMMENT do not reach the body (${DISPLAY[u.languageId]})`, () => {
+    assertMaskedAway(u, "the spellings sit inside a block comment that spans lines");
   });
 }
 
 for (const u of STRING_MASKED) {
-  test(`masking: spellings inside a STRING LITERAL are clean (${DISPLAY[u.languageId]})`, () => {
-    assertAllFourClean(u, "the spellings sit inside a string literal");
+  test(`masking: spellings inside a STRING LITERAL do not reach the body (${DISPLAY[u.languageId]})`, () => {
+    assertMaskedAway(u, "the spellings sit inside a string literal");
   });
 }
 
 for (const u of DOC_EXAMPLE_MASKED) {
-  test(`masking: spellings inside a DOC EXAMPLE are clean (${DISPLAY[u.languageId]})`, () => {
-    assertAllFourClean(u, "the spellings sit in the doc example, and dimensions 1-4 read maskedBody only");
+  test(`masking: spellings inside a DOC EXAMPLE do not reach the body (${DISPLAY[u.languageId]})`, () => {
+    assertMaskedAway(u, "the spellings sit in the doc example, and the body walk starts at bodyIndex");
   });
 }
 
-test("masking: a `//` inside a URL string does not swallow the real clock read on the same line", () => {
-  assertSingleHit("clock", urlThenClockGo);
+test("masking: a `//` inside a URL string does not swallow the real code after it on the same line", () => {
+  // The inverse of the four families above, and the reason they are not
+  // vacuous: a masker that blanked everything would pass all of them.
+  const body = maskedBody(unitOf(urlThenClockGo), langFor("go")).join("\n");
+  assert.ok(
+    body.includes("time.Now()"),
+    `a real call after a URL's // must survive the mask, got ${show(body)}`,
+  );
+  assert.ok(
+    !body.includes("reports.internal"),
+    `the URL is string content and must be blanked, got ${show(body)}`,
+  );
 });
 
 test("maskLine: a line comment is blanked and the column positions survive", () => {
@@ -1615,70 +1638,78 @@ test("maskedBody: index i corresponds to lines[bodyIndex + i], and the doc is no
   }
 });
 
-test("precision: a variable literally named `random_thing` is not a PRNG read", () => {
-  assertAllFourClean(randomThingPy, "`random_thing` and `random_choice` are names, not `random.` calls");
-  assertAllFourClean(randomThingRust, "`random_thing` and `random_index` are names, not `rand::random`");
-});
+// REMOVED 2026-08-29: `precision: a variable literally named random_thing is
+// not a PRNG read`. It asserted that the Python PRNG table's trailing dot kept
+// it off a variable name, and there is no PRNG table. The fixtures stay for the
+// shape sweep.
 
 // ===========================================================================
-// QUIET - log writes are never world reads
+// QUIET - REMOVED 2026-08-29
 // ===========================================================================
+// The five per-language quiet rows and `quiet: the six log spellings the
+// contract names are all silent` asserted that dimension 4 stayed off a log
+// call. The guard that held them off it WAS the logWrites table, and ruling 3
+// deletes it: a model handed the function is told in the prompt that writing
+// output is not reading the world. There is nothing left here to assert
+// without asserting a model's answer, and this file reaches no model.
+//
+// One row survives, reworked, because it is about the masker rather than about
+// a table: a log call is CODE and must reach the body intact.
 
 for (const id of LANGS) {
   const u = LOG_WRITERS[id];
-  test(`quiet: a function that only writes a log never fires dimension world (${DISPLAY[id]})`, () => {
-    assertClean("world", u, "a log write is not a world read; the contract rules it out by name");
-    assertAllFourClean(u, "writing a log is not a dishonest signature in any dimension");
+  test(`masking: a log call is code and reaches the body intact (${DISPLAY[id]})`, () => {
+    const body = maskedBody(unitOf(u), langFor(id)).join("\n");
+    const call = { rust: "println!", typescript: "console.log", csharp: "Console.WriteLine", python: "print(", go: "fmt.Println" }[id];
+    assert.ok(
+      u.lines.some((l) => l.includes(call)),
+      `the ${DISPLAY[id]} fixture must contain \`${call}\` or this row proves nothing`,
+    );
+    assert.ok(body.includes(call), `${DISPLAY[id]}: \`${call}\` is code and must survive the mask, got ${show(body)}`);
   });
 }
-
-test("quiet: the six log spellings the contract names are all silent", () => {
-  const spellings = [
-    ["rust", "println!", logRust],
-    ["typescript", "console.log", logTs],
-    ["python", "print(", logPy],
-    ["go", "fmt.Println", logGo],
-    ["csharp", "Console.WriteLine", logCs],
-    ["typescript", "logger.info", logTs],
-    ["python", "logger.info", logPy],
-  ];
-  for (const [id, spelling, u] of spellings) {
-    assert.ok(
-      u.lines.some((l) => l.includes(spelling)),
-      `the ${DISPLAY[id]} fixture must actually contain \`${spelling}\` or this row proves nothing`,
-    );
-    assertClean("world", u, `\`${spelling}\` writes a log`);
-  }
-});
 
 // ===========================================================================
 // ORDERING AND DEDUP
 // ===========================================================================
 
-test("ordering: findings come back sorted by line ascending", () => {
-  const o = outcome("clock", threeClocksThreeLines);
-  assert.equal(o.state, "flagged", `three clock reads must fire - got ${show(o)}`);
-  assert.equal(o.findings.length, 3, `one finding per clock line, got ${show(o.findings)}`);
-  const lines = o.findings.map((f) => f.line);
-  assert.deepEqual(lines, [...lines].sort((a, b) => a - b), `sorted ascending, got ${show(lines)}`);
+// Both rows drove the ORDER and the DEDUP off a name table's findings until
+// 2026-08-29. The finding assembly moved to `criticizeHonestyModel.ts` and has
+// its own oracle; what stays here, and what these two rows always rested on, is
+// that the body walk hands the body back one entry per line in document order.
+// A finding set can only be ordered and deduplicated by line if the walk under
+// it is.
+
+test("ordering: the body walk hands back one entry per line, in document order", () => {
+  const u = threeClocksThreeLines;
+  const body = maskedBody(unitOf(u), langFor("rust"));
+  assert.equal(body.length, u.lines.length - u.bodyIndex, `one masked entry per body line, got ${show(body)}`);
+  const reads = [];
+  for (let i = 0; i < body.length; i += 1) {
+    if (body[i].includes("::now")) reads.push(u.startLine + u.bodyIndex + i);
+  }
   assert.deepEqual(
-    lines,
-    [
-      threeClocksThreeLines.startLine + 2,
-      threeClocksThreeLines.startLine + 4,
-      threeClocksThreeLines.startLine + 6,
-    ],
-    "the three document lines",
+    reads,
+    [u.startLine + 2, u.startLine + 4, u.startLine + 6],
+    "the three reads sit on three ascending document lines",
   );
+  assert.deepEqual(reads, [...reads].sort((a, b) => a - b), `ascending, got ${show(reads)}`);
 });
 
-test("dedup: two clock reads on ONE line are one (dimension, line) pair", () => {
-  assertSingleHit("clock", twoClocksOneLine);
-  const evidence = outcome("clock", twoClocksOneLine).findings[0].evidence;
+test("dedup: two reads on ONE line are ONE body entry, and the whole line survives", () => {
+  const u = twoClocksOneLine;
+  const body = maskedBody(unitOf(u), langFor("rust"));
+  const hits = body.filter((l) => l.includes("Instant::now"));
+  assert.equal(hits.length, 1, `two reads on one line are one entry, got ${show(hits)}`);
   assert.equal(
-    (evidence.match(/Instant::now/g) || []).length,
+    (hits[0].match(/Instant::now/g) || []).length,
     2,
-    "the evidence still quotes the whole line, both reads included",
+    "the entry still carries the whole line, both reads included",
+  );
+  assert.equal(
+    u.lines[u.bodyIndex].trim(),
+    "let (start, checkpoint) = (Instant::now(), Instant::now());",
+    "and the evidence a finding would quote is that line, trimmed",
   );
 });
 
@@ -1760,46 +1791,17 @@ test("docLines: a function with no doc at all returns []", () => {
 });
 
 // ===========================================================================
-// ANTI-COLLAPSE CONTROL
+// ANTI-COLLAPSE CONTROL - REMOVED 2026-08-29
 // ===========================================================================
-// A detector set reaches perfect quiet by doing nothing. Every precision row
-// above passes on an empty implementation. These rows do not.
-
-for (const id of LANGS) {
-  const u = COLLAPSE[id];
-  test(`anti-collapse: a function dishonest in all four ways flags all four (${DISPLAY[id]})`, () => {
-    const flagged = [];
-    for (const dim of HONESTY_DIMS) {
-      const o = outcome(dim, u);
-      assert.equal(
-        o.state,
-        "flagged",
-        `${DISPLAY[id]} ${u.name}: ${dim} reads the ${dim} on its own line and must fire - got ${show(o)}`,
-      );
-      assert.ok(o.findings.length >= 1, `${DISPLAY[id]}: ${dim} flagged with a finding`);
-      flagged.push(dim);
-    }
-    assert.deepEqual([...flagged].sort(), [...HONESTY_DIMS].sort(), "all four dimensions fired");
-  });
-}
-
-test("anti-collapse: across every fixture in this file the detector set is neither silent nor indiscriminate", () => {
-  let flaggedUnits = 0;
-  let cleanUnits = 0;
-  for (const u of ALL_UNITS) {
-    let anyFlagged = false;
-    for (const dim of HONESTY_DIMS) {
-      if (outcome(dim, u).state === "flagged") anyFlagged = true;
-    }
-    if (anyFlagged) flaggedUnits += 1;
-    else cleanUnits += 1;
-  }
-  // 25 recall + ordering/dedup + url + anti-collapse fixtures must flag;
-  // every masking, log-write and doc fixture must not. Both halves must be
-  // non-trivial or the set is doing nothing, or flagging everything.
-  assert.ok(flaggedUnits >= 25, `the set must fire on the dishonest fixtures, fired on ${flaggedUnits}`);
-  assert.ok(cleanUnits >= 25, `the set must stay quiet on the masked fixtures, quiet on ${cleanUnits}`);
-});
+// Both rows measured a name table's recall floor: a set that reaches perfect
+// quiet by doing nothing had to fire on a function dishonest in all four ways,
+// and had to flag some fixtures and not others. Nothing in the synchronous pass
+// can fire any more, by design, so the control has nothing to control. The
+// equivalent guard against a judge that says nothing is a determinism and
+// agreement measurement against a hand-labelled set, and it is not a unit test.
+// Ruling 3, the amendment at the end of session-v64/goal.md.
+//
+// The COLLAPSE fixtures stay, and the refusal row below reads them.
 
 // ===========================================================================
 // GLOBAL SHAPE SWEEP
@@ -1817,20 +1819,36 @@ test("shape: every outcome from every detector on every fixture honours the cont
   assert.ok(ALL_UNITS.length >= 50, `the fixture set is the population under test, got ${ALL_UNITS.length}`);
 });
 
-test("shape: the honesty block never refuses - all four legs answer in all five languages", () => {
-  // The contract's `blind` example is dimension 14 in TypeScript. Dimensions
-  // 1 to 4 are Tier A: one build, five tables, and nothing in them can be
-  // language-blind. A blind honesty outcome is a defect, and if one ever
-  // appears assertOutcomeShape has already checked that it at least refuses
-  // by name.
+test("shape: the honesty block ALWAYS refuses out of the synchronous pass - this row INVERTED on 2026-08-29", () => {
+  // It read `the honesty block never refuses - all four legs answer in all five
+  // languages`, and the v61 contract was right about the engine it described:
+  // five name tables, nothing in them language-blind. Ruling 3 deleted the
+  // tables and handed the four dimensions to a model, and a `Detector.run` is
+  // synchronous and pure while a model round is neither. So the synchronous
+  // pass cannot answer, and the one thing it must not do is say `clean`: a
+  // clean row from a judgement that never ran is the same false certificate the
+  // tables handed out, which is why they were deleted.
+  //
+  // The fixtures are the recall cells and the four-way dishonest functions, so
+  // this row is read on the code most likely to tempt a shortcut answer.
   for (const id of LANGS) {
     for (const dim of HONESTY_DIMS) {
-      const o = run(dim, RECALL[dim][id]);
-      assert.notEqual(
-        o.state,
-        "blind",
-        `${DISPLAY[id]} ${dim}: the honesty block is Tier A and has no blind leg - got ${show(o)}`,
-      );
+      for (const u of [RECALL[dim][id], COLLAPSE[id]]) {
+        const o = run(dim, u);
+        assert.equal(
+          o.state,
+          "blind",
+          `${DISPLAY[id]} ${u.name} / ${dim}: no model round has run, so the only honest state is blind - got ${show(o)}`,
+        );
+        assert.ok(
+          /model/i.test(o.reason),
+          `${DISPLAY[id]} ${dim}: the refusal says what would have to happen to answer, got ${show(o.reason)}`,
+        );
+        assert.ok(
+          !/clean|honest function/i.test(o.reason),
+          `${DISPLAY[id]} ${dim}: a refusal never implies an all-clear, got ${show(o.reason)}`,
+        );
+      }
     }
   }
 });

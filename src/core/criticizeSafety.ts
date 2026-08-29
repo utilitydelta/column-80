@@ -1,5 +1,5 @@
 /**
- * Dimension 14: can this function fail in a way its signature never admits.
+ * Dimension 13: can this function fail in a way its signature never admits.
  *
  * ONE IDEA, FIVE DETECTORS, and the meaning genuinely changes per language.
  * This is the dimension that proves the per-language axis is real rather than a
@@ -185,8 +185,8 @@ function unadmittedFailure(fn: FunctionUnderReview, lang: CriticizeLang): Dimens
 }
 
 /**
- * Dimension 14, alone in its module because it is alone in its axis: this is
- * the one dimension of the eleven that is purely about SAFETY rather than about
+ * Dimension 13, alone in its module because it is alone in its axis: this is
+ * the one dimension of the ten that is purely about SAFETY rather than about
  * the next reader.
  */
 export const SAFETY_DETECTORS: readonly Detector[] = [

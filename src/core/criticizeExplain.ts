@@ -98,7 +98,31 @@ export function findingKey(finding: DetectorFinding): string {
 }
 
 /**
- * Prose the card will accept, or undefined.
+ * Why an explainer round produced no prose.
+ *
+ * THE WHOLE POINT IS THAT THESE THREE STOP SHARING A SPELLING. Before this
+ * type, a thrown transport and a model that answered with a shrug both came
+ * back as `""`, and the channel said `explained 0 of 2 elevated row(s)` for
+ * both. That line was printed on all 44 host runs of the v62 release with
+ * ollama not running at all, and nobody could tell from it that there was no
+ * backend. A measurement that cannot distinguish a dead server from a quiet
+ * model measures nothing.
+ *
+ * `unavailable` is an outage and the developer wants to know. `silent` and
+ * `unusable` are the model's own doing and the card is complete without them.
+ */
+export type ExplainFailure =
+  | { kind: "unavailable"; detail: string }
+  | { kind: "silent"; detail: string }
+  | { kind: "unusable"; detail: string };
+
+/** Where a round reports what went wrong. Optional, because the failure is not
+ *  the caller's to handle: prose is enrichment and its absence is a shipped
+ *  state. A caller that passes nothing behaves exactly as before. */
+export type ExplainReporter = (failure: ExplainFailure) => void;
+
+/**
+ * Prose the card will accept, or the reason it was refused.
  *
  * DROPPING IS THE SAFE DIRECTION. A row that loses its explanation still ships
  * its title, its curriculum line and its evidence: the channel says less
@@ -107,20 +131,34 @@ export function findingKey(finding: DetectorFinding): string {
  *
  * Three things are dropped: a non-string (a transport that answered with
  * something else), prose that is empty or whitespace-only (a model that never
- * really spoke), and prose over `EXPLANATION_MAX_LINES`.
+ * really spoke), and prose over `EXPLANATION_MAX_LINES`. The first two are the
+ * same event to a reader - the model said nothing usable - and the third is
+ * the model ignoring the format, which is worth its own word because it is the
+ * one a prompt change can fix.
  */
-function admissible(prose: unknown): string | undefined {
+function judge(prose: unknown): { text: string } | ExplainFailure {
   if (typeof prose !== "string") {
-    return undefined;
+    return { kind: "silent", detail: `the transport answered with a ${typeof prose} rather than text` };
   }
   const trimmed = prose.trim();
   if (trimmed === "") {
-    return undefined;
+    return { kind: "silent", detail: "the model answered with nothing" };
   }
-  if (trimmed.split(/\r?\n/).length > EXPLANATION_MAX_LINES) {
-    return undefined;
+  const count = trimmed.split(/\r?\n/).length;
+  if (count > EXPLANATION_MAX_LINES) {
+    return {
+      kind: "unusable",
+      detail: `the model answered in ${count} lines, past the ${EXPLANATION_MAX_LINES}-line bound`,
+    };
   }
-  return trimmed;
+  return { text: trimmed };
+}
+
+/** The prose, or undefined. `attachExplanations` wants the drop and not the
+ *  reason: a map handed in by any caller has no round behind it to report. */
+function admissible(prose: unknown): string | undefined {
+  const verdict = judge(prose);
+  return "text" in verdict ? verdict.text : undefined;
 }
 
 /**
@@ -253,15 +291,20 @@ export function buildExplainPrompt(auth: ExplainAuthorization): string {
  * a failure means. Inventing prose when the model never spoke is the one thing
  * forbidden here, and the empty string is how "it never spoke" is spelled.
  *
- * A CANCELLATION is not a failure and is rethrown. The developer pressing
- * escape is an instruction, not an outage, and swallowing it here would spell
- * "you stopped me" with the same value as "the model said nothing usable" -
- * two different events the gesture has to tell apart, because one of them
- * gets a toast and the other does not.
+ * IT NOW SAYS WHICH SILENCE IT WAS. The empty return is unchanged, because the
+ * card's behaviour must not move; `report` is the side channel that names the
+ * cause, and it fires exactly once per round that produced no prose. A dead
+ * backend and a shrugging model are different events and the channel has to
+ * print different sentences for them, which is the defect this parameter
+ * closes.
+ *
+ * A CANCELLATION is not a failure and is rethrown, and it is NOT reported. The
+ * developer pressing escape is an instruction, not an outage.
  */
 export async function explainFinding(
   auth: ExplainAuthorization,
   transport: ExplainTransport,
+  report?: ExplainReporter,
 ): Promise<string> {
   let answer: unknown;
   try {
@@ -270,14 +313,45 @@ export async function explainFinding(
     if (isCancellation(err)) {
       throw err;
     }
+    report?.({ kind: "unavailable", detail: failureDetail(err) });
     return "";
   }
-  return admissible(answer) ?? "";
+  const verdict = judge(answer);
+  if ("text" in verdict) {
+    return verdict.text;
+  }
+  report?.(verdict);
+  return "";
 }
 
-/** VS Code spells a cancellation `CancellationError`, and its own thrown
- *  instances carry the name `Canceled`. Matched on the name rather than on the
- *  class, because `src/core` never imports vscode. */
+/** What the channel prints for a thrown transport. The message, first line
+ *  only: a stack in a status line buries the sentence that matters. */
+function failureDetail(err: unknown): string {
+  const message =
+    typeof err === "object" && err !== null && typeof (err as { message?: unknown }).message === "string"
+      ? (err as { message: string }).message
+      : String(err);
+  const first = message.split(/\r?\n/)[0]?.trim() ?? "";
+  return first === "" ? "the transport failed and said nothing" : first;
+}
+
+/**
+ * VS Code spells a cancellation `CancellationError`, and its own thrown
+ * instances carry the name `Canceled`. Matched on the name rather than on the
+ * class, because `src/core` never imports vscode.
+ *
+ * EXPORTED SO THE CALLER CAN AGREE WITH IT. `explainFinding` rethrows on this
+ * predicate, and a caller catching with a NARROWER one tallies the user's own
+ * cancel as an unreachable backend and carries on to the next row. That is
+ * exactly what `inFlight.isCancellation` did here: it takes only an `Error`
+ * named `AbortError`, so two of the three spellings this function rethrows came
+ * out of the gesture wearing the outage sentence. Found by the phase 1
+ * adversarial review, with the channel line as evidence.
+ */
+export function isExplainCancellation(err: unknown): boolean {
+  return isCancellation(err);
+}
+
 function isCancellation(err: unknown): boolean {
   if (typeof err !== "object" || err === null) {
     return false;

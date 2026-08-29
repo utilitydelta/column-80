@@ -19,6 +19,27 @@ export interface TierRow {
   fnGenModel?: string;
   /** Absent = full offload, ollama schedules. Present = the carve. */
   fnGenNumGpu?: number;
+  /**
+   * Ollama's `think`, for a tier whose model reasons by default.
+   *
+   * ON THE ROW, NOT ON `DEFAULT_FNGEN_CONFIG`, and that is deliberate. `think`
+   * has no config default by design - `readFnGenConfig` keeps the key ABSENT
+   * when nothing configures it, and a blind row pins that discipline - because
+   * an explicit `undefined` and an absent key are different objects to the
+   * deep-equality the config path rests on. Putting `false` in the default
+   * broke that row.
+   *
+   * It also belongs here on the merits: the shipped default `qwen3-coder:30b`
+   * CANNOT think (ollama refuses `think:true` with "does not support
+   * thinking"), so a config-level false would be inert for it and would only
+   * ever matter for a model chosen by a tier or by the user.
+   *
+   * Reasoning is billed to maxTokens. Measured on `qwen3:8b` over twelve C#
+   * generations: thinking off gave 0 compiled at 3,692ms median with no empty
+   * replies; thinking on gave 0 compiled at 52,395ms median with ELEVEN OF
+   * TWELVE replies empty - the budget was gone before any code was emitted.
+   */
+  fnGenThink?: boolean;
   /** True while the tier has never been validated on real hardware. */
   provisional: boolean;
 }
@@ -32,7 +53,29 @@ export interface TierRow {
 //   and nominal-16GB boxes (~15.9GB) below it; the 30b keeps ~7.6GB
 //   CPU-resident under the carve, which a 16GB box cannot spare.
 export const TIER_TABLE: readonly TierRow[] = [
-  { id: "24gb", minVramMB: 20480, minRamMB: 0, fnGenModel: DEFAULT_FNGEN_CONFIG.model, provisional: true },
+  // 24GB gets the biggest model that fits WHOLE beside the FIM model:
+  // `qwen3.8:27b` is 18GB and the 1.5b FIM model is 1GB, which clears 20GB with
+  // room. It reasons by default, hence the explicit false.
+  {
+    id: "24gb",
+    minVramMB: 20480,
+    minRamMB: 0,
+    fnGenModel: "qwen3.8:27b",
+    fnGenThink: false,
+    provisional: true,
+  },
+  // THE CARVE IS BACK, AND ITS REMOVAL WAS A REAL REGRESSION CAUGHT BEFORE IT
+  // SHIPPED. It was dropped while the default was briefly `qwen3:8b` (5.2GB),
+  // where it is genuinely unnecessary: a 5.2GB model plus a 1GB FIM model both
+  // fit whole in 16GB. The default then reverted to `qwen3-coder:30b` on the
+  // generation measurement, and these two rows - written in terms of
+  // `DEFAULT_FNGEN_CONFIG.model` rather than a literal - silently followed it.
+  //
+  // That left an 18.6GB model on a 16GB card with no layer cap, which is the
+  // exact configuration the header above says thrashes: ollama reloads at
+  // 2-4.6s and silently pushes the 1.5b FIM model to CPU, "the worst outcome
+  // (spike-proven)". A row expressed against a constant inherits every change
+  // to that constant, including the ones it was never reasoned about.
   {
     id: "16gb-large-ram",
     minVramMB: 15360,
@@ -41,6 +84,9 @@ export const TIER_TABLE: readonly TierRow[] = [
     fnGenNumGpu: REFERENCE_CARVE_NUM_GPU,
     provisional: false,
   },
+  // The 12-16GB band keeps the smaller fallback. It followed the default to an
+  // 18.6GB model for the same reason as the row above, which no 12GB card can
+  // hold at all.
   {
     id: "16gb-low-ram",
     minVramMB: 12288,
@@ -63,6 +109,7 @@ export interface TierSelection {
   fnGenEnabled: boolean;
   fnGenModel?: string;
   fnGenNumGpu?: number;
+  fnGenThink?: boolean;
   provisional: boolean;
   /** Present iff fnGenEnabled is false: the honest line the UI shows. */
   message?: string;
@@ -80,6 +127,7 @@ function selectionFromRow(row: TierRow, message?: string): TierSelection {
     fnGenEnabled: true,
     fnGenModel: row.fnGenModel,
     ...(row.fnGenNumGpu !== undefined ? { fnGenNumGpu: row.fnGenNumGpu } : {}),
+    ...(row.fnGenThink !== undefined ? { fnGenThink: row.fnGenThink } : {}),
     provisional: row.provisional,
   };
 }
@@ -176,6 +224,14 @@ export function applyTier(config: FnGenConfig, sel: TierSelection, explicitFnGen
   delete out.numGpu;
   if (carve !== undefined) {
     out.numGpu = carve;
+  }
+  // THE THINK FLAG RIDES THE ROW'S TAG, exactly as the carve does. A tier whose
+  // model reasons by default carries `fnGenThink: false`; if the user has
+  // overridden the model, the row's flag is about a model they are not running
+  // and must not follow them to it. Reasoning is billed to maxTokens, so a
+  // wrong value here is a model that thinks until its budget is gone.
+  if (model === sel.fnGenModel && sel.fnGenThink !== undefined) {
+    out.think = sel.fnGenThink;
   }
   return out;
 }

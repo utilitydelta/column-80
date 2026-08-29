@@ -235,9 +235,16 @@ function attachments(text, token) {
 // The five fixtures
 //
 // Every one of them is a function a developer would press this gesture on: it
-// reads a clock, and it takes a bool. The Rust and Go pair carry the doc hole in
-// both directions, which is why each language appears with a documented and an
-// undocumented shape.
+// takes a bool, and it does one more thing wrong on a BODY line. The Rust and Go
+// pair carry the doc hole in both directions, which is why each language appears
+// with a documented and an undocumented shape.
+//
+// AMENDED 2026-08-29. The body line used to be a clock read. The four honesty
+// dimensions became a model judgement that day and no longer fire in the
+// synchronous pass (ruling 3, the amendment at the end of session-v64/goal.md),
+// so the Rust specimen's body line is an unadmitted panic instead. The property
+// under test is WHERE a body finding's comment lands, not which dimension it
+// came from.
 // ---------------------------------------------------------------------------
 
 const RUST_DOCUMENTED = {
@@ -251,8 +258,8 @@ const RUST_DOCUMENTED = {
     "    /// Parses the header.",
     "    #[inline]",
     "    pub fn parse_header(&self, raw: &str, flag: bool) -> u32 {",
-    "        let now = Instant::now();",
-    "        raw.len() as u32 + flag as u32 + now.elapsed().as_secs() as u32",
+    "        let now = self.clock.unwrap();",
+    "        raw.len() as u32 + flag as u32 + now",
     "    }",
     "}",
     "",
@@ -340,9 +347,9 @@ const PY_DOCUMENTED = {
   end: /return a \+ now/,
   text: [
     "class Store:",
-    "    def widen(self, a, flag):",
+    "    def widen(self, a: int, flag: bool) -> float:",
     '        """Widens the value."""',
-    "        now = time.time()",
+    "        now = time.time() if flag else 0.0",
     "        return a + now",
     "",
   ].join("\n"),
@@ -451,9 +458,9 @@ test("the second press plants the SAME comment above the SAME code line, dimensi
     placed.map((a) => [a.dimension, a.code]),
     [
       ["bool-param", "pub fn parse_header(&self, raw: &str, flag: bool) -> u32 {"],
-      ["clock", "let now = Instant::now();"],
+      ["unadmitted-failure", "let now = self.clock.unwrap();"],
     ],
-    "the contract's own specimen: clock on the clock line, bool-param on the head",
+    "the contract's own specimen: the body finding on its body line, bool-param on the head",
   );
 });
 
@@ -461,14 +468,25 @@ test("the second press plants the SAME comment above the SAME code line, dimensi
 // Symptom 2: the card behind it
 // ===========================================================================
 
-test("a documented Rust function still reads as documented once the comments are in it", () => {
-  const first = press(RUST_DOCUMENTED.text, RUST_DOCUMENTED);
-  assert.strictEqual(rowState(first.card, "undocumented"), "clean", "press 1: it has a `///`");
-  const second = press(first.accepted, RUST_DOCUMENTED);
+// MOVED FROM RUST TO TYPESCRIPT on 2026-08-29. The guard is S62-7's: a comment
+// this product planted sits between the doc block and the declaration head, and
+// must not blind the doc walk into reporting a documented function as
+// undocumented. `undocumented` now DELEGATES in Rust (to `missing_docs`), so the
+// row could no longer be expressed there - it would have asserted a refusal and
+// proved nothing about the doc walk.
+//
+// TypeScript is one of the two languages where the dimension still asks, and it
+// carries the same shape: a `/** */` block above the head with the planted
+// comment landing between them. The Go row below covers the mirror case, where
+// `//` is BOTH the doc prefix and this product's comment token.
+test("a documented TypeScript function still reads as documented once the comments are in it", () => {
+  const first = press(TS_DOCUMENTED.text, TS_DOCUMENTED);
+  assert.strictEqual(rowState(first.card, "undocumented"), "clean", "press 1: it has a `/** */`");
+  const second = press(first.accepted, TS_DOCUMENTED);
   assert.strictEqual(
     rowState(second.card, "undocumented"),
     "clean",
-    "the planted block sits between the `///` and the head, and blinded the doc walk",
+    "the planted block sits between the doc block and the head, and blinded the doc walk",
   );
   assert.doesNotMatch(second.accepted, /C80 undocumented/, "a finding that is not real");
 });

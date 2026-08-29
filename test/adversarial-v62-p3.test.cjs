@@ -202,12 +202,18 @@ async function press(source, { duringResolve, decide = "accept", languageId = "r
   return { channel, presented, state, doc };
 }
 
+// AMENDED 2026-08-29: the body line was `let started = Instant::now();` and its
+// clock finding was one of this fixture's two elevated rows. The four honesty
+// dimensions became a model judgement that day and no longer fire in the
+// synchronous pass (ruling 3, the amendment at the end of session-v64/goal.md).
+// An unadmitted panic replaces it: same line, same shape, still a BODY finding,
+// so the rows that count comments and dimensions still count two of each.
 const METHOD = [
   "use std::time::Instant;",
   "impl Parser {",
   "    /// Parses a header.",
   "    pub fn parse_header(&self, raw: &str, flag: bool) -> Header {",
-  "        let started = Instant::now();",
+  "        let started = self.clock.unwrap();",
   "        Header::from(raw, started, flag)",
   "    }",
   "}",
@@ -297,7 +303,7 @@ test("HIGH: the capture sits below the resolve await, and fn-gen's sits above it
 // phase 3 gives the strip a write path.
 //
 // `stripC80` removes any line whose trimmed text starts with `// C80 `, and
-// counts it only when what follows is one of the fifteen dimension ids. So a
+// counts it only when what follows is one of the fourteen dimension ids. So a
 // line the product did not plant is deleted and reported as nothing, and the
 // offered line the human reads before opening the diff under-reports the
 // deletion they are being asked to approve.
@@ -353,7 +359,7 @@ test("MED: a hand-written `// C80 ...` note is deleted and counted as nothing", 
 // F3's fix ("delete only what you count") was expected to shrink this to almost
 // nothing, and it did: the surviving case is a string literal containing a
 // literal `// C80 <dimension-id>: ` head, which is byte-for-byte the shape the
-// product emits. `clock` is one of the fifteen ids, so the strip counts it and
+// product emits. `clock` is one of the fourteen ids, so the strip counts it and
 // therefore deletes it.
 //
 // Closing it needs multi-line string state across four grammars (Rust `r#""#`,
@@ -408,9 +414,14 @@ test("HIGH (S62-7): the second accept moves the body comment above the declarati
   let text = [
     "impl P {",
     "    /// Doc.",
+    // The body line's finding was the clock read until 2026-08-29, when the four
+    // honesty dimensions became a model judgement and stopped firing in the
+    // synchronous pass (ruling 3, the amendment at the end of
+    // session-v64/goal.md). An unadmitted panic is the replacement: it is a BODY
+    // finding, which is the whole point of this row.
     "    pub fn f(&self, flag: bool) -> u64 {",
-    "        let t = Instant::now();",
-    "        t.elapsed().as_secs()",
+    "        let t = self.counter.unwrap();",
+    "        t + 1",
     "    }",
     "}",
   ].join("\n");
@@ -450,10 +461,10 @@ test("HIGH (S62-7): the second accept moves the body comment above the declarati
   }
   const body = text.split("\n");
   const headAt = body.findIndex((l) => l.includes("pub fn f"));
-  const clockAt = body.findIndex((l) => l.includes("C80 clock:"));
+  const clockAt = body.findIndex((l) => l.includes("C80 unadmitted-failure:"));
   assert.ok(
     clockAt > headAt,
-    "the clock finding is on a body line and its comment belongs in the body; " +
+    "the unadmitted-failure finding is on a body line and its comment belongs in the body; " +
       "after the second accept it sits above the declaration. Elevated per press: " +
       JSON.stringify(presses),
   );
@@ -582,7 +593,7 @@ test("nothing above the bar opens no diff, and the card still renders", async ()
   assert.equal(run.presented.length, 0, "an empty diff tab is worse than no diff tab");
   assert.ok(run.channel.some((l) => l.includes("nothing to propose")), run.channel.join("\n"));
   assert.ok(run.channel.some((l) => l.includes("Criticize rubric for add")), "the card is the product");
-  assert.ok(run.channel.some((l) => l.includes("The rubric, all fifteen dimensions")));
+  assert.ok(run.channel.some((l) => l.includes("The rubric, all fourteen dimensions")));
 });
 
 test("nothing planted but something stale IS a proposal, and the card still renders", async () => {
@@ -636,7 +647,7 @@ test("the enrichment steps cannot change what the card says", async () => {
   const run = await press(METHOD);
   // The card reaches the channel as ONE appendLine carrying the whole render.
   const card = run.channel.find((l) => l.startsWith("Criticize rubric")).split("\n");
-  assert.ok(card.length > 15, "fifteen dimensions and their headings");
+  assert.ok(card.length > 15, "fourteen dimensions and their headings");
   assert.equal(
     card.filter((l) => l.includes("C80 ")).length,
     0,
@@ -668,14 +679,18 @@ test("the region never begins below the declaration head", () => {
 });
 
 test("Python's first press keeps the docstring and puts head findings above the def", () => {
+  // The body finding was `started = time.time()` until 2026-08-29, when the four
+  // honesty dimensions became a model judgement (ruling 3, the amendment at the
+  // end of session-v64/goal.md). A command that also answers is the replacement:
+  // a body finding on a body line, which is all this row needs.
   const lines = [
     "import time",
     "",
     "",
     "def parse_header(raw: str, flag: bool) -> str:",
     '    """Parses a header."""',
-    "    started = time.time()",
-    "    return raw + str(started)",
+    "    global PARSED",
+    "    return raw",
   ];
   const text = lines.join("\n");
   const PY = criticizeLangFor("python");
@@ -686,7 +701,7 @@ test("Python's first press keeps the docstring and puts head findings above the 
   const out = (text.slice(0, region.start) + plan.text + text.slice(region.end)).split("\n");
   const def = out.findIndex((l) => l.startsWith("def parse_header"));
   const doc = out.findIndex((l) => l.includes('"""Parses a header."""'));
-  const clock = out.findIndex((l) => l.includes("# C80 clock:"));
+  const clock = out.findIndex((l) => l.includes("# C80 cqs:"));
   const boolParam = out.findIndex((l) => l.includes("# C80 bool-param:"));
   assert.ok(doc > def, "Fork A's docstring is preserved and stays under the def");
   assert.ok(boolParam >= 0 && boolParam < def, "a head-line finding lands above the declaration");

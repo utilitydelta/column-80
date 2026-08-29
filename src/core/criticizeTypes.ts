@@ -119,7 +119,7 @@ export interface ParsedParam {
 }
 
 /**
- * How dimension 14 changes MEANING across the five languages.
+ * How dimension 13 changes MEANING across the five languages.
  *
  * One idea, five detectors: "can this fail in a way the signature never
  * admits". Rust answers with a panic against a plain return type, Go with a
@@ -172,13 +172,13 @@ export type PublicSurface =
   | { kind: "leading-underscore" };
 
 /**
- * The knobs dimensions 5 to 15 read, which is where the per-language cost of
+ * The knobs dimensions 5 to 14 read, which is where the per-language cost of
  * this subsystem actually sits.
  *
- * The honesty block above needed five name tables and no control flow. This
- * block does not get off so lightly: "what is a parameter", "what is public"
- * and "what enforces a precondition" are genuinely five different questions,
- * and dimension 14 is five different detectors wearing one dimension id.
+ * "What is a parameter", "what is public" and "what enforces a precondition"
+ * are genuinely five different questions, and dimension 13 is five different
+ * detectors wearing one dimension id. All of it is the language's own syntax,
+ * which is what keeps it on this interface at all.
  */
 export interface CriticizeCraft {
   /** How the parameter list is spelled. Drives `parseParams`. */
@@ -200,10 +200,32 @@ export interface CriticizeCraft {
    *  depth zero, and that zero is spelled exactly like a clean result. */
   blocks: "braces" | "indentation";
   publicSurface: PublicSurface;
-  /** The line dimension 9 speaks with. Python's names the fact that the
+  /** The line dimension 8 speaks with. Python's names the fact that the
    *  language enforces its own convention nowhere, because that belongs in the
    *  finding rather than in a refusal. */
   undocumentedDetail: string;
+  /**
+   * The rule in THIS language's own toolchain that already reports a missing
+   * doc comment, when one exists.
+   *
+   * SET MEANS THE DIMENSION REFUSES AND NAMES THE RULE. Human ruling,
+   * 2026-08-29: "if the LINTER handles it we DON'T - our moat is good context
+   * (compiler + AST + tests + lint) -> LLM -> smart inferential output."
+   * Asking a question the developer's own compiler already answers spends the
+   * card's loudest voice on something they get for free.
+   *
+   * MEASURED before it was set, one fixture per language run through each
+   * toolchain: `missing_docs` (rustc), CS1591 (Roslyn) and `D103` (ruff) each
+   * report exactly this finding. Go and TypeScript have NOTHING that does, in
+   * their default or opt-in rule sets, so those two profiles leave this absent
+   * and the detector runs.
+   *
+   * IT REFUSES RATHER THAN DISAPPEARING, and that is the point. A row that says
+   * "your own toolchain reports this, as `missing_docs`" teaches a developer
+   * where to turn it on. A row that silently vanished would just make the card
+   * quieter and leave them believing nobody asked.
+   */
+  undocumentedRule?: string;
   /** Vocabulary that ENFORCES a stated precondition. Shares nothing across the
    *  five, which is why it is a table and not a shared regex. */
   guards: readonly RegExp[];
@@ -217,31 +239,25 @@ export interface CriticizeCraft {
 }
 
 /**
- * One language's tables. The honesty block is one build with five of these:
- * all five grammars were written side by side in the scout harness and not one
- * needed its own control flow. A clock is a list of spellings.
+ * One language's syntax, as the rubric needs to read it.
+ *
+ * Everything on this interface describes the LANGUAGE itself and nothing on it
+ * names a third party's API. That is a ruling, 2026-08-29, recorded in the
+ * amendment at the end of session-v64/goal.md: the four honesty tables and the
+ * log-write table named library calls, they decided dimensions 1 to 4, and
+ * they are gone. Those four dimensions are now a model's judgement, in
+ * `criticizeHonestyModel.ts`. A field added here that lists someone's package
+ * is the same defect wearing a new name.
  */
 export interface CriticizeLang {
   languageIds: readonly string[];
   displayName: string;
-  honesty: {
-    clock: readonly RegExp[];
-    prng: readonly RegExp[];
-    env: readonly RegExp[];
-    world: readonly RegExp[];
-  };
   lineComment: string;
-  /** Spellings that write a log rather than read the world. Dimension 4 must
-   *  never fire on one. Measured: "writes a log" is 16.1% of Python functions
-   *  and it is NOT the dishonesty the frame is about, because printing does not
-   *  make a result unreproducible. Left in, the Python leg would spend its
-   *  whole budget telling people their scripts print. */
-  logWrites: readonly RegExp[];
   /** String literals this language spells with something other than a bare
    *  quote, longest and most specific first. Empty for a language that has
    *  none. See `VerbatimString` for why a profile has to declare these. */
   verbatimStrings: readonly VerbatimString[];
-  /** The dimension 5 to 15 knobs. Phase 1 reads none of them. */
+  /** The dimension 5 to 14 knobs. Phase 1 reads none of them. */
   craft: CriticizeCraft;
 }
 
@@ -251,7 +267,7 @@ export interface CriticizeLang {
 
 export type DimensionId =
   | "clock" | "prng" | "env" | "world"
-  | "adjacent-params" | "bool-param" | "unused-param" | "param-count"
+  | "adjacent-params" | "bool-param" | "param-count"
   | "undocumented" | "unenforced-precondition" | "cqs"
   | "pass-through" | "nesting"
   | "unadmitted-failure"
@@ -442,12 +458,14 @@ function fStringShape(line: string, at: number, quote: string): InterpolationSha
  *
  * An interpolation is code, not string content. Blanking it was measured
  * against this repo's own TypeScript: `return \`${node.filePath}#${node.line}\`;`
- * hides both reads of `node`, and dimension 7 then reports a parameter the body
- * uses on its only line as never mentioned. It ran at 7.9% of 2197 functions.
- * The same hole runs the other way for the honesty block, where a `Date.now()`
- * inside an interpolation is a real clock read that nothing could see. Python's
- * f-string is the same shape with different punctuation, and it carried 25 of
- * the 308 unused-parameter findings on a 4,412-function Python corpus.
+ * hides both reads of `node`. The measurement that established it was taken on
+ * the parameter-read dimension deleted in 2.5.x, which reported a parameter the
+ * body uses on its only line as never mentioned, at 7.9% of 2197 functions; the
+ * Python f-string is the same shape with different punctuation and carried 25 of
+ * that dimension's 308 findings on a 4,412-function corpus. The dimension is
+ * gone and the masking rule is NOT: the same hole runs the other way for the
+ * craft detectors, where a guard or a mutation written inside an interpolation
+ * is real code that nothing could otherwise see.
  *
  * Returns where the scan should continue and whether the literal closed on this
  * line. A brace that does not close on the line leaves the rest of it intact,
@@ -665,10 +683,10 @@ function maskWithCarry(line: string, lang: CriticizeLang, carry: Carry): { maske
  * One line with its line comment, its string literals and its char literals
  * replaced by spaces of the same width, so column positions survive.
  *
- * MASKING IS WHERE PRECISION COMES FROM. `Instant::now()` inside a comment, a
- * doc example, a string literal or a `//` line is not a clock read, and a
- * detector that fires on one has told the developer something false about their
- * own function. Every honesty detector reads the body through this.
+ * MASKING IS WHERE PRECISION COMES FROM. A `throw new` inside a comment, a doc
+ * example, a string literal or a `//` line is not a guard, and a detector that
+ * fires on one has told the developer something false about their own
+ * function. Every detector that reads a body reads it through this.
  *
  * Called with no history, so a line sitting in the middle of a block comment is
  * masked as though it were code. Use `maskedBody` for anything spanning lines.
@@ -995,7 +1013,7 @@ function pythonDocstring(fn: FunctionUnderReview, lang: CriticizeLang): readonly
  * masked text to decide, the raw text to quote as evidence, and the document
  * line to point at. Building them here keeps `maskedBody` the only way a
  * detector reads code, and keeps the `bodyIndex + i` arithmetic in one place
- * rather than in eleven detectors.
+ * rather than in ten detectors.
  */
 export interface BodyLine {
   /** Index into `fn.lines`. */

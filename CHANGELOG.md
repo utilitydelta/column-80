@@ -1,5 +1,83 @@
 # Changelog
 
+## 3.0.0
+
+**Two ways to have a function reviewed, and they are not versions of each other.**
+
+**Column 80: Criticize Function** is the rubric: deterministic detectors, fixed words, the same answer
+twice. **Column 80: Review Function (model)** is new: a model reads the function and writes the
+comments itself, in your identifiers and about your actual failure modes. Both ship enabled, on
+whatever model you have configured, and the manual has a table telling you which to reach for.
+
+Use Criticize when you want the same answer twice - grading, a refactor backlog, a pre-commit check.
+Use Review when you want something specific to this function, and read every comment before accepting
+it.
+
+### The model writes the review, and cannot write it about code you do not have
+
+The model answers with the LINE IT IS TALKING ABOUT, quoted. The product finds that text in your
+function and plants the comment above it. A quote that matches nothing is dropped; one that matches
+two lines is dropped unless the model also says which. So a comment can only ever land where its own
+quoted text really is, and the output channel names every block that was dropped and why.
+
+Measured on twenty real production functions, blind, against the rubric's fixed phrases with the judge
+never told which side was which: Opus won 19-1, GPT-5.6 12-8, a local 27B 10-10. All three placed
+their comments about equally well, so **a review that lands cleanly is no evidence it is right.** The
+manual says that in as many words, along with three real examples of confidently wrong advice.
+
+It is also not repeatable: two presses on unchanged code produced the same set of dimensions three
+times in fifteen. Criticize is the one that does not do that.
+
+### The four honesty dimensions stopped being a list of spellings
+
+`clock`, `prng`, `env` and `world` were 67 hardcoded patterns naming library calls someone had thought
+to write down. A row reading `clean` meant "none of my patterns matched" while it read to you as "this
+function is honest". Those patterns are gone; a model reads the function instead.
+
+Against the patterns it replaced, on 92 real functions: it found twenty things they could not see -
+a project's own `unix_epoch_now_ms()` helper, a shell-out through `Command::new("ssh")`, a
+`Guid.NewGuid()` read as randomness, and two findings reached THROUGH a callee - and missed **nothing**
+they caught. With no model, those four rows come back `blind` with the reason, never `clean`.
+
+### The rubric got smaller, on purpose
+
+**If your linter already answers it, this no longer asks.** Measured, one fixture per dimension per
+language, run through each language's own checker:
+
+- **`unused-param` is DELETED.** TypeScript reports it with no `tsconfig` at all, and clippy reports
+  it out of the box. Fifteen dimensions are now fourteen.
+- **`undocumented` now REFUSES in Rust, C# and Python**, naming the rule that answers it -
+  `missing_docs`, CS1591, `D103` - so you learn where to turn the real check on. It still asks in Go
+  and TypeScript, where nothing in either toolchain reports a missing doc comment.
+- **`param-count` and `nesting` stay, and the audit strengthened their case.** At this product's
+  thresholds nothing in any of the five languages says a word: clippy's `too_many_arguments` fires at
+  8 where this fires at 5, and ruff's nesting rule is preview-gated and fires at 6 where this fires
+  at 4.
+
+### Safety
+
+A model's sentence can no longer carry control characters, zero-width characters or a bidirectional
+override into your source file. U+202E is the Trojan Source shape - the line you review is not the
+line the compiler reads - and a tool whose whole gesture is "accept this diff" is the worst possible
+place for it. Also closed: a homoglyph walking a banned word past the voice rules, and a leading
+bracket or list number walking a description past the imperative-mood check.
+
+### Local models
+
+The default stays `qwen3-coder:30b`. A dense 8B was measured faster and better on the review path and
+then generated **zero of twelve** compiling C# functions against the MoE's four, so it did not ship:
+review performance does not transfer to code generation.
+
+The 24GB tier moves to `qwen3.8:27b`, which ties on generation and is the only local model measured to
+reach the cloud tier's placement rate on the review path.
+
+**`column80.fnGenThinking`** is new, and off by default because reasoning is billed to the same token
+budget as the answer. At the shipped cap a reasoning model thinks until the budget is gone and the
+code is truncated before it is written; raising the cap fixes that and it still compiles no better
+while taking **eleven times longer**. It is a free string, not a drop-down, because the vocabulary
+belongs to the model: one afternoon measured four different answers across four models.
+
+
 ## 2.5.0
 
 A rubric that hands you a diff. **Column 80: Criticize Function** scores the function under your

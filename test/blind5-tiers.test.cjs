@@ -20,6 +20,14 @@ const { TIER_TABLE, computeTier, tierLogLine, REFERENCE_CARVE_NUM_GPU } = mod;
 test.after(cleanup);
 
 const MODEL_30B = "qwen3-coder:30b";
+// The 24GB row moved to `qwen3.8:27b` on 2026-08-29 by human ruling. It ties the
+// 30b on function generation (4 of 12 compiled each, a private C# corpus,
+// graded by `dotnet build`) while being the only local model measured to reach
+// the cloud tier's placement rate on the model-authored review path, 22 of 22
+// against the 30b's 74.5%. One model serves both gestures, so a tie on
+// generation plus a large win on review is what moved it - NOT a generation
+// improvement, and at n=12 a 4-vs-4 tie cannot separate them anyway.
+const MODEL_27B = "qwen3.8:27b";
 const MODEL_14B = "qwen2.5-coder:14b-instruct-q4_K_M";
 
 // Byte-exact per surface: 'message is present exactly when fn-gen is disabled, byte-exact'.
@@ -43,8 +51,15 @@ test("TIER_TABLE is exactly the four documented rows, in exactly this order [sur
 
   assert.strictEqual(t24.minVramMB, 20480);
   assert.strictEqual(t24.minRamMB, 0);
-  assert.strictEqual(t24.fnGenModel, MODEL_30B);
+  assert.strictEqual(t24.fnGenModel, MODEL_27B);
   assert.strictEqual(t24.fnGenNumGpu, undefined, "24gb: full offload, no carve");
+  assert.strictEqual(
+    t24.fnGenThink,
+    false,
+    "qwen3.8 reasons by default and reasoning is billed to maxTokens: measured on a 27B's smaller " +
+      "sibling, thinking on took 11 of 12 replies to EMPTY at 52s each because the budget was gone " +
+      "before any code was emitted",
+  );
   assert.strictEqual(t24.provisional, true, "24gb has never run on a 3090; the flag says so honestly");
 
   assert.strictEqual(tLarge.minVramMB, 15360);
@@ -108,12 +123,13 @@ test("computeTier is pure and deterministic [surface: 'Pure, deterministic, tota
 
 // ---- selection field copying [surface: 'Decision rules' 3]
 
-test("24gb selection copies the row: enabled, 30b, no carve, provisional true [surface: 'fnGenModel/fnGenNumGpu/provisional copy the row']", () => {
+test("24gb selection copies the row: enabled, 27b, no carve, thinking off, provisional true [surface: 'fnGenModel/fnGenNumGpu/provisional copy the row']", () => {
   const sel = computeTier(24576, 61826);
   assert.strictEqual(sel.id, "24gb");
   assert.strictEqual(sel.fnGenEnabled, true);
-  assert.strictEqual(sel.fnGenModel, MODEL_30B);
+  assert.strictEqual(sel.fnGenModel, MODEL_27B);
   assert.strictEqual(sel.fnGenNumGpu, undefined);
+  assert.strictEqual(sel.fnGenThink, false, "the row's think flag rides into the selection like the carve does");
   assert.strictEqual(sel.provisional, true);
   assert.strictEqual(sel.message, undefined, "message present iff fnGenEnabled is false");
 });
@@ -194,7 +210,7 @@ test("tierLogLine: override reason with absent RAM [surface: 'reason=override me
   const sel = computeTier(24576, undefined);
   assert.strictEqual(
     tierLogLine(sel, 24576, undefined, "override"),
-    "[carve] tier=24gb reason=override vram=24576 ram=- numGpu=- fnGen=qwen3-coder:30b provisional=true"
+    "[carve] tier=24gb reason=override vram=24576 ram=- numGpu=- fnGen=qwen3.8:27b provisional=true"
   );
 });
 

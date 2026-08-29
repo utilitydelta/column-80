@@ -4,6 +4,15 @@
 // across a line boundary, where the Python doc walk starts from, and the two
 // refusal paths that exist to stop a silent zero.
 //
+// REWRITTEN IN PART, 2026-08-29. A human ruled that the product carries no
+// hardcoded string table matching a third party's code (ruling 3, the amendment
+// at the end of session-v64/goal.md). The four honesty tables and the logWrites
+// table are deleted from `CriticizeLang`, and `HONESTY_DETECTORS` refuses out of
+// the synchronous pass because a `Detector.run` is synchronous and pure and a
+// model round is neither. Every row below that drove a spelling through a
+// detector is removed and marked; the masking, doc-harvest, registry and slice
+// rows are untouched, and one row now pins that no name table comes back.
+//
 // Run: node --test test/impl-v61-p1-honesty.test.cjs
 
 const test = require("node:test");
@@ -30,8 +39,6 @@ const {
   HONESTY_DETECTORS,
 } = mod;
 test.after(cleanup);
-
-const detector = (dimension) => HONESTY_DETECTORS.find((d) => d.dimension === dimension);
 
 /** A brace-language unit: doc lines, then the head, then the body. */
 function braceUnit(languageId, doc, head, body, startLine = 1) {
@@ -254,13 +261,18 @@ test("criticizeLangFor returns undefined for an unregistered language", () => {
   assert.strictEqual(criticizeLangFor(""), undefined);
 });
 
-test("every registered profile fills all four honesty tables and a log table", () => {
+// INVERTED 2026-08-29. It read `every registered profile fills all four honesty
+// tables and a log table`. Both fields are deleted, and the row now guards
+// against their return: a profile field listing someone else's API is the defect
+// ruling 3 names, whatever it is called next time.
+test("no profile carries a name table for a third party's API", () => {
   for (const lang of [RUST_CRITICIZE_LANG, TS_CRITICIZE_LANG, CS_CRITICIZE_LANG, PY_CRITICIZE_LANG, GO_CRITICIZE_LANG]) {
-    for (const dim of ["clock", "prng", "env", "world"]) {
-      assert.ok(lang.honesty[dim].length > 0, `${lang.displayName} ${dim}`);
-    }
-    assert.ok(lang.logWrites.length > 0, lang.displayName);
+    assert.strictEqual(lang.honesty, undefined, `${lang.displayName} still carries an honesty table`);
+    assert.strictEqual(lang.logWrites, undefined, `${lang.displayName} still carries a logWrites table`);
     assert.ok(lang.lineComment.length > 0, lang.displayName);
+    // What stays is the language's own syntax, and it is still here.
+    assert.ok(lang.craft.guards.length > 0, `${lang.displayName} guards`);
+    assert.ok(Array.isArray(lang.craft.mutations), `${lang.displayName} mutations`);
   }
 });
 
@@ -276,209 +288,70 @@ test("HONESTY_DETECTORS is the four dimensions, each with a curriculum line", ()
   }
 });
 
-test("a detail line is lower case, one line, and names no fix", () => {
-  const banned = /\b(should|must|consider|instead|pass|inject|extract|refactor|fix)\b/;
+// REPLACED 2026-08-29. The old row walked the findings a name table produced
+// and checked their detail line. The sync pass produces no findings at all now,
+// so that row could not fail; this one asserts what the sync pass DOES produce.
+test("every detector refuses out of the synchronous pass, in a sentence, and never says clean", () => {
+  const cases = [
+    [RUST_CRITICIZE_LANG, "rust", "fn f() {", "    let t = Instant::now();"],
+    [TS_CRITICIZE_LANG, "typescript", "function f() {", "  const t = Date.now();"],
+    [CS_CRITICIZE_LANG, "csharp", "public void F() {", "    var t = DateTime.UtcNow;"],
+    [GO_CRITICIZE_LANG, "go", "func F() {", "\tt := time.Now()"],
+    [PY_CRITICIZE_LANG, "python", "def f():", "    t = time.time()"],
+  ];
   for (const d of HONESTY_DETECTORS) {
-    const fn = braceUnit("rust", [], "fn f() {", ["    let t = Instant::now();", "    let g = thread_rng();", "    let v = env::var(\"HOME\");", "    let s = fs::read_to_string(p);", "}"]);
-    const out = d.run(fn, RUST_CRITICIZE_LANG);
-    if (out.state !== "flagged") continue;
-    for (const f of out.findings) {
-      assert.strictEqual(f.detail, f.detail.toLowerCase(), f.detail);
-      assert.ok(!f.detail.includes("\n"), f.detail);
-      assert.ok(!banned.test(f.detail), f.detail);
+    for (const [lang, id, head, line] of cases) {
+      const fn = braceUnit(id, [], head, [line, "}"]);
+      const out = d.run(fn, lang);
+      assert.strictEqual(out.state, "blind", `${d.dimension} on ${lang.displayName}: ${JSON.stringify(out)}`);
+      assert.ok(out.reason.trim().split(/\s+/).length >= 5, out.reason);
+      assert.ok(/model/i.test(out.reason), `the refusal names what would have to run: ${out.reason}`);
     }
   }
 });
 
 // ---------------------------------------------------------------------------
-// Dimension 1: the clock
+// Dimensions 1 to 4 - REMOVED 2026-08-29
 // ---------------------------------------------------------------------------
-
-const CLOCK_CASES = [
-  [RUST_CRITICIZE_LANG, "rust", "fn f() {", "    let t = Instant::now();"],
-  [RUST_CRITICIZE_LANG, "rust", "fn f() {", "    let t = SystemTime::now();"],
-  [TS_CRITICIZE_LANG, "typescript", "function f() {", "  const t = Date.now();"],
-  [TS_CRITICIZE_LANG, "typescript", "function f() {", "  const t = new Date();"],
-  [CS_CRITICIZE_LANG, "csharp", "public void F() {", "    var t = DateTime.UtcNow;"],
-  [CS_CRITICIZE_LANG, "csharp", "public void F() {", "    var t = DateTime.Now;"],
-  [GO_CRITICIZE_LANG, "go", "func F() {", "\tt := time.Now()"],
-  [PY_CRITICIZE_LANG, "python", "def f():", "    t = time.time()"],
-  [PY_CRITICIZE_LANG, "python", "def f():", "    t = datetime.now()"],
-];
-
-for (const [lang, id, head, line] of CLOCK_CASES) {
-  test(`clock fires on ${line.trim()} in ${lang.displayName}`, () => {
-    const fn = braceUnit(id, [], head, [line, "}"]);
-    const out = detector("clock").run(fn, lang);
-    assert.strictEqual(out.state, "flagged");
-    assert.strictEqual(out.findings.length, 1);
-    assert.strictEqual(out.findings[0].evidence, line.trim());
-    assert.strictEqual(out.findings[0].dimension, "clock");
-  });
-}
-
-test("clock does NOT fire on a spelling inside a comment, a string, or a doc", () => {
-  const fn = braceUnit(
-    "rust",
-    ["/// Unlike Instant::now(), this takes the time as an argument."],
-    "pub fn f(t: Instant) -> Instant {",
-    [
-      "    // Instant::now() would be dishonest here.",
-      '    let note = "SystemTime::now()";',
-      "    t",
-      "}",
-    ],
-  );
-  assert.deepStrictEqual(detector("clock").run(fn, RUST_CRITICIZE_LANG), { state: "clean" });
-});
-
-test("clock reports a DOCUMENT line, not an index into the slice", () => {
-  const fn = braceUnit("rust", ["/// Doc."], "fn f() {", ["    let t = Instant::now();", "}"], 200);
-  const out = detector("clock").run(fn, RUST_CRITICIZE_LANG);
-  // lines[0] is document line 200, so the body's first line is 202.
-  assert.strictEqual(out.findings[0].line, 202);
-});
-
-test("clock findings are ascending and one per line", () => {
-  const fn = braceUnit("typescript", [], "function f() {", [
-    "  const a = Date.now();",
-    "  const b = 1;",
-    "  const c = Date.now() - Date.now();",
-    "}",
-  ]);
-  const out = detector("clock").run(fn, TS_CRITICIZE_LANG);
-  assert.strictEqual(out.findings.length, 2);
-  assert.deepStrictEqual(out.findings.map((f) => f.line), [2, 4]);
-});
-
-// ---------------------------------------------------------------------------
-// Dimension 2: the PRNG
-// ---------------------------------------------------------------------------
-
-test("prng fires per language", () => {
-  const cases = [
-    [RUST_CRITICIZE_LANG, "rust", "fn f() {", "    let mut r = thread_rng();"],
-    [TS_CRITICIZE_LANG, "typescript", "function f() {", "  const r = Math.random();"],
-    [CS_CRITICIZE_LANG, "csharp", "public void F() {", "    var r = new Random();"],
-    [GO_CRITICIZE_LANG, "go", "func F() {", "\tr := rand.Int()"],
-    [PY_CRITICIZE_LANG, "python", "def f():", "    r = random.randint(1, 5)"],
-  ];
-  for (const [lang, id, head, line] of cases) {
-    const fn = braceUnit(id, [], head, [line, "}"]);
-    const out = detector("prng").run(fn, lang);
-    assert.strictEqual(out.state, "flagged", `${lang.displayName}: ${line}`);
-  }
-});
-
-test("prng does NOT fire on a variable named random_thing", () => {
-  const fn = braceUnit("python", [], "def f():", ["    random_thing = 4", "    return random_thing"]);
-  assert.deepStrictEqual(detector("prng").run(fn, PY_CRITICIZE_LANG), { state: "clean" });
-});
-
-// ---------------------------------------------------------------------------
-// Dimension 3: the environment
-// ---------------------------------------------------------------------------
-
-test("env fires per language", () => {
-  const cases = [
-    [RUST_CRITICIZE_LANG, "rust", "fn f() {", '    let h = env::var("HOME");'],
-    [TS_CRITICIZE_LANG, "typescript", "function f() {", "  const h = process.env.HOME;"],
-    [CS_CRITICIZE_LANG, "csharp", "public void F() {", '    var h = Environment.GetEnvironmentVariable("HOME");'],
-    [GO_CRITICIZE_LANG, "go", "func F() {", '\th := os.Getenv("HOME")'],
-    [PY_CRITICIZE_LANG, "python", "def f():", '    h = os.environ["HOME"]'],
-  ];
-  for (const [lang, id, head, line] of cases) {
-    const fn = braceUnit(id, [], head, [line, "}"]);
-    assert.strictEqual(detector("env").run(fn, lang).state, "flagged", `${lang.displayName}: ${line}`);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Dimension 4: the world, and the log-write rule that is load-bearing
-// ---------------------------------------------------------------------------
-
-test("world fires on a file open or read per language", () => {
-  const cases = [
-    [RUST_CRITICIZE_LANG, "rust", "fn f() {", "    let s = fs::read_to_string(p)?;"],
-    [RUST_CRITICIZE_LANG, "rust", "fn f() {", "    let h = File::open(p)?;"],
-    [TS_CRITICIZE_LANG, "typescript", "function f() {", "  const s = fs.readFileSync(p);"],
-    [CS_CRITICIZE_LANG, "csharp", "public void F() {", "    var s = File.ReadAllText(p);"],
-    [GO_CRITICIZE_LANG, "go", "func F() {", "\tb, err := os.ReadFile(p)"],
-    [PY_CRITICIZE_LANG, "python", "def f():", "    h = open(p)"],
-    [PY_CRITICIZE_LANG, "python", "def f():", "    s = Path(p).read_text()"],
-  ];
-  for (const [lang, id, head, line] of cases) {
-    const fn = braceUnit(id, [], head, [line, "}"]);
-    assert.strictEqual(detector("world").run(fn, lang).state, "flagged", `${lang.displayName}: ${line}`);
-  }
-});
-
-test("world is CLEAN on a log write in all five languages", () => {
-  // Measured and load-bearing: 16.1% of Python functions write a log, and
-  // printing does not make a result unreproducible.
-  const cases = [
-    [RUST_CRITICIZE_LANG, "rust", "fn f() {", '    println!("done {}", n);'],
-    [RUST_CRITICIZE_LANG, "rust", "fn f() {", '    tracing::info!("done");'],
-    [TS_CRITICIZE_LANG, "typescript", "function f() {", '  console.log("done");'],
-    [TS_CRITICIZE_LANG, "typescript", "function f() {", '  logger.warn("done");'],
-    [CS_CRITICIZE_LANG, "csharp", "public void F() {", '    Console.WriteLine("done");'],
-    [CS_CRITICIZE_LANG, "csharp", "public void F() {", '    _logger.LogInformation("done");'],
-    [GO_CRITICIZE_LANG, "go", "func F() {", '\tfmt.Println("done")'],
-    [GO_CRITICIZE_LANG, "go", "func F() {", '\tlog.Printf("done %d", n)'],
-    [PY_CRITICIZE_LANG, "python", "def f():", '    print("done")'],
-    [PY_CRITICIZE_LANG, "python", "def f():", '    logger.info("done")'],
-  ];
-  for (const [lang, id, head, line] of cases) {
-    const fn = braceUnit(id, [], head, [line, "}"]);
-    assert.deepStrictEqual(detector("world").run(fn, lang), { state: "clean" }, `${lang.displayName}: ${line}`);
-  }
-});
-
-test("world still fires on a read nested inside a log call's arguments", () => {
-  const fn = braceUnit("python", [], "def f(p):", ["    print(open(p).read())", "    return 1"]);
-  assert.strictEqual(detector("world").run(fn, PY_CRITICIZE_LANG).state, "flagged");
-});
-
-test("world is suppressed when a log spelling COVERS the world spelling", () => {
-  // The structural half of the guard. Today's five tables have no such overlap,
-  // so it is exercised here with a profile that does: without the containment
-  // check this fires, and dimension 4 starts reporting log writes.
-  const overlapping = {
-    ...PY_CRITICIZE_LANG,
-    honesty: { ...PY_CRITICIZE_LANG.honesty, world: [/\bread_text\s*\(/] },
-    logWrites: [/\blog\.read_text\s*\(/],
-  };
-  const logging = braceUnit("python", [], "def f(p):", ["    log.read_text(p)", "    return 1"]);
-  assert.deepStrictEqual(detector("world").run(logging, overlapping), { state: "clean" });
-  const reading = braceUnit("python", [], "def f(p):", ["    p.read_text()", "    return 1"]);
-  assert.strictEqual(detector("world").run(reading, overlapping).state, "flagged");
-});
+// Nine clock rows, the clock precision row, the document-line row, the
+// ascending-and-one-per-line row, both PRNG rows, the env row, and all four
+// world rows including the log-write guard and its two containment rows. Every
+// one of them drove a library spelling through a name table, and the tables are
+// deleted by ruling 3 of the amendment at the end of session-v64/goal.md.
+//
+// What they were really pinning has split in two and both halves are covered.
+// The masking and slice rows above still hold the reading of a body. The
+// finding assembly, the document-line arithmetic and the ordering moved to
+// `criticizeHonestyModel.ts`, which has its own oracle. The log-write guard has
+// no successor in code at all: the model is told in the prompt that writing
+// output is not reading the world.
 
 // ---------------------------------------------------------------------------
 // The two refusal paths. Both exist so a zero cannot be a fact about the rig.
 // ---------------------------------------------------------------------------
 
-test("an empty name table is BLIND, not clean, and the reason names the language", () => {
-  const blindLang = { ...GO_CRITICIZE_LANG, honesty: { ...GO_CRITICIZE_LANG.honesty, prng: [] } };
-  const fn = braceUnit("go", [], "func F() {", ["\tr := rand.Int()", "}"]);
-  const out = detector("prng").run(fn, blindLang);
-  assert.strictEqual(out.state, "blind");
-  assert.ok(out.reason.includes("Go"), out.reason);
-  assert.ok(out.reason.length > 20, out.reason);
-});
+// REMOVED 2026-08-29: `an empty name table is BLIND, not clean, and the reason
+// names the language`. There is no table to empty. Its point, that a zero must
+// never be a fact about the rig, is now the whole of the synchronous pass and is
+// asserted by the refusal row above.
 
-test("a malformed slice is BLIND, not clean", () => {
+// REWORKED 2026-08-29. It ran a malformed slice through the clock detector,
+// which refused because `unitDefect` named the defect. The detector now refuses
+// whatever it is handed, so it can no longer tell a malformed slice from a
+// well-formed one, and the row reads `unitDefect` directly. That is the same
+// guard the model judge consults before it spends a round.
+test("unitDefect names the defect in a malformed slice, so a refusal can say which", () => {
   const past = {
     languageId: "rust",
     name: "f",
-    lines: ["fn f() {", "    let t = Instant::now();", "}"],
+    lines: ["fn f() {", "    let t = 1;", "}"],
     startLine: 1,
     headIndex: 0,
     bodyIndex: 9,
   };
-  const out = detector("clock").run(past, RUST_CRITICIZE_LANG);
-  assert.strictEqual(out.state, "blind");
-  assert.ok(out.reason.includes("bodyIndex"), out.reason);
+  const defect = unitDefect(past);
+  assert.ok(defect !== undefined, "a bodyIndex past the end is a defect");
+  assert.ok(defect.includes("bodyIndex"), defect);
 
   for (const bad of [
     { headIndex: 2, bodyIndex: 1 },
@@ -487,7 +360,6 @@ test("a malformed slice is BLIND, not clean", () => {
     { lines: [] },
   ]) {
     const fn = { ...past, bodyIndex: 1, ...bad };
-    assert.strictEqual(detector("clock").run(fn, RUST_CRITICIZE_LANG).state, "blind", JSON.stringify(bad));
     assert.ok(unitDefect(fn) !== undefined, JSON.stringify(bad));
   }
 });
@@ -497,7 +369,11 @@ test("unitDefect passes a well-formed slice", () => {
   assert.strictEqual(unitDefect(fn), undefined);
 });
 
-test("an empty body is clean rather than blind: nothing to read is not nothing to say", () => {
+// REWORKED 2026-08-29 for the same reason as the row above: a well-formed slice
+// with nothing in its body is not a defect, and the difference has to stay
+// visible somewhere now that the detectors refuse either way.
+test("an empty body is well formed and simply has no lines to read", () => {
   const fn = { languageId: "rust", name: "f", lines: ["/// Doc.", "fn f() {}"], startLine: 1, headIndex: 1, bodyIndex: 2 };
-  assert.deepStrictEqual(detector("clock").run(fn, RUST_CRITICIZE_LANG), { state: "clean" });
+  assert.strictEqual(unitDefect(fn), undefined, "an empty body is not a malformed slice");
+  assert.deepStrictEqual(maskedBody(fn, RUST_CRITICIZE_LANG), [], "and there is nothing in it to read");
 });

@@ -68,7 +68,7 @@ const allFindings = (rows) =>
 
 test("a real detector card keeps its row and finding counts through the explainer", () => {
   const card = realCard();
-  assert.strictEqual(card.rows.length, 15);
+  assert.strictEqual(card.rows.length, 14);
   const findings = allFindings(card.rows);
   assert.ok(findings.length > 0, "the fixture fired no detector, so this test proves nothing");
 

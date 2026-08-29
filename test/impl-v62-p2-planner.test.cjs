@@ -43,12 +43,12 @@ test.after(cleanup);
 
 const { planInjection, VOICE, C80_TAG, VOICE_COLUMN, signatureLevel } = mod;
 
-/** The fifteen in rubric reading order, retyped. Retyped deliberately: this IS
+/** The fourteen in rubric reading order, retyped. Retyped deliberately: this IS
  *  "card order" for the several-findings-on-one-line rule, and a list imported
  *  from the module under test could not notice the order moving. */
 const DIMENSIONS = [
   "clock", "prng", "env", "world",
-  "adjacent-params", "bool-param", "unused-param", "param-count",
+  "adjacent-params", "bool-param", "param-count",
   "undocumented", "unenforced-precondition", "cqs",
   "pass-through", "nesting",
   "unadmitted-failure",
@@ -58,7 +58,7 @@ const DIMENSIONS = [
 const GROUP_OF = {
   clock: "honesty", prng: "honesty", env: "honesty", world: "honesty",
   "adjacent-params": "signature-empathy", "bool-param": "signature-empathy",
-  "unused-param": "signature-empathy", "param-count": "signature-empathy",
+  "param-count": "signature-empathy",
   undocumented: "contract", "unenforced-precondition": "contract", cqs: "contract",
   "pass-through": "altitude", nesting: "altitude", "section-comment": "altitude",
   "unadmitted-failure": "safety",
@@ -78,7 +78,7 @@ const flagged = (dim, findings) => ({
 
 const blind = (dim) => ({ state: "blind", reason: `${dim}: this language cannot answer that` });
 
-/** A whole fifteen-row card in rubric order. `elevated` is filled in the way
+/** A whole fourteen-row card in rubric order. `elevated` is filled in the way
  *  `scoreFunction` fills it unless the caller deliberately corrupts it. */
 function makeCard(opts) {
   const spec = opts.spec ?? {};
@@ -157,7 +157,7 @@ function addedLines(input, out) {
 }
 
 /** True when the line opens a criticism: the token, the tag, then one of the
- *  fifteen dimension ids. */
+ *  fourteen dimension ids. */
 function headOf(line, token) {
   const trimmed = line.trim();
   const marker = `${token} ${C80_TAG}`;
@@ -984,7 +984,7 @@ test("no comment this module can plant carries a citation, a hedge or a second p
   }
 });
 
-test("all fifteen dimensions plant words, so none injects a blank comment", () => {
+test("all fourteen dimensions plant words, so none injects a blank comment", () => {
   for (const dim of DIMENSIONS) {
     assert.ok(typeof VOICE[dim] === "string" && VOICE[dim].length > 0, `${dim} has a phrase`);
     const card = makeCard({

@@ -1,5 +1,5 @@
 /**
- * Dimensions 12, 13 and 15: does every line of the body sit at one altitude.
+ * Dimensions 11, 12 and 14: does every line of the body sit at one altitude.
  *
  * Wirth's stepwise refinement, read backwards. A body that reads as a series of
  * named steps is at one altitude; a body that zooms into character codes, back
@@ -9,7 +9,7 @@
  * has to hold five conditions at once, and a comment labelling a section that
  * wanted to be a function.
  *
- * ALL THREE ADVISE, and dimension 12 especially. Never auto-split a function:
+ * ALL THREE ADVISE, and dimension 11 especially. Never auto-split a function:
  * the Ousterhout-Martin debate is unresolved among humans, and Martin's own
  * showcase decomposition carried a measured 3 to 4x performance regression. A
  * product that splits a function is taking a side with someone else's code.
@@ -55,7 +55,7 @@ function slice(fn: FunctionUnderReview, lang: CriticizeLang): { body: readonly B
 }
 
 // ===========================================================================
-// Dimension 12, shallow pass-through
+// Dimension 11, shallow pass-through
 // ===========================================================================
 
 /** The one call a pass-through body is made of, or undefined when the body is
@@ -124,7 +124,7 @@ function passThrough(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOut
 }
 
 // ===========================================================================
-// Dimension 13, nesting depth
+// Dimension 12, nesting depth
 // ===========================================================================
 
 /**
@@ -220,7 +220,7 @@ function nesting(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutcome
 }
 
 // ===========================================================================
-// Dimension 15, section comment betrays mixed altitude
+// Dimension 14, section comment betrays mixed altitude
 // ===========================================================================
 
 /** The tells that a commented line is COMMENTED-OUT CODE rather than a label.
@@ -266,7 +266,7 @@ function sectionComment(fn: FunctionUnderReview, lang: CriticizeLang): Dimension
 }
 
 /**
- * Dimensions 12, 13 and 15, in rubric order.
+ * Dimensions 11, 12 and 14, in rubric order.
  *
  * The nesting threshold is CHOSEN, not measured, and `docs/constants.md`
  * records it with that word. Nothing in the scout's corpora locates a knee in

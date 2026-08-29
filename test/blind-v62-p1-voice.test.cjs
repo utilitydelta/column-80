@@ -20,7 +20,7 @@
 // happens.
 //
 // The one type file this oracle read is `src/core/criticizeTypes.ts`, and only
-// for the shape of `DetectorFinding` and the fifteen members of `DimensionId`,
+// for the shape of `DetectorFinding` and the fourteen members of `DimensionId`,
 // so the inputs below are well formed.
 //
 // Four families of row:
@@ -100,7 +100,7 @@ const comment = (finding, opts) =>
   opts === undefined ? voice().criticizeComment(finding) : voice().criticizeComment(finding, opts);
 
 // ===========================================================================
-// The fifteen dimensions, and a well-formed finding for each
+// The fourteen dimensions, and a well-formed finding for each
 // ===========================================================================
 
 // Straight off `DimensionId` in src/core/criticizeTypes.ts. Held apart from
@@ -114,7 +114,6 @@ const DIMENSIONS = [
   "world",
   "adjacent-params",
   "bool-param",
-  "unused-param",
   "param-count",
   "undocumented",
   "unenforced-precondition",
@@ -143,7 +142,6 @@ const DETAIL = {
   "adjacent-params":
     "first and second are neighbours of the same type and the compiler cannot see them swapped",
   "bool-param": "parameter recursive carries a decision the caller had already made",
-  "unused-param": "the parameter ctx is never read in the body",
   "param-count": "the signature takes more parameters than the chosen threshold for rust",
   undocumented: "the public signature carries no doc comment",
   "unenforced-precondition": "the doc promises a non-empty slice and the body never checks it",
@@ -161,7 +159,6 @@ const DETAIL_WITH_NUMBERS = {
   "adjacent-params": "first and second are neighbours of type u64",
   "param-count": "the signature takes 7 parameters, at or above the chosen threshold of 5 for rust",
   nesting: "the body nests 4 blocks deep, at or above the chosen threshold of 4 for rust",
-  "unused-param": "the parameter ctx at position 3 is never read in the body",
 };
 
 // Digit-free evidence, for the same reason the details are digit-free.
@@ -172,7 +169,6 @@ const EVIDENCE = {
   world: "let raw = File::open(path)?;",
   "adjacent-params": "pub fn splice(first: Offset, second: Offset) -> Span {",
   "bool-param": "pub fn render(node: &Node, recursive: bool) -> String {",
-  "unused-param": "pub fn render(node: &Node, ctx: &Ctx) -> String {",
   "param-count": "pub fn build(a: A, b: B, c: C, d: D, e: E, f: F, g: G) -> Out {",
   undocumented: "pub fn splice(first: Offset, second: Offset) -> Span {",
   "unenforced-precondition": "let head = rows[first];",
@@ -297,15 +293,15 @@ test("surface: the five names the contract exports are present, with the right k
   assert.equal(v.criticizeComment.length >= 1, true, "criticizeComment takes a finding");
 });
 
-test("surface: VOICE holds exactly the fifteen dimensions, once each, and none is empty", () => {
+test("surface: VOICE holds exactly the fourteen dimensions, once each, and none is empty", () => {
   const { VOICE } = voice();
   const keys = Object.keys(VOICE);
   assert.deepEqual(
     [...keys].sort(),
     [...DIMENSIONS].sort(),
-    "VOICE keys are exactly the fifteen DimensionId members",
+    "VOICE keys are exactly the fourteen DimensionId members",
   );
-  assert.equal(keys.length, 15, `VOICE has fifteen entries, has ${keys.length}`);
+  assert.equal(keys.length, 14, `VOICE has fourteen entries, has ${keys.length}`);
   for (const dimension of DIMENSIONS) {
     const phrase = VOICE[dimension];
     assert.equal(typeof phrase, "string", `VOICE.${dimension} is a string`);
@@ -343,7 +339,7 @@ test("tag: C80_TAG is `C80 `, with the trailing space", () => {
   assert.equal(voice().C80_TAG, "C80 ");
 });
 
-test("tag: every comment starts with `C80 <dimension>: `, exactly, for all fifteen", () => {
+test("tag: every comment starts with `C80 <dimension>: `, exactly, for all fourteen", () => {
   const { C80_TAG } = voice();
   for (const row of everyComment()) {
     const wanted = `C80 ${row.dimension}: `;
@@ -366,7 +362,7 @@ test("tag: the comment carries no comment token and no indent - the caller adds 
 });
 
 // ===========================================================================
-// THE VOICE RULES - walked across all fifteen, both detail sets, every
+// THE VOICE RULES - walked across all fourteen, both detail sets, every
 // blast-radius state
 // ===========================================================================
 
@@ -437,14 +433,14 @@ test("rule 4: every comment closes on a full stop, and never on a question mark"
   }
 });
 
-test("rule 5: every one of the fifteen dimensions produces a non-blank comment", () => {
+test("rule 5: every one of the fourteen dimensions produces a non-blank comment", () => {
   const seen = new Set();
   for (const row of everyComment()) {
     const body = row.text.replace(`C80 ${row.dimension}:`, "").trim();
     assert.ok(body.length > 0, `${row.where}: the tag with no words behind it is a blank comment`);
     seen.add(row.dimension);
   }
-  assert.equal(seen.size, 15, `all fifteen dimensions were exercised, exercised ${seen.size}`);
+  assert.equal(seen.size, 14, `all fourteen dimensions were exercised, exercised ${seen.size}`);
 });
 
 test("rules: the fixed phrases obey rules 3 and 4 on their own, before any joining", () => {
@@ -546,7 +542,7 @@ test("shape: the order never inverts - the opening beat lands before the order i
 // THE FINDING'S OWN SPECIFICS
 // ===========================================================================
 
-test("specifics: the detail reaches the comment verbatim, byte for byte, for all fifteen", () => {
+test("specifics: the detail reaches the comment verbatim, byte for byte, for all fourteen", () => {
   // Amendment 1 clause 7: no case change either. If sentence flow wants a
   // capital, the sentence is restructured around the detail, not over it.
   for (const row of everyComment()) {
@@ -581,7 +577,7 @@ test("specifics: two findings on one dimension that differ produce comments that
   }
 });
 
-test("specifics: the fifteen dimensions produce fifteen distinct comments", () => {
+test("specifics: the fourteen dimensions produce fourteen distinct comments", () => {
   const seen = new Map();
   for (const dimension of DIMENSIONS) {
     const text = comment(findingFor(dimension));
@@ -589,7 +585,7 @@ test("specifics: the fifteen dimensions produce fifteen distinct comments", () =
     assert.equal(clash, undefined, `${dimension} and ${clash} produce the same comment: ${text}`);
     seen.set(text, dimension);
   }
-  assert.equal(seen.size, 15);
+  assert.equal(seen.size, 14);
 });
 
 test("specifics: a detail naming a threshold survives the year ban and arrives whole", () => {
@@ -622,7 +618,7 @@ test("specifics: a detail carrying `string?` and a count of 2024 is legal and pa
 // BLAST RADIUS - the three-way distinction
 // ===========================================================================
 
-test("blast: undefined renders no call-site clause at all, for all fifteen dimensions", () => {
+test("blast: undefined renders no call-site clause at all, for all fourteen dimensions", () => {
   for (const dimension of DIMENSIONS) {
     const finding = findingFor(dimension);
     for (const opts of [undefined, {}, { blastRadius: undefined }]) {

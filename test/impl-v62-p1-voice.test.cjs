@@ -30,11 +30,11 @@ test.after(cleanup);
 
 const { VOICE, C80_TAG, VOICE_COLUMN, criticizeComment, wrapComment, TIGHTEN_COLUMN } = mod;
 
-/** The fifteen, retyped from `criticizeTypes.ts`. Retyped deliberately: a test
+/** The fourteen, retyped from `criticizeTypes.ts`. Retyped deliberately: a test
  *  that imported the list could not notice a dimension being dropped from it. */
 const DIMENSIONS = [
   "clock", "prng", "env", "world",
-  "adjacent-params", "bool-param", "unused-param", "param-count",
+  "adjacent-params", "bool-param", "param-count",
   "undocumented", "unenforced-precondition", "cqs",
   "pass-through", "nesting",
   "unadmitted-failure",
@@ -59,7 +59,6 @@ const DETAILS = {
   world: "opens or reads a file",
   "adjacent-params": "first and second are neighbours of type u64, and the compiler cannot see them swapped",
   "bool-param": "parameter recursive carries a decision the caller had already made",
-  "unused-param": "parameter depth never appears in the body",
   "param-count": "7 parameters, at or above the chosen threshold of 6 for Rust",
   undocumented: "public surface with no doc comment",
   "unenforced-precondition": "the doc states a precondition and the body checks nothing",
@@ -116,11 +115,11 @@ function moduleAuthored(text, dimension) {
 // 1. The table
 // ---------------------------------------------------------------------------
 
-test("every one of the fifteen dimensions has a non-empty phrase, and nothing else does", () => {
+test("every one of the fourteen dimensions has a non-empty phrase, and nothing else does", () => {
   assert.deepEqual(
     Object.keys(VOICE).sort(),
     [...DIMENSIONS].sort(),
-    "the table must carry exactly the fifteen rubric dimensions",
+    "the table must carry exactly the fourteen rubric dimensions",
   );
   for (const dimension of DIMENSIONS) {
     const phrase = VOICE[dimension];
@@ -246,8 +245,8 @@ test("a parameter genuinely named you rides through, because the detector owns t
   // banned word out of the comment would be this module inventing a finding,
   // and a comment that names a parameter the file does not have is worse than
   // a comment containing the word "you".
-  const detail = "parameter you never appears in the body";
-  const text = criticizeComment({ dimension: "unused-param", line: 7, evidence: "fn f(you: u8)", detail });
+  const detail = "parameter you carries a decision the caller had already made";
+  const text = criticizeComment({ dimension: "bool-param", line: 7, evidence: "fn f(you: bool)", detail });
   assert.ok(text.includes(detail), `verbatim, banned word and all: ${text}`);
   const mine = text.split(detail).join("");
   for (const word of BANNED) {

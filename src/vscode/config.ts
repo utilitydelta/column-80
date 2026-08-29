@@ -180,6 +180,35 @@ export function readTierConfig(): TierConfig {
 // explicitFnGenModel) in the fn-gen rebuild path supplies the tier-computed
 // carve. The reference constant lives as the 16gb-large-ram table row in
 // src/core/tiers.ts.
+/**
+ * The `think` field, from the user's setting or the config default.
+ *
+ * A FREE STRING, PASSED THROUGH, because the vocabulary belongs to the MODEL.
+ * Measured 2026-08-29: `qwen3-coder:30b` refuses reasoning outright, `qwen3:8b`
+ * accepts `true`, `qwen3.8:27b` accepts `true` and `"low"`, and OpenAI's 5.6
+ * line accepts only `"none"` and under a different field name entirely. A closed
+ * enum would be wrong the first time a model shipped a level it did not list, so
+ * anything this function does not recognise goes to the server verbatim and the
+ * server's own refusal reaches the channel.
+ *
+ * `off` and `on` are spelled out because they are the two a user actually
+ * reaches for, and `true`/`false` are accepted for anyone who read the ollama
+ * API rather than this description.
+ */
+function thinkFrom(setting: string, fallback: boolean | string | undefined): { think?: boolean | string } {
+  const value = setting.trim().toLowerCase();
+  if (value === "") {
+    return fallback === undefined ? {} : { think: fallback };
+  }
+  if (value === "off" || value === "false") {
+    return { think: false };
+  }
+  if (value === "on" || value === "true") {
+    return { think: true };
+  }
+  return { think: setting.trim() };
+}
+
 export function readFnGenConfig(): FnGenConfig {
   const c = vscode.workspace.getConfiguration("column80");
   const d = DEFAULT_FNGEN_CONFIG;
@@ -204,7 +233,13 @@ export function readFnGenConfig(): FnGenConfig {
     // default, so writing it straight through put a `think: undefined` key on
     // every config the tier seam hands out and turned the disabled-tier
     // field-identity row red.
-    ...(d.think !== undefined ? { think: d.think } : {}),
+    //
+    // `column80.fnGenThinking` is EMPTY BY DEFAULT and empty stays key-absent,
+    // which is what preserves that discipline: the tier row then decides, and
+    // every tier shipping a reasoning model carries `fnGenThink: false`. A user
+    // who sets the setting overrides the tier, because they are the one who
+    // knows what model they pointed this at.
+    ...thinkFrom(str(c, "fnGenThinking", ""), d.think),
     temperature: d.temperature,
     logPrompts: c.get<boolean>("logPrompts", false),
   };

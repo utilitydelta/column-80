@@ -10,7 +10,9 @@ import { FimCompletionProvider, REAL_SCOPE_HOOKS } from "./completionProvider";
 import { registerContextPanel } from "./contextPanel";
 import { offerRaHoverCapFix, offerRaSnippetFix, registerFirstRun, startOllamaTerminal } from "./firstRun";
 import { registerCriticize } from "./criticize";
-import { registerFnGen, resolveFunctionAtCursor } from "./fnGen";
+import { registerCriticizeAdvise } from "./criticizeAdviseCommand";
+import { registerFnGen, resolveFunctionAtCursor, resolvePrefill } from "./fnGen";
+import { extractorFor } from "./extractors";
 import { registerOracleSurface } from "./oracleSurface";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -147,6 +149,34 @@ export function activate(context: vscode.ExtensionContext): void {
   // hands over the write is worse than no claim at all.
   registerCriticize(context, output, {
     resolveFunction: resolveFunctionAtCursor,
+    // THE SAME TYPE RESOLVE REPAIR IS HANDED, and it is what turns the fix
+    // sentence from a restatement of the signature into advice about this
+    // codebase: `shard: u64` is already on the head, and whether `Budget` is a
+    // struct with three fields or a newtype over `u64` is what decides whether
+    // "make them newtypes" is right here. Both are optional on the record, so a
+    // registration that omitted them would still ship a complete card and a
+    // complete comment - one block shorter.
+    resolvePrefill,
+    // GATED THE WAY EVERY OTHER RESOLVE IS. `injectionEnabled` is the switch
+    // that keeps the v2 compiler-directed extractor dark, and a gesture that
+    // reached past it would point a language-server query at a document the
+    // human turned that off for.
+    extractorFor: (languageId) =>
+      readOracleConfig().injectionEnabled ? extractorFor(languageId) : undefined,
+    ...modelGestures,
+  });
+  // THE MODEL-AUTHORED PATH, as a SECOND command on the SAME wiring record.
+  // Sharing the record is the point: both gestures resolve the function the same
+  // way, consult the same tier gate, read the same transport and go through the
+  // same presenter, so a comparison between them is a comparison of the ROUND in
+  // the middle and not of two different products. It ships alongside the rubric
+  // rather than replacing it until a measurement says which plants the better
+  // comment.
+  registerCriticizeAdvise(context, output, {
+    resolveFunction: resolveFunctionAtCursor,
+    resolvePrefill,
+    extractorFor: (languageId) =>
+      readOracleConfig().injectionEnabled ? extractorFor(languageId) : undefined,
     ...modelGestures,
   });
   registerOracleSurface(context, output);

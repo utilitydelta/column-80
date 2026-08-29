@@ -17,6 +17,13 @@
 // fourth, and about the masking and doc-harvest holes that the labelled set is
 // too small to have hit.
 //
+// AMENDED 2026-08-29. The four honesty name tables are deleted by ruling 3 of
+// the amendment at the end of session-v64/goal.md, so no claim here can be
+// stated through a detector any more. Every masking claim is restated against
+// `maskedBody`, which is the code each one was really about: the detector was
+// only the probe that made the masking hole visible. The two `world` leg claims
+// are removed, because the leg they were about no longer exists.
+//
 // Run: node --test test/adversarial-v61-p1.test.cjs
 
 const test = require("node:test");
@@ -26,13 +33,10 @@ const { bundleCore } = require("./.blind-util.cjs");
 const { mod, cleanup } = bundleCore(
   "adversarial-v61-p1",
   `export { maskLine, maskedBody, docLines } from "../src/core/criticizeTypes";
-export { criticizeLangFor } from "../src/core/criticizeLang";
-export { HONESTY_DETECTORS } from "../src/core/criticizeHonesty";\n`,
+export { criticizeLangFor } from "../src/core/criticizeLang";\n`,
 );
-const { maskLine, maskedBody, docLines, criticizeLangFor, HONESTY_DETECTORS } = mod;
+const { maskLine, maskedBody, docLines, criticizeLangFor } = mod;
 test.after(cleanup);
-
-const detector = (dimension) => HONESTY_DETECTORS.find((d) => d.dimension === dimension);
 
 /** A unit whose doc block is lines[0..headIndex), whose head is lines[headIndex]
  *  and whose body starts at bodyIndex. */
@@ -45,7 +49,9 @@ const unit = (languageId, lines, headIndex, bodyIndex, startLine = 1) => ({
   bodyIndex,
 });
 
-const outcome = (dimension, fn) => detector(dimension).run(fn, criticizeLangFor(fn.languageId));
+/** The body as the detectors read it, one string. The masking claims below are
+ *  all about what is and is not in here. */
+const body = (fn) => maskedBody(fn, criticizeLangFor(fn.languageId)).join("\n");
 
 // ===========================================================================
 // 1. Masking: string literals the masker does not recognise as strings
@@ -69,14 +75,14 @@ test("DEFECT 1: a Rust raw string with an inner quote leaks its contents past th
   );
 });
 
-test("DEFECT 1b: the clock detector fires inside a Rust raw string", () => {
+test("DEFECT 1b: a Rust raw string's contents reach the body reader as code", () => {
   const fn = unit("rust", [
     "fn build() -> String {",
     '    let payload = r#"{"note": "Instant::now()"}"#;',
     "    payload",
     "}",
   ], 0, 1);
-  assert.deepStrictEqual(outcome("clock", fn), { state: "clean" });
+  assert.ok(!/Instant::now/.test(body(fn)), "a raw string's contents are string content, not body code");
 });
 
 // EVIDENCE: C# 11 raw string literals open with `"""` and may span lines. Only
@@ -90,10 +96,9 @@ test("DEFECT 2: a C# raw string literal spanning lines leaks its body past the m
     '        """;',
     "}",
   ], 0, 1);
-  assert.deepStrictEqual(
-    outcome("clock", fn),
-    { state: "clean" },
-    "the body of a C# raw string literal is a string, not a clock read",
+  assert.ok(
+    !/DateTime\.UtcNow/.test(body(fn)),
+    "the body of a C# raw string literal is string content and must not reach the body reader as code",
   );
 });
 
@@ -108,10 +113,9 @@ test("DEFECT 3: `/*/` is treated as an opened-and-closed comment, exposing the c
     "    return 1;",
     "}",
   ], 0, 1);
-  assert.deepStrictEqual(
-    outcome("clock", fn),
-    { state: "clean" },
-    "a clock spelling inside a block comment is not a clock read",
+  assert.ok(
+    !/Date\.now/.test(body(fn)),
+    "a commented-out statement is a comment and must not reach the body reader as code",
   );
 });
 
@@ -130,8 +134,10 @@ test("DEFECT 4: a C# verbatim string ending in a backslash swallows the rest of 
     '    var dir = @"C:\\"; var t = DateTime.UtcNow;',
     "}",
   ], 0, 1);
-  const out = outcome("clock", fn);
-  assert.strictEqual(out.state, "flagged", "DateTime.UtcNow on that line is a real clock read");
+  assert.ok(
+    /DateTime\.UtcNow/.test(body(fn)),
+    "the code after a closed verbatim string is real code and must survive the mask",
+  );
 });
 
 // EVIDENCE: the interpolated part of a template literal or an f-string is
@@ -149,62 +155,40 @@ test("DEFECT 5: a Python f-string interpolation hides a real clock read (py-001,
     '    self.fd.write(f"{os.getpid()}\\n{datetime.now().isoformat()}\\n")',
     "    return True",
   ], 0, 1, 101);
-  const out = outcome("clock", fn);
-  assert.strictEqual(out.state, "flagged", "datetime.now() inside an f-string placeholder is a clock read");
-  assert.strictEqual(out.findings[0].line, 102);
+  const masked = maskedBody(fn, criticizeLangFor("python"));
+  assert.ok(
+    /datetime\.now\(\)/.test(masked.join("\n")),
+    "an f-string placeholder holds executable code and must survive the mask",
+  );
+  // The line that carries it is still document line 102, which is the half of
+  // this claim the finding's line number used to prove.
+  assert.strictEqual(fn.startLine + fn.bodyIndex, 102);
 });
 
-test("DEFECT 5b: a TypeScript template placeholder hides a real clock read", () => {
+test("DEFECT 5b: a TypeScript template placeholder hides real code", () => {
   const fn = unit("typescript", [
     "function log() {",
     "    const s = `served at ${Date.now()}`;",
     "    return s;",
     "}",
   ], 0, 1);
-  assert.strictEqual(outcome("clock", fn).state, "flagged");
+  assert.ok(/Date\.now\(\)/.test(body(fn)), "a template placeholder is code and must survive the mask");
 });
 
 // ===========================================================================
 // 3. The `world` leg: the only false positive on the labelled set
 // ===========================================================================
 
-// EVIDENCE: labelled row ts-030, `rustModulePath` in src/core/testAssembly.ts,
-// lines 960 to 1020. The label is `world: false`, and its reason is
-// "every file read goes through ctx.files.readFile at 994, injected via the
-// parameter". The TypeScript world table carries a bare `/\breadFile(Sync)?\s*\(/`
-// which fires on any receiver, so the detector flags the injected reader.
+// REMOVED 2026-08-29: `DEFECT 6: the world leg fires on an INJECTED reader
+// (labelled row ts-030)` and `DEFECT 6b: the world leg fires on an interface
+// member DECLARATION, which is not a call`.
 //
-// This is the honest form the rubric's own source line prescribes ("build the
-// core out of honest functions and inject the I/O at the topmost level, passed
-// in as arguments"), so the detector is telling a developer that the fix is the
-// defect. In this repo's own src/ the same pattern fires on 29 lines that are
-// not `fs.*`: 3 are interface member declarations and are not calls at all, and
-// roughly half the rest are calls through an injected reader.
-test("DEFECT 6: the world leg fires on an INJECTED reader (labelled row ts-030)", () => {
-  const fn = unit("typescript", [
-    "export function rustModulePath(ctx: RustTestNameContext): string[] | undefined {",
-    "    const text = ctx.files.readFile(node.file);",
-    "    return undefined;",
-    "}",
-  ], 0, 1, 979);
-  assert.deepStrictEqual(
-    outcome("world", fn),
-    { state: "clean" },
-    "a read through a reader handed in by the caller comes through the signature, so it is honest",
-  );
-});
-
-test("DEFECT 6b: the world leg fires on an interface member DECLARATION, which is not a call", () => {
-  const fn = unit("typescript", [
-    "function withDeps() {",
-    "    type Deps = {",
-    "        readFile(p: string): string | undefined;",
-    "    };",
-    "    return 1;",
-    "}",
-  ], 0, 1);
-  assert.deepStrictEqual(outcome("world", fn), { state: "clean" });
-});
+// Both were precision claims against the TypeScript world TABLE, and the fix
+// they won was a receiver-aware pattern in that table. Ruling 3 deletes the
+// table, so there is no pattern left to be wrong. The claim underneath survives
+// as a fact the model judge is asked to honour in its prompt: a read through a
+// reader the caller handed in came through the signature, so it is honest. It
+// is measured against a labelled set now, not asserted here.
 
 // ===========================================================================
 // 4. The doc harvester
@@ -325,21 +309,23 @@ test("DEFECT 10: a Go build constraint is harvested as part of the doc comment",
 // It is also the failure the module's own header is about: a zero produced by
 // a rig that could not fire, spelled identically to a real one. The expected
 // outcome here is `blind` with a reason, not `clean`.
-test("DEFECT 11: a one-line function reads CLEAN on every honesty leg without being examined", () => {
+// RESTATED 2026-08-29. The claim was `a one-line function reads CLEAN on every
+// honesty leg without being examined`, and since the detectors now refuse
+// whatever they are handed, asserting "not clean" would pass on a build that had
+// lost the fix. It is restated against the body reader, where the fix actually
+// landed: the head line's remainder IS the body, and it must reach the reader.
+test("DEFECT 11: a one-line function's body reaches the body reader", () => {
   const cases = [
-    ["csharp", "public DateTime Now() => DateTime.UtcNow;"],
-    ["rust", "pub fn now() -> Instant { Instant::now() }"],
-    ["typescript", "export const now = () => Date.now();"],
-    ["go", "func Now() time.Time { return time.Now() }"],
-    ["python", "def now(): return time.time()"],
+    ["csharp", "public DateTime Now() => DateTime.UtcNow;", /DateTime\.UtcNow/],
+    ["rust", "pub fn now() -> Instant { Instant::now() }", /Instant::now/],
+    ["typescript", "export const now = () => Date.now();", /Date\.now/],
+    ["go", "func Now() time.Time { return time.Now() }", /time\.Now/],
+    ["python", "def now(): return time.time()", /time\.time/],
   ];
-  for (const [languageId, line] of cases) {
+  for (const [languageId, line, spelling] of cases) {
     const fn = unit(languageId, [line], 0, 1);
-    const out = outcome("clock", fn);
-    assert.notStrictEqual(
-      out.state,
-      "clean",
-      `${languageId}: a slice with no body line was never examined, so "clean" is a fact about the slice`,
-    );
+    const read = body(fn);
+    assert.ok(read.trim().length > 0, `${languageId}: a slice with no body LINE still has a body`);
+    assert.ok(spelling.test(read), `${languageId}: the head line's remainder is the body, got ${JSON.stringify(read)}`);
   }
 });

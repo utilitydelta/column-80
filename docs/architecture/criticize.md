@@ -1,6 +1,6 @@
 # Criticize
 
-One gesture, fifteen dimensions, five languages, and nothing written. `Column 80: Criticize
+One gesture, fourteen dimensions, five languages, and nothing written. `Column 80: Criticize
 Function` scores the function under your cursor against a rubric and prints a card to the output
 channel.
 
@@ -101,7 +101,7 @@ cannot rank it, cannot count defects in it, and cannot decide anything about it.
 ## Two audiences, two reading depths, one gesture
 
 - **A student building a function their professor would give an A+.** They read the whole card and
-  learn which of fifteen questions this function answers badly.
+  learn which of fourteen questions this function answers badly.
 - **A professional feeding a refactor effort.** They read the elevated rows and the blast radius,
   and stop.
 
@@ -119,7 +119,7 @@ the deliverable rather than an internal signal, so the Goodhart risk would land 
 Dimensions get a state and an evidence line; the function does not get a mark out of ten. The only
 number a card carries is the declaration's line number.
 
-## The fifteen dimensions
+## The fourteen dimensions
 
 Grouped the way `docs/perfect-functions.md` groups the craft, and the card renders them in this
 order so two cards can be read side by side row for row.
@@ -139,30 +139,42 @@ order so two cards can be read side by side row for row.
 |---|---|---|---|
 | 5 | `adjacent-params` | two neighbours of one type, swappable at the call site | signature empathy |
 | 6 | `bool-param` | a boolean parameter; the caller already knew | Acton 2014 |
-| 7 | `unused-param` | a named parameter the body never mentions | the red circle |
-| 8 | `param-count` | above a per-language threshold | McCabe-era, kept |
+| 7 | `param-count` | above a per-language threshold | McCabe-era, kept |
+
+A fourth entry, `unused-param`, sat between `bool-param` and `param-count` and was
+**DELETED 2026-08-29**. It is not coming back. The product thesis
+is that the moat is good context (compiler + AST + tests + lint) fed to a model, not a re-run of the
+linter, and this dimension was measured as already covered by the developer's own default toolchain:
+`cargo clippy` with no configuration reports `unused_variables` (on by default, part of
+`#[warn(unused)]`); tsserver with **no tsconfig at all** already emits TS6133, "declared but its value
+is never read", as an editor suggestion, and `noUnusedParameters` makes it an error; gopls's
+`unusedparams` is default-on. C#'s IDE0060 and Python's ruff ARG001 are opt-in. **The residue given
+up:** EXPORTED Go functions, which gopls's `unusedparams` does not report, and Python projects that
+have not selected the `ARG` rule set. The remaining three overlaps are NOT covered at this product's
+thresholds, which is the stronger claim: `param-count` fires at 5 where clippy's `too_many_arguments`
+fires at 8, and `nesting` fires at 4 where ruff's nesting rule is preview-gated and fires at 6.
 
 **Contract: does it promise something, and hold to it.**
 
 | # | dimension id | fires on | source |
 |---|---|---|---|
-| 9 | `undocumented` | exported, zero doc comment | Knuth 1984 |
-| 10 | `unenforced-precondition` | the doc says must/assumes/requires, the body has no guard | Hoare 1969 |
-| 11 | `cqs` | returns data while mutating state | Meyer 1988 |
+| 8 | `undocumented` | exported, zero doc comment | Knuth 1984 |
+| 9 | `unenforced-precondition` | the doc says must/assumes/requires, the body has no guard | Hoare 1969 |
+| 10 | `cqs` | returns data while mutating state | Meyer 1988 |
 
 **One level of abstraction.**
 
 | # | dimension id | fires on | source |
 |---|---|---|---|
-| 12 | `pass-through` | the body is one delegating call at the same or wider arity | Ousterhout 2018 |
-| 13 | `nesting` | max block depth above a threshold | McCabe 1976 |
-| 15 | `section-comment` | a `//` label inside a body followed by code | Wirth 1971 |
+| 11 | `pass-through` | the body is one delegating call at the same or wider arity | Ousterhout 2018 |
+| 12 | `nesting` | max block depth above a threshold | McCabe 1976 |
+| 14 | `section-comment` | a `//` label inside a body followed by code | Wirth 1971 |
 
 **Safety: can it fail in a way the signature never admits.**
 
 | # | dimension id | fires on | source |
 |---|---|---|---|
-| 14 | `unadmitted-failure` | five detectors, one idea; see below | Go proverbs, Rust culture |
+| 13 | `unadmitted-failure` | five detectors, one idea; see below | Go proverbs, Rust culture |
 
 Naming the principle is load-bearing rather than decorative. "Line 14 mutates and returns" is a
 lint. "This violates command-query separation, Meyer 1988: a function answers a question or changes
@@ -281,8 +293,8 @@ those braces hold CODE. Dimension 7 was calling a used parameter unused on 7.9% 
 The professional's half. `src/core/criticizeBlast.ts` runs the shipped call walk one level up from
 the function and counts the DIRECT call sites, which are the lines an honest signature change edits.
 
-Nine of the fifteen dimensions are signature-level, meaning the honest fix changes the signature and
-ripples to callers: the four honesty legs, the four signature-empathy legs, and unadmitted failure.
+Eight of the fourteen dimensions are signature-level, meaning the honest fix changes the signature and
+ripples to callers: the four honesty legs, the three signature-empathy legs, and unadmitted failure.
 The other six are body-local, so a call-site count would describe nothing and none is attached.
 
 **It is BEST EFFORT, and undefined renders as NOTHING rather than as zero.** A count is refused
@@ -361,7 +373,7 @@ costs, give the order, stop. No citations, no second person, no hedging.
     let start = Instant::now();
 
 Every comment goes ABOVE its offending line at that line's own indent. There is no trailing form:
-measured over all fifteen dimensions with no detector detail at all, on an 18-column code line, one
+measured over all fourteen dimensions with no detector detail at all, on an 18-column code line, one
 fitted; with real details, none did.
 
 A head line carries the tag and the dimension; continuations hang under it. Tagging every line was
@@ -380,7 +392,7 @@ This section is the honest bound on everything above it.
 - **No detector's precision was measured before this session.** Every rate in the goal and the scout
   is a SIGNAL rate on code the repo considers good. A signal rate says the channel is quiet. It does
   not say a single flag is correct.
-- **All fifteen dimensions are now graded.** Against the 138-row hand-labelled set in
+- **All fifteen dimensions were graded**, the set predating the deletion of `unused-param`, whose row is kept below for the record. Against the 138-row hand-labelled set in
   `session-v61/graded/labels.json`, reproducible by running `session-v61/harness/grade.cjs`:
 
   | dimension | precision | recall |
@@ -391,7 +403,7 @@ This section is the honest bound on everything above it.
   | `world` | 100.0% | 60.0% |
   | `adjacent-params` | 100.0% | 100.0% |
   | `bool-param` | 100.0% | 100.0% |
-  | `unused-param` | 100.0% | 100.0% |
+  | `unused-param` (deleted) | 100.0% | 100.0% |
   | `param-count` | 100.0% | 100.0% |
   | `undocumented` | 100.0% | 100.0% |
   | `unenforced-precondition` | ungraded | 0.0% |
@@ -402,7 +414,8 @@ This section is the honest bound on everything above it.
   | `unadmitted-failure` | 100.0% | 64.3% |
 
   Fourteen of the fifteen have zero false positives on the set. The exception is `pass-through`, with
-  one. `unenforced-precondition` has no precision cell because it fires on no labelled positive, and
+  one. `unused-param` is on this table because it was graded here; it was DELETED 2026-08-29 and no
+  longer ships, so thirteen of the fourteen shipping dimensions have zero false positives. `unenforced-precondition` has no precision cell because it fires on no labelled positive, and
   ungraded is what that is: not a pass.
 - **RECALL IS THE WEAK HALF, everywhere, and it is the half a reader will misread.** `world` misses
   40% of its labelled positives, `unadmitted-failure` misses 36%, `cqs` misses 71%. A row that fired

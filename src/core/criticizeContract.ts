@@ -1,5 +1,5 @@
 /**
- * Dimensions 9 to 11: does the function promise something, and hold to it.
+ * Dimensions 8 to 10: does the function promise something, and hold to it.
  *
  * Three questions a reader of the INTERFACE asks. Is there a contract at all.
  * Does the contract say something the body never checks. And does the function
@@ -78,7 +78,7 @@ function refusal(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutcome
 }
 
 // ===========================================================================
-// Dimension 9, public and undocumented
+// Dimension 8, public and undocumented
 // ===========================================================================
 
 function isPublic(fn: FunctionUnderReview, lang: CriticizeLang): boolean {
@@ -98,6 +98,17 @@ function isPublic(fn: FunctionUnderReview, lang: CriticizeLang): boolean {
 }
 
 function undocumented(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutcome {
+  // DELEGATED WHERE THE LANGUAGE ALREADY ANSWERS IT. Checked BEFORE the slice is
+  // read, because whether this language's toolchain covers the question is a
+  // fact about the language and not about the function: a refusal that depended
+  // on the code would be answering a question this dimension no longer asks.
+  const covered = lang.craft.undocumentedRule;
+  if (covered !== undefined) {
+    return {
+      state: "blind",
+      reason: `${lang.displayName} answers this itself: ${covered}. This pass does not duplicate a rule your own toolchain carries`,
+    };
+  }
   const no = refusal(fn, lang);
   if (no !== undefined) {
     return no;
@@ -113,7 +124,7 @@ function undocumented(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOu
 }
 
 // ===========================================================================
-// Dimension 10, states a precondition it never enforces
+// Dimension 9, states a precondition it never enforces
 // ===========================================================================
 
 /** The words a stated precondition is written with. The doc says the caller
@@ -222,7 +233,7 @@ function unenforcedPrecondition(fn: FunctionUnderReview, lang: CriticizeLang): D
     return no;
   }
   // A function with no doc promised nothing, so there is nothing to fail to
-  // enforce. That is dimension 9's question, not this one's.
+  // enforce. That is dimension 8's question, not this one's.
   if (docLines(fn, lang).length === 0) {
     return { state: "clean" };
   }
@@ -258,7 +269,7 @@ function unenforcedPrecondition(fn: FunctionUnderReview, lang: CriticizeLang): D
 }
 
 // ===========================================================================
-// Dimension 11, answers a question AND changes the world
+// Dimension 10, answers a question AND changes the world
 // ===========================================================================
 
 /**
@@ -361,7 +372,7 @@ function cqs(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutcome {
 }
 
 /**
- * Dimensions 9 to 11, in rubric order.
+ * Dimensions 8 to 10, in rubric order.
  */
 export const CONTRACT_DETECTORS: readonly Detector[] = [
   {

@@ -13,6 +13,11 @@
 // ===========================================================================
 
 import { DimensionId } from "./criticizeTypes";
+import { ExplainFailure } from "./criticizeExplain";
+// The fix round's own vocabulary. The gesture module owns what the channel
+// SAYS; `criticizeFix` owns what may be planted and why a sentence was turned
+// down, and this file only spells its verdicts.
+import { FixArm, FixContext, FixFailure } from "./criticizeFix";
 import { ElevationPolicy, Scorecard, ScorecardRow, signatureLevel } from "./criticizeScore";
 // The proposal half of the gesture. `C80_TAG` and `lineCommentFor` are the SAME
 // two answers the planner strips with: a region that recognised this product's
@@ -32,7 +37,7 @@ export const CRITIQUE_PREFIX = "[critique]";
 /** How many dimensions a card always carries. Fixed by the rubric, and the
  *  evidence line quotes it so a reader can tell "three elevated" from "three
  *  scored". */
-export const RUBRIC_SIZE = 15;
+export const RUBRIC_SIZE = 14;
 
 /**
  * How many elevated rows may be sent to the explainer, CHOSEN and not measured.
@@ -89,7 +94,7 @@ export function unregisteredLanguageReason(languageId: string): string {
  * Step 3. A cursor that is not inside a function.
  *
  * NEVER SCORE THE FILE INSTEAD. The rubric is about one function; a file-level
- * card would be fifteen dimensions answered about nothing in particular, and it
+ * card would be fourteen dimensions answered about nothing in particular, and it
  * would be the "criticize file" gesture the one-gesture rule refuses.
  */
 export const NO_FUNCTION_TOAST =
@@ -238,10 +243,10 @@ export interface CardSummary {
   /** Rows flagged and not held by the policy. */
   elevated: number;
   /** Rows the language could not answer. Reported alongside the elevated count
-   *  because "two elevated" out of fifteen answered and out of fifteen where
+   *  because "two elevated" out of fourteen answered and out of fourteen where
    *  nine were blind are very different cards. */
   blind: number;
-  /** Rows flagged but held below the bar by policy. Dimension 15 ships here
+  /** Rows flagged but held below the bar by policy. Dimension 14 ships here
    *  pending a ruling. */
   held: number;
 }
@@ -277,7 +282,7 @@ export function scoringLine(name: string, languageId: string, headLine: number):
   return critiqueLine(`scoring ${name} (${languageId}) at line ${headLine}`);
 }
 
-/** `[critique] <k> of 15 dimensions elevated, <b> blind`. */
+/** `[critique] <k> of 14 dimensions elevated, <b> blind`. */
 export function summaryLine(summary: CardSummary): string {
   return critiqueLine(
     `${summary.elevated} of ${RUBRIC_SIZE} dimensions elevated, ${summary.blind} blind, ${summary.held} held below the bar by policy`,
@@ -298,10 +303,191 @@ export function explainerSkippedLine(reason: string): string {
   return critiqueLine(`explainer skipped: ${reason}`);
 }
 
+/** The honesty round's outcome, and it is NOT an enrichment line.
+ *
+ *  Four of the fourteen dimensions are decided here, so a reader has to be able
+ *  to tell "the model judged this function honest" from "nobody judged it". The
+ *  four rows say `blind` in the second case and this line says why. */
+export function honestyJudgedLine(flagged: number, backend: string): string {
+  // ALWAYS PLURAL. The count agrees with the FOUR, not with the numerator: an
+  // "N of 4" phrase is about the set of four, so "1 of 4 dimension flagged" is
+  // simply wrong English. Read off a real host channel, which is the only place
+  // this sentence is ever seen.
+  return critiqueLine(`honesty judged by ${backend}: ${flagged} of 4 dimensions flagged`);
+}
+
+/** Why the four honesty rows came back `blind`.
+ *
+ *  Never "clean". A dimension nobody could judge is not a dimension that
+ *  passed, and the 67 name-table regexes this round replaced spent a whole
+ *  release saying otherwise. */
+export function honestyBlindLine(reason: string): string {
+  return critiqueLine(`honesty not judged, all 4 dimensions blind: ${reason}`);
+}
+
+/**
+ * The explainer pass's summary line, and it NAMES THE SILENCE.
+ *
+ * `explained 0 of 2 elevated row(s)` was printed on all 44 host runs of the v62
+ * release with no ollama running at all, and the sentence gave a reader no way
+ * to know it. A dead backend and a model that answered with a shrug are
+ * different events, they want different actions from the developer, and until
+ * this line they had byte-identical spellings.
+ *
+ * The tally is by KIND rather than a list of details, because five rows failing
+ * the same way is one fact. The first unavailable round's own message rides
+ * along in parentheses: `connect ECONNREFUSED 127.0.0.1:11434` is the sentence
+ * that would have caught this a release ago.
+ */
+export function explainedLine(
+  explained: number,
+  total: number,
+  failures: readonly ExplainFailure[] = [],
+): string {
+  const head = `explained ${explained} of ${total} elevated row(s)`;
+  const list = Array.isArray(failures) ? failures : [];
+  if (list.length === 0) {
+    return critiqueLine(head);
+  }
+  const clauses: string[] = [];
+  // A KIND NOBODY RECOGNISES IS STILL A FAILURE. Without this the three filters
+  // below all miss it, the length check above has already committed to a
+  // semicolon, and the line renders as `...elevated row(s); ` - a claim that
+  // something failed with nothing behind it, which is the shape of defect this
+  // whole function exists to remove. Found by the phase 1 adversarial review.
+  const known = new Set(["unavailable", "silent", "unusable"]);
+  const strange = list.filter((f) => !known.has(f?.kind as string));
+  if (strange.length > 0) {
+    clauses.push(`${strange.length} failed for a reason this build has no word for`);
+  }
+  const unreachable = list.filter((f) => f?.kind === "unavailable");
+  if (unreachable.length > 0) {
+    // The model is unreachable, which is an outage and not a quiet model.
+    clauses.push(
+      `${unreachable.length} never reached the model, so the backend is unreachable rather than unhelpful (${unreachable[0].detail})`,
+    );
+  }
+  const silent = list.filter((f) => f?.kind === "silent");
+  if (silent.length > 0) {
+    clauses.push(`${silent.length} answered with nothing`);
+  }
+  const unusable = list.filter((f) => f?.kind === "unusable");
+  if (unusable.length > 0) {
+    clauses.push(`${unusable.length} answered past the line bound and were dropped`);
+  }
+  return critiqueLine(`${head}; ${clauses.join(", ")}`);
+}
+
+// ---------------------------------------------------------------------------
+// The fix round.
+//
+// Its sentences are kept apart from the explainer's on purpose. The explainer
+// writes a paragraph into the CARD; the fix round writes one imperative into a
+// person's SOURCE FILE, and a reader triaging a comment they did not expect has
+// to be able to tell which of the two spoke. So the fix round has its own verb
+// on every line, and no line here reuses `explainer skipped`.
+// ---------------------------------------------------------------------------
+
+/** `[critique] fix skipped: <reason>`. A closed tier gate and a card with
+ *  nothing above the bar both land here, and neither is a failure: every
+ *  comment still carries the table's phrase, which has shipped since 2.5.0. */
+export function fixSkippedLine(reason: string): string {
+  return critiqueLine(`fix skipped: ${reason}`);
+}
+
+/**
+ * What the model was shown, INCLUDING WHAT IT WAS NOT.
+ *
+ * Every block is best effort and every absence is a shipped state, so an arm
+ * that quietly carried three of its five blocks would otherwise be measured as
+ * that arm. The line names the missing ones rather than omitting them, which is
+ * the difference between "arm E" and "arm E, with no callees and no type
+ * shapes, because the server did not answer".
+ */
+export function fixContextLine(arm: FixArm, context: FixContext): string {
+  const c = context ?? {};
+  const parts = [
+    countClause(c.functionText?.length, "function line"),
+    c.signature !== undefined && c.signature !== "" ? "a parsed signature" : "no parsed signature",
+    countClause(c.typeShapes?.length, "type-shape line"),
+    countClause(c.callSites?.length, "upstream call site"),
+    countClause(c.callees?.length, "callee"),
+  ];
+  return critiqueLine(`fix context (arm ${arm}): ${parts.join(", ")}`);
+}
+
+/** `3 upstream call sites` / `no upstream call sites`. A zero is spelled as an
+ *  absence because that is what it is: no leg here ever measured a zero, it
+ *  either filled a block or could not. */
+function countClause(count: number | undefined, noun: string): string {
+  const n = typeof count === "number" && Number.isInteger(count) && count > 0 ? count : 0;
+  return n === 0 ? `no ${noun}s` : `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * One row's sentence was turned down by the gate.
+ *
+ * IT NAMES THE FALLBACK IN THE SAME BREATH. A refusal line that only says "no"
+ * reads like a comment went missing; the comment is there, complete, carrying
+ * the sentence the product has always written.
+ */
+export function fixRefusedLine(dimension: DimensionId, reason: string): string {
+  return critiqueLine(`fix refused for ${dimension}, so the comment keeps the table's phrase: ${reason}`);
+}
+
+/**
+ * One row's round never reached a model.
+ *
+ * A DIFFERENT SENTENCE FROM THE REFUSAL ABOVE, and that is the whole point of
+ * the line. "The model wrote something unusable" and "there was no model" are
+ * opposite events wanting opposite actions from the developer, and until phase
+ * 1 of this session the explainer spelled them identically for a release.
+ */
+export function fixUnreachableLine(dimension: DimensionId, detail: string): string {
+  return critiqueLine(
+    `fix never reached the model for ${dimension}, so the comment keeps the table's phrase: ${detail}`,
+  );
+}
+
+/**
+ * The fix round's summary line, tallied by kind.
+ *
+ * `wrote 0 of 2` on its own is the sentence this session was called to delete.
+ * Every fallback is accounted for here by the kind that caused it, and the
+ * first outage's own message rides along, because `connect ECONNREFUSED
+ * 127.0.0.1:11434` is the string that ends a wrong triage in one line.
+ */
+export function fixedLine(
+  planted: number,
+  total: number,
+  failures: readonly FixFailure[] = [],
+): string {
+  const head = `the model wrote ${planted} of ${total} fix sentence(s)`;
+  const list = Array.isArray(failures) ? failures : [];
+  if (list.length === 0) {
+    return critiqueLine(head);
+  }
+  const clauses: string[] = [];
+  const unreachable = list.filter((f) => f?.kind === "unreachable");
+  if (unreachable.length > 0) {
+    clauses.push(
+      `${unreachable.length} never reached the model, so the backend is unreachable rather than ` +
+        `the sentence unusable (${unreachable[0].detail})`,
+    );
+  }
+  const refused = list.filter((f) => f?.kind === "refused");
+  if (refused.length > 0) {
+    clauses.push(
+      `${refused.length} refused by the gate: ${refused.map((f) => `${f.dimension} (${f.detail})`).join("; ")}`,
+    );
+  }
+  return critiqueLine(`${head}; ${clauses.join(", ")}`);
+}
+
 /**
  * The toast. ONE LINE, and it never carries the card.
  *
- * The card is fifteen rows plus evidence plus prose and it belongs in a channel
+ * The card is fourteen rows plus evidence plus prose and it belongs in a channel
  * a developer can scroll. A notification that carried it would be truncated by
  * the host at a width nothing here controls, and the truncation would fall
  * wherever it fell.
@@ -431,16 +617,37 @@ export function injectionRegion(
   headOffset: number,
   end: number,
   languageId: string,
+  // OPTIONAL, AND THE RUBRIC PATH NEVER PASSES IT. An offset the region must
+  // reach back to include, used by the model-authored review so a comment ABOUT
+  // the doc comment can be planted above the doc comment.
+  //
+  // The slicer already walks UP over the doc block, so the model is shown it and
+  // can reasonably anchor a block there. Without this the region started at the
+  // declaration head, that line fell outside it, and the block was dropped -
+  // measured as the commonest loss on `undocumented` and
+  // `unenforced-precondition`, two of the dimensions the model fires on most.
+  //
+  // Absent leaves the region byte-identical to what it has always been, which is
+  // what keeps the rubric gesture's own behaviour untouched.
+  reachBackTo?: number,
 ): InjectionRegion {
   const source = typeof text === "string" ? text : "";
   const to = clampOffset(end, source.length, source.length);
   const head = Math.min(clampOffset(headOffset, 0, source.length), to);
   const atLineStart = lineStartAt(source, head);
   // Whitespace only, or the head keeps the line to itself from where it stands.
-  const start =
+  const planted =
     source.slice(atLineStart, head).trim() === ""
       ? reachBackOverPlanted(source, atLineStart, lineCommentFor(languageId))
       : head;
+  // NEVER FORWARD, and never past the end. A caller asking to reach back to a
+  // point AFTER where the region already starts is asking for a smaller region
+  // than the strip pass needs, and the planted-comment reach-back is not
+  // negotiable: it is what stops a second press stacking.
+  const start =
+    reachBackTo === undefined
+      ? planted
+      : Math.min(planted, lineStartAt(source, clampOffset(reachBackTo, planted, to)));
   return {
     start,
     end: to,

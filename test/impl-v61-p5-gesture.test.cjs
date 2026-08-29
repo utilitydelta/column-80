@@ -123,7 +123,11 @@ const RUST_DOC = [
   "///",
   "/// The caller must ensure `raw` is non-empty.",
   "#[inline]",
-  "pub fn parse_header(raw: &str) -> Header {",
+  // `strict: bool` added 2026-08-29. The card needs a SIGNATURE-LEVEL row above
+  // the bar for the blast-radius rows below, and the clock read on the next line
+  // stopped supplying one when the four honesty dimensions became a model
+  // judgement (ruling 3, the amendment at the end of session-v64/goal.md).
+  "pub fn parse_header(raw: &str, strict: bool) -> Header {",
   "    let started = Instant::now();",
   "    Header::from(raw, started)",
   "}",
@@ -139,7 +143,7 @@ test("the slice built from a document includes the doc comment", () => {
   assert.equal(unit.startLine, 3);
   assert.equal(unit.lines[0].trim(), "/// Parses a header.");
   assert.ok(unit.headIndex > 0, "headIndex 0 would mean the doc was never in the slice");
-  assert.equal(unit.lines[unit.headIndex].trim(), "pub fn parse_header(raw: &str) -> Header {");
+  assert.equal(unit.lines[unit.headIndex].trim(), "pub fn parse_header(raw: &str, strict: bool) -> Header {");
   // The attribute survives between the doc and the head, which is what makes
   // the walk reach past it instead of stopping there.
   assert.ok(unit.lines.some((l) => l.trim() === "#[inline]"));
@@ -197,7 +201,7 @@ test("a measured zero and an unmeasured one do not share a spelling", () => {
   const measured = {
     ...card,
     rows: card.rows.map((row) =>
-      row.dimension === "clock" && row.outcome.state === "flagged"
+      row.dimension === "bool-param" && row.outcome.state === "flagged"
         ? { ...row, blastRadius: 0 }
         : row,
     ),
@@ -299,7 +303,7 @@ test("the summary counts elevated, blind and held separately", () => {
   const card = cardFor(RUST_DOC, HEAD_LINE, END_LINE, "parse_header");
   const summary = summariseCard(card, DEFAULT_ELEVATION);
   assert.equal(summary.elevated + summary.blind + summary.held <= RUBRIC_SIZE, true);
-  assert.ok(summary.elevated >= 1, "this function reads the clock and states a precondition");
+  assert.ok(summary.elevated >= 1, "this function takes a flag and states a precondition");
   // A held dimension is flagged and NOT elevated: the two counts must not
   // share a slot, or a ruling on dimension 15 would move a number nobody meant.
   const held = summariseCard(card, { held: card.rows.map((r) => r.dimension) });
@@ -344,7 +348,7 @@ test("only elevated rows are explainable, and the cap bounds them", () => {
 
 test("the walk is skipped when no elevated row could display its number", () => {
   const card = cardFor(RUST_DOC, HEAD_LINE, END_LINE, "parse_header");
-  assert.equal(wantsBlastRadius(card, DEFAULT_ELEVATION), true, "the clock row is signature-level");
+  assert.equal(wantsBlastRadius(card, DEFAULT_ELEVATION), true, "the bool-param row is signature-level");
   const bodyLocalOnly = {
     ...card,
     rows: card.rows.filter((r) => !signatureLevel(r.dimension)),
@@ -429,7 +433,7 @@ test("the gesture is registered under one command id and no keybinding", () => {
 // real Python file refused, against 0 of 13 in TypeScript, 0 of 11 in Rust,
 // 0 of 10 in Go and 0 of 11 in C#. Every one of the seven carried a docstring,
 // so the gesture refused Python's documented functions and scored only its
-// undocumented ones - on a rubric one of whose fifteen dimensions is whether a
+// undocumented ones - on a rubric one of whose fourteen dimensions is whether a
 // function is documented.
 // ---------------------------------------------------------------------------
 

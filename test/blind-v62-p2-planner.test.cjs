@@ -99,7 +99,7 @@ function planInjection(regionLines, regionStartLine, card, policy) {
 
 // ---------------------------------------------------------------------------
 // Card fixtures. Hand-built, because the planner is being handed a Scorecard
-// and never builds one. Fifteen rows in the rubric's fixed order, because that
+// and never builds one. Fourteen rows in the rubric's fixed order, because that
 // order IS "card order" for the several-findings-on-one-line rule.
 // ---------------------------------------------------------------------------
 
@@ -110,7 +110,6 @@ const DIMS = [
   "world",
   "adjacent-params",
   "bool-param",
-  "unused-param",
   "param-count",
   "undocumented",
   "unenforced-precondition",
@@ -128,7 +127,6 @@ const GROUP_OF = {
   world: "honesty",
   "adjacent-params": "signature-empathy",
   "bool-param": "signature-empathy",
-  "unused-param": "signature-empathy",
   "param-count": "signature-empathy",
   undocumented: "contract",
   "unenforced-precondition": "contract",
@@ -148,7 +146,6 @@ const SIGNATURE_LEVEL = new Set([
   "world",
   "adjacent-params",
   "bool-param",
-  "unused-param",
   "param-count",
   "unadmitted-failure",
 ]);
@@ -177,7 +174,7 @@ const blind = (dim) => ({
 const clean = () => ({ state: "clean" });
 
 /**
- * A whole fifteen-row card.
+ * A whole fourteen-row card.
  *
  * `spec` maps a dimension to an outcome; anything unnamed is clean. `blast`
  * maps a dimension to a blastRadius. `elevatedOverride` maps a dimension to a

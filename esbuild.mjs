@@ -43,6 +43,23 @@ const productSurface = {
       `export { criticizeLangFor } from "./src/core/criticizeLang";`,
       `export { renderScorecard, HONEST_CONTRACT } from "./src/core/criticizeRender";`,
       `export { CRITIQUE_PREFIX, RUBRIC_SIZE, NO_FUNCTION_REASON, unregisteredLanguageReason, unregisteredLanguageToast } from "./src/core/criticizeGesture";`,
+      // session-v64 phase 4: the arms cannot be measured inside an extension
+      // host - five arms, three runs, two model classes - so the host's job is
+      // to CAPTURE the context once and let the arms run offline. These are
+      // exactly the pieces `runCriticize` assembles, exported so the capture
+      // rig reproduces the product's own assembly rather than a hand-built copy
+      // of it, which is the circular measurement session-v37 wrote up.
+      `export { cardInDocumentLines, explainableRows, scoringView, viewLineAtOrAfter, viewLineAtOrBefore } from "./src/core/criticizeGesture";`,
+      `export { VOICE_PARTS } from "./src/core/criticizeVoice";`,
+      `export { FIX_ARMS, FIX_SHIPPED_ARM, buildFixPrompt } from "./src/core/criticizeFix";`,
+      `export { buildFixContext } from "./src/vscode/criticize";`,
+      `export { resolvePrefill } from "./src/vscode/fnGen";`,
+      // session-v64 phase 15: the resolved-reach block. Only a live language
+      // server can say where a name is defined, so the capture rig has to run it
+      // in the host exactly as the gesture does, for the same reason the type
+      // shapes are captured rather than computed.
+      `export { reachQueries } from "./src/core/criticizeReach";`,
+      `export { resolveReach } from "./src/vscode/criticizeReachResolver";`,
     ].join("\n"),
     resolveDir: ".",
     loader: "ts",

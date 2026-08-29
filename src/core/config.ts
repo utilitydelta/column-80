@@ -82,6 +82,22 @@ export interface FnGenConfig {
 
 export const DEFAULT_FNGEN_CONFIG: FnGenConfig = {
   apiBase: "http://localhost:11434",
+  // REVERTED 2026-08-29, and the reversal is the measurement's, not a rethink.
+  // `qwen3:8b` was briefly made the default on the strength of the REVIEW path,
+  // where it placed 82.4% of comments at 2,729ms against this model's 74.5% at
+  // 7,113ms. Function generation was then measured directly, on the private
+  // private C# corpus, graded by `dotnet build`:
+  //
+  //     qwen3-coder:30b   4 of 12 compiled (33.3%)   5,651ms median
+  //     qwen3:8b          0 of 12 compiled ( 0.0%)   3,692ms median
+  //
+  // The 8B's replies were COMPLETE (12 of 12 closed their brace, against 8 of 12
+  // for this model) and plausible C#. They simply did not compile. Review
+  // performance does not transfer to code generation, and the default model
+  // drives generation, repair, TDD and FIM.
+  //
+  // This model does not fit the 16GB reference card and runs partly on CPU. That
+  // costs seconds. Not compiling costs the feature.
   model: "qwen3-coder:30b",
   fallbackModel: "qwen2.5-coder:14b-instruct-q4_K_M",
   // Both ceilings live in budgetProfile.ts (the phase-0b derivation seam);

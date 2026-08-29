@@ -10,7 +10,7 @@
 // PLACEMENT IS ONE RULE (human, 2026-08-28). Every comment goes directly above
 // its offending line, at that line's own indent. The trailing slot was measured
 // unreachable in phase 1 (with an EMPTY detail, on a 31-column code line, the
-// shortest of the fifteen phrases is 58 characters and nothing fits), and a
+// shortest of the fourteen phrases is 58 characters and nothing fits), and a
 // second shorter voice for a slot nobody asked for was refused. The strip pass
 // still takes a trailing C80 comment in this product's own shape, because an
 // older build could have planted one; a hand-written one is left alone.
@@ -43,6 +43,7 @@
 import { ElevationPolicy, Scorecard, blastRadiusFor } from "./criticizeScore";
 import { DetectorFinding, DimensionId } from "./criticizeTypes";
 import { C80_TAG, VOICE, criticizeComment, wrapComment } from "./criticizeVoice";
+import { findingKey } from "./criticizeExplain";
 import { lineCommentFor } from "./fimInject";
 import { tightenTrimEnd } from "./tightenRegion";
 
@@ -93,11 +94,28 @@ const CONTINUATION_INDENT = " ".repeat(1 + C80_TAG.length);
  *  thing this number exists to stay clear of. */
 const CONTINUATION_MIN_SPACES = 4;
 
-/** The fifteen dimension ids, off the one table that has to hold all fifteen.
+/** The fourteen dimension ids, off the one table that has to hold all fourteen.
  *  A second hand-written list here is a second thing to forget to update when a
  *  dimension is added, and the strip pass would silently stop recognising the
  *  new one's comments as comment HEADS. */
 const DIMENSIONS: ReadonlySet<string> = new Set(Object.keys(VOICE));
+
+/** The slug the MODEL-AUTHORED path plants under when the model names something
+ *  the fourteen do not cover.
+ *
+ *  It exists so that one strip pass still recognises every comment this product
+ *  wrote. The alternative was to widen the head test to any slug, and the
+ *  header below records what that cost the first time: a build that recognised
+ *  too much deleted a hand-written note while telling the human it had stripped
+ *  nothing. One extra known slug is the small version of the same fix.
+ *
+ *  The model's own word for the dimension is not lost. It opens the comment's
+ *  text, so a reader still sees what the model thought it had found and a later
+ *  session can count how often the fourteen were not enough. */
+export const ADVICE_SLUG = "advice";
+
+/** Every slug a planted comment may open with. */
+const PLANTABLE: ReadonlySet<string> = new Set([...DIMENSIONS, ADVICE_SLUG]);
 
 /** A comment this module planted, before it knows where it sits. */
 interface PlannedComment {
@@ -136,6 +154,7 @@ export function planInjection(
   regionStartLine: number,
   card: Scorecard,
   policy: ElevationPolicy,
+  fixes?: ReadonlyMap<string, string>,
 ): InjectionPlan {
   if (!Array.isArray(regionLines) || regionLines.length === 0) {
     return EMPTY_PLAN;
@@ -146,7 +165,7 @@ export function planInjection(
   const stripResult = stripCriticism(regionLines, languageId);
   const lines = stripResult.lines;
 
-  const planned = planComments(lines, regionStartLine, card, policy, token);
+  const planned = planComments(lines, regionStartLine, card, policy, token, fixes);
 
   const out: string[] = [];
   const byIndex = new Map<number, string[]>();
@@ -170,6 +189,114 @@ export function planInjection(
 }
 
 /**
+ * The MODEL-AUTHORED path's planner: comment blocks the model wrote, placed on
+ * the lines the model anchored them to.
+ *
+ * IT SHARES THE STRIP PASS WITH `planInjection`, and that is the whole reason it
+ * lives in this file rather than in its own. Both paths plant `C80` comments
+ * into the same region, a developer may press either, and two strip passes would
+ * be two answers to "what did this product write". Press the rubric after the
+ * model path and the model's comments come out; press the model path after the
+ * rubric and the rubric's come out. Neither stacks on the other.
+ *
+ * THE ANCHOR HAS ALREADY BEEN RESOLVED. `placeAdvice` matched the model's quoted
+ * text against the function's real lines and handed back a document line number
+ * for the ones that matched. Nothing here re-derives that, because a second
+ * answer to "which line did the model mean" is the same defect one level down.
+ *
+ * A LINE NUMBER THAT FALLS OUTSIDE THE REGION IS DROPPED. The region is stripped
+ * before planting, so a document line can map past its end when the developer's
+ * file has moved; `regionIndex` clamps for a detector finding because a
+ * detector's line came from this product, and this one does NOT clamp, because
+ * the model's did not.
+ */
+export function planAdviceInjection(
+  regionLines: readonly string[],
+  regionStartLine: number,
+  languageId: string,
+  placed: readonly { line: number; dimension: string; text: string }[],
+): InjectionPlan & { outsideRegion: readonly number[] } {
+  if (!Array.isArray(regionLines) || regionLines.length === 0) {
+    return { ...EMPTY_PLAN, outsideRegion: placed.map((p) => p.line) };
+  }
+  const token = lineCommentFor(typeof languageId === "string" ? languageId : "");
+  const stripResult = stripCriticism(regionLines, languageId);
+  const lines = stripResult.lines;
+
+  const byIndex = new Map<number, string[]>();
+  const outsideRegion: number[] = [];
+  let planted = 0;
+  for (const entry of placed) {
+    const index = entry.line - regionStartLine;
+    if (!Number.isInteger(index) || index < 0 || index >= lines.length) {
+      // REPORTED, NEVER SILENT, and this was a real hole. The slicer walks
+      // UPWARD over the doc comment, so `placeAdvice` will happily anchor a
+      // block on a doc line; `injectionRegion` starts at the DECLARATION HEAD,
+      // so that line is one above the region. The block was dropped here with
+      // no entry in `unplaced` and no channel line, and on a function whose
+      // every block landed on its doc comment the gesture went all the way to
+      // "nothing to propose" and showed the developer no toast at all. Found by
+      // the phase 12 adversarial review on the commonest shape there is.
+      //
+      // NOT CLAMPED, unlike `planInjection`. Clamping would put a comment ABOUT
+      // the doc block underneath the doc block, which breaks the one guarantee
+      // this path is built on: a comment sits directly above the line it quotes.
+      // Losing the block and saying so is the honest outcome; widening the
+      // region to include the doc comment is the real fix and it is filed.
+      outsideRegion.push(entry.line);
+      continue;
+    }
+    const rendered = renderAdvice(entry.dimension, entry.text, lines[index], token);
+    if (rendered.length === 0) {
+      continue;
+    }
+    planted += 1;
+    const bucket = byIndex.get(index);
+    if (bucket === undefined) {
+      byIndex.set(index, [...rendered]);
+    } else {
+      bucket.push(...rendered);
+    }
+  }
+
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const above = byIndex.get(i);
+    if (above !== undefined) {
+      out.push(...above);
+    }
+    out.push(lines[i]);
+  }
+  return { text: out.join("\n"), planted, stripped: stripResult.stripped, outsideRegion };
+}
+
+/**
+ * One model-authored comment, wrapped to the column and hung like every other.
+ *
+ * The slug is the model's dimension when it is one of the fourteen, and
+ * `ADVICE_SLUG` when it is not, with the model's own word opening the text. That
+ * keeps the strip pass able to recognise every comment this product wrote while
+ * leaving visible what the model thought it had found.
+ */
+function renderAdvice(dimension: string, text: string, target: string, token: string): string[] {
+  const slug = typeof dimension === "string" ? dimension.trim().toLowerCase() : "";
+  const known = DIMENSIONS.has(slug);
+  const body = typeof text === "string" ? text.trim().replace(/\s+/g, " ") : "";
+  if (body === "") {
+    return [];
+  }
+  const head = known ? slug : ADVICE_SLUG;
+  const lead = known || slug === "" ? body : `${slug}. ${body}`;
+  const indent = indentOf(target);
+  const lines = wrapComment(`${head}: ${lead}`, indent, `${token} ${C80_TAG.trim()}`);
+  const headPrefix = `${indent}${token} ${C80_TAG}`;
+  const hang = `${indent}${token}${CONTINUATION_INDENT}`;
+  return lines.map((line, i) =>
+    i === 0 || !line.startsWith(headPrefix) ? line : `${hang}${line.slice(headPrefix.length)}`,
+  );
+}
+
+/**
  * One comment per FINDING, in the order the card lists them.
  *
  * The card's row order is the rubric's reading order and it is fixed, so
@@ -186,6 +313,7 @@ function planComments(
   card: Scorecard,
   policy: ElevationPolicy,
   token: string,
+  fixes?: ReadonlyMap<string, string>,
 ): PlannedComment[] {
   const rows = Array.isArray(card?.rows) ? card.rows : [];
   const held = new Set<string>(Array.isArray(policy?.held) ? policy.held : []);
@@ -199,7 +327,10 @@ function planComments(
     const findings = Array.isArray(row.outcome.findings) ? row.outcome.findings : [];
     for (const finding of findings) {
       const index = regionIndex(finding, regionStartLine, lines.length);
-      const rendered = render(finding, radius, lines[index], token);
+      // KEYED BY FINDING, not by row. A row can carry several findings and each
+      // one becomes its own comment on its own line, so a fix keyed to the row
+      // would put one function's sentence on another function's line.
+      const rendered = render(finding, radius, lines[index], token, fixes?.get(findingKey(finding)));
       if (rendered.length > 0) {
         planned.push({ index, lines: rendered });
       }
@@ -280,11 +411,12 @@ function render(
   radius: number | undefined,
   target: string,
   token: string,
+  fix?: string,
 ): string[] {
-  const comment = criticizeComment(
-    finding,
-    radius === undefined ? undefined : { blastRadius: radius },
-  );
+  const comment = criticizeComment(finding, {
+    ...(radius === undefined ? {} : { blastRadius: radius }),
+    ...(fix === undefined ? {} : { fix }),
+  });
   if (comment === "") {
     return [];
   }
@@ -317,7 +449,7 @@ function indentOf(line: string): string {
  * two would drift on the first day a comment shape changed.
  *
  * A comment is a HEAD and the continuation lines that immediately follow it. A
- * head is the token, the tag and one of the fifteen dimension ids; a
+ * head is the token, the tag and one of the fourteen dimension ids; a
  * continuation is the token and the hanging indent. `stripped` counts HEADS,
  * because the caller reports this number to a human and a human counts
  * criticisms, not lines.
@@ -365,7 +497,7 @@ export function stripCriticism(
     if (trimmed.startsWith(marker)) {
       if (isHead(trimmed.slice(marker.length))) {
         // A whole-line comment in THE SHAPE THIS PRODUCT EMITS: the token, the
-        // tag, and one of the fifteen dimension ids. It is deleted and it is
+        // tag, and one of the fourteen dimension ids. It is deleted and it is
         // counted, and those are the same test on purpose.
         stripped += 1;
         inComment = true;
@@ -420,13 +552,30 @@ function escapeForRegExp(text: string): string {
 }
 
 /** True when the text after the tag opens a new comment rather than continuing
- *  one. The dimension id is checked against the fifteen rather than against a
+ *  one. The dimension id is checked against the fourteen rather than against a
  *  generic word-colon shape, because "dimension" is what the contract says and
  *  a continuation that happened to start with a colon-word would otherwise be
  *  counted as a second criticism. */
+/**
+ * Whether what follows the tag opens a comment this product planted.
+ *
+ * `(?:\s|$)` AND NOT `\s`, and the end-of-line half is load-bearing. The
+ * renderer wraps at column 80, so a head whose first word is long enough breaks
+ * IMMEDIATELY AFTER THE COLON and the head line then ends there with no
+ * trailing space. Under the old `\s` this was not a head: the strip pass did
+ * not recognise it, did not count it, the next press STACKED on it, and
+ * `scoringView` left it in the document so the rubric's own detectors scored
+ * the product's comment as source. That is the S62-7 class, reintroduced.
+ *
+ * Measured by the phase 12 adversarial review: with the model choosing the
+ * first word, `unenforced-precondition: resolvePrefillDeadline` breaks at an
+ * indent of 27 columns, which is seven levels at four spaces. The rubric path
+ * was safe only because its opening words come from the fixed `VOICE` table and
+ * are short.
+ */
 function isHead(afterTag: string): boolean {
-  const match = /^([a-z][a-z-]*):\s/.exec(afterTag);
-  return match !== null && DIMENSIONS.has(match[1]);
+  const match = /^([a-z][a-z-]*):(?:\s|$)/.exec(afterTag);
+  return match !== null && PLANTABLE.has(match[1]);
 }
 
 /**

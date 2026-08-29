@@ -1,7 +1,7 @@
 // ===========================================================================
 // The words Criticize plants in a person's source file.
 //
-// THE TABLE IS THE VOICE, THE FINDING IS THE FACTS. Fifteen fixed phrases, one
+// THE TABLE IS THE VOICE, THE FINDING IS THE FACTS. Fourteen fixed phrases, one
 // per dimension, written once and never generated. v60 measured a model
 // deciding a finding set and got 0 of 3 identical sets on unchanged bytes at
 // temperature 0; a model deciding the WORDS is the same defect one step later,
@@ -47,6 +47,7 @@ import {
   wrapTokens,
 } from "./tightenRegion";
 import { DetectorFinding, DimensionId } from "./criticizeTypes";
+import { admissibleFix } from "./criticizeFix";
 
 /** The marker every injected comment carries, INCLUDING its trailing space.
  *  `C80 ` is what a reader greps for and what the phase 2 strip pass matches,
@@ -62,12 +63,38 @@ export const C80_TAG = "C80 ";
 export const VOICE_COLUMN = TIGHTEN_COLUMN;
 
 /**
- * The fixed phrase per dimension. Fifteen entries, none empty, none generated.
+ * One dimension's fixed phrase, in the two halves the comment is built from.
  *
- * Each is three beats compressed as far as it goes without inverting: the
- * defect, its price, the order. The order is ALWAYS the last sentence, because
- * a comment a developer reads at the failing line has about one second of their
- * attention and the fix is the only part that changes the code.
+ * `complaint` is what the code did and what it costs. `order` is the single
+ * imperative sentence that ends the comment, and it is the ONLY part a model is
+ * ever allowed to replace.
+ */
+export interface VoicePhrase {
+  complaint: string;
+  order: string;
+}
+
+/** Freezes one phrase as it is written, so no later module can edit a half. */
+function part(complaint: string, order: string): VoicePhrase {
+  return Object.freeze({ complaint, order });
+}
+
+/**
+ * The fixed phrase per dimension, in TWO PARTS: what the code did and what it
+ * costs, then the order.
+ *
+ * SPLIT SO THE ORDER CAN BE REPLACED, and for no other reason. `VOICE` below
+ * joins them back with a single space and is byte-identical to the table that
+ * shipped in 2.5.0. The complaint half is measured detector output rendered in
+ * a fixed voice and no model touches it; the order half is the one sentence
+ * session-v64 lets a model write about THIS function, and the one sentence a
+ * lookup table can never make specific: `Give them distinct types` is right on
+ * every function in every repository forever, which is exactly what makes it
+ * worth nothing.
+ *
+ * The order is always LAST, because a comment a developer reads at the failing
+ * line has about one second of their attention and the fix is the only part
+ * that changes the code. Nothing comes after it.
  *
  * Written lower case, because the shipped comment reads `C80 clock: hidden
  * wall-clock read.` when the finding carries no detail of its own, and a
@@ -79,13 +106,22 @@ export const VOICE_COLUMN = TIGHTEN_COLUMN;
  * in the same bundle could otherwise rewrite the fixed voice of the whole
  * extension, on the one path that writes into a person's source file.
  */
-export const VOICE: Readonly<Record<DimensionId, string>> = Object.freeze({
+export const VOICE_PARTS: Readonly<Record<DimensionId, VoicePhrase>> = Object.freeze(Object.assign(Object.create(null) as Record<DimensionId, VoicePhrase>, {
   // Honesty. All four have the same price and it is not "impure": the inputs
   // are not in the signature, so the function cannot be reproduced or tested.
-  clock: "hidden wall-clock read. Untestable. Pass it in.",
-  prng: "unseeded randomness inside a function that claims to compute. Two runs, two answers. Take the generator as a parameter.",
-  env: "configuration smuggled in through the back door. Invisible from outside and unsettable in a test. Pass it in.",
-  world: "filesystem access buried in a function that claims to compute. Untestable without a disk. Inject the reader.",
+  clock: part("hidden wall-clock read. Untestable.", "Pass it in."),
+  prng: part(
+    "unseeded randomness inside a function that claims to compute. Two runs, two answers.",
+    "Take the generator as a parameter.",
+  ),
+  env: part(
+    "configuration smuggled in through the back door. Invisible from outside and unsettable in a test.",
+    "Pass it in.",
+  ),
+  world: part(
+    "filesystem access buried in a function that claims to compute. Untestable without a disk.",
+    "Inject the reader.",
+  ),
 
   // Signature empathy. The price is paid at the call site, and NO PHRASE IN
   // THIS TABLE SAYS SO. "call site" and "caller" belong to the blast clause,
@@ -93,24 +129,74 @@ export const VOICE: Readonly<Record<DimensionId, string>> = Object.freeze({
   // would make an unmeasured radius read like a measured one. Found by the
   // phase 1 blind oracle, which bans the whole family from an unmeasured
   // comment.
-  "adjacent-params": "two swappable arguments in a row. A transposed call still compiles. Give them distinct types.",
-  "bool-param": "a flag branching on a decision made somewhere else. A bare true tells the next reader nothing. Split it in two.",
-  "unused-param": "dead weight in the signature. An argument nothing reads is paid for everywhere. Delete it.",
-  "param-count": "a parameter list nobody calls correctly from memory. Positional slots that deep get transposed. Group them into one type.",
+  "adjacent-params": part(
+    "two swappable arguments in a row. A transposed call still compiles.",
+    "Give them distinct types.",
+  ),
+  "bool-param": part(
+    "a flag branching on a decision made somewhere else. A bare true tells the next reader nothing.",
+    "Split it in two.",
+  ),
+  "param-count": part(
+    "a parameter list nobody calls correctly from memory. Positional slots that deep get transposed.",
+    "Group them into one type.",
+  ),
 
   // Contract. What the function promises, against what it enforces.
-  undocumented: "published with no contract. The next reader reverse-engineers the body. Write the doc.",
-  "unenforced-precondition": "a promise in prose with nothing behind it. Breaking it yields garbage instead of an error. Enforce it or drop the claim.",
-  cqs: "a question with a side effect. Nobody can call it twice safely. Split the command from the query.",
+  undocumented: part(
+    "published with no contract. The next reader reverse-engineers the body.",
+    "Write the doc.",
+  ),
+  "unenforced-precondition": part(
+    "a promise in prose with nothing behind it. Breaking it yields garbage instead of an error.",
+    "Enforce it or drop the claim.",
+  ),
+  cqs: part(
+    "a question with a side effect. Nobody can call it twice safely.",
+    "Split the command from the query.",
+  ),
 
   // Altitude. One function, one level of abstraction.
-  "pass-through": "a layer that adds no depth. It costs a name, a jump and a test, and buys nothing. Delete it and call through.",
-  nesting: "a staircase of guards and loops. Nobody can hold this. Split it.",
-  "section-comment": "a labelled step still living inside a bigger body. The name exists and the function does not. Extract the section.",
+  "pass-through": part(
+    "a layer that adds no depth. It costs a name, a jump and a test, and buys nothing.",
+    "Delete it and call through.",
+  ),
+  nesting: part("a staircase of guards and loops. Nobody can hold this.", "Split it."),
+  "section-comment": part(
+    "a labelled step still living inside a bigger body. The name exists and the function does not.",
+    "Extract the section.",
+  ),
 
   // Safety. The failure the signature refuses to admit.
-  "unadmitted-failure": "a failure path the signature denies. Nobody writes a handler for what the type hides. Admit it in the type or in the doc.",
-});
+  "unadmitted-failure": part(
+    "a failure path the signature denies. Nobody writes a handler for what the type hides.",
+    "Admit it in the type or in the doc.",
+  ),
+  // NO PROTOTYPE. `finding.dimension` is data crossing a seam, and on an
+  // ordinary object literal `VOICE_PARTS["constructor"]` is a FUNCTION rather
+  // than undefined: stringifying one into a person's source file is the worst
+  // output this module could produce. The typeof guards below are the second
+  // half of the same answer.
+}));
+
+/**
+ * The fourteen phrases, joined.
+ *
+ * DERIVED, so the two tables can never disagree. Every byte of it is the table
+ * that shipped in 2.5.0, which is what lets the v62 blind oracle keep grading
+ * this module unchanged.
+ */
+export const VOICE: Readonly<Record<DimensionId, string>> = Object.freeze(
+  Object.assign(
+    Object.create(null) as Record<DimensionId, string>,
+    Object.fromEntries(
+      Object.entries(VOICE_PARTS).map(([dimension, phrase]) => [
+        dimension,
+        `${phrase.complaint} ${phrase.order}`,
+      ]),
+    ),
+  ),
+);
 
 /**
  * The comment TEXT for one finding: no comment token, no indent, one line.
@@ -128,14 +214,20 @@ export const VOICE: Readonly<Record<DimensionId, string>> = Object.freeze({
  */
 export function criticizeComment(
   finding: DetectorFinding,
-  opts?: { blastRadius?: number },
+  opts?: { blastRadius?: number; fix?: string },
 ): string {
   if (finding === null || typeof finding !== "object") {
     return "";
   }
   const dimension = finding.dimension;
-  const voice = VOICE[dimension];
-  if (typeof voice !== "string" || voice === "") {
+  const phrase = VOICE_PARTS[dimension];
+  if (
+    phrase === undefined ||
+    typeof phrase.complaint !== "string" ||
+    typeof phrase.order !== "string" ||
+    phrase.complaint === "" ||
+    phrase.order === ""
+  ) {
     return "";
   }
 
@@ -148,10 +240,42 @@ export function criticizeComment(
   if (blast !== undefined) {
     parts.push(blast);
   }
-  // Lower case when the phrase is the whole comment, so it reads as one
+  // Lower case when the complaint is the whole comment, so it reads as one
   // sentence off the tag. Raised when a fact sentence went in front of it.
-  parts.push(parts.length === 0 ? voice : leadCap(voice));
+  parts.push(parts.length === 0 ? phrase.complaint : leadCap(phrase.complaint));
+  parts.push(orderFor(dimension, opts?.fix));
   return `${C80_TAG}${dimension}: ${parts.join(" ")}`;
+}
+
+/**
+ * The last sentence: the model's order if it survives the gate, the table's
+ * otherwise.
+ *
+ * THE FALLBACK IS THE PRODUCT AND NOT AN ERROR PATH. The fixed phrase has
+ * shipped since 2.5.0 and is right about every function it fires on. A model's
+ * sentence only has to be BETTER, and when it is not, nothing is lost. That is
+ * what makes it safe to let a model write into someone's source file at all.
+ *
+ * A dimension with no phrase cannot reach here: `criticizeComment` already
+ * refused, because a comment with no order in it is a complaint and this
+ * product does not plant complaints.
+ */
+export function orderFor(dimension: DimensionId, fix?: unknown): string {
+  // THE DIMENSION IS CHECKED BEFORE THE FIX IS. A dimension with no phrase is
+  // not a dimension: `constructor` and `__proto__` arrive here as data off a
+  // finding, and returning a model's sentence for one would put an order under
+  // a heading no rubric produced. Found by the phase 3 blind oracle, on the
+  // branch that phase 1's prototype fix did not reach.
+  const entry = VOICE_PARTS[dimension];
+  const table = typeof entry?.order === "string" ? entry.order : "";
+  if (table === "") {
+    return "";
+  }
+  if (fix === undefined || fix === null) {
+    return table;
+  }
+  const verdict = admissibleFix(fix);
+  return "text" in verdict ? verdict.text : table;
 }
 
 /**

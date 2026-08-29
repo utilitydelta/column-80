@@ -57,6 +57,14 @@ const NONE_HELD = { held: [] };
 // A Rust function whose doc sits above an attribute, which sits above the
 // head. This is the shape the contract calls out: an upward walk that stops at
 // the first non-doc line finds no doc on any annotated function.
+//
+// AMENDED 2026-08-29. `force: bool` was added to the head. This fixture used to
+// earn its flagged row from the clock read on line 8, and the four honesty
+// dimensions stopped being detectors on that date (ruling 3, the amendment at
+// the end of session-v64/goal.md): they refuse out of the synchronous pass until
+// a model round runs. The rows below need a card with something above the bar,
+// so the fixture now earns it from the signature instead. Line 8 is untouched,
+// because the slicer rows read it.
 const RUST_DOC = [
   "use std::time::Instant;",       // 1
   "",                              // 2
@@ -64,7 +72,7 @@ const RUST_DOC = [
   "///",                           // 4
   "/// Callers must pass a root.", // 5
   "#[inline]",                     // 6
-  "pub fn warm(root: &Path) -> usize {", // 7
+  "pub fn warm(root: &Path, force: bool) -> usize {", // 7
   "    let started = Instant::now();",   // 8
   "    root.len() + started.elapsed().as_secs() as usize", // 9
   "}",                             // 10
@@ -90,7 +98,7 @@ test("a startLine at the doc and a startLine at the head produce the SAME unit",
 
 test("an attribute line between the doc and the head is in the slice, and headIndex points PAST it", () => {
   const fn = sliceFunction(RUST_DOC, 7, 10, "warm", RUST);
-  assert.strictEqual(fn.lines[fn.headIndex], "pub fn warm(root: &Path) -> usize {");
+  assert.strictEqual(fn.lines[fn.headIndex], "pub fn warm(root: &Path, force: bool) -> usize {");
   assert.strictEqual(fn.lines[3], "#[inline]", "the attribute is inside the slice");
 });
 
@@ -214,20 +222,26 @@ const RUST_PLAIN = [
   "}",
 ];
 
-test("the slicer end to end: a sliced Rust function scores its clock finding at the DOCUMENT line", () => {
+test("the slicer end to end: a sliced Rust function scores its finding at the DOCUMENT line", () => {
   const fn = sliceFunction(RUST_DOC, 7, 10, "warm", RUST);
   const card = scoreFunction(fn, RUST);
-  const clock = rowFor(card, "clock");
-  assert.strictEqual(clock.outcome.state, "flagged");
-  assert.strictEqual(clock.outcome.findings[0].line, 8, "line 8 of the document, not index 5 of the slice");
+  // Was the clock row until 2026-08-29. The property under test is the line
+  // arithmetic, not which dimension carries it.
+  const flagged = rowFor(card, "bool-param");
+  assert.strictEqual(flagged.outcome.state, "flagged");
+  assert.strictEqual(flagged.outcome.findings[0].line, 7, "line 7 of the document, not index 4 of the slice");
   assert.strictEqual(card.headLine, 7, "headLine is the document line of the declaration head");
 
+  // WAS AN `undocumented` CLEAN until 2026-08-29, when that dimension started
+  // DELEGATING in Rust to `missing_docs`. The property this half of the row is
+  // really about is that a slice taken from a startLine pointing at the head
+  // still carries its doc lines, and the delegated dimension can no longer
+  // witness it. The refusal is asserted instead, because a row that silently
+  // stopped observing anything would be worse than one that observes less.
   const plain = scoreFunction(sliceFunction(RUST_PLAIN, 2, 5, "warm", RUST), RUST);
-  assert.strictEqual(
-    rowFor(plain, "undocumented").outcome.state,
-    "clean",
-    "the doc came with the slice, from a startLine that pointed at the head",
-  );
+  const delegated = rowFor(plain, "undocumented").outcome;
+  assert.strictEqual(delegated.state, "blind", "Rust delegates this dimension to its own toolchain");
+  assert.match(delegated.reason, /missing_docs/, "and the refusal names the rule that answers it");
 });
 
 // ===========================================================================
@@ -266,7 +280,7 @@ test("the card's row order is exactly the five detector arrays concatenated", ()
   );
 });
 
-test("an UNREGISTERED language yields fifteen blind rows naming it, and never a clean one", () => {
+test("an UNREGISTERED language yields fourteen blind rows naming it, and never a clean one", () => {
   const fn = {
     languageId: "cobol",
     name: "compute",
@@ -276,7 +290,7 @@ test("an UNREGISTERED language yields fifteen blind rows naming it, and never a 
     bodyIndex: 2,
   };
   const card = scoreFunction(fn);
-  assert.strictEqual(card.rows.length, 15);
+  assert.strictEqual(card.rows.length, 14);
   for (const row of card.rows) {
     assert.strictEqual(row.outcome.state, "blind", `${row.dimension} was never examined`);
     assert.ok(row.outcome.reason.includes("cobol"), "the refusal names the language");
@@ -289,9 +303,9 @@ test("the language profile is looked up from the unit when the caller omits it",
   assert.deepStrictEqual(scoreFunction(fn), scoreFunction(fn, RUST));
 });
 
-test("signatureLevel splits the rubric nine to six, and blastRadiusFor follows it", () => {
+test("signatureLevel splits the rubric eight to six, and blastRadiusFor follows it", () => {
   const yes = ALL_DETECTORS.filter((d) => signatureLevel(d.dimension)).map((d) => d.dimension);
-  assert.strictEqual(yes.length, 9);
+  assert.strictEqual(yes.length, 8);
   assert.strictEqual(blastRadiusFor({ dimension: "clock", callSites: 14 }), 14);
   assert.strictEqual(blastRadiusFor({ dimension: "nesting", callSites: 14 }), undefined, "body-local: the count describes nothing");
   assert.strictEqual(blastRadiusFor({ dimension: "clock", callSites: undefined }), undefined);
@@ -338,7 +352,7 @@ test("the renderer IGNORES a stale row.elevated in both directions", () => {
   }
   const out = renderScorecard(card, DEFAULT_ELEVATION);
   assert.ok(
-    out.includes("let started = Instant::now();"),
+    out.includes("pub fn warm(root: &Path, force: bool) -> usize {"),
     "a row the policy elevates is elevated however the stored boolean was stamped",
   );
   assert.ok(
@@ -347,10 +361,10 @@ test("the renderer IGNORES a stale row.elevated in both directions", () => {
   );
 });
 
-test("the roster carries all fifteen dimensions, in order, on every card", () => {
+test("the roster carries all fourteen dimensions, in order, on every card", () => {
   const out = renderScorecard(warmCard(), DEFAULT_ELEVATION);
   const roster = out.split("\n").filter((l) => /^ {2}[a-z-]+ {2,}(clean|blind|flagged)/.test(l));
-  assert.strictEqual(roster.length, 15, `every dimension shows its state, got:\n${out}`);
+  assert.strictEqual(roster.length, 14, `every dimension shows its state, got:\n${out}`);
 });
 
 test("a held row shows on the roster that the POLICY holds it, so a reader does not think it was lost", () => {
@@ -410,15 +424,15 @@ test("rendering is a pure function of the card and the policy", () => {
   assert.strictEqual(renderScorecard(card, DEFAULT_ELEVATION), renderScorecard(card, DEFAULT_ELEVATION));
   assert.notStrictEqual(
     renderScorecard(card, DEFAULT_ELEVATION),
-    renderScorecard(card, { held: ["clock"] }),
+    renderScorecard(card, { held: ["bool-param", "param-count"] }),
     "a different policy is a different card",
   );
 });
 
 test("an explanation, when phase 4 attaches one, renders under its row and nowhere else", () => {
   const card = warmCard();
-  rowFor(card, "clock").explanation = "explmark the clock read is the input this signature never asks for";
+  rowFor(card, "bool-param").explanation = "explmark the flag is a decision the caller already made";
   const out = renderScorecard(card, DEFAULT_ELEVATION);
-  assert.ok(out.includes("explmark the clock read"));
+  assert.ok(out.includes("explmark the flag is a decision"));
   assert.strictEqual(out.split("explmark").length - 1, 1, "one row, one explanation");
 });

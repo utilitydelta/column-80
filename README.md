@@ -100,7 +100,7 @@ Column-80 supports Rust, .Net/C#, Python, Typescript and Go. If your language of
 
 ### 8. Get told what is wrong with it
 
-1. Run `Column 80: Criticize Function`. Fifteen named dimensions of craft, scored by deterministic detectors rather than by a model, so the same bytes give the same answer twice.
+1. Run `Column 80: Criticize Function`. Fourteen named dimensions of craft, scored by deterministic detectors rather than by a model, so the same bytes give the same answer twice.
 2. Read the card in the panel for the principle behind each one, or read the diff it offers you: your function with a short, blunt comment above every line that failed. `// C80 clock: hidden wall-clock read. Untestable. Pass it in.`
 3. Accept and the comments land. Reject and nothing was written. Press it again after fixing half of them and it replaces its own comments rather than stacking them.
 

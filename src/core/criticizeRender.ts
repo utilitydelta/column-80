@@ -2,7 +2,7 @@
 // The card, as text.
 //
 // One output serves two readers. The student reads the whole rubric and learns
-// which of fifteen questions this function answers badly; the professional
+// which of fourteen questions this function answers badly; the professional
 // reads the elevated rows and stops. It is one gesture and one artefact, not
 // two, because two would drift.
 //
@@ -69,7 +69,7 @@ export function renderScorecard(card: Scorecard, policy: ElevationPolicy): strin
     }
   }
   out.push("");
-  out.push("The rubric, all fifteen dimensions");
+  out.push("The rubric, all fourteen dimensions");
   for (const row of rows) {
     out.push(...rosterLines(row, held));
   }
@@ -138,7 +138,7 @@ function blastLine(row: ScorecardRow): string | undefined {
   return `an honest fix to this signature reaches ${row.blastRadius} ${noun}`;
 }
 
-/** One roster line per dimension, so the reader can count fifteen and see that
+/** One roster line per dimension, so the reader can count fourteen and see that
  *  every question was asked. A blind row spends a second line on its reason,
  *  because a refusal that does not say why is indistinguishable from a shrug. */
 function rosterLines(row: ScorecardRow, held: ReadonlySet<DimensionId>): string[] {

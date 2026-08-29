@@ -1,13 +1,24 @@
 /**
- * Dimensions 5 to 8: is the signature kind to the person calling it.
+ * Dimensions 5 to 7: is the signature kind to the person calling it.
  *
  * The signature is used first by a HUMAN, and it is read far more often than
- * the body under it. These four read the parameter list only: two neighbours of
+ * the body under it. These three read the parameter list only: two neighbours of
  * one type that the compiler will happily let a caller swap, a boolean that
- * carries a decision the caller already made, a parameter the body never
- * touches, and a list long enough that nobody remembers the order.
+ * carries a decision the caller already made, and a list long enough that
+ * nobody remembers the order.
  *
- * ALL FOUR ADVISE. Nothing here splits a function, reorders a parameter list or
+ * A FOURTH USED TO LIVE HERE and was deleted 2026-08-29: "asks for a parameter
+ * the body never reads". The thesis is that if the developer's own toolchain
+ * already says it, this rubric does not. Measured: `cargo clippy` with no
+ * config reports `unused_variables` (on by default, part of `#[warn(unused)]`);
+ * tsserver with NO tsconfig at all already emits TS6133, "declared but its
+ * value is never read", as an editor suggestion, and `noUnusedParameters`
+ * makes it an error; gopls has `unusedparams` on by default; C# has IDE0060
+ * and Python has ruff ARG001, both opt-in. THE RESIDUE GIVEN UP, stated
+ * honestly: EXPORTED Go functions, which gopls does not report, and Python
+ * projects that have not selected ARG.
+ *
+ * ALL THREE ADVISE. Nothing here splits a function, reorders a parameter list or
  * introduces an argument struct: every one of those fixes changes the signature
  * and ripples to every caller, and the developer is the one who knows what that
  * costs.
@@ -40,7 +51,6 @@ import {
   DimensionOutcome,
   FunctionUnderReview,
   ParsedParam,
-  maskedBody,
   unitDefect,
 } from "./criticizeTypes";
 
@@ -205,42 +215,7 @@ function boolParam(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutco
 }
 
 // ===========================================================================
-// Dimension 7, unused parameter
-// ===========================================================================
-
-/** Whether `name` appears as an identifier anywhere in the masked body.
- *  MASKED, so a parameter named only in a comment or a string is unused: the
- *  body does not read it, and the comment saying otherwise is the problem. */
-function mentionedInBody(name: string, body: readonly string[]): boolean {
-  const identifier = new RegExp(`(^|[^A-Za-z0-9_$])${name.replace(/\$/g, "\\$")}([^A-Za-z0-9_$]|$)`);
-  return body.some((line) => identifier.test(line));
-}
-
-function unusedParam(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutcome {
-  const read = readParams(fn, lang);
-  if (!read.ok) {
-    return { state: "blind", reason: read.reason };
-  }
-  const body = maskedBody(fn, lang);
-  const unused = read.params.filter((p) => {
-    // A leading underscore is the language's OWN way of saying "deliberately
-    // unused" in Rust, Go, Python and TypeScript. C# has no such convention,
-    // where a leading underscore names a field, so C# fires either way.
-    if (lang.craft.underscoreMeansUnused && p.name.startsWith("_")) {
-      return false;
-    }
-    return !mentionedInBody(p.name, body);
-  });
-  if (unused.length === 0) {
-    return { state: "clean" };
-  }
-  const label = unused.length === 1 ? "parameter" : "parameters";
-  const verb = unused.length === 1 ? "never appears" : "never appear";
-  return headFinding("unused-param", read, `${label} ${nameList(unused.map((p) => p.name))} ${verb} in the body`);
-}
-
-// ===========================================================================
-// Dimension 8, parameter count
+// Dimension 7, parameter count
 // ===========================================================================
 
 function paramCount(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutcome {
@@ -260,9 +235,9 @@ function paramCount(fn: FunctionUnderReview, lang: CriticizeLang): DimensionOutc
 }
 
 /**
- * Dimensions 5 to 8, in rubric order.
+ * Dimensions 5 to 7, in rubric order.
  *
- * The thresholds behind dimension 8 are CHOSEN, not measured, and they say so
+ * The thresholds behind dimension 7 are CHOSEN, not measured, and they say so
  * in `docs/constants.md` with that word. Nothing in the scout's corpora says
  * where the knee in a parameter list sits; what a long list costs is a taste
  * the audience dictates, and the number is on the profile so a measurement can
@@ -280,12 +255,6 @@ export const SIGNATURE_DETECTORS: readonly Detector[] = [
     axis: "both",
     source: "Acton 2014, data-oriented design: a bool checked inside a function is a decision the caller already made, paid for on every element",
     run: boolParam,
-  },
-  {
-    dimension: "unused-param",
-    axis: "understandable",
-    source: "Logan Smith 2026, signature empathy: ask for the weakest thing the body actually needs, because over-constraining the caller buys nothing",
-    run: unusedParam,
   },
   {
     dimension: "param-count",

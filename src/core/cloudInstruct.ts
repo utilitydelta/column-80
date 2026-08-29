@@ -67,6 +67,25 @@ export interface CloudInstructConfig {
   log?: (line: string) => void;
 }
 
+/**
+ * `reasoning_effort`, from the shared `think` param, or nothing.
+ *
+ * A STRING IS PASSED THROUGH VERBATIM because the levels belong to the provider
+ * and change by generation: gpt-5.6 accepts `none` and refuses `minimal`, and a
+ * closed list in this file would be wrong the first time that moved. If the
+ * value is refused, the provider's own message reaches the channel and the
+ * toast, which is the honest failure.
+ */
+function reasoningField(think: boolean | string | undefined): { reasoning_effort?: string } {
+  if (think === false) {
+    return { reasoning_effort: "none" };
+  }
+  if (typeof think === "string" && think.trim() !== "") {
+    return { reasoning_effort: think.trim() };
+  }
+  return {};
+}
+
 /** One SSE line's parsed choice fields; everything else in the frame is ignored
  *  (usage, reasoning traces, tool calls - none land in a function body). */
 interface StreamDelta {
@@ -379,6 +398,27 @@ function chatBody(params: InstructGenerateParams, dialect: ChatDialect): Record<
     stream: true,
     [dialect.tokenParam]: params.maxTokens,
     ...(dialect.sendTemperature ? { temperature: params.temperature } : {}),
+    // REASONING, WHEN THE USER ASKED FOR IT, and never otherwise.
+    //
+    // `think` carries the local backend's vocabulary; on this dialect the field
+    // is `reasoning_effort`. The mapping is only two cases because only two
+    // things are universal: `false` means "off", and a STRING is the provider's
+    // own level passed through untouched. `true` sends nothing, because "on" has
+    // no portable spelling here - the newest generation accepts ONLY `none`, so
+    // a guessed `high` would 400 the round.
+    //
+    // OMITTED BY DEFAULT, which matters: an unsent field always works, and the
+    // shared pipeline already rejects a `length` finish as truncated rather than
+    // splicing a half-written body, so a model reasoning on its own default
+    // fails honestly rather than silently.
+    //
+    // Measured 2026-08-29 against gpt-5.6: all three variants reason by DEFAULT
+    // (424-638 reasoning tokens on a prompt built to force it) and
+    // `reasoning_effort: "none"` takes every one of them to zero and roughly
+    // halves the latency. `"minimal"` is refused outright - the API states the
+    // only supported value is `none` - which is exactly why this passes a string
+    // through instead of choosing one.
+    ...reasoningField(params.think),
   };
 }
 

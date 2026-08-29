@@ -3,7 +3,7 @@
 //
 // Written from `session-v61/contracts/phase3-scorecard.md` alone, with
 // `phase1-detector-seam.md` for `DimensionId` / `DimensionOutcome` /
-// `DetectorFinding` and `phase2-rubric-dimensions.md` for the fifteen
+// `DetectorFinding` and `phase2-rubric-dimensions.md` for the fourteen
 // dimensions and which one ships held. `src/core/criticizeScore.ts` and
 // `src/core/criticizeRender.ts` have NOT been read: they are being written by
 // other agents while this file is authored. No stub is provided for them.
@@ -110,7 +110,6 @@ const DIMS = [
   "world",
   "adjacent-params",
   "bool-param",
-  "unused-param",
   "param-count",
   "undocumented",
   "unenforced-precondition",
@@ -128,7 +127,6 @@ const GROUP_OF = {
   world: "honesty",
   "adjacent-params": "signature-empathy",
   "bool-param": "signature-empathy",
-  "unused-param": "signature-empathy",
   "param-count": "signature-empathy",
   undocumented: "contract",
   "unenforced-precondition": "contract",
@@ -149,7 +147,6 @@ const SIGNATURE_LEVEL = {
   world: true,
   "adjacent-params": true,
   "bool-param": true,
-  "unused-param": true,
   "param-count": true,
   "unadmitted-failure": true,
   nesting: false,
@@ -212,7 +209,7 @@ function makeRow(dim, outcome, over = {}) {
   return row;
 }
 
-/** A full fifteen-row card. `spec` maps a dimension to an outcome; anything
+/** A full fourteen-row card. `spec` maps a dimension to an outcome; anything
  *  unnamed is clean. `blast` maps a dimension to a blastRadius. */
 function makeCard(spec = {}, over = {}) {
   return {
@@ -237,7 +234,7 @@ const NONE_HELD = { held: [] };
 // the determinism test compares two independent inputs.
 // ---------------------------------------------------------------------------
 
-/** Rust, and as close to perfect as the fifteen dimensions allow: documented,
+/** Rust, and as close to perfect as the fourteen dimensions allow: documented,
  *  two differently-typed used parameters, one flat expression, no clock, no
  *  panic, no section comment. */
 const cleanRustFn = () => ({
@@ -422,21 +419,21 @@ test("the same function scored TWICE produces structurally identical cards [P3 �
   assert.deepStrictEqual(a, b, "the finding set is a rubric answer, not a run");
 });
 
-test("a PERFECTLY CLEAN function still carries exactly 15 rows in the fixed order [P3 §'What a scorecard is']", () => {
+test("a PERFECTLY CLEAN function still carries exactly 14 rows in the fixed order [P3 §'What a scorecard is']", () => {
   const card = score(cleanRustFn(), defaultElevation());
-  assert.strictEqual(card.rows.length, 15, "every dimension appears on every card");
+  assert.strictEqual(card.rows.length, 14, "every dimension appears on every card");
   assert.deepStrictEqual(dimensionsOf(card), DIMS);
 });
 
-test("a language BLIND on several dimensions still carries exactly 15 rows in the fixed order [P3 §'What a scorecard is']", () => {
+test("a language BLIND on several dimensions still carries exactly 14 rows in the fixed order [P3 §'What a scorecard is']", () => {
   const card = score(blindPythonFn(), defaultElevation());
-  assert.strictEqual(card.rows.length, 15);
+  assert.strictEqual(card.rows.length, 14);
   assert.deepStrictEqual(dimensionsOf(card), DIMS);
 });
 
-test("TypeScript, blind on dimension 14 by construction, still carries exactly 15 rows [P3 §'What a scorecard is']", () => {
+test("TypeScript, blind on dimension 13 by construction, still carries exactly 14 rows [P3 §'What a scorecard is']", () => {
   const card = score(tsFn(), defaultElevation());
-  assert.strictEqual(card.rows.length, 15);
+  assert.strictEqual(card.rows.length, 14);
   assert.deepStrictEqual(dimensionsOf(card), DIMS);
 });
 
@@ -448,11 +445,11 @@ test("group order is honesty, signature-empathy, contract, altitude, safety [P3 
     ["clock", "prng", "env", "world"],
   );
   assert.deepStrictEqual(
-    card.rows.slice(11, 14).map((r) => r.dimension),
+    card.rows.slice(10, 13).map((r) => r.dimension),
     ["pass-through", "nesting", "section-comment"],
   );
-  assert.strictEqual(card.rows[14].dimension, "unadmitted-failure");
-  assert.strictEqual(card.rows[14].group, "safety");
+  assert.strictEqual(card.rows[13].dimension, "unadmitted-failure");
+  assert.strictEqual(card.rows[13].group, "safety");
 });
 
 test("every row carries a non-empty title and a non-empty source line [P3 ScorecardRow]", () => {
@@ -762,7 +759,7 @@ test("the renderer never prints a fix, a patch, or a rewritten function [P3 §'T
 // Blast radius
 // ===========================================================================
 
-test("signatureLevel is true for the nine signature dimensions and false for the six body-local ones [P3 §'Blast radius']", () => {
+test("signatureLevel is true for the eight signature dimensions and false for the six body-local ones [P3 §'Blast radius']", () => {
   const m = requireModule();
   assert.strictEqual(typeof m.signatureLevel, "function", "criticizeScore exports signatureLevel");
   for (const dim of DIMS) {
@@ -773,7 +770,7 @@ test("signatureLevel is true for the nine signature dimensions and false for the
     );
   }
   const trueCount = DIMS.filter((d) => m.signatureLevel(d)).length;
-  assert.strictEqual(trueCount, 9, "nine dimensions change the signature");
+  assert.strictEqual(trueCount, 8, "eight dimensions change the signature");
 });
 
 test("blastRadius UNDEFINED renders NOTHING about call sites, and never a zero [P3 §'Blast radius']", () => {

@@ -30,6 +30,7 @@
 //
 // Run: node --test test/impl-v62-p5-reviewfixes.test.cjs
 
+const honestyStub = require("./.honesty-stub.cjs");
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
@@ -303,7 +304,13 @@ async function press(source, { duringResolve } = {}) {
     },
     tierGate: async () => ({ allowed: false, reason: "tier-disabled" }),
     tierMessage: () => "the hardware tier disables function generation",
-    transport: () => async () => ({ text: "" }),
+    // ANSWER THE HONESTY ROUND. `clock` is a model's judgement since 2026-08-29,
+    // so a fixture containing `Instant::now()` no longer produces a clock
+    // finding on its own and every row below that asserts one would be measuring
+    // an absent model. The stub scripts the verdict the way `answer: () => GOOD`
+    // scripts a fix sentence; it is not the deleted name table in disguise, and
+    // the model's real judgement is measured in session-v64/rig/honesty.cjs.
+    transport: () => async (req) => ({ text: honestyStub.withHonesty({ clock: /Instant::now/ })(req.prompt) }),
     presenter: () => presenter,
   });
   await globalThis.__C80_COMMANDS__[host.mod.CRITICIZE_COMMAND_ID]();
@@ -341,7 +348,11 @@ test("F1 row 2: versionAtResolve is the version the OFFSETS belong to", async ()
   const quiet = await press(METHOD);
   assert.equal(quiet.presented[0].versionAtResolve, 1);
   assert.equal(quiet.presented[0].outcome, "accept");
-  assert.ok(String(quiet.presented[0].spliced).includes("C80 clock:"), "the quiet press plants");
+  // Was `C80 clock:` until 2026-08-29, when the four honesty dimensions became a
+  // model judgement and stopped firing in the synchronous pass (ruling 3, the
+  // amendment at the end of session-v64/goal.md). The control needs a planted
+  // comment, not a particular dimension.
+  assert.ok(String(quiet.presented[0].spliced).includes("C80 bool-param:"), "the quiet press plants");
 });
 
 test("F1 row 3: the card says it is stale for the resolution window too", async () => {
