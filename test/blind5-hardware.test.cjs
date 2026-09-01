@@ -82,9 +82,14 @@ const throwingMem = () => {
   throw new Error("totalmem unavailable");
 };
 
+// Force the discrete-GPU branch: the Apple-Silicon path short-circuits the
+// injected nvidia runner on a Mac (darwin/arm64), so the injected platform pins
+// the branch this file's runner fakes exercise.
+const nvidiaPlatform = () => ({ platform: "linux", arch: "x64" });
+
 test("probe command is exactly nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits [surface: 'The probe command is exactly...']", async () => {
   const { calls, run } = recordingRunner({ stdout: "16303\n", exitCode: 0 });
-  await probeHardware({ runCommand: run, totalMemBytes: memOf(61826) });
+  await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(61826) });
   assert.strictEqual(calls.length, 1, "one probe spawn");
   assert.strictEqual(calls[0].command, "nvidia-smi");
   assert.deepStrictEqual(calls[0].args, ["--query-gpu=memory.total", "--format=csv,noheader,nounits"]);
@@ -92,7 +97,7 @@ test("probe command is exactly nvidia-smi --query-gpu=memory.total --format=csv,
 
 test("success path: vramMB from the parser, no vramFailure, ramMB floored [surface: HardwareProbe + ramMB rule]", async () => {
   const { run } = recordingRunner({ stdout: "16303\n", exitCode: 0 });
-  const probe = await probeHardware({ runCommand: run, totalMemBytes: () => 61826 * MB + MB - 1 });
+  const probe = await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: () => 61826 * MB + MB - 1 });
   assert.strictEqual(probe.vramMB, 16303);
   assert.strictEqual(probe.vramFailure, undefined, "no failure reason on the success path");
   assert.strictEqual(probe.ramMB, 61826, "Math.floor(totalMemBytes() / 1048576), never rounded up");
@@ -100,13 +105,13 @@ test("success path: vramMB from the parser, no vramFailure, ramMB floored [surfa
 
 test("multi-GPU stdout flows through the parser: MAX device wins [surface: 'the largest device is the honest capacity']", async () => {
   const { run } = recordingRunner({ stdout: "16303\n24576\n", exitCode: 0 });
-  const probe = await probeHardware({ runCommand: run, totalMemBytes: memOf(61826) });
+  const probe = await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(61826) });
   assert.strictEqual(probe.vramMB, 24576);
 });
 
 test("runner rejection (nvidia-smi absent) resolves with vramFailure spawn-failed [surface: 'Runner rejects (ENOENT...)']", async () => {
   const { run } = recordingRunner(Object.assign(new Error("spawn nvidia-smi ENOENT"), { code: "ENOENT" }));
-  const probe = await probeHardware({ runCommand: run, totalMemBytes: memOf(61826) });
+  const probe = await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(61826) });
   assert.strictEqual(probe.vramMB, undefined, "vramMB absent on probe failure");
   assert.strictEqual(probe.vramFailure, "spawn-failed");
   assert.strictEqual(probe.ramMB, 61826, "the RAM half still reports");
@@ -116,7 +121,7 @@ test("runner rejection (nvidia-smi absent) resolves with vramFailure spawn-faile
 for (const code of [1, 2, 127]) {
   test(`exit code ${code} resolves with vramFailure exit-${code} [surface: 'Exit code non-zero (WSL without GPU passthrough...)']`, async () => {
     const { run } = recordingRunner({ stdout: "", exitCode: code });
-    const probe = await probeHardware({ runCommand: run, totalMemBytes: memOf(61826) });
+    const probe = await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(61826) });
     assert.strictEqual(probe.vramMB, undefined);
     assert.strictEqual(probe.vramFailure, `exit-${code}`);
   });
@@ -124,21 +129,21 @@ for (const code of [1, 2, 127]) {
 
 test("exit 0 with unparseable stdout resolves with vramFailure unparseable [surface: 'Exit 0 but parseNvidiaSmiVram returns undefined']", async () => {
   const { run } = recordingRunner({ stdout: "[N/A]\n", exitCode: 0 });
-  const probe = await probeHardware({ runCommand: run, totalMemBytes: memOf(61826) });
+  const probe = await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(61826) });
   assert.strictEqual(probe.vramMB, undefined);
   assert.strictEqual(probe.vramFailure, "unparseable");
 });
 
 test("throwing RAM source leaves ramMB absent; probe still resolves [surface: 'a throwing source leaves it absent (conservative...)']", async () => {
   const { run } = recordingRunner({ stdout: "16303\n", exitCode: 0 });
-  const probe = await probeHardware({ runCommand: run, totalMemBytes: throwingMem });
+  const probe = await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: throwingMem });
   assert.strictEqual(probe.ramMB, undefined);
   assert.strictEqual(probe.vramMB, 16303, "the VRAM half still reports");
 });
 
 test("never-rejects contract holds even when BOTH sources fail [surface: 'it never rejects; a machine without a GPU is a supported tier, not an error']", async () => {
   const { run } = recordingRunner(new Error("ENOENT"));
-  const probe = await probeHardware({ runCommand: run, totalMemBytes: throwingMem });
+  const probe = await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: throwingMem });
   assert.strictEqual(probe.vramMB, undefined);
   assert.strictEqual(probe.vramFailure, "spawn-failed");
   assert.strictEqual(probe.ramMB, undefined);
@@ -149,28 +154,28 @@ test("never-rejects contract holds even when BOTH sources fail [surface: 'it nev
 test("evidence on success: exactly the probe line with final values [surface: 'then always [carve] probe vram=<mb|-> ram=<mb|->']", async () => {
   const { run } = recordingRunner({ stdout: "16303\n", exitCode: 0 });
   const lines = [];
-  await probeHardware({ runCommand: run, totalMemBytes: memOf(61826), log: (l) => lines.push(l) });
+  await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(61826), log: (l) => lines.push(l) });
   assert.deepStrictEqual(lines, ["[carve] probe vram=16303 ram=61826"]);
 });
 
 test("evidence on failure: failed line FIRST, then the probe line with dashes for absent [surface: 'on vram failure, [carve] probe failed: <reason> first']", async () => {
   const { run } = recordingRunner(new Error("ENOENT"));
   const lines = [];
-  await probeHardware({ runCommand: run, totalMemBytes: memOf(61826), log: (l) => lines.push(l) });
+  await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(61826), log: (l) => lines.push(l) });
   assert.deepStrictEqual(lines, ["[carve] probe failed: spawn-failed", "[carve] probe vram=- ram=61826"]);
 });
 
 test("evidence with both halves absent renders both dashes [surface: '(- for absent)']", async () => {
   const { run } = recordingRunner({ stdout: "", exitCode: 6 });
   const lines = [];
-  await probeHardware({ runCommand: run, totalMemBytes: throwingMem, log: (l) => lines.push(l) });
+  await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: throwingMem, log: (l) => lines.push(l) });
   assert.deepStrictEqual(lines, ["[carve] probe failed: exit-6", "[carve] probe vram=- ram=-"]);
 });
 
 test("evidence for the unparseable shape names the reason [surface: '[carve] probe failed: <spawn-failed|exit-<code>|unparseable>']", async () => {
   const { run } = recordingRunner({ stdout: "garbage\n", exitCode: 0 });
   const lines = [];
-  await probeHardware({ runCommand: run, totalMemBytes: memOf(32000), log: (l) => lines.push(l) });
+  await probeHardware({ runCommand: run, platformInfo: nvidiaPlatform, totalMemBytes: memOf(32000), log: (l) => lines.push(l) });
   assert.deepStrictEqual(lines, ["[carve] probe failed: unparseable", "[carve] probe vram=- ram=32000"]);
 });
 

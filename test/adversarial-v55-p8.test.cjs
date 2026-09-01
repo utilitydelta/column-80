@@ -140,6 +140,7 @@ const fakeContext = () => ({ subscriptions: [], globalState: { get: () => undefi
 const referenceProbe = () => ({
   runCommand: async () => ({ stdout: "16303\n", exitCode: 0 }),
   totalMemBytes: () => 61826 * 1048576,
+  platformInfo: () => ({ platform: "linux", arch: "x64" }),
 });
 
 /** Records every host the catalogue was asked for, and answers per host.

@@ -272,6 +272,16 @@ test("KNOWN LIMITATION (S43-1): the kill signals the CLI only, not its process g
   // A shim that behaves the way `claude` does: it spawns a helper (a tool call)
   // and then keeps working. The watchdog kills the shim; the helper is not in
   // the signal's blast radius.
+  //
+  // Timing is load-bearing and must be generous on BOTH sides of the kill. The
+  // shim's `#!/usr/bin/env node` shebang resolves `node` through the PATH, which
+  // on a fnm-managed box is a shim that adds ~400ms before the helper even
+  // spawns; a 250ms watchdog would kill the shim before the helper exists and
+  // the row would pass for the wrong reason (no orphan to observe). The
+  // watchdog therefore waits past the spawn, and the helper's own timer is
+  // longer than the watchdog so its write lands AFTER the kill on a fast box
+  // too - otherwise the marker would be written before the kill and the row
+  // would pass even if the kill reached the process group.
   const bin = path.join(dir, "claude");
   fs.writeFileSync(
     bin,
@@ -279,7 +289,7 @@ test("KNOWN LIMITATION (S43-1): the kill signals the CLI only, not its process g
       `"use strict";\n` +
       `const { spawn } = require("child_process");\n` +
       `const MARKER = ${JSON.stringify(marker)};\n` +
-      `const code = "setTimeout(function(){require('fs').writeFileSync(process.argv[1],'1');},1200)";\n` +
+      `const code = "setTimeout(function(){require('fs').writeFileSync(process.argv[1],'1');},2000)";\n` +
       `spawn(process.execPath, ["-e", code, MARKER], { stdio: "ignore" });\n` +
       `process.stdin.resume();\n` +
       `setTimeout(() => {}, 60000);\n`,
@@ -288,9 +298,9 @@ test("KNOWN LIMITATION (S43-1): the kill signals the CLI only, not its process g
   fs.chmodSync(bin, 0o755);
 
   const cwd = tmpDir("c80-adv43-cwd-");
-  const fn = makeClaudeCodeInstruct({ cwd, binary: bin, timeoutMs: 250 });
+  const fn = makeClaudeCodeInstruct({ cwd, binary: bin, timeoutMs: 1500 });
   await assert.rejects(fn({ signal: new AbortController().signal, ...BASE }), (e) => e.reason === "timeout");
-  await sleep(1600);
+  await sleep(4000);
   assert.ok(
     fs.existsSync(marker),
     "EXPECTED THE ORPHAN, and it is gone - which means the kill now reaches the process group " +

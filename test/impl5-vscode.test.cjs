@@ -213,12 +213,14 @@ const output = () => {
 const referenceProbe = () => ({
   runCommand: async () => ({ stdout: "16303\n", exitCode: 0 }),
   totalMemBytes: () => 61826 * 1048576,
+  platformInfo: () => ({ platform: "linux", arch: "x64" }),
 });
 const noGpuProbe = () => ({
   runCommand: async () => {
     throw Object.assign(new Error("spawn nvidia-smi ENOENT"), { code: "ENOENT" });
   },
   totalMemBytes: () => 61826 * 1048576,
+  platformInfo: () => ({ platform: "linux", arch: "x64" }),
 });
 
 // A pull fake that records the evidence lines already emitted at request

@@ -107,6 +107,7 @@ const LIVE_CONFIG = {
   maxTokens: 512,
   temperature: 0.2,
   numGpu: 30,
+  numCtx: 16384,
 };
 
 const ROSLYN_DLL = path.join(

@@ -173,6 +173,7 @@ test("live repair (contract 4a live): fim session, real cross-model 30b round(s)
         maxTokens: 512,
         temperature: 0.2,
         numGpu: 30, // carve discipline
+        numCtx: 16384,
         signal: new AbortController().signal,
       });
       const fixed = postprocessInstructOutput(reply.text);

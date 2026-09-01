@@ -229,6 +229,7 @@ function recordingProbe() {
         calls.push({ kind: "totalMemBytes" });
         return 61826 * 1048576;
       },
+      platformInfo: () => ({ platform: "linux", arch: "x64" }),
     },
   };
 }
@@ -708,6 +709,7 @@ test("amendment B2 regression: a 6GB laptop serving on 0.0.0.0 gets the honest b
     opts: {
       runCommand: async () => ({ stdout: "6144\n", exitCode: 0 }),
       totalMemBytes: () => 16384 * 1048576,
+      platformInfo: () => ({ platform: "linux", arch: "x64" }),
     },
   };
   const r = reachabilityProbe(REACHABLE);

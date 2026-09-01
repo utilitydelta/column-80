@@ -133,6 +133,7 @@ const generate = (prompt) =>
     maxTokens: 512,
     temperature: 0.7, // the measured falsification temperature
     numGpu: 30, // reference carve discipline
+    numCtx: 16384,
     signal: new AbortController().signal,
   });
 

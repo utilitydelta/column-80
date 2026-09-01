@@ -43,6 +43,7 @@ const LIVE_CONFIG = {
   maxTokens: 512,
   temperature: 0.2,
   numGpu: REFERENCE_CARVE_NUM_GPU, // without the carve ollama evicts the FIM model
+  numCtx: 16384,
 };
 
 // Fixture with a helper the model can only know from the context block.

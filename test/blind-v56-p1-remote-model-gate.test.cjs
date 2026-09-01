@@ -161,6 +161,7 @@ function recordingProbe() {
         calls.push({ kind: "totalMemBytes" });
         return 61826 * 1048576;
       },
+      platformInfo: () => ({ platform: "linux", arch: "x64" }),
     },
   };
 }

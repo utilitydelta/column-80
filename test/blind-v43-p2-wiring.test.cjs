@@ -279,6 +279,7 @@ const output = () => {
 const referenceProbe = () => ({
   runCommand: async () => ({ stdout: "16303\n", exitCode: 0 }),
   totalMemBytes: () => 61826 * 1048576,
+  platformInfo: () => ({ platform: "linux", arch: "x64" }),
 });
 
 // The contract: "buildFnGenService ... gains a FOURTH optional parameter

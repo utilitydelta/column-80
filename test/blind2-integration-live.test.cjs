@@ -43,6 +43,7 @@ const LIVE_CONFIG = {
   maxTokens: 512,
   temperature: 0.2,
   numGpu: 30,
+  numCtx: 16384,
 };
 
 // Repairbench-style fixture: a small Rust module, target function mid-file

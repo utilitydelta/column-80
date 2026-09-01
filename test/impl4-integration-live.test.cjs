@@ -87,7 +87,7 @@ const TASK1_DOC = [
 
 const newService = (lines) =>
   new FnGenService(
-    { apiBase: API_BASE, model: MODEL, fallbackModel: "x", maxTokens: 512, temperature: 0.2, numGpu: 30 },
+    { apiBase: API_BASE, model: MODEL, fallbackModel: "x", maxTokens: 512, temperature: 0.2, numGpu: 30, numCtx: 16384 },
     undefined, // the real generateInstruct: this IS the seam under test
     (l) => lines.push(l),
   );

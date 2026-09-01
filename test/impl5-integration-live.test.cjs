@@ -95,8 +95,12 @@ function assertDualResidency(models, label) {
   assert.ok(fngen.size_vram > 0 && fngen.size_vram < fngen.size, `${label}: 30b layer-capped`);
 }
 
-test("SEAM live: probed hardware -> tier -> applyTier reproduces the reference config on this box", { skip: SKIP, timeout: LIVE_TIMEOUT }, async () => {
+test("SEAM live: probed hardware -> tier -> applyTier reproduces the reference config on this box", { skip: SKIP, timeout: LIVE_TIMEOUT }, async (ctx) => {
   const probe = await probeHardware();
+  if (probe.unifiedMemory) {
+    ctx.skip("Apple Silicon: unified memory has no CUDA carve, so the reference-box (NVIDIA) tier does not apply");
+    return;
+  }
   const sel = computeTier(probe.vramMB, probe.ramMB);
   assert.strictEqual(sel.id, "16gb-large-ram", `this is the reference box; probe vram=${probe.vramMB} ram=${probe.ramMB}`);
   const cfg = applyTier({ ...DEFAULT_FNGEN_CONFIG, apiBase: API_BASE }, sel, false);
@@ -106,8 +110,12 @@ test("SEAM live: probed hardware -> tier -> applyTier reproduces the reference c
   console.log(tierLogLine(sel, probe.vramMB, probe.ramMB, "auto"));
 });
 
-test("SEAM live: the tier-computed config drives the PRODUCT clients and holds dual residency + warm FIM", { skip: SKIP, timeout: LIVE_TIMEOUT }, async () => {
+test("SEAM live: the tier-computed config drives the PRODUCT clients and holds dual residency + warm FIM", { skip: SKIP, timeout: LIVE_TIMEOUT }, async (ctx) => {
   const probe = await probeHardware();
+  if (probe.unifiedMemory) {
+    ctx.skip("Apple Silicon: unified memory has no CUDA carve, so the reference-box (NVIDIA) residency outcome does not apply");
+    return;
+  }
   const cfg = applyTier(
     { ...DEFAULT_FNGEN_CONFIG, apiBase: API_BASE },
     computeTier(probe.vramMB, probe.ramMB),

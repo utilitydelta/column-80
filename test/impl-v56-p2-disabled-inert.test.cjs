@@ -126,6 +126,7 @@ async function build({ config, probe, models }) {
   const probeOpts = {
     runCommand: async () => ({ stdout: probe?.stdout ?? "16303\n", exitCode: 0 }),
     totalMemBytes: () => (probe?.ramMB ?? 61826) * MB,
+    platformInfo: () => ({ platform: "linux", arch: "x64" }),
   };
   const built = await buildFnGenService(out, (l) => log.push(l), probeOpts, { listModels: async () => models });
   return { ...built, log };

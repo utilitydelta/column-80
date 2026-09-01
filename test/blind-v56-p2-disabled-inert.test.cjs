@@ -407,6 +407,7 @@ async function buildTier(name) {
   const probeOpts = {
     runCommand: async () => ({ stdout: sc.probe.stdout, exitCode: 0 }),
     totalMemBytes: () => sc.probe.ramMB * MB,
+    platformInfo: () => ({ platform: "linux", arch: "x64" }),
   };
   return buildFnGenService(output, () => {}, probeOpts, { listModels: async () => sc.models });
 }
@@ -435,6 +436,7 @@ async function drive({ scenario, command, cursor }) {
   const probeOpts = {
     runCommand: async () => ({ stdout: sc.probe.stdout, exitCode: 0 }),
     totalMemBytes: () => sc.probe.ramMB * MB,
+    platformInfo: () => ({ platform: "linux", arch: "x64" }),
   };
   const preflightCalls = [];
   let built;

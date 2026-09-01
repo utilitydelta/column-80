@@ -693,8 +693,11 @@ test("row 9: a forked round failing with a serving failure does NOT retry, rejec
 test("extra (Degrading): a forked round that TIMES OUT is not retried either", async () => {
   const prefix = prefixOf(4096);
   const body = promptFor(prefix);
-  // spawn 2 is the fork and it sits past the configured cap.
-  const r = rig([OK_REPLY, OK_REPLY, okWith({}, { sleepMs: 5000 })], OK_REPLY, { timeoutMs: 400 });
+  // spawn 2 is the fork and it sits past the configured cap. The cap must clear
+  // the shim's own startup: `#!/usr/bin/env node` resolves node through the PATH,
+  // which on a fnm-managed box adds ~450ms before the shim even answers, so a
+  // cap near that latency races the warmup's immediate OK_REPLY.
+  const r = rig([OK_REPLY, OK_REPLY, okWith({}, { sleepMs: 5000 })], OK_REPLY, { timeoutMs: 1000 });
   await r.call({ prompt: body, cachePrefix: prefix });
   assert.strictEqual(r.shim.count(), 2, "precondition: warmed");
 
@@ -1094,11 +1097,13 @@ test("extra (seam rule 4): generateRaw carries contextBlocks, so repair, refine 
 // ---------------------------------------------------------------------------
 
 test("extra (Turn 1): turn 1 and turn 2 EACH get the full configured timeout", async () => {
-  // Both children sit for 400ms against a 700ms cap. Per-turn, the round
-  // completes; a cap shared across the warm would fire at 700ms of the 800ms
-  // the two turns take together.
+  // Both children sit for 1000ms against a 1800ms cap. Per-turn, the round
+  // completes; a cap shared across the warm would fire at 1800ms of the ~2000ms
+  // the two turns take together. The sleep and cap are sized to clear the shim's
+  // own startup (~450ms through `#!/usr/bin/env node` on a fnm-managed box), so
+  // the per-turn vs shared distinction holds on a slow PATH and a fast one.
   const prefix = prefixOf(4096);
-  const r = rig([okWith({}, { sleepMs: 400 }), okWith({}, { sleepMs: 400 })], OK_REPLY, { timeoutMs: 700 });
+  const r = rig([okWith({}, { sleepMs: 1000 }), okWith({}, { sleepMs: 1000 })], OK_REPLY, { timeoutMs: 1800 });
   const out = await r.call({ prompt: promptFor(prefix), cachePrefix: prefix });
   assert.strictEqual(out.text, "a + b", "a warm round may take up to twice as long as a single-shot one");
   assert.strictEqual(r.shim.count(), 2);

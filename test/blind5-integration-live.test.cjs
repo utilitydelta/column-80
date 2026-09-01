@@ -78,7 +78,7 @@ function fnGenBody() {
       `// nonce: ${crypto.randomUUID()}\n`,
     stream: true,
     keep_alive: 1800,
-    options: { num_predict: 150, temperature: 0.2, num_gpu: 30 },
+    options: { num_predict: 150, temperature: 0.2, num_gpu: 30, num_ctx: 16384 },
   };
 }
 

@@ -248,11 +248,13 @@ const output = () => {
 const referenceProbe = () => ({
   runCommand: async () => ({ stdout: "16303\n", exitCode: 0 }),
   totalMemBytes: () => 61826 * 1048576,
+  platformInfo: () => ({ platform: "linux", arch: "x64" }),
 });
 // A probe that never answers: used only to prove activation does not await it.
 const hangingProbe = () => ({
   runCommand: () => new Promise(() => {}),
   totalMemBytes: () => 61826 * 1048576,
+  platformInfo: () => ({ platform: "linux", arch: "x64" }),
 });
 
 const quietDeps = () => ({ probe: referenceProbe(), listModels: async () => [FIM_MODEL, MODEL_30B] });

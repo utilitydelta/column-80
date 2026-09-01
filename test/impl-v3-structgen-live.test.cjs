@@ -33,6 +33,7 @@ const LIVE_CONFIG = {
   maxTokens: 512,
   temperature: 0.2,
   numGpu: 30,
+  numCtx: 16384,
 };
 
 // A struct target mid-file so both boundary regions are non-empty. The doc

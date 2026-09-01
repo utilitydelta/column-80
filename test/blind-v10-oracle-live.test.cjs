@@ -75,7 +75,11 @@ const scratch = [];
 test.after(() => { for (const d of scratch) fs.rmSync(d, { recursive: true, force: true }); });
 
 const buildFixtureProject = () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "blind-v10-live-"));
+  // realpath the temp dir: on macOS /tmp and /var are symlinks to /private/*,
+  // and `dotnet build`'s SARIF output canonicalizes to the /private/... form,
+  // so the fixture path must match it or the file:// URI round-trip compares
+  // two spellings of the same file.
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "blind-v10-live-")));
   scratch.push(dir);
   fs.writeFileSync(path.join(dir, "Broken.csproj"), CSPROJ);
   const src = path.join(dir, "Broken.cs");

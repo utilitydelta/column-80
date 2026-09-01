@@ -96,6 +96,7 @@ test("P5-F4: a timed-out probe degrades through the existing taxonomy to the liv
   const probe = await probeHardware({
     runCommand: probeCommandRunner(1),
     totalMemBytes: () => 61826 * 1048576,
+    platformInfo: () => ({ platform: "linux", arch: "x64" }),
     log: (l) => lines.push(l),
   });
   assert.strictEqual(probe.vramMB, undefined);

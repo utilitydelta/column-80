@@ -340,19 +340,24 @@ test("A5: a turn-1 TIMEOUT is also retried, so one round can hold two full timeo
   // "timeout (expensive by definition)" is on the never-retry list for the fork
   // round. Turn 1 is not on it, so a hung CLI costs the configured cap twice
   // before the round gives up or answers.
+  //
+  // The cap must clear the shim's own startup: `#!/usr/bin/env node` resolves
+  // node through the PATH, which on a fnm-managed box adds ~450ms before the
+  // shim even claims its index, so a 300ms cap kills the shim before the claim
+  // file exists and the row reads count 0 instead of 1.
   const prefix = prefixOf(4096);
   const body = promptFor(prefix);
-  const r = rig([okWith({}, { sleepMs: 5000 })], OK_REPLY, { timeoutMs: 300 });
+  const r = rig([okWith({}, { sleepMs: 5000 })], OK_REPLY, { timeoutMs: 1000 });
 
   const t0 = Date.now();
   await settled(r.call({ prompt: body, cachePrefix: prefix }));
   const elapsed = Date.now() - t0;
-  await sleep(200);
+  await sleep(500);
 
   assert.strictEqual(
     r.shim.count(),
     1,
-    `a timed-out turn 1 must not buy a second full-length call.\n  elapsed: ${elapsed}ms against a 300ms cap`
+    `a timed-out turn 1 must not buy a second full-length call.\n  elapsed: ${elapsed}ms against a 1000ms cap`
   );
 });
 
