@@ -2,8 +2,9 @@
  * Dictate-then-FIM, the VS Code side. Everything decided lives in `src/core/dictationGesture.ts`
  * (the reducer) and `src/core/dictation.ts` (the cleaner and the comment); this file resolves
  * editor state into events and executes the reducer's actions: the recorder child, the resident
- * recogniser, the speaker mute, the cursor-line decoration, the status bar item, and the one
- * FIM request the intent rides on.
+ * recogniser, the speaker mute, the cursor-line decoration, the status bar item, the one
+ * FIM request the intent rides on, and on a comment site the one edit that puts the sentence
+ * in the comment before the tighten command takes over.
  *
  * Rulings this file carries (session-v65 goal.md): the recogniser is resident from activation
  * and the model downloads through a ratified toast like every other model; the indicator goes
@@ -132,6 +133,11 @@ export function indentUnitFor(document: vscode.TextDocument, line: number): stri
   return tabs ? "\t" : " ".repeat(unit === 0 ? 4 : unit);
 }
 
+/** A rejection's message, for the channel and the status bar: the `Error: ` prefix is noise there. */
+function reasonOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 interface Paths {
   capture: string;
   server: string;
@@ -172,6 +178,15 @@ export class Dictation implements vscode.Disposable {
   private indicatorMode: "armed" | "live" | "thinking" | "heard" | "off" = "off";
   private readonly statusItem: vscode.StatusBarItem | undefined;
   private micClosedAt = 0;
+  /** The caret's column at the press that ARMED the gesture. The reducer's site is
+   *  `{uri, line}`; the column is the adapter's, used only by the comment insert. The stop
+   *  press reads a caret too, and that one must not move the insert. */
+  private pressCharacter = 0;
+  /** The comment insert in flight, so the `tighten` action that follows it in the same action
+   *  list can wait for the edit to resolve before the command runs. Resolves the editor the
+   *  sentence landed in, or undefined when it did not land. */
+  private pendingInsert: Promise<vscode.TextEditor | undefined> | undefined;
+  private disposed = false;
   private pendingRoots: string[] = [];
   private pendingKind: "line" | "declaration" = "line";
   private pendingSentence = "";
@@ -439,6 +454,7 @@ export class Dictation implements vscode.Disposable {
       // A recogniser that died is restarted for the NEXT press; this one refuses honestly.
       void this.startRecogniser();
     }
+    const before = this.state.phase;
     this.dispatch({
       type: "press",
       site: { uri: document.uri.toString(), line: position.line },
@@ -446,8 +462,11 @@ export class Dictation implements vscode.Disposable {
       indentColumns: indent.replace(/\t/g, "    ").length,
       now: Date.now(),
       ready,
-      ghostVisible: this.state.phase === "ghost",
+      ghostVisible: before === "ghost",
     });
+    if (this.state.phase === "arming" && before !== "arming") {
+      this.pressCharacter = position.character;
+    }
   }
 
   onDocumentChanged(e: vscode.TextDocumentChangeEvent): void {
@@ -643,9 +662,20 @@ export class Dictation implements vscode.Disposable {
         this.triggerFim(action.site, action.comment);
         return;
       case "insert-comment":
-      case "tighten":
-        this.log(`[dictate] ${action.type} (not built until phase 2)`);
+        this.pendingInsert = this.insertComment(action.site, action.sentence);
         return;
+      case "tighten": {
+        // The reducer lists the tighten right after the insert; the command must not run
+        // until the sentence is in the file, and never when it is not.
+        const inserted = this.pendingInsert ?? Promise.resolve(undefined);
+        this.pendingInsert = undefined;
+        void inserted.then((editor) => {
+          if (editor !== undefined && !this.disposed) {
+            void this.tighten(editor);
+          }
+        });
+        return;
+      }
       case "refuse":
         this.refuse(action.kind, action.detail);
         return;
@@ -926,6 +956,103 @@ export class Dictation implements vscode.Disposable {
       .then(undefined, (err) => this.dispatch({ type: "error", message: `the inline suggestion trigger failed: ${String(err)}` }));
   }
 
+  /** The site's editor for the comment insert: the active one on the site's uri, else a
+   *  visible one. Nothing is focused; `edit()` works on a visible editor. */
+  private siteEditor(site: Site): vscode.TextEditor | undefined {
+    const active = vscode.window.activeTextEditor;
+    if (active !== undefined && active.document.uri.toString() === site.uri) {
+      return active;
+    }
+    return vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === site.uri);
+  }
+
+  /** Put the sentence at the press caret as ONE edit with undo stops on both sides, so Ctrl+Z
+   *  takes it back in one step and the tighten's edit is its own. Resolves whether the
+   *  sentence is in the file; a refusal here reads as the failure it is, not as a crash. */
+  private async insertComment(site: Site, sentence: string): Promise<vscode.TextEditor | undefined> {
+    const started = Date.now();
+    const editor = this.siteEditor(site);
+    // A site with nowhere to land is an insert failure to the user, not a channel-only
+    // error: the sentence is lost and the status bar must say so.
+    if (editor === undefined) {
+      this.log("[dictate] error: the editor moved away from the dictated line");
+      this.insertFailed("the editor moved away from the dictated line");
+      return undefined;
+    }
+    if (site.line >= editor.document.lineCount) {
+      this.log("[dictate] error: the dictated line is gone");
+      this.insertFailed("the dictated line is gone");
+      return undefined;
+    }
+    // The line may have changed since the press; the column clamps to the line as it is now,
+    // and the space rule reads the character now before it (`//|` lands `// Sentence.`,
+    // `//  |` lands `//  Sentence.`, column 0 gets no space).
+    const lineText = editor.document.lineAt(site.line).text;
+    const column = Math.min(this.pressCharacter, lineText.length);
+    const before = column > 0 ? lineText[column - 1] : "";
+    const text = before !== "" && !/\s/.test(before) ? ` ${sentence}` : sentence;
+    const at = new vscode.Position(site.line, column);
+    let applied: boolean;
+    try {
+      applied = await editor.edit((builder) => builder.insert(at, text), { undoStopBefore: true, undoStopAfter: true });
+    } catch (err) {
+      this.insertFailed(reasonOf(err));
+      return undefined;
+    }
+    if (!applied) {
+      this.insertFailed("the editor declined the edit");
+      return undefined;
+    }
+    const after = new vscode.Position(site.line, column + text.length);
+    editor.selection = new vscode.Selection(after, after);
+    this.log(`[dictate] comment inserted at ${site.uri}:${site.line}:${column} chars=${text.length} insert=${Date.now() - started}ms`);
+    this.endHeard();
+    return editor;
+  }
+
+  private insertFailed(reason: string): void {
+    this.log(`[dictate] comment insert failed: ${reason}`);
+    this.refuse("failed", reason);
+    this.endHeard();
+  }
+
+  /** The gesture is already idle when the insert runs, so no reducer `off` follows it; the
+   *  heard label lingers here the way it does after an accepted ghost, on the same timer. */
+  private endHeard(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.lingerHeard = true;
+    try {
+      this.renderIndicator("off");
+    } catch (err) {
+      this.log(`[dictate] action indicator failed: ${String(err)}`);
+    }
+  }
+
+  /** The hand-off: the tighten command as the palette runs it, with the caret already
+   *  inside the comment. The command reads the ACTIVE editor, so a sentence that landed in a
+   *  visible-only editor (the human was reading the Output panel) brings that editor to the
+   *  front first. Its pick, diff and refusals are its own; only a rejection is logged. */
+  private async tighten(editor: vscode.TextEditor): Promise<void> {
+    if (vscode.window.activeTextEditor !== editor) {
+      try {
+        await vscode.window.showTextDocument(editor.document, { viewColumn: editor.viewColumn, preserveFocus: false });
+        this.log("[dictate] focus returned to the dictated editor for the tighten");
+      } catch (err) {
+        this.log(`[dictate] tighten skipped: ${reasonOf(err)}`);
+        return;
+      }
+      if (this.disposed) {
+        return;
+      }
+    }
+    this.log("[dictate] tighten invoked");
+    await Promise.resolve(vscode.commands.executeCommand("column80.tightenDocComment")).then(undefined, (err) =>
+      this.log(`[dictate] tighten failed: ${reasonOf(err)}`),
+    );
+  }
+
   private refuse(kind: RefusalKind, detail?: string): void {
     const sentence =
       kind === "not-served"
@@ -1085,6 +1212,9 @@ export class Dictation implements vscode.Disposable {
   }
 
   dispose(): void {
+    // A comment insert still in flight must not hand over to the tighten, or re-arm the
+    // heard linger, once the adapter is gone.
+    this.disposed = true;
     if (this.lingerTimer !== undefined) {
       clearTimeout(this.lingerTimer);
     }
