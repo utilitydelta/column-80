@@ -1,10 +1,14 @@
-# Ship on tag: push v1.0.0 -> one .vsix, a GitHub Release carrying it, and a
-# Marketplace publish when VSCE_PAT is set.
+# Ship on tag: push v1.0.0 -> one .vsix PER TARGET, a GitHub Release carrying all four, and a
+# Marketplace publish of all four when VSCE_PAT is set.
 #
-# ONE package, not human-replay's per-platform matrix. Nothing here is native:
-# the bundle is pure JS and the one runtime dependency, pyright, ships its own
-# platform-independent dist. A `--target`ed build would only pin the vsix to an
-# OS it does not care about.
+# Per-target since session-v65: dictation spawns two native binaries (native/README.md), so the
+# package carries the pair built for its platform and nothing else. Four targets, four runners,
+# then one package job that stages each target's pair into native/bin/<target>/ and runs
+# `vsce package --target` once per target. Everything else in the bundle is still pure JS.
+#
+# macOS and Windows binaries are built here and have NOT been proven on real hardware yet
+# (session-v65 ruling 2: built for all three, proven on Linux). Prove them before trusting a
+# release on those platforms.
 
 name: release
 
@@ -14,7 +18,35 @@ on:
       - "v*"
 
 jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: darwin-arm64
+            os: macos-14
+          - target: darwin-x64
+            # macos-13 was retired 2025-12-08; this is GitHub's Intel replacement.
+            os: macos-15-intel
+          - target: win32-x64
+            os: windows-2022
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm run native:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: native/bin/${{ matrix.target }}/
+          if-no-files-found: error
+
   release:
+    needs: native
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -27,15 +59,6 @@ jobs:
       # 24 for the same reason ci.yml pins it: `node --test` glob expansion.
       - uses: actions/setup-node@v4
         with:
-          # UNPINNED again 2026-08-10 (session-v48 phase 0, roadmap item 44 closed).
-          # The pin existed because `24.18` counts a failing `todo` row toward the
-          # exit code where `24.12` does not, and this suite carried 43 rows that
-          # were red on purpose. It carries none: 37 now assert what the code
-          # actually does, under a `KNOWN WRONG:` or `SUPERSEDED:` title, and 6
-          # skip with a stated reason because the captures they score were deleted
-          # with the repo split. `todo` is 0 on 24.12.0 and on 24.19.0. The
-          # wall-clock rows of roadmap item 23 are a separate, still-open way for
-          # a busy runner to turn this red; see the note in ci.yml.
           node-version: 24
           cache: npm
 
@@ -53,17 +76,30 @@ jobs:
       # nothing new - and it can fail, because a handful of rows measure wall
       # clock (a sub-2ms perf budget, a real 1500ms timer, a log line that grows
       # a gateWait= field under load) and a shared two-core runner is not the
-      # hardware they were written on. Measured: of the first two runs with a
-      # working environment, one was green and one had three such failures, a
-      # different three. A red here fails the job with the tag already public and
-      # immutable, which is a strictly worse place to find out than a red ci run
-      # on main. Push, watch ci go green, then tag. Item 23 is the real fix.
+      # hardware they were written on. Push, watch ci go green, then tag. Item
+      # 23 is the real fix.
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
 
-      - name: Package
-        run: npx @vscode/vsce package
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native/staged
+
+      # One vsix per target. .vscodeignore admits native/bin/** and nothing else under
+      # native/, so the staging directory is swapped per target: only that target's pair is
+      # under native/bin when its package is built.
+      - name: Package per target
+        run: |
+          set -e
+          for t in linux-x64 darwin-arm64 darwin-x64 win32-x64; do
+            rm -rf native/bin && mkdir -p "native/bin/$t"
+            cp "native/staged/native-$t"/* "native/bin/$t/"
+            chmod +x "native/bin/$t"/*
+            npx @vscode/vsce package --target "$t" --out "column-80-$t.vsix"
+          done
+          ls -la *.vsix
 
       - uses: actions/upload-artifact@v4
         with:
@@ -91,21 +127,25 @@ jobs:
           # The gallery times out under load, which stranded a human-replay
           # release mid-publish. That is transient, so retry with backoff. A
           # duplicate version is what a re-run of a partial failure sees: treat
-          # it as done, not an error.
-          f=$(ls *.vsix | head -1)
-          for attempt in 1 2 3; do
-            if out=$(npx @vscode/vsce publish --packagePath "$f" -p "$VSCE_PAT" 2>&1); then
-              echo "$out"; exit 0
-            fi
-            echo "$out"
-            if echo "$out" | grep -qiE "already exists|already published|409"; then
-              echo "$f: this version is already on the Marketplace - skipping"
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "publish attempt $attempt failed - retrying in $((attempt * 30))s"
-              sleep $((attempt * 30))
+          # it as done, not an error. Every target is published, in turn.
+          for f in *.vsix; do
+            ok=0
+            for attempt in 1 2 3; do
+              if out=$(npx @vscode/vsce publish --packagePath "$f" -p "$VSCE_PAT" 2>&1); then
+                echo "$out"; ok=1; break
+              fi
+              echo "$out"
+              if echo "$out" | grep -qiE "already exists|already published|409"; then
+                echo "$f: this version is already on the Marketplace - skipping"
+                ok=1; break
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "publish attempt $attempt failed - retrying in $((attempt * 30))s"
+                sleep $((attempt * 30))
+              fi
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "publish of $f failed after 3 attempts" >&2
+              exit 1
             fi
           done
-          echo "publish failed after 3 attempts" >&2
-          exit 1

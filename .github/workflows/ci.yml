@@ -55,3 +55,20 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
       - run: npm run build
+      # The native pair compiles on every push, on the one runner that can also prove it runs:
+      # `--list` against a box with no audio device must exit 2 with a sentence, not crash.
+      - uses: actions/cache@v4
+        with:
+          path: native/build
+          key: native-${{ runner.os }}-${{ hashFiles('native/CMakeLists.txt', 'native/capture/capture.c') }}
+      - run: npm run native:build
+      # A hosted runner has no audio stack, so the honest answer is exit 2 and a sentence. Exit
+      # 0 here would mean the null backend crept back in and "no microphone" can never fire.
+      - name: Native smoke
+        run: |
+          set +e
+          native/bin/linux-x64/column80-capture --list; rc=$?
+          set -e
+          echo "column80-capture --list exit=$rc"
+          test "$rc" -eq 2
+          native/bin/linux-x64/whisper-server --help > /dev/null

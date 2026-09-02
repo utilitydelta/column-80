@@ -17,6 +17,7 @@ Five languages ride the full stack: **Rust, Go, TypeScript/JavaScript, C#, Pytho
 | Get it running from zero | [Install and first run](#install-and-first-run) |
 | Nothing is happening | [It is not working](#it-is-not-working) |
 | Understand the ghost text | [FIM tab-completion](#fim-tab-completion) |
+| Say what the next line does instead of typing a comment | [Dictate the next block](#dictate-the-next-block) |
 | Generate a function body | [Function generation](#function-generation) |
 | Control what the model sees | [Context blocks](#context-blocks) |
 | Compile errors and auto-repair | [Compiler check and repair](#compiler-check-and-repair) |
@@ -196,6 +197,61 @@ Two kinds of highlight, treated differently. A member you **arrowed to** is a ch
 
 `fimAlternatives` (3) generates that many completions on a **manual** trigger only (Alt+\), cycled with Alt+] and Alt+[. Automatic ghost text always generates one: the latency bar is not for sale. The gesture waits for the slowest run, and on an Ollama with `num_parallel=1` (common for large models) the runs serialize, so expect roughly three times one generation.
 
+## Dictate the next block
+
+You used to type a comment above the cursor saying what the next line does, let FIM write it,
+and then delete the comment. Say it instead. Put the cursor where the next statement goes,
+press `shift+alt+d`, watch the cursor line show a pulsing dot and "listening", say the sentence,
+press `shift+alt+d` again. What was heard shows on the line as a label, the code lands in the
+file, and the cursor drops to a fresh line at the block's indent with nothing pressed. Ctrl+Z
+takes it back. The sentence never enters the file. (`column80.dictation.autoAccept` off leaves
+the code as a ghost for Tab or Escape instead.)
+
+What makes it work is the sentence, not the words. The model reads intent: "loop over the tiles
+and enroll each one into the shard mem cache" works whether or not the recogniser spells the
+names right, and a name the buffer already spells (`ShardMemCache`, `enroll_tile`) is matched
+by fold and backticked in the comment the model sees. Say what the line DOES, in plain words, the
+way you would explain it to a colleague; do not dictate syntax. Measured on one site, five draws
+each: "make a tile from morton code 42 at LOD 3" landed `Tile::from_morton(42, 3)` five times,
+"let tile equal tile from morton, 42-3" (the recogniser's punctuation of "42, 3") landed it
+never and copied the next function instead, and "let tile = Tile::from_morton(42, 3)" spoken as
+code landed it never. Numbers are the weak spot: say "forty-two comma three" or "42 and 3".
+
+Where the code around the cursor repeats a pattern, the 1.5b copies the pattern over anything
+the sentence says. Measured at a wire-header site with four `from_le_bytes` lines below the
+cursor: "get the version from the header using big endian format" landed `from_le_bytes` on 20
+of 20 draws across four phrasings, and so did "using from be bytes" spoken or backticked. What
+flipped it, 5 of 5, was the qualified call plus the negation: "get the version with
+`u32::from_be_bytes` over header 0 to 3, not little endian". At such a site say the exact call,
+qualified, and say what NOT to do. Single English words are never matched
+inside a sentence, because `open` and `close` and `file` are all real identifiers and matching
+them would rewrite what you said.
+
+The rules of the road:
+
+- Each press is its own sentence. Chaining is a new press on the same line; the last sentence is
+  not carried.
+- A press while a ghost shows dismisses it and records again. Escape dismisses without recording.
+- A partly written line has its rest filled, and the cursor stays where it is.
+- Inside a comment the press refuses. So does a file FIM does not serve, and a Remote window
+  (the microphone is on your machine and the extension host is on the server).
+- Dictation without the keystroke ghosts: turn `column80.enabled` off (or Toggle FIM
+  Autocomplete). A dictated request is still served; nothing is generated on typing.
+- Talk as long as you like. The whole take is decoded; nothing is cut.
+- The speakers are muted while the mic is open and put back after, unless they were already
+  muted (`column80.dictation.muteSpeakers`). Windows is not muted yet.
+
+Setup: the speech model (whisper.cpp `base.en`, 148MB) downloads on first activation after you
+click Download, the same way the ollama models do, and a small voice-activity model with it.
+Everything runs locally. `Column 80: Select Microphone` picks a device; empty means the system
+default. `column80.dictation.enabled` off stops the resident recogniser. The chord is
+`column80.dictation.shortcut`: pick another of the offered chords if `shift+alt+d` is taken
+on your box, or `none` and bind `column80.dictate` yourself in the Keyboard Shortcuts editor.
+
+The output channel carries every gesture: what was heard, what was matched and refused, and a
+timings line (`press-to-first-buffer`, `take`, `decode`, `fim`, `mic-close-to-ghost`). On the
+reference box the last of those is about half a second warm.
+
 ## Function generation
 
 The unit of generation is the function. Never the file, never the module. Generation is structurally incapable of touching bytes outside the target span: the accept path is the extension's only proposal write, and it splices exactly the span you saw in the preview.
@@ -359,7 +415,10 @@ After every accepted repair the check re-runs, because compilers suppress later 
 
 With `compilerDirectedInjection` on (default), a repair round leads with the real API surface the compiler's error class points at, resolved from your language server: the crate's worked example or real signatures on a hallucinated method, the installed-dependency catalog on a reach for a package you do not have. A missing-but-resolvable import is qualified in place (`fastbloom::BloomFilter`) rather than injected as a `use` line you did not write. Every injected block is a labelled, visible section in the previewed prompt.
 
-Turning `repairEnabled` off disables repair only. Check-and-surface always runs.
+Turning `repairEnabled` off disables repair only. Check-and-surface always runs after a
+generation; after a FIM accept it runs unless `checkOnFimAccept` is off, which turns the whole
+post-accept flow off for ghosts (dictated ones included) and leaves function generation's own
+check alone.
 
 Two things stated plainly. On an eligible failure the repair **model call happens before you are asked anything**: consent gates the splice, not the generation. And a FIM accept on a dirty file forces a save you did not explicitly ask for, because the check reads disk.
 
@@ -891,11 +950,18 @@ Habits worth having: `promptBytes` and `blocks` tell you what a generation actua
 
 | Setting | Default | What it does |
 |---|---|---|
-| `column80.enabled` | `true` | FIM autocomplete on/off. |
+| `column80.enabled` | `true` | Keystroke FIM autocomplete on/off. Off, dictation still serves its one request. |
 | `column80.apiBase` | `http://localhost:11434` | Ollama base URL for function generation. FIM follows it only to a loopback address; a remote host leaves FIM on `http://localhost:11434`. |
 | `column80.fimModel` | `qwen2.5-coder:1.5b-base` | FIM model. Must be a FIM-capable **base** model, not `-instruct`. |
 | `column80.fimLanguages` | `[]` | Extra VS Code language ids to serve FIM in. Widens, never narrows. |
 | `column80.fimUsageExamples` | `true` | Show real call sites of a member under its signatures at member sites. |
+| `column80.dictation.enabled` | `true` | Dictate the next block. Off stops the resident speech recogniser. |
+| `column80.dictation.microphone` | `""` | The capture device by exact name (`Select Microphone` lists them). Empty is the system default. |
+| `column80.dictation.muteSpeakers` | `true` | Mute the speakers while the mic is open and restore them after. Linux and macOS today. |
+| `column80.dictation.partials` | `true` | Show what is being heard on the cursor line while you talk. |
+| `column80.dictation.shortcut` | `shift+alt+d` | The chord that toggles dictation: one of five, or `none` to bind `column80.dictate` yourself in Keyboard Shortcuts. |
+| `column80.dictation.autoAccept` | `true` | The generated code goes straight into the file and the cursor drops to the next line; off leaves a ghost for Tab. Ctrl+Z undoes either way. |
+| `column80.dictation.surfaces` | `true` | Resolve the type names you spoke into surfaces above the comment. Measured to cost first-line accuracy (157 to 145 of 360); off is the safer setting until the human's own gestures say otherwise. |
 | `column80.fimMemberGate` | `true` | Drop member-site ghosts naming an unresolved member (TS, C#, Python). |
 | `column80.fimAlternatives` | `3` | Completions generated on a manual trigger. Automatic always generates one. |
 | `column80.minGhostChars` | `8` | Shortest ghost worth showing. `0` disables the floor. |
@@ -913,6 +979,7 @@ Habits worth having: `promptBytes` and `blocks` tell you what a generation actua
 | `column80.cloudApiBase` | `""` | Endpoint for the cloud backend. Required for `openai-compatible`. Ignored by `claude-code`. |
 | `column80.hardwareTier` | `auto` | `auto` probes on activation; a tier id skips the probe. |
 | `column80.repairEnabled` | `true` | Gated compiler-error repair after accepted generations. Off: surface only. |
+| `column80.checkOnFimAccept` | `true` | The compiler check, the annotation and the repair after a FIM ghost is accepted. Off makes a Tab a Tab; function generation keeps its own check. |
 | `column80.injectedContext` | `small` | How much of your own code goes into the function-generation prompt. Pick the row that matches the model you generate with: `small` (a 30B-class local model), `medium`, `large` (a large local model or a cheap cloud one), `frontier` (Opus and Fable class). Moving it up widens four things at once - how many of your types are injected, how far each is followed, how many types in total, and the byte budget they share - so a higher setting means a larger prompt, a slower first token and more language-server lookups. It widens the repair prompt too. Note what it does NOT reach: Go, Python and C# inject member signatures rather than data shapes, so for those three the setting moves how many types are injected and how many members each shows, and nothing else - the extension says which numbers are in force, per language, on its output channel. Replaced `column80.injectedSurface`, which moved one of those four and so could not change the prompt on its own. |
 | `column80.compilerDirectedInjection` | `true` | Inject the real API surface the compiler's error points at, and qualify missing imports in place. Off returns diagnostics-only repair. |
 | `column80.repairUsageWindows` | `false` | Inject call sites into compiler repair rounds. Off by default: it lost its measurement, scoring no better than the control and costing 2.6s per round. |
@@ -927,6 +994,9 @@ Every command is under the **Column 80** category in the palette.
 | Command | Where else |
 |---|---|
 | Toggle FIM Autocomplete | palette |
+| Dictate the Next Block | `column80.dictation.shortcut` (default `shift+alt+d`), palette |
+| Select Microphone | palette |
+| Download Speech Model | palette; also offered on first activation and on a press while the model is missing |
 | Generate Function Body | editor right-click > Column 80 |
 | Repair Function Body | editor right-click > Column 80 |
 | Generate Tests (TDD) | editor right-click > Column 80 |
@@ -987,6 +1057,17 @@ no control at all - its model decides. Setting this while a cloud provider is se
 ## Known limits
 
 Stated plainly. Most have the fix direction already recorded.
+
+**Dictation**
+
+- **macOS and Windows are built and unproven.** The recorder and the recogniser ship for both
+  and have run only on Linux. Roadmap item 74.
+- **No speaker mute on Windows.** The channel says so on every take. Roadmap item 75.
+- **Not over Remote.** The microphone is on your machine and the extension host is on the
+  server; the press refuses with one sentence. Roadmap item 76.
+- **The default chord shadows VS Code's "Detect Language from Content".** Rebind either.
+- **Only names the buffer spells are matched**, and only multi-word ones. A type defined in
+  another file and never mentioned in this one is spoken as prose; the model reads it as prose.
 
 **Hardware and setup**
 

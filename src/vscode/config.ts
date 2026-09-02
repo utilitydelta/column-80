@@ -81,6 +81,10 @@ export function readConfig(): ExtensionConfig {
 
 export interface OracleConfig {
   repairEnabled: boolean;
+  /** Run the compiler check (and whatever repair `repairEnabled` allows) after a
+   *  FIM ghost is accepted. Off makes a Tab a Tab: no check, no annotation, no
+   *  repair. Function generation keeps its own check regardless. */
+  checkOnFimAccept: boolean;
   /** v2 compiler-directed injection: resolve the real crate surface from the
    *  user's rust-analyzer and inject it into repair rounds, and qualify missing
    *  imports in-span. Defaults on (the v2 trust model is human-can-veto, not
@@ -122,6 +126,7 @@ export function readOracleConfig(): OracleConfig {
   const c = vscode.workspace.getConfiguration("column80");
   return {
     repairEnabled: c.get<boolean>("repairEnabled", true),
+    checkOnFimAccept: c.get<boolean>("checkOnFimAccept", true),
     injectionEnabled: c.get<boolean>("compilerDirectedInjection", true),
     usageExamples: c.get<boolean>("fimUsageExamples", true),
     // OFF by default because it LOST its arm. Putting the refine round's

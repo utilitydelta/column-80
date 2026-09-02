@@ -84,6 +84,12 @@ produced it has been looked at.
 - **50.** the gather buys a hover per collaborator the render drops
 - **62.** the C# inject arm flaps on 3 of 46 rows
 - **65.** the import hint names crates the target does not link
+- **74.** dictation on macOS and Windows is built and unproven
+- **75.** the speakers are not muted on Windows during a take
+- **76.** dictation over Remote needs a `ui`-kind companion extension
+- **77.** the fuzzy matcher and the recogniser prompt, deferred with their measurements
+- **78.** dictate a declaration, then the compiler decides (gesture 2)
+- **79.** GPU builds of the recogniser (Metal, CUDA, Vulkan)
 
 ## 1. Features
 
@@ -563,6 +569,8 @@ nobody ran.
 
 ### 10. The second call in a chain generates blind - RE-MEASURE first
 
+Update 2026-09-02 (session-v65): the 35 chain sites sit at 9 of 35 in every dictation arm (bare 8), heard, cleaned, backticked, with surfaces at three budgets, and rambled, and the 40-site authored chain row reads bare 12, comment 11, surfaces 10; the spoken intent does not reach the second dot. The mechanism named here stands.
+
 The outcome stands: in `results.iter().map(|r| r.` the closure receiver's members are never injected,
 and chained style - LINQ, EF, Rust iterators, TS functional - generates with nothing.
 
@@ -763,6 +771,8 @@ private `isAbort` greps `/abort/i` over the message (S57-3); a shared registry d
 must not be read as fixing it.
 
 ### 73. Thinking becomes a palette action, and numCtx becomes a setting
+
+Update 2026-09-02 (session-v65): the FIM half is settled as a constant rather than a setting: `FIM_NUM_CTX` 8192 on every FIM request, with the reload cost of a per-request pin written into `docs/constants.md`. The fn-gen half stands.
 
 RULED 2026-08-24. Two knobs leave the internal-defaults list.
 
@@ -1161,6 +1171,8 @@ revert it on a number that item 1 might have earned. A fresh third arm's absolut
 post-v35 filtered configuration's, unlike every number this item quotes.
 
 ### 41. The tuning constants were chosen for a local 30B and now gate a frontier model
+
+Update 2026-09-02 (session-v65): FIM now pins `num_ctx` at 8192 on every request (`FIM_NUM_CTX`, `docs/constants.md`), so the silent-truncation half of this item is closed for FIM; the 300-token budget stays inherited, and `DICTATION_SURFACE_TOK` is the seam the 300/600/1200 arm patches.
 
 Audited 2026-08-08 in full (`session-v45/constants-audit.md`, a ledger of every tuning knob on the
 injection path with a provenance verdict each).
@@ -1944,3 +1956,54 @@ developer manage the tool fails, regardless of capability.
 
 Split rule: a tuning goes in the ledgers or deferred fixes. A numbered item needs its own goal and
 scout.
+
+### 74. Dictation on macOS and Windows is built and unproven
+
+Session-v65 ruled all three platforms and proved Linux on the reference box: the recorder
+(miniaudio) and `whisper-server` run from the vsix, five languages green in the host tier. The
+release workflow builds the macOS arm64, macOS x64 and Windows x64 pairs on GitHub's runners and
+packages one vsix each, and nothing has run them. What to prove per platform: `column80-capture
+--list` shows the real devices, a take reaches the recogniser, the OS microphone permission
+prompt attributes to VS Code (macOS TCC), and press-to-first-buffer is a number. REASONED only.
+
+### 75. The speakers are not muted on Windows during a take
+
+`speakerMute.ts` has `wpctl`/`pactl` for Linux and `osascript` for macOS; Windows needs a COM
+call (IAudioEndpointVolume) that no shipped binary makes. The channel says
+`no speaker mute on win32 yet`. The cheap route is a `--mute`/`--unmute` pair on
+`column80-capture`, since it already links nothing and Windows audio is one `#ifdef` away.
+
+### 76. Dictation over Remote needs a `ui`-kind companion extension
+
+Ruled in session-v65: refused with one sentence, the recogniser not started and the model not
+offered on a remote host. The fix is a second small extension of kind `ui` that records on the
+client and hands the transcript across on a command; the workspace extension keeps the FIM
+side. A packaging split, its own session. `["ui","workspace"]` on the single extension stays
+refused (the language servers would hit the wrong filesystem).
+
+### 77. The fuzzy matcher and the recogniser prompt, deferred with their measurements
+
+The edit-distance matcher (0.78, phonetic tie-break) recovers 102 of 120 spoken identifiers
+against 2 wrong on a synthetic voice, and the file-scoped recogniser prompt fixes 178 to 215 of
+360 transcripts; neither moved the ghost (155 to 161 against 157 heard). Earned only on real
+dictation: on the first 50 gestures on the human's mic, count refusals the human then typed by
+hand, and reopen the prompt only if the cleaner refused names it would have fixed. Plurals are
+the same file (scrap S65-4): the comment wants the word, the resolver wants the root.
+
+### 78. Dictate a declaration, then the compiler decides (gesture 2)
+
+Asked for 2026-09-02: cursor inside a struct, an impl, a class or an empty file, dictate the
+function raw; the dictation becomes the DOC COMMENT and stays (the one place it is kept), FIM
+writes the signature under it, the compiler check and repair loop run on the signature, then
+fn-gen's doc-comment-plus-signature path writes the body. Measured on 100 documented Rust heads
+with the body absent: the comment triples the exact-head rate and it is still one in six, with
+misses of exactly the compiler's kind. So the name and parameter list are dictated and matched,
+not guessed, and repair is not optional. Built after gesture 1 ships, on its own goal, with a
+dictated-doc-comment population authored the way the line intents were.
+
+### 79. GPU builds of the recogniser
+
+The vendored `whisper-server` is CPU-only with AVX2 as the x64 floor: about 250ms per six second
+take on the reference box, roughly double on a laptop CPU, still inside the bar. Metal on macOS,
+CUDA or Vulkan elsewhere turn that into tens of milliseconds and the release matrix would need
+the SDKs. Earned when a laptop measurement misses the second.

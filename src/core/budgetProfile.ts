@@ -274,6 +274,24 @@ const MAX_TOKENS_BY_CLASS: Readonly<Record<ModelClass, number>> = {
 /** Ollama context window for prompt AND generation together; meaningful for
  *  the local classes only. Must clear the largest prompt plus testMaxTokens. */
 export const GEN_NUM_CTX = 16384;
+
+/** The FIM window, pinned since session-v65. Unpinned, ollama's default window
+ *  took a 3,369-token prompt whole and silently cut a 5,000-token one to 2,050
+ *  on this box, and truncation eats the HEAD of the prefix, which is where the
+ *  injected surface and the dictated comment sit. 8192 clears the 3000/1000
+ *  character windows (about 1,300 tokens), the largest surface stop this
+ *  session measures (1200 tokens), a long dictation, and `maxTokens` (256),
+ *  with room. Pinned on EVERY FIM request, not only the dictated ones: ollama
+ *  reloads the model when `num_ctx` changes between requests, and alternating
+ *  two sizes would pay that reload on every gesture. The 1.5b's KV cache at
+ *  8192 is a few hundred MB, inside the carve's headroom. */
+export const FIM_NUM_CTX = 8192;
+
+/** The aggregate render budget for the surfaces a DICTATED intent injects,
+ *  tokens. Starts at the FIM whole-block leg's inherited 300 (see
+ *  `DATASHAPE_TOTAL_TOK`); session-v65 phase 7 runs 300/600/1200 as an arm and
+ *  the rig patches this name. */
+export const DICTATION_SURFACE_TOK = 300;
 /** Hard cap on one claude-code CLI child; the other transports carry their
  *  own socket timeouts. Generous against a measured 15.2s realistic round. */
 export const GEN_TIMEOUT_MS = 120_000;

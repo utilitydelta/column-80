@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { readFileSync } from "fs";
 import { CompletionService, INJECTION_DEADLINE_MS } from "../core/completionService";
+import { DICTATION_SURFACE_TOK } from "../core/budgetProfile";
 import { trailingOverlapLength } from "../core/postprocess";
 import {
   EnumRhsSite,
@@ -121,6 +122,25 @@ export interface ScopeHooks {
   onScopedGhost?(visible: boolean): void;
 }
 
+/** A dictated intent waiting for its one request. `comment` is the rendered
+ *  comment block; `eol` and `indent` are appended to the ghost so the accept
+ *  lands the cursor on a fresh line at the block's indent. */
+export interface ArmedIntent {
+  /** The gesture this intent belongs to; `onServed` answers carry it back so a
+   *  replaced intent's `false` cannot end its successor. */
+  id: number;
+  uri: string;
+  line: number;
+  comment: string;
+  /** Type names the dictation spoke and the matcher ticked, resolved FIRST
+   *  (session-v65 pipeline ruling: above the signature's types and the body
+   *  walk, at the root cap and at the render). */
+  roots: readonly string[];
+  eol: string;
+  indent: string;
+  onServed(ghost: boolean): void;
+}
+
 /** The production clock and timer, with a no-op re-render. Exported so the
  *  extension spreads it and overrides `onExpired` alone, rather than keeping a
  *  second untested copy of the timer plumbing. */
@@ -224,6 +244,47 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
   // consumes this flag and is dispatched as automatic. One-shot: a genuine
   // user Invoke after it still fans out.
   private downgradeNextManual = false;
+
+  /** The dictated intent armed for the NEXT invocation at its site, and only
+   *  that one. Session-v65 ruling 3: the comment rides on the request it was
+   *  spoken for; chaining is a new press. `onServed` tells the gesture whether
+   *  a ghost went on screen, because nothing else in the editor says so. */
+  private pendingIntent: ArmedIntent | undefined;
+
+  /** Arm a dictated intent for the next request at `uri:line`. The trigger
+   *  that follows is the editor's explicit one, which the provider would read
+   *  as a manual fan-out; the downgrade flag makes it one generation, and the
+   *  intent makes the service skip the debounce and the cache. */
+  armIntent(intent: ArmedIntent): void {
+    if (this.pendingIntent !== undefined) {
+      this.output.appendLine(`[dictate] intent replaced before it was served at ${this.pendingIntent.uri}:${this.pendingIntent.line}`);
+      this.pendingIntent.onServed(false);
+    }
+    this.pendingIntent = intent;
+    this.downgradeNextManual = true;
+  }
+
+  /** Whether a dictated intent is waiting for THIS site, without consuming it. */
+  private intentArmedFor(uri: string, line: number): boolean {
+    return this.pendingIntent !== undefined && this.pendingIntent.uri === uri && this.pendingIntent.line === line;
+  }
+
+  /** Consume the armed intent if this invocation is at its site; an invocation
+   *  anywhere else drops it, on the record, because a comment spoken for one
+   *  line must never ride a request for another. */
+  private takeIntent(uri: string, line: number): ArmedIntent | undefined {
+    const intent = this.pendingIntent;
+    if (intent === undefined) {
+      return undefined;
+    }
+    this.pendingIntent = undefined;
+    if (intent.uri !== uri || intent.line !== line) {
+      this.output.appendLine(`[dictate] intent dropped: the next request was at ${uri}:${line}, not ${intent.uri}:${intent.line}`);
+      intent.onServed(false);
+      return undefined;
+    }
+    return intent;
+  }
 
   // The machine's context key as last reported to the editor. Held so the
   // hook fires on transitions rather than on every request: the context key
@@ -365,7 +426,10 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     // moved inside the report path would still be holding the first refusal and
     // the second one would be silent.
     this.syncUnservedEpoch(config.fimLanguages);
-    if (!config.enabled) {
+    // FIM off is keystroke FIM off. A DICTATED request is the human asking, and it is served
+    // with the setting off; the automatic request on the fresh line after it is refused here
+    // like any other keystroke.
+    if (!config.enabled && !this.intentArmedFor(document.uri.toString(), position.line)) {
       return this.noGhost("column80.fim is disabled");
     }
 
@@ -530,7 +594,7 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     // member 1 would recompute member 1 instead of hitting. Rewriting the
     // prefix is also the honest statement of the request - the language server
     // has already decided the name, and the model's job is what follows it.
-    const genPrefix =
+    let genPrefix =
       scope && site ? prefix.slice(0, prefix.length - site.partial.length) + scope.name : prefix;
     // A WHOLE-BLOCK site (cursor in an empty fn body over a
     // cross-file/crate signature) is a SEPARATE branch — only when it is NOT a
@@ -831,9 +895,55 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       resolveInjection = () => this.resolveEnumRhs(document, extractor, prefix, position, enumSite);
     }
 
+    const intent = this.takeIntent(document.uri.toString(), position.line);
+    // A dictated request on a BLANK line gets the block's indent virtually: the prompt ends
+    // with it, so the model continues at the right column instead of inventing one at column
+    // 0, and the served item carries it into the document. What Enter would have given, without
+    // writing whitespace before the model has answered.
+    let virtualIndent = "";
+    if (intent !== undefined) {
+      const lineText = document.lineAt(position.line).text;
+      if (lineText.trim() === "") {
+        const want = blockIndentFor(document, position.line);
+        const have = /^[ \t]*/.exec(lineText)?.[0] ?? "";
+        if (want.length > have.length && want.startsWith(have)) {
+          virtualIndent = want.slice(have.length);
+          genPrefix = genPrefix + virtualIndent;
+          this.output.appendLine(`[dictate] virtual indent of ${virtualIndent.length} for the request`);
+        }
+      }
+    }
+    if (intent !== undefined && extractor !== undefined) {
+      // The dictated request resolves its spoken types first, then whatever the
+      // site's own leg says, and the service puts the comment under both. Not
+      // a whole-block site? The dictated roots are still resolved: the ruling
+      // gives the resolver the comment as a second key, and a mid-body cursor
+      // is the common dictation site.
+      const base = resolveInjection;
+      const roots = [...intent.roots, ...(wbSite?.types ?? [])].filter((t, i, all) => all.indexOf(t) === i);
+      resolveInjection = async () => {
+        const [dictated, own] = await Promise.all([
+          roots.length > 0 ? this.resolveWholeBlock(document, extractor, roots, { forIntent: true }) : Promise.resolve(undefined),
+          base !== undefined && !wbSite ? base().catch(() => undefined) : Promise.resolve(undefined),
+        ]);
+        const ownInjection = typeof own === "string" ? { block: own } : own;
+        const block = [dictated, ownInjection?.block].filter((b): b is string => typeof b === "string" && b !== "").join("\n");
+        if (block === "" && ownInjection === undefined) {
+          return undefined;
+        }
+        return { ...(ownInjection ?? {}), block: block === "" ? undefined : block };
+      };
+    }
+    let intentSettled = false;
+    const settleIntent = (ghost: boolean) => {
+      if (intent !== undefined && !intentSettled) {
+        intentSettled = true;
+        intent.onServed(ghost);
+      }
+    };
     try {
       const manual =
-        context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke && !providerTriggered;
+        context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke && !providerTriggered && intent === undefined;
       const result = await this.getService().complete(
         {
           prefix: genPrefix,
@@ -844,6 +954,7 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
             ? vscode.workspace.getConfiguration("column80").get<number>("fimAlternatives", 3)
             : undefined,
           resolveInjection,
+          intent: intent?.comment,
           memberSite: !!site,
           // Told WHETHER OR NOT the resolver answers, the same discipline
           // `memberSite` follows. The service pairs it with `resolveInjection`
@@ -879,9 +990,11 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
         controller.signal,
       );
       if (token.isCancellationRequested) {
+        settleIntent(false);
         return this.noGhost("the editor cancelled this request");
       }
       if (!result) {
+        settleIntent(false);
         // A completed request that put nothing on screen is a serve of zero
         // items, and the machine has to hear about it: a scoped generation
         // whose every line postprocessed to empty is exactly the state whose
@@ -1067,13 +1180,26 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
         // the accept; the landed span is [start, start + text length] because
         // any overlap characters are replaced by the completion's own bytes.
         item.command = {
-          command: "column80.fimAccepted",
+          // A dictated ghost's accept runs through its own command, which
+          // forwards to the post-accept check and then tells the gesture.
+          command: intent === undefined ? "column80.fimAccepted" : "column80.dictationAccepted",
           title: "Column 80: post-accept compiler check",
           arguments: [document.uri.toString(), document.offsetAt(range.start), text.length],
         };
         return item;
       };
-      const items = [result.text, ...(result.alternates ?? [])]
+      // A dictated ghost carries its own line break and the block's indent, so
+      // accepting it lands the cursor on a fresh line with nothing pressed
+      // (ruling: flow state is the point). It is part of the ghost text, so the
+      // only writes are still the accepted ghost and that newline.
+      // Only when nothing but whitespace follows the caret: on a partly written line the
+      // auto-closed `)` or `"` after the caret would otherwise ride onto the fresh line (the
+      // phase 4 review). There the ghost fills the rest of the line and the caret stays.
+      const primary =
+        intent === undefined || restOfLine.trim() !== ""
+          ? result.text
+          : `${virtualIndent}${result.text}${intent.eol}${intent.indent}${virtualIndent}`;
+      const items = [primary, ...(result.alternates ?? [])]
         .map(toItem)
         .filter((item): item is vscode.InlineCompletionItem => item !== undefined);
       // The serve point, whatever the count. The machine stamps the served
@@ -1085,14 +1211,17 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       // the widget.
       this.applyServe(items.length, selected !== undefined, requested.requestId);
       if (items.length === 0) {
+        settleIntent(false);
         return this.noGhost(
           scope === undefined
             ? "every generated item was dropped (reasons above)"
             : `every generated item was dropped under the scope ${scope.name} (reasons above)`,
         );
       }
+      settleIntent(true);
       return items;
     } catch (err) {
+      settleIntent(false);
       if (!controller.signal.aborted) {
         this.output.appendLine(`[fim] error: ${String(err)}`);
         // A thrown request still HAPPENED to the scoped attempt: without this
@@ -1366,10 +1495,14 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     document: vscode.TextDocument,
     extractor: SurfaceExtractor,
     types: string[],
+    opts: { forIntent?: boolean } = {},
   ): Promise<string | undefined> {
     const uri = document.uri.toString();
     const version = document.version;
-    const cached = this.injectionCache.get(uri, version);
+    // A dictated request neither reads nor fills the per-file-version cache:
+    // its root list is the spoken names, not the signature's, so the entry
+    // would answer a different question at the next keystroke.
+    const cached = opts.forIntent ? undefined : this.injectionCache.get(uri, version);
     if (cached !== undefined) {
       return cached;
     }
@@ -1463,12 +1596,16 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       resolveStruct,
       methodsOf,
       DATASHAPE_BOUNDS,
-      DATASHAPE_TOTAL_TOK * 4,
+      (opts.forIntent ? DICTATION_SURFACE_TOK : DATASHAPE_TOTAL_TOK) * 4,
       lineCommentFor(document.languageId),
       reachedEnums,
     );
     if (block !== undefined) {
-      this.injectionCache.set(uri, version, block);
+      // A dictated resolve never fills the per-file-version cache (the phase 4 review found it
+      // did, and the next plain keystroke was answered with the spoken roots).
+      if (!opts.forIntent) {
+        this.injectionCache.set(uri, version, block);
+      }
     }
     return block;
   }
@@ -1714,7 +1851,40 @@ async function openDocumentText(uri: string): Promise<string | undefined> {
 // is the one thing this rule exists to prevent. Walking is cheap and the number
 // of lines it takes to reach the bound is small in any file whose lines carry
 // anything.
-function commentScanStart(
+/** The indent the next statement on a blank line inside a block should carry: the previous
+ *  non-blank line's indent, plus one unit when that line opens a block. The unit is what the
+ *  file already uses (a tab, or the width of the smallest indent step seen above). */
+export function blockIndentFor(document: vscode.TextDocument, line: number): string {
+  let prev = line - 1;
+  while (prev >= 0 && document.lineAt(prev).text.trim() === "") {
+    prev--;
+  }
+  if (prev < 0) {
+    return "";
+  }
+  const text = document.lineAt(prev).text;
+  const indent = /^[ \t]*/.exec(text)?.[0] ?? "";
+  const opens = /[{(\[:]\s*$/.test(text.replace(/\/\/.*$/, "").trimEnd());
+  if (!opens) {
+    return indent;
+  }
+  if (indent.startsWith("\t")) {
+    return `${indent}\t`;
+  }
+  let unit = 0;
+  for (let i = prev; i >= 0 && i > prev - 200; i--) {
+    const w = (/^[ ]*/.exec(document.lineAt(i).text)?.[0] ?? "").length;
+    if (w > 0 && (unit === 0 || w < unit)) {
+      unit = w;
+    }
+  }
+  if (unit === 0) {
+    unit = document.lineAt(line).text.startsWith("\t") ? 0 : 4;
+  }
+  return unit === 0 ? `${indent}\t` : indent + " ".repeat(unit);
+}
+
+export function commentScanStart(
   document: vscode.TextDocument,
   position: vscode.Position,
 ): vscode.Position {

@@ -5,6 +5,7 @@ import { generateFim, hasModel, listModels } from "../core/ollama";
 import { DEFAULT_PROBE_TIMEOUT_MS, ProbeCommandFn, probeCommandRunner } from "../core/hardware";
 import { sessionSuppressions } from "../core/suppressionLedger";
 import { readConfig, readOracleConfig } from "./config";
+import { registerDictation } from "./dictation";
 import { DOCUMENT_SCHEMES, canMintEntries, isDocumentScheme } from "./documentSchemes";
 import { FimCompletionProvider, REAL_SCOPE_HOOKS } from "./completionProvider";
 import { registerContextPanel } from "./contextPanel";
@@ -181,6 +182,9 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   registerOracleSurface(context, output);
   registerFirstRun(context, output);
+  // Dictate-then-FIM: the resident recogniser starts here (after the model's ratified
+  // download), and the gesture arms one intent on the provider per press.
+  registerDictation(context, output, { armIntent: (intent) => provider.armIntent(intent) });
 
   context.subscriptions.push(
     // Cross-file staleness: an edit in a REAL document evicts OTHER files'

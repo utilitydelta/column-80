@@ -54,6 +54,9 @@ export interface FimGenerateParams {
    *  see - which is the same trade roadmap item 69 already ruled for the
    *  instruct arms. */
   log?: (line: string) => void;
+  /** Pins ollama's context window for this request; absent leaves the server
+   *  default, which truncates silently past it. */
+  numCtx?: number;
 }
 
 export interface FimGenerateResult {
@@ -132,6 +135,7 @@ export async function generateFim(params: FimGenerateParams): Promise<FimGenerat
     options: {
       num_predict: params.maxTokens,
       temperature: params.temperature,
+      ...(params.numCtx !== undefined ? { num_ctx: params.numCtx } : {}),
     },
   };
   const { text, ttftMs, totalMs, stopped } = await streamGenerate(

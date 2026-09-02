@@ -2,7 +2,7 @@
   "name": "column-80",
   "displayName": "Column 80",
   "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "publisher": "utilitydelta",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -164,6 +164,31 @@
         "command": "column80.cancelGeneration",
         "title": "Cancel Generation",
         "category": "Column 80"
+      },
+      {
+        "command": "column80.dictate",
+        "title": "Dictate the Next Block",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.selectMicrophone",
+        "title": "Select Microphone",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.dictationAccepted",
+        "title": "Dictated Ghost Accepted",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.dismissDictationGhost",
+        "title": "Dismiss the Dictated Ghost",
+        "category": "Column 80"
+      },
+      {
+        "command": "column80.downloadSpeechModel",
+        "title": "Download Speech Model",
+        "category": "Column 80"
       }
     ],
     "keybindings": [
@@ -181,6 +206,36 @@
         "command": "column80.dismissScopedGhost",
         "key": "escape",
         "when": "editorTextFocus && !suggestWidgetVisible && column80.scopedGhost && !findWidgetVisible && !editorHasSelection && !editorHoverVisible && !referenceSearchVisible && !vim.active && !inSnippetMode && !editorHasMultipleSelections && !inlineChatVisible && !editorReadonly && !inDebugRepl && !parameterHintsVisible"
+      },
+      {
+        "command": "column80.dismissDictationGhost",
+        "key": "escape",
+        "when": "editorTextFocus && column80.dictationGhost && !suggestWidgetVisible && !findWidgetVisible && !editorHasSelection && !editorHoverVisible && !referenceSearchVisible && !vim.active && !inSnippetMode && !editorHasMultipleSelections && !inlineChatVisible && !editorReadonly && !inDebugRepl && !parameterHintsVisible"
+      },
+      {
+        "command": "column80.dictate",
+        "key": "shift+alt+d",
+        "when": "editorTextFocus && !editorReadonly && config.column80.dictation.shortcut == 'shift+alt+d'"
+      },
+      {
+        "command": "column80.dictate",
+        "key": "shift+alt+m",
+        "when": "editorTextFocus && !editorReadonly && config.column80.dictation.shortcut == 'shift+alt+m'"
+      },
+      {
+        "command": "column80.dictate",
+        "key": "shift+alt+space",
+        "when": "editorTextFocus && !editorReadonly && config.column80.dictation.shortcut == 'shift+alt+space'"
+      },
+      {
+        "command": "column80.dictate",
+        "key": "ctrl+shift+alt+d",
+        "when": "editorTextFocus && !editorReadonly && config.column80.dictation.shortcut == 'ctrl+shift+alt+d'"
+      },
+      {
+        "command": "column80.dictate",
+        "key": "f9",
+        "when": "editorTextFocus && !editorReadonly && config.column80.dictation.shortcut == 'f9'"
       }
     ],
     "views": {
@@ -296,6 +351,14 @@
         {
           "command": "column80.dismissScopedGhost",
           "when": "false"
+        },
+        {
+          "command": "column80.dictationAccepted",
+          "when": "false"
+        },
+        {
+          "command": "column80.dismissDictationGhost",
+          "when": "false"
         }
       ],
       "editor/context": [
@@ -368,7 +431,7 @@
         "column80.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable local FIM autocomplete. On by default; it needs the FIM model (offered on first run) and a running ollama. With neither present it stays silent - no error, just no ghost text."
+          "description": "Enable local FIM autocomplete. On by default; it needs the FIM model (offered on first run) and a running ollama. With neither present it stays silent - no error, just no ghost text. Off turns keystroke FIM off; dictation (column80.dictate) still serves its one request."
         },
         "column80.fimUsageExamples": {
           "type": "boolean",
@@ -401,7 +464,7 @@
         "column80.fnGenThinking": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Reasoning mode for the generation model, passed straight through to it. **Leave empty unless you are experimenting.** Empty means the hardware tier decides, and every tier that ships a reasoning model turns reasoning off.\n\n**Reaches ollama and the OpenAI-compatible backends.** On OpenAI it becomes `reasoning_effort`: `off` sends `none`, and any other value is passed through as the provider's own level. `on` sends nothing there, because \"on\" has no portable spelling \u2014 the 5.6 line accepts only `none` and refuses `minimal`, so a guessed level would fail the request.\n\n**Anthropic and the Claude Code CLI ignore it, on purpose.** Anthropic has no value valid across its models (`{type:\"disabled\"}` is refused on some, while omitting the field never errors), and the CLI gives no control at all \u2014 its model decides. On those two backends a model that reasons by default spends part of its token budget doing so, and the shared pipeline rejects the resulting truncated reply rather than splicing half a function.\n\n**The default is measured, not cautious.** Twelve real C# generations, graded by `dotnet build`, `qwen3.8:27b`:\n\n| reasoning | token cap | compiled | per function | truncated |\n|---|---|---|---|---|\n| off | 2048 | **4 of 12** | **7.7s** | 0 |\n| on | 2048 | 1 of 12 | 68s | 9 of 12 |\n| on | 8192 | 3 of 12 | 86s | 0 |\n\nAt the shipped 2048 cap, reasoning eats the budget and the code is cut off before it is written (`done_reason=length`). Raising the cap fixes that completely \u2014 and reasoning still compiles no better while taking **eleven times longer**. It is not a truncation problem you can tune around; reasoning simply does not help this task.\n\n**A free string because the vocabulary belongs to the model, not to this extension.** Measured: `qwen3-coder:30b` refuses reasoning outright, `qwen3:8b` takes `on`, `qwen3.8:27b` takes `on` and `low`, and OpenAI's 5.6 line takes only `none` under a different field name. A fixed drop-down would be wrong the first time a model shipped a level it did not list.\n\n- *(empty)* \u2014 the tier decides. The shipped answer.\n- `off` \u2014 send reasoning off explicitly.\n- `on` \u2014 send reasoning on. Expect roughly ten times the wait, and raise `maxTokens` or the generation will be truncated.\n- anything else (`low`, `medium`, `high`, \u2026) \u2014 passed to the model verbatim. If it refuses the value, the output channel prints the model's own words."
+          "markdownDescription": "Reasoning mode for the generation model, passed straight through to it. **Leave empty unless you are experimenting.** Empty means the hardware tier decides, and every tier that ships a reasoning model turns reasoning off.\n\n**Reaches ollama and the OpenAI-compatible backends.** On OpenAI it becomes `reasoning_effort`: `off` sends `none`, and any other value is passed through as the provider's own level. `on` sends nothing there, because \"on\" has no portable spelling — the 5.6 line accepts only `none` and refuses `minimal`, so a guessed level would fail the request.\n\n**Anthropic and the Claude Code CLI ignore it, on purpose.** Anthropic has no value valid across its models (`{type:\"disabled\"}` is refused on some, while omitting the field never errors), and the CLI gives no control at all — its model decides. On those two backends a model that reasons by default spends part of its token budget doing so, and the shared pipeline rejects the resulting truncated reply rather than splicing half a function.\n\n**The default is measured, not cautious.** Twelve real C# generations, graded by `dotnet build`, `qwen3.8:27b`:\n\n| reasoning | token cap | compiled | per function | truncated |\n|---|---|---|---|---|\n| off | 2048 | **4 of 12** | **7.7s** | 0 |\n| on | 2048 | 1 of 12 | 68s | 9 of 12 |\n| on | 8192 | 3 of 12 | 86s | 0 |\n\nAt the shipped 2048 cap, reasoning eats the budget and the code is cut off before it is written (`done_reason=length`). Raising the cap fixes that completely — and reasoning still compiles no better while taking **eleven times longer**. It is not a truncation problem you can tune around; reasoning simply does not help this task.\n\n**A free string because the vocabulary belongs to the model, not to this extension.** Measured: `qwen3-coder:30b` refuses reasoning outright, `qwen3:8b` takes `on`, `qwen3.8:27b` takes `on` and `low`, and OpenAI's 5.6 line takes only `none` under a different field name. A fixed drop-down would be wrong the first time a model shipped a level it did not list.\n\n- *(empty)* — the tier decides. The shipped answer.\n- `off` — send reasoning off explicitly.\n- `on` — send reasoning on. Expect roughly ten times the wait, and raise `maxTokens` or the generation will be truncated.\n- anything else (`low`, `medium`, `high`, …) — passed to the model verbatim. If it refuses the value, the output channel prints the model's own words."
         },
         "column80.fnGenProvider": {
           "type": "string",
@@ -415,7 +478,7 @@
             "openai-compatible"
           ],
           "default": "ollama",
-          "description": "Backend for per-function generation. 'ollama' is the default local, offline, first path. The others send your prompt (signature, doc comment, selected context, and injected crate surface) off the machine \u2014 'claude-code' through your installed Claude Code CLI on your subscription, the rest to a cloud frontier model over an OpenAI-compatible API with an API key. FIM tab-completion is always local regardless of this setting.",
+          "description": "Backend for per-function generation. 'ollama' is the default local, offline, first path. The others send your prompt (signature, doc comment, selected context, and injected crate surface) off the machine — 'claude-code' through your installed Claude Code CLI on your subscription, the rest to a cloud frontier model over an OpenAI-compatible API with an API key. FIM tab-completion is always local regardless of this setting.",
           "enumDescriptions": [
             "Local ollama. Offline after the one-time model pull. The default.",
             "Claude Code. Runs your installed `claude` CLI headless and bills your Claude subscription, no API key. Your prompt leaves the machine. Every call also carries the CLI's own agent harness on top of your prompt. Its built-in tools are disabled, which measured 23,217 tokens of context down to 3,471 on claude 2.1.224 with identical output. Set fnGenModel to a Claude model id; left at the ollama default the CLI picks its own, which measured as Opus. FIM stays local.",
@@ -510,6 +573,11 @@
           "default": true,
           "description": "When an accepted generation fails cargo check, let the function-generation model propose up to two gated repair rounds through the normal preview. Off: diagnostics are surfaced only."
         },
+        "column80.checkOnFimAccept": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the compiler check after a FIM ghost is accepted, with the edit-site annotation and the gated repair. Off makes a Tab a Tab: nothing runs after an accept. Function generation keeps its own check."
+        },
         "column80.repairUsageWindows": {
           "type": "boolean",
           "default": false,
@@ -553,6 +621,57 @@
             "For a large local model, or a cheap cloud one.",
             "For Opus and Fable class models. No local window to defend, so this injects as much of your code as the extension can resolve."
           ]
+        },
+        "column80.dictation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Dictate the next block: press the shortcut, say what the next line or small block does, press it again, and the FIM ghost is written from what was heard. Off stops the resident speech recogniser (whisper.cpp `base.en`, local, never cloud)."
+        },
+        "column80.dictation.microphone": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The capture device dictation records from, by the exact name `Column 80: Select Microphone` lists. Empty means the system default."
+        },
+        "column80.dictation.muteSpeakers": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Mute the speakers while the microphone is open, and put them back as they were. Music bleeds into the transcript otherwise. Linux (wpctl or pactl) and macOS today; Windows is not muted yet."
+        },
+        "column80.dictation.partials": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Render what is being heard on the cursor line while you talk (a trailing-window decode every 300ms). Off shows only the recording pulse until you stop."
+        },
+        "column80.dictation.surfaces": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Resolve the type names you spoke through the language server and put their surfaces above the comment in the FIM prompt. Measured on 360 sites (session-v65): the comment alone landed 157 first lines, with surfaces 145; off costs nothing and saves a resolve per gesture."
+        },
+        "column80.dictation.autoAccept": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Put the generated code straight into the file when it lands and drop the cursor to the next line, with nothing pressed. Off leaves it as a ghost for Tab or Escape."
+        },
+        "column80.dictation.shortcut": {
+          "type": "string",
+          "enum": [
+            "shift+alt+d",
+            "shift+alt+m",
+            "shift+alt+space",
+            "ctrl+shift+alt+d",
+            "f9",
+            "none"
+          ],
+          "default": "shift+alt+d",
+          "enumDescriptions": [
+            "Shift+Alt+D (shadows VS Code's Detect Language from Content)",
+            "Shift+Alt+M",
+            "Shift+Alt+Space",
+            "Ctrl+Shift+Alt+D",
+            "F9 (VS Code's Toggle Breakpoint; only pick this if you never use it)",
+            "No default chord; bind column80.dictate yourself in Keyboard Shortcuts"
+          ],
+          "markdownDescription": "The chord that toggles dictation. Pick one here, or `none` and bind `column80.dictate` to anything in the Keyboard Shortcuts editor. Ctrl+Alt chords are not offered: that is AltGr on many Windows layouts."
         }
       }
     },
@@ -566,6 +685,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.mjs",
+    "native:build": "node native/build.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:live",

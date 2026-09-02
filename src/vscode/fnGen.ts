@@ -125,6 +125,9 @@ import { coveringTestPlan, runCoveringGroups } from "../core/coveringTestRun";
 import { RunTestsReport, renderRunTestsReport } from "../core/runTestsReport";
 import { makeLineReader, makeResolveCallers, prepareCallRoot } from "./callHierarchy";
 import { baselineCheck, describeEnvironment, isMissingImportsStorm } from "../core/pyOracle";
+
+/** `column80.checkOnFimAccept` off is announced once per session, not per Tab. */
+let fimCheckOffSaid = false;
 import {
   fenceFor,
   fileImportBindings,
@@ -6221,6 +6224,15 @@ export function registerFnGen(
           (d) => d.uri.toString() === uriString,
         );
         if (!document) {
+          return;
+        }
+        // A Tab is a Tab when the user says so: no check, no annotation, no
+        // repair after a FIM accept. Said once per session, not per accept.
+        if (!readOracleConfig().checkOnFimAccept) {
+          if (!fimCheckOffSaid) {
+            fimCheckOffSaid = true;
+            output.appendLine("[oracle] check skipped after FIM accept: column80.checkOnFimAccept is off (said once per session)");
+          }
           return;
         }
         void tierGate()

@@ -1617,3 +1617,26 @@ real socket, the absent-status row, and two rows stating what `providerReason` r
 breaks), the re-cut five-row table plus the cap row in `test/review-v27-tier.test.cjs`, and the
 structural pin in `test/impl-v57-p2-in-stream-bound.test.cjs`, which now requires ZERO
 `boundBody(String(` in `ollama.ts` instead of exactly one.
+
+## S30. A default keybinding ships for dictation, and the shortcut is a setting
+
+**RATIFIED 2026-09-02 by the human, as shipped ("happy with today's work").** Built in
+session-v65. Supersedes v32 decision 3 ("no default keybindings, the user binds what they want")
+for exactly one command, `column80.dictate`, and leaves it standing for every other gesture; the
+v32 rule against any bare Ctrl+Alt default (AltGr on Windows layouts) stands unchanged and is
+still pinned.
+
+**What changed.** `column80.dictation.shortcut` is an enum of five chords (`shift+alt+d` the
+default, `shift+alt+m`, `shift+alt+space`, `ctrl+shift+alt+d`, `f9`) or `none`; each chord is a
+contributed keybinding gated on `config.column80.dictation.shortcut == '<chord>'`, so exactly
+one is live. `none` leaves the command to the Keyboard Shortcuts editor. The dismiss binding on
+Escape is gated on the dictated ghost's context key the way the scoped ghost's second Escape is.
+
+**Why a default at all.** The human ruled the gesture must be demoable out of the box and
+"bouncing around really fast"; a gesture that first needs a trip to the keybindings editor is
+neither. Why an enum rather than a string: VS Code has no API to take a chord from a settings
+value, so the enum of gated bindings is the only form in which "the shortcut is a setting" can
+be true. The default shadows VS Code's "Detect Language from Content", which the dropdown says.
+
+**Not proven.** The `config.` when-clause gate is documented VS Code behaviour; no key injector on
+the reference box, so the switch-over is on the human's residual list, not in the host tier.

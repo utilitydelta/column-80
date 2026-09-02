@@ -16,6 +16,7 @@ import { escapeBreaks } from "./errorBound";
 import { CompletionCache, WALK_WINDOW } from "./cache";
 import { BoundOutcome, contentLines, postprocessBounded } from "./postprocess";
 import { boundReached, endsOnBlockOpener, sealCut, MAX_BOUND_LINES } from "./fimBound";
+import { FIM_NUM_CTX } from "./budgetProfile";
 import { CommentCut, commentSyntaxFor, cutIntroducedComment } from "./fimComment";
 import { echoedNameRun, FimInjection, ghostNamesMember, injectBeforeCursorLine } from "./fimInject";
 import { SuppressionLedger, createSuppressionLedger, noteSuppression } from "./suppressionLedger";
@@ -27,6 +28,13 @@ import { SuppressionLedger, createSuppressionLedger, noteSuppression } from "./s
 // Exported so a resolver can carve its own best-effort sub-budget out of the
 // SAME window the race enforces, rather than keeping a second copy that drifts.
 export const INJECTION_DEADLINE_MS = 50;
+
+/** The injection race for a DICTATED request. A keystroke has a 200ms bar and
+ *  the 50ms race protects it; a dictated request follows a mic close the human
+ *  waited for, its bar is a second from mic close to ghost (session-v65), and
+ *  the surfaces it resolves are the point of the pipeline ruling. 400ms leaves
+ *  the FIM p50 (184ms) plus decode (250ms) inside the bar on the reference box. */
+export const INTENT_INJECTION_DEADLINE_MS = 400;
 
 // The gate's own bound on the SAME resolver query, and the reason it is not
 // INJECTION_DEADLINE_MS: the two consumers sit at different points on the clock.
@@ -181,6 +189,15 @@ export interface CompletionRequest {
    *  keystroke forever and the channel prints a degradation that did not
    *  happen. */
   optionalInjection?: boolean;
+  /** A dictated intent: the heard sentence as a comment block, spliced closest
+   *  to the cursor under whatever surface the site's resolver injects. Rides
+   *  exactly ONE request (session-v65 ruling 3: each press is its own comment).
+   *  An intent request skips the debounce (a human pressed a key and waited),
+   *  is never served from the cache and never fills it (the same position
+   *  without the comment is a different question), and keys the in-flight
+   *  registry on the comment too, so a plain keystroke in flight at the same
+   *  cursor is superseded rather than joined. */
+  intent?: string;
   /** The cursor is at an enum-RHS site: the prefix ends in `==`/`!=` and the
    *  left side is a member access, so what follows is a VALUE of that member's
    *  type. Set by the provider whether or not the resolver answers, the same
@@ -329,7 +346,7 @@ export class CompletionService {
     // unroot: V8 slices are views that keep the whole source string alive, so
     // a cached key sliced from a 2MB document would retain the 2MB document.
     const suffix = unroot(request.suffix.slice(0, this.config.suffixChars));
-    const key = prefix + SEP + suffix;
+    const key = prefix + SEP + suffix + (request.intent ? SEP + request.intent : "");
 
     // The cache sees a bounded slice: the truncation window plus the walk
     // margin, so walk candidates can reconstruct the key of the state
@@ -435,7 +452,7 @@ export class CompletionService {
     // came back byte-identical to the walked remainder.
     const policeable =
       !!request.memberSite && !!request.resolveInjection && !this.darkResolvers.has(request.uri ?? "");
-    const hit = alternativeCount > 1 ? undefined : this.cache.lookup(cachePrefix, suffix, policeable);
+    const hit = alternativeCount > 1 || request.intent ? undefined : this.cache.lookup(cachePrefix, suffix, policeable);
     if (hit !== undefined) {
       // A hit is served WITHOUT the bound, deliberately. The bound is applied
       // where a ghost is authored, so every stored entry was already bounded or
@@ -472,7 +489,7 @@ export class CompletionService {
     // Newest call wins: any cache-miss call supersedes an older pending wait,
     // whose complete() resolves undefined without reaching the model.
     this.pendingDebounceCancel?.();
-    if (!request.manual && this.config.debounceMs > 0) {
+    if (!request.manual && !request.intent && this.config.debounceMs > 0) {
       const survived = await this.debounceWait(this.config.debounceMs, signal);
       if (!survived || this.disposed || signal?.aborted) {
         // The common one, and the one a dogfood report needs named: a newer
@@ -534,7 +551,8 @@ export class CompletionService {
           pendingInjection = request.resolveInjection()
             .then((r) => (typeof r === "string" ? { block: r } : r))
             .catch(() => undefined);
-          const raced = await raceDeadline(pendingInjection, INJECTION_DEADLINE_MS, controller.signal);
+          const deadlineMs = request.intent ? INTENT_INJECTION_DEADLINE_MS : INJECTION_DEADLINE_MS;
+          const raced = await raceDeadline(pendingInjection, deadlineMs, controller.signal);
           const injection = raced.value;
           injectionMs = Date.now() - started;
           if (injection && !controller.signal.aborted) {
@@ -552,8 +570,22 @@ export class CompletionService {
             // an elapsed time that rounds to just under the deadline does not
             // mean the deadline was met.
           } else if (raced.timedOut) {
-            this.log?.(`[fim] injection skipped: resolver slower than ${INJECTION_DEADLINE_MS}ms`);
+            this.log?.(`[fim] injection skipped: resolver slower than ${deadlineMs}ms`);
           }
+        }
+        // The dictated intent goes in LAST, closest to the cursor, under any
+        // surface the site's own leg resolved: the scout measured the comment as
+        // the engine (124 to 166 of 360 first lines) and the surfaces as flat on
+        // top of it, and the pipeline ruling keeps both, in this order.
+        if (request.intent) {
+          const block = injectedBlock ? `${injectedBlock}\n${request.intent}` : request.intent;
+          genPrefix = injectBeforeCursorLine(prefix, block);
+          injected = true;
+          injectedBlock = block;
+          this.log?.(
+            `[fim] intent injected lines=${request.intent.split("\n").length}` +
+              ` under surface lines=${block.length === request.intent.length ? 0 : block.split("\n").length - request.intent.split("\n").length}`,
+          );
         }
         // The full FIM context, verbatim, when the debug setting is on — the FIM
         // analog of the fn-gen prompt dump. Shows exactly what surface FIM was (or
@@ -592,6 +624,8 @@ export class CompletionService {
           maxTokens,
           temperature: this.config.temperature,
           signal: controller.signal,
+          // Pinned on every request; see FIM_NUM_CTX for why not only the dictated ones.
+          numCtx: FIM_NUM_CTX,
           // The transport's own evidence sink, for the RAW server body on an
           // HTTP failure. One object serves the primary AND the alternates, so
           // a manual call whose runs all fail writes one raw-body line per run
@@ -1053,7 +1087,11 @@ export class CompletionService {
             boundNote +
             (gateWaitMs > 0 ? ` gateWait=${gateWaitMs}ms` : "") +
             (alternativeCount > 1 ? ` alts=${alternates.length}` : "") +
-            (text === "" ? " (dropped: empty after postprocess)" : ` ghost=${JSON.stringify(shown)}`),
+            // What the model actually wrote when the filters emptied it: without this an
+            // empty serve at a dictated site could not be told from a model that wrote nothing.
+            (text === ""
+              ? ` (dropped: empty after postprocess) raw=${JSON.stringify(result.text.slice(0, 80))}`
+              : ` ghost=${JSON.stringify(shown)}`),
         );
         if (text === "") {
           return undefined;
@@ -1093,7 +1131,12 @@ export class CompletionService {
         // the session. Member-site requests never set it, so that rule - which
         // has its own frozen tests and took five review rounds to get right -
         // decides exactly what it decided before.
-        const cacheable = !(
+        // An intent request never fills the cache: the same cursor without the
+        // comment is a different question and must not be answered with this.
+        if (request.intent) {
+          this.log?.("[fim] not cached: dictated intent, one request by design");
+        }
+        const cacheable = !request.intent && !(
           request.resolveInjection &&
           !request.optionalInjection &&
           !injected &&
@@ -1105,7 +1148,7 @@ export class CompletionService {
             injected,
             gated,
           });
-        } else {
+        } else if (!request.intent) {
           // Every refusal costs a model call on the next identical keystroke, so
           // a silent one is an unexplained latency cost and a cache-hit-rate
           // drop with nothing in the channel to attribute it to. That is the

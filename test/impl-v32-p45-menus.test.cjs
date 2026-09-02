@@ -248,12 +248,21 @@ test("per language, menu visibility matches the gate in BOTH directions", () => 
 // Decision 3: no new default keybinding
 // ===========================================================================
 
-test("exactly three keybindings ship, and all three are proposal lifecycle", () => {
+// SUPERSEDED 2026-09-02 (session-v65, S65-5, awaiting ratification): decision 3 stands for
+// every gesture this file governs, and the dictation gesture is the one licensed exception,
+// because the human ruled it demoable and fast. Five ship: the three lifecycle bindings plus
+// the dictation toggle and its Escape.
+test("SUPERSEDED: the proposal lifecycle three plus the v65 dictation chords (one live at a time) and its Escape", () => {
   const bindings = manifest.contributes.keybindings;
-  assert.strictEqual(bindings.length, 3, "a new default keybinding appeared; decision 3 says none ship");
+  const dictate = bindings.filter((b) => b.command === "column80.dictate");
+  assert.ok(dictate.length >= 1, "the dictation chords exist");
+  for (const b of dictate) {
+    assert.match(b.when, /config\.column80\.dictation\.shortcut == '[^']+'/, `${b.key} is gated on the shortcut setting, so only the chosen chord is live`);
+    assert.ok(!/ctrl\+alt(?!\+shift)/.test(b.key) || /shift/.test(b.key), `${b.key}: no bare ctrl+alt chord, it is AltGr on Windows`);
+  }
   assert.deepStrictEqual(
-    bindings.map((b) => b.command).sort(),
-    ["column80.dismissScopedGhost", "column80.proposalAccept", "column80.proposalReject"],
+    [...new Set(bindings.map((b) => b.command))].sort(),
+    ["column80.dictate", "column80.dismissDictationGhost", "column80.dismissScopedGhost", "column80.proposalAccept", "column80.proposalReject"],
   );
 });
 
@@ -266,10 +275,11 @@ test("no gesture in this session claimed a key, and no binding uses ctrl+alt", (
     );
   }
   // The rule that outlives this item: Ctrl+Alt is AltGr, and VS Code ships no
-  // default ctrl+alt binding on Windows for exactly that reason.
+  // default ctrl+alt binding on Windows for exactly that reason. A three-modifier
+  // ctrl+shift+alt chord is not AltGr and is allowed.
   for (const binding of bindings) {
     assert.ok(
-      !/ctrl\+alt/i.test(binding.key),
+      !/ctrl\+alt/i.test(binding.key.replace(/ctrl\+shift\+alt/i, "")),
       `${binding.command} uses ${binding.key}; no ctrl+alt default, ever, in any later slice`,
     );
   }

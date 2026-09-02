@@ -21,6 +21,12 @@ ARCHITECTURE.md
 **/*.ts
 **/*.vsix
 
+# The native side: sources, the cmake tree and every other target's binaries stay out; the
+# staged binaries for THIS target ride in native/bin/<target>/ (release.yml stages one target
+# per package job, so a vsix never carries another platform's binaries).
+native/**
+!native/bin/**
+
 # Kept on purpose: node_modules/pyright. The Python legs spawn
 # `pyright/index.js` (checker) and `.bin/pyright-langserver` (extractor) by
 # walking node_modules from the module's own location, so the vsix must carry

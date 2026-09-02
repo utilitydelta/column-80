@@ -108,6 +108,13 @@ That is the whole tool. No chat thread, no history, no agent to babysit. Every m
 
 The [user manual](https://github.com/utilitydelta/column-80/blob/main/docs/user-manual.md) covers the rest, including every setting, every command, and the known limits.
 
+### 9. Say it
+
+Cursor where the next statement goes, `shift+alt+d`, say what it does, `shift+alt+d` again. The
+sentence rides into one FIM request as a comment the file never sees; Tab takes the ghost and
+drops the cursor onto a fresh line. Local whisper.cpp, downloaded on first use like the models.
+Rebind `column80.dictate` if the chord is taken.
+
 ## 07 Get it
 
 Released under Apache-2.0. No sign-up, no data exfiltration.

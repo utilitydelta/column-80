@@ -369,16 +369,26 @@ test("C2 [no default keybinding] RULING: nothing binds column80.cancelGeneration
 
 // The same ruling from the other side. A phase that quietly adds a binding for
 // some OTHER command is still a phase that added a default binding.
-test("C2 [the keybinding set is these three] RULING: no keybinding was added anywhere", () => {
+// SUPERSEDED 2026-09-02 (session-v65, S65-5, awaiting ratification): the dictation
+// gesture ships a default chord (`shift+alt+d`, not ctrl+alt) and its own Escape, because
+// the human ruled the gesture must be demoable out of the box and "bouncing around really
+// fast". The v32 ruling stands for every OTHER command, cancel included (C2 above).
+test("C2 [the keybinding set] SUPERSEDED: the v65 dictation pair is the only addition since the branch point", () => {
   const seen = contributedKeybindings.map((k) => `${k.command} :: ${k.key}`).sort();
   assert.deepStrictEqual(
     seen,
     [
+      "column80.dictate :: ctrl+shift+alt+d",
+      "column80.dictate :: f9",
+      "column80.dictate :: shift+alt+d",
+      "column80.dictate :: shift+alt+m",
+      "column80.dictate :: shift+alt+space",
+      "column80.dismissDictationGhost :: escape",
       "column80.dismissScopedGhost :: escape",
       "column80.proposalAccept :: enter",
       "column80.proposalReject :: escape",
     ],
-    "the branch point contributes exactly these three keybindings, all when-guarded to narrow editor contexts. This phase adds none",
+    "a keybinding was added or removed; the only licensed additions are the v65 dictation chords (one live at a time, gated on column80.dictation.shortcut) and its Escape",
   );
 });
 

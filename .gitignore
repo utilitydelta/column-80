@@ -15,3 +15,9 @@ session-v45/census-tool/obj/
 # ignore (~/.config/git/ignore), which does not travel with the repo: on any other
 # machine `git add -A` would have staged them.
 .index.md
+
+# native build tree; the packaged binaries land in native/bin/<target>/ from CI
+native/build/
+native/bin/
+native/build.log
+native/configure.log

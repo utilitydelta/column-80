@@ -91,6 +91,7 @@ One output channel, six prefixes, fixed taxonomy:
 | `[carve]` | probe results, tier selection, pull offered/ratified/declined/done |
 | `[tdd]` | test generation, testability refusals, snippet insertion, test-rung verdicts |
 | `[diag]` | `column80.dumpCompletionItems`, on demand only |
+| `[dictate]` | the dictation gesture: press, mic live, stop, heard, backticks, intent, ghost served/accepted/dismissed, the per-gesture timings line, the recogniser's life, the model download |
 
 Under `[fim]`, three lines exist for the same reason and are worth keeping together:
 

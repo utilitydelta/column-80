@@ -1,5 +1,43 @@
 # Changelog
 
+## 3.1.0
+
+**Say what the next block does, and the ghost writes it.**
+
+`shift+alt+d` opens the microphone, the same chord closes it, and what you said rides into one
+FIM request as a comment the file never sees. The generated line goes straight into the file
+and the cursor drops onto a fresh line at the block's indent, with nothing pressed; Ctrl+Z takes
+it back. What was heard shows on the line as a label while the code lands. Names your buffer
+already spells are matched by fold and backticked into the comment; single English words are
+never matched inside a sentence. The recogniser is whisper.cpp `base.en`, vendored per platform
+and resident from activation, local like everything else; the model downloads after you click
+Download, the way the ollama models do.
+
+Settings: `column80.dictation.shortcut` picks the chord (five offered, or `none` to bind
+`column80.dictate` yourself), `column80.dictation.microphone` with a Select Microphone picker,
+`column80.dictation.muteSpeakers` (Linux and macOS), `column80.dictation.partials` (what is
+being heard, live on the cursor line), `column80.dictation.autoAccept` (off leaves a ghost for
+Tab), `column80.dictation.surfaces` (below), `column80.dictation.enabled`. Keystroke FIM off
+(`column80.enabled`) keeps dictation on. New: `column80.checkOnFimAccept` turns the compiler
+check and repair after an accepted ghost off, so a Tab can be just a Tab.
+
+Measured on 360 authored sites across two private corpora before it was built: the spoken
+intent moved the first line of the ghost from 34.4% to 43.6% under the product's bound (46.1%
+typed). Then measured again through the product's own code after it was built: the cleaner and
+the backticks change nothing at the ghost (157 of 360 either way, noise floor 5), and resolving
+the spoken type names into surfaces above the comment COSTS 12 to 15 first lines at every
+budget. The surface leg ships switchable (`column80.dictation.surfaces`); read the manual before
+leaving it on. What the manual also says, measured on the first live gestures: say what the
+line does in plain words, not its syntax; and where the code below the cursor repeats a pattern
+(four `from_le_bytes` reads), the 1.5b copies it over anything the sentence says unless the
+sentence names the qualified call and says what not to do.
+
+Under the hood: FIM now pins ollama's context window at 8192 on every request, so a bigger
+prompt cannot be cut in silence, and a dictated request races its type resolver at 400ms
+instead of 50. The vsix is now built per platform (Linux x64, macOS arm64 and x64, Windows x64)
+because it carries two native binaries; macOS and Windows are built but not yet proven on real
+hardware. A default keybinding ships, the first since v32 ruled none; it is a setting.
+
 ## 3.0.0
 
 **Two ways to have a function reviewed, and they are not versions of each other.**
