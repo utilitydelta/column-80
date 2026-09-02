@@ -18,6 +18,7 @@
  */
 
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import { signalChild } from "./signalChild";
 import type {
   CompletionMember,
   DefinitionLocation,
@@ -403,7 +404,7 @@ export class GoLspExtractor implements SurfaceExtractor {
   }
 
   dispose(): void {
-    this.proc.kill();
+    signalChild(this.proc);
   }
 
   private identifierRange(cursor: SourceCursor): LspRange {

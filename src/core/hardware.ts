@@ -5,6 +5,7 @@
 // docs/architecture/hardware-tiers.md.
 
 import { spawn } from "child_process";
+import { signalChild } from "./signalChild";
 import * as os from "os";
 
 export interface ProbeCommandResult {
@@ -155,7 +156,7 @@ export function probeCommandRunner(timeoutMs: number): ProbeCommandFn {
           settled = true;
           // SIGKILL, not SIGTERM: a wedged nvidia-smi is exactly the child
           // that ignores polite signals.
-          child.kill("SIGKILL");
+          signalChild(child, "SIGKILL");
           reject(new Error(`probe timed out after ${timeoutMs}ms`));
         }
       }, timeoutMs);

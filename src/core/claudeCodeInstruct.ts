@@ -47,6 +47,7 @@
  */
 
 import { spawn } from "child_process";
+import { signalChild } from "./signalChild";
 import { createHash } from "crypto";
 import { existsSync } from "fs";
 import { DEFAULT_FNGEN_CONFIG } from "./config";
@@ -603,13 +604,13 @@ function spawnClaude(
       // outlives the kill and runs to completion. A process-group kill is not
       // portable to Windows, which this extension ships on, so the orphan is
       // accepted and documented rather than half-fixed.
-      child.kill("SIGKILL");
+      signalChild(child, "SIGKILL");
       settle(() => reject(abortError()));
     }
     opts.signal.addEventListener("abort", onAbort);
 
     timer = setTimeout(() => {
-      child.kill("SIGKILL");
+      signalChild(child, "SIGKILL");
       fail("timeout", `Claude Code did not answer within ${config.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms.`);
     }, config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 

@@ -14,6 +14,7 @@
  */
 
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { signalChild } from "./signalChild";
 import {
   CompletionMember,
   DefinitionLocation,
@@ -484,7 +485,7 @@ export class RaLspExtractor implements SurfaceExtractor {
   }
 
   dispose(): void {
-    this.proc.kill();
+    signalChild(this.proc);
   }
 
   private completionRequest(cursor: SourceCursor): Promise<unknown> {

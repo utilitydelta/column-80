@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { basename } from "node:path";
 import { wavHeader } from "./dictation";
+import { signalChild } from "./signalChild";
 
 export interface RecogniserOptions {
   binary: string;
@@ -138,7 +139,7 @@ export class Recogniser {
         fail(`exited with code ${exitCode} before answering: ${lastStderr}`);
       }
       if (Date.now() > deadline) {
-        child.kill("SIGKILL");
+        signalChild(child, "SIGKILL");
         fail("the recogniser did not come up in time");
       }
       let answered = false;
@@ -223,11 +224,11 @@ export class Recogniser {
     }
     this.disposed = true;
     if (!this.exited) {
-      this.child.kill();
+      signalChild(this.child);
       const child = this.child;
       setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null) {
-          child.kill("SIGKILL");
+          signalChild(child, "SIGKILL");
         }
       }, 2000).unref();
     }

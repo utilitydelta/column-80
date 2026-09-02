@@ -32,6 +32,7 @@
  */
 
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { signalChild } from "./signalChild";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -617,7 +618,7 @@ export class PyLspExtractor implements SurfaceExtractor {
   }
 
   dispose(): void {
-    this.proc.kill();
+    signalChild(this.proc);
   }
 
   // The identifier word around the cursor, from the stored buffer text.

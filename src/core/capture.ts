@@ -6,8 +6,12 @@
  * the number the recording indicator waits for (ruling 1: the indicator turns on when the
  * first audio buffer arrives, not when the command fires). And `stop` keeps the tail the child
  * writes after stdin closes, so the last word of a take is never the one lost.
+ *
+ * Every signal to the child goes through `signalChild`: a spawn that failed leaves a handle
+ * with no pid until Node delivers `error`, and Escape lands inside that window.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { signalChild } from "./signalChild";
 
 export interface CaptureDevice {
   name: string;
@@ -213,7 +217,7 @@ export class CaptureTake {
         child.stdin?.end();
         const timer = setTimeout(() => {
           if (this.exit === undefined) {
-            child.kill("SIGKILL");
+            signalChild(child, "SIGKILL");
           }
         }, STOP_GRACE_MS);
         await this.exited;
@@ -229,10 +233,17 @@ export class CaptureTake {
     return this.stopping;
   }
 
-  abort(): void {
-    this.aborted = true;
-    if (this.child !== undefined && this.exit === undefined) {
-      this.child.kill("SIGKILL");
+  /** True when a signal went to the child. False for a child that never got a pid (its
+   *  spawn failed and the `error` has not landed yet; a kill there carries a garbage pid to
+   *  the kernel), for a child already gone, and for every call after the first. */
+  abort(): boolean {
+    if (this.aborted) {
+      return false;
     }
+    this.aborted = true;
+    if (this.child === undefined || this.exit !== undefined) {
+      return false;
+    }
+    return signalChild(this.child, "SIGKILL");
   }
 }
