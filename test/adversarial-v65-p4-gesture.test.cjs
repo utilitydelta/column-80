@@ -261,12 +261,17 @@ test("R5: on a Remote host the speech model must not be offered at activation", 
 // constant is a "type" and becomes a resolver root; camel detection wants a
 // lowercase-then-uppercase pair, so `HTTPServer`/`IOError` are never harvested.
 // ---------------------------------------------------------------------------
-test("R6: the harvest labels a constant a type and misses acronym-led class names", () => {
+test("R6: the harvest labels a constant a type and misses acronym-led class names", async () => {
   const { output, lines } = channel();
   const d = newDictation(output);
   __state.activeTextEditor = editorAt(3, "MAX_RETRIES = 3\nclass HTTPServer:\n    pass\n");
-  d.state = { phase: "idle" }; // the dispatched `intent` is ignored; only the harvest is under test
+  // TRIAGED again after the declaration-site check: the build now runs only in `requesting`
+  // and is async (it asks whether the site is a declaration), so the row sits in that phase
+  // and waits a tick. The dispatched `intent` then hits a wiring with no armIntent, which the
+  // dispatch loop reports and survives; only the harvest is under test.
+  d.state = requesting(3);
   d.buildIntent("Retry up to max retries times on the http server.", "python", 4);
+  await new Promise((r) => setTimeout(r, 30));
   const log = lines.find((l) => l.startsWith("[dictate] backticks:")) ?? "(no backticks line)";
   // TRIAGED: `HTTPServer` IS a type root (upper start, lower letters inside); only the constant
   // must be kept out.
