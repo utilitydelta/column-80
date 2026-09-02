@@ -62,13 +62,18 @@ jobs:
           path: native/build
           key: native-${{ runner.os }}-${{ hashFiles('native/CMakeLists.txt', 'native/capture/capture.c') }}
       - run: npm run native:build
-      # A hosted runner has no audio stack, so the honest answer is exit 2 and a sentence. Exit
-      # 0 here would mean the null backend crept back in and "no microphone" can never fire.
+      # A hosted runner has no microphone. ubuntu-22.04 does carry libasound, so ALSA opens
+      # with zero devices and the list is `[]` at exit 0 (measured on the v3.1.0 run); a box
+      # with no backend at all exits 2. Either is honest. What must never appear is the null
+      # backend's "NULL Capture Device": that is compiled out, and it would mean "no
+      # microphone" can never fire.
       - name: Native smoke
         run: |
           set +e
-          native/bin/linux-x64/column80-capture --list; rc=$?
+          out=$(native/bin/linux-x64/column80-capture --list); rc=$?
           set -e
-          echo "column80-capture --list exit=$rc"
-          test "$rc" -eq 2
+          echo "column80-capture --list exit=$rc out=$out"
+          test "$rc" -eq 0 -o "$rc" -eq 2
+          if echo "$out" | grep -q "NULL Capture Device"; then echo "null backend crept back in" >&2; exit 1; fi
+          if [ "$rc" -eq 0 ]; then echo "$out" | node -e 'const a=JSON.parse(require("fs").readFileSync(0,"utf8"));if(!Array.isArray(a))process.exit(1)'; fi
           native/bin/linux-x64/whisper-server --help > /dev/null
