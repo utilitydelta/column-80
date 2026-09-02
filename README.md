@@ -111,9 +111,11 @@ The [user manual](https://github.com/utilitydelta/column-80/blob/main/docs/user-
 ### 9. Say it
 
 Cursor where the next statement goes, `shift+alt+d`, say what it does, `shift+alt+d` again. The
-sentence rides into one FIM request as a comment the file never sees; Tab takes the ghost and
-drops the cursor onto a fresh line. Local whisper.cpp, downloaded on first use like the models.
-Rebind `column80.dictate` if the chord is taken.
+sentence rides into one FIM request as a comment the file never sees; the code lands on its own
+and the cursor drops onto a fresh line. Escape at any point cancels. On a blank line outside any
+function the sentence is kept as the doc comment and the declaration lands under it: an enum, a
+struct, a class, a record, a function head with its body ready for repair. Local whisper.cpp,
+downloaded on first use like the models. Rebind `column80.dictate` if the chord is taken.
 
 ## 07 Get it
 

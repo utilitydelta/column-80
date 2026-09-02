@@ -979,7 +979,7 @@ Habits worth having: `promptBytes` and `blocks` tell you what a generation actua
 | `column80.dictation.muteSpeakers` | `true` | Mute the speakers while the mic is open and restore them after. Linux and macOS today. |
 | `column80.dictation.partials` | `true` | Show what is being heard on the cursor line while you talk. |
 | `column80.dictation.shortcut` | `shift+alt+d` | The chord that toggles dictation: one of five, or `none` to bind `column80.dictate` yourself in Keyboard Shortcuts. |
-| `column80.dictation.autoAccept` | `true` | The generated code goes straight into the file and the cursor drops to the next line; off leaves a ghost for Tab. Ctrl+Z undoes either way. |
+| `column80.dictation.autoAccept` | `true` | The generated code goes straight into the file and the cursor drops to the next line (at module level it stays at the end of the landed code); off leaves a ghost for Tab. Ctrl+Z undoes either way. |
 | `column80.dictation.surfaces` | `true` | Resolve the type names you spoke into surfaces above the comment. Measured to cost first-line accuracy (157 to 145 of 360); off is the safer setting until the human's own gestures say otherwise. |
 | `column80.fimMemberGate` | `true` | Drop member-site ghosts naming an unresolved member (TS, C#, Python). |
 | `column80.fimAlternatives` | `3` | Completions generated on a manual trigger. Automatic always generates one. |
@@ -1014,6 +1014,8 @@ Every command is under the **Column 80** category in the palette.
 |---|---|
 | Toggle FIM Autocomplete | palette |
 | Dictate the Next Block | `column80.dictation.shortcut` (default `shift+alt+d`), palette |
+| Cancel Dictation | `Escape` while the mic is open or the take is decoding or generating; palette |
+| Dismiss the Dictated Ghost | `Escape` over the ghost |
 | Select Microphone | palette |
 | Download Speech Model | palette; also offered on first activation and on a press while the model is missing |
 | Generate Function Body | editor right-click > Column 80 |
@@ -1088,6 +1090,14 @@ Stated plainly. Most have the fix direction already recorded.
 - **Not over Remote.** The microphone is on your machine and the extension host is on the
   server; the press refuses with one sentence. Roadmap item 76.
 - **The default chord shadows VS Code's "Detect Language from Content".** Rebind either.
+- **Outside a block the cursor stays on the landed line.** The editor refuses to draw a ghost
+  that ends on an empty line, so a module-level dictation ends at the end of the head and you
+  press Enter; inside a block the fresh line comes free.
+- **A Python head that opens no body drops the sentence.** `Id = str` from "a type alias called
+  Id for a string" lands alone, because Python's doc form is a docstring inside a body. Awaiting a
+  ruling (session-v66 S66-2).
+- **What you say becomes the doc comment, mis-hearings included.** At a declaration site the
+  sentence stays in the file as heard; read it before you move on. Roadmap item 78.
 - **Only names the buffer spells are matched**, and only multi-word ones. A type defined in
   another file and never mentioned in this one is spoken as prose; the model reads it as prose.
 
@@ -1140,5 +1150,6 @@ Stated plainly. Most have the fix direction already recorded.
 **Editor**
 
 - **VS Code 1.124 kills the scoped-ghost gesture in C# and TypeScript.** The provider is never invoked, so nothing is logged and it looks like you never arrowed. Pin your editor version before believing any gesture behaviour.
-- **Vim keymap users have no second Escape.** Theirs leaves insert mode.
+- **Vim keymap users have no second Escape.** Theirs leaves insert mode, and it also beats the
+  dictation cancel: use the shortcut's own second press, or the palette's Cancel Dictation.
 - **Language-gated commands still appear in every editor's context menu**, so a click in an unsupported file ends in a refusal toast.

@@ -27,6 +27,19 @@ coverage as an oracle, was never built and now lives in item 13. And the strike 
 supersession the human has not ratified yet: ARCHITECTURE.md invariant 4's assertion clause. The
 shipped code already relies on it.
 
+Caught up again on 2026-09-02 by sessions v65 and v66, three releases in one day. **3.1.0**: say
+what the next block does; a resident whisper.cpp hears it, the sentence rides one FIM request as
+a comment the file never sees, the ghost lands and the cursor drops to a fresh line. **3.2.0**: at
+a declaration site the sentence stays as the doc comment and the head lands under it. **3.3.0**,
+the same evening, from the human's first real gestures: the editor never draws an inline item
+that ends on an empty line, so a module-level dictation had served, committed to nothing, and
+left the "heard:" label up; the fresh line is withheld there, a commit that lands nothing ends
+the gesture, Escape cancels at every point, a dictated head reads through its attribute lines, a
+C# positional record opens no body. Items 74 to 79 were filed by v65; item 78 was rewritten by
+v66 because its "compiler check and repair" clause was already true through the post-accept hook
+(proven on the human's box before anyone had built it). Read `session-v66/scraps.md` before
+believing 3.3.0's guard against committing the wrong ghost is ratified: it is not (S66-1).
+
 Split out of the roadmap on 2026-08-21 by session-v56. Nothing here is an instruction. If a line
 here reads like work, it belongs back in the roadmap as a numbered item, not here.
 

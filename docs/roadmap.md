@@ -39,6 +39,13 @@ the numbers are the ratification batch's to mint.
 The un-ratified batch above is still un-ratified. Session-v61 must not be read as having settled any
 of it.
 
+Sessions v65 and v66 (2026-09-02) shipped dictation as 3.1.0, 3.2.0 and 3.3.0 and filed items 74
+to 79. Item 78 was rewritten the same day: its "compiler check and repair on the head" clause was
+already true through the post-accept hook, found when the human dictated a doc comment and repair
+wrote the body. Session-v66 leaves four rulings for the human (S66-1 to S66-4, below under
+"Decisions waiting on the human") and its deferrals under "Deferred fixes"; the full record is
+`session-v66/scraps.md` and the release history is in `docs/roadmap-history.md`.
+
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
@@ -88,7 +95,8 @@ produced it has been looked at.
 - **75.** the speakers are not muted on Windows during a take
 - **76.** dictation over Remote needs a `ui`-kind companion extension
 - **77.** the fuzzy matcher and the recogniser prompt, deferred with their measurements
-- **78.** dictate a declaration, then the compiler decides (gesture 2)
+- **78.** dictate a declaration: the name and parameters matched rather than guessed, and fifty
+  real gestures; the check, repair and body already run
 - **79.** GPU builds of the recogniser (Metal, CUDA, Vulkan)
 
 ## 1. Features
@@ -898,6 +906,32 @@ the rulings sit inside their entries under Measurements pending. One stays open:
   obviously better than a `use` line that fails loudly, and nothing has measured which way it falls.
   Measure first: how many pre-fill collaborator types are cross-crate at all?
 
+**From session-v66 (3.3.0), four rulings, none ratified.** Full content in `session-v66/scraps.md`.
+
+- **S66-1, the retry-commit guard, built without a ruling.** With keystroke FIM on, a retry of
+  the dictated ghost's commit landed a plain `#[cfg(test)]` keystroke ghost over a hidden
+  dictated one (Rust host row F, channel in `session-v66/tier-run-2.log`). The build shipped the
+  most targeted option: the provider records the latest request per site and the gesture refuses
+  to commit when a keystroke request came after the dictated one. Cost: with FIM on, a slow host
+  that draws the dictated item late loses it to the automatic request that follows a hide. Ratify,
+  or rule (a) no retries, or (b) the provider pushing a "replaced" event on every non-intent serve.
+- **S66-2, Python drops the sentence on a body-less head.** "A type alias called Id for a string"
+  landed `Id = str` and nothing carries the sentence, because Python's doc form is a docstring
+  inside a body (host row C, python). Candidate: a wrapped `# sentence` line above a body-less
+  Python head, which is idiomatic at module level; it needs contract rule 5 of
+  `session-v66/contracts/phase1-shape.md` amended, the blind rows updated, and a tier row. The row
+  records the loss rather than asserting until ruled. Keep the sentence as a `#` comment, or drop
+  it on purpose?
+- **S66-3, two keybinding pins superseded.** `test/blind-v58-p5-cancel-affordance.test.cjs` C2 and
+  `test/impl-v32-p45-menus.test.cjs` now carry `column80.cancelDictation :: escape` twice, under
+  `column80.recording` and `column80.dictationBusy`, with dated notes. The v32 ruling (no default
+  keybindings for gestures) stands for everything else.
+- **S66-4, what Escape outranks while a take is live.** The two cancel bindings need no editor focus
+  (ruled) and carry the ghost binding's guards; extension bindings outrank the built-ins, so while
+  the mic is open or the answer is in flight Escape also beats `notifications.hideToasts`, the
+  terminal's find widget, the Explorer's `list.clear`, `cancelRenameInput`, and the keystroke
+  ghost's own hide. Left unguarded on purpose. Say if any should win instead.
+
 ### Does round-1 generation carry derives, and is 12288 the right floor on Metal?
 
 **Derives at round 1.** The repair round reads a type's `#[derive(...)]` line off its definition file
@@ -1528,6 +1562,28 @@ every one of them at once.
 
 Each entry waits for its trigger, the next touch of the named file, not for a slice of its own.
 
+- **Escape in the gap between the trigger leaving and the provider being invoked (S66-11,
+  REASONED).** `armAndTrigger` in `src/vscode/dictation.ts` checks the gesture after the hide and
+  then dispatches the trigger; the provider is invoked asynchronously. Escape inside that gap
+  disarms the intent and the provider call finds none: with FIM on it is a plain keystroke
+  request at the cancelled site and draws a plain ghost after Escape. Candidate: `disarmIntent`
+  records the site and the provider refuses one Invoke request there. On next touch of the
+  trigger chain.
+- **Attribute shapes the line pattern does not read through (S66-12).** `#[doc = "a]b"]`,
+  `#[derive(Debug)] // dbg`, a multi-line decorator, and an attribute followed by a blank line all
+  fall back to the pre-3.3.0 cut: the attribute lands alone and the head is lost. Not regressions.
+  Candidate: `.*\]` for the bracket forms and an unbalanced decorator line read as a continuing
+  statement. On next touch of `ATTRIBUTE_LINE` in `src/core/fimBound.ts`.
+- **`droppedContentLines` on the refused arm (S66-13)** counts attribute lines as kept when nothing
+  was served. An evidence line only; nothing branches on it. Same touch as S66-12.
+- **The v65 dictation tier ran on the 3.3.0 tree for `ts` only (S66-14).** The
+  `dictatedIsLatest` guard changed the FIM-on path; run the other four labels of
+  `test-vscode/v65dictate.vscode-test.mjs` before S66-1 is ratified.
+- **The cap-cut head of the human's first gesture is not reproduced (S66-5).** The ts and rust
+  rows that dictated a long parameter list served a type alias and nothing; the channel of that
+  first gesture (an edit with no accept) was never seen again. The landing watch now ends that
+  state either way; the cause is unknown.
+
 - **The `agentic` sentence (S58-12), wording APPROVED 2026-08-24.** `agentic` leaves the CLI-failed
   group and ships as its own entry: "Column 80: the model went and did work instead of writing the
   function, so nothing was written - run the gesture again." Three lines in `CLAUDE_CODE_SENTENCES`
@@ -1990,22 +2046,31 @@ dictation: on the first 50 gestures on the human's mic, count refusals the human
 hand, and reopen the prompt only if the cleaner refused names it would have fixed. Plurals are
 the same file (scrap S65-4): the comment wants the word, the resolver wants the root.
 
-### 78. Dictate a declaration, then the compiler decides (gesture 2)
+### 78. Dictate a declaration: the name and parameters matched, not guessed
 
-Update 2026-09-02 (3.2.0): the first half shipped. At a declaration site the sentence stays as the
-doc comment in the language's form, the head lands under it, the caret goes inside the body
-(`docs/architecture/dictation.md`, "Gesture 2, first half"). Open here: the compiler check and
-repair on the head, the dictated name and parameter list matched rather than guessed, and
-fn-gen's body from the doc comment.
+What shipped (3.2.0, then 3.3.0): at a declaration site the sentence stays as the doc comment
+in the language's form, the head lands under it with a body line and closer where the head opens
+one, and the accept runs through the post-accept hook, so the compiler check and the repair loop
+already run on the landed head and repair writes the body from the doc comment and the
+signature. PROVEN 2026-09-02 on the human's own box: the dictated doc comment of `endOfLiteral`
+landed a correct head, tsc went red on the empty body, repair wrote the body. Module level, the
+attribute lines above a head, C# records and every declaration shape in five languages landed
+in 3.3.0 (`docs/architecture/dictation.md`, "Gesture 2").
 
-Asked for 2026-09-02: cursor inside a struct, an impl, a class or an empty file, dictate the
-function raw; the dictation becomes the DOC COMMENT and stays (the one place it is kept), FIM
-writes the signature under it, the compiler check and repair loop run on the signature, then
-fn-gen's doc-comment-plus-signature path writes the body. Measured on 100 documented Rust heads
-with the body absent: the comment triples the exact-head rate and it is still one in six, with
-misses of exactly the compiler's kind. So the name and parameter list are dictated and matched,
-not guessed, and repair is not optional. Built after gesture 1 ships, on its own goal, with a
-dictated-doc-comment population authored the way the line intents were.
+What is still owed, and why it is an item rather than done:
+
+- **The name and parameter list are guessed.** The scout's measurement on 100 documented Rust
+  heads with the body absent: the doc comment triples the exact-head rate and it is still one in
+  six, with misses of exactly the compiler's kind. The build matches the dictated name and
+  parameters against what was heard instead of trusting the model's head, with repair mandatory
+  on a mismatch. Its own goal, with a dictated-doc-comment population authored the way the line
+  intents were.
+- **The fifty-gesture falsifier** in `docs/architecture/dictation.md` ("Evidence") has not run:
+  one real gesture is one data point.
+- **A mis-heard word now persists.** The kept doc comment is the one place the recogniser's
+  output reaches the file ("An unt terminated literal" landed on the first real gesture). Either
+  the fuzzy matcher of item 77 earns its place on the doc leg, or repair is told it may fix the
+  comment too. Ruled nowhere yet.
 
 ### 79. GPU builds of the recogniser
 
