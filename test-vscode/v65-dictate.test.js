@@ -368,6 +368,9 @@ suite('V65 dictate then FIM', function () {
     await sleep(3600);
     await press();
     const done = await waitForLine(mark, ['[dictate] ghost accepted', '[dictate] no ghost for the intent', '[dictate] heard nothing', '[dictate] error'], 60000);
+    if (done.hit !== '[dictate] ghost accepted') {
+      fs.appendFileSync(path.join(process.env.C80_SCRATCH, `journey-${LANG}.txt`), `declaration FAILED, document now:\n${doc.getText().slice(doc.offsetAt(new vscode.Position(docLine, 0)))}\n---\n${done.text.slice(-1500)}\n`);
+    }
     assert.strictEqual(done.hit, '[dictate] ghost accepted', `declaration landed: ${done.text.slice(-700)}`);
     assert.match(done.text, /\[dictate\] declaration site: the sentence is the doc comment and stays/, 'the site was read as a declaration');
     await sleep(300);

@@ -91,7 +91,11 @@ export function declarationGhost(
   } else {
     lines.push(head);
   }
-  const opensBody = style === "docstring" ? /:\s*$/.test(head) : /\{\s*$/.test(head);
+  // C# puts the brace on its own line, so the bound's one content line is the head without it;
+  // a head that names a type or ends its parameter list opens a body there.
+  const allman =
+    languageId === "csharp" && !/\{\s*$/.test(head) && (/\b(class|struct|interface|enum|record)\b/.test(head) || /\)\s*$/.test(head));
+  const opensBody = style === "docstring" ? /:\s*$/.test(head) : allman || /\{\s*$/.test(head);
   let caretLine: number;
   let caretColumn: number;
   if (opensBody && style === "docstring") {
@@ -102,6 +106,9 @@ export function declarationGhost(
     caretColumn = body.length;
   } else if (opensBody) {
     const body = indent + unit;
+    if (allman) {
+      lines.push(`${indent}{`);
+    }
     lines.push(body);
     lines.push(`${indent}}`);
     caretLine = lines.length - 2;

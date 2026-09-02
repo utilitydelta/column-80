@@ -54,6 +54,16 @@ test("python: the head, then the docstring inside the body, then the caret on th
   assert.strictEqual(g.caretOffset, g.text.length);
 });
 
+test("csharp: the brace goes on its own line under a head the bound cut it from", () => {
+  const g = declarationGhost("public class ThreatLevel", "The threat level.", "csharp", "\n", "", "    ");
+  assert.strictEqual(g.text, "/// The threat level.\npublic class ThreatLevel\n{\n    \n}");
+  assert.strictEqual(g.text[g.caretOffset], "\n");
+  const m = declarationGhost("public void Add(string name)", "Add it.", "csharp", "\n", "    ", "    ");
+  assert.strictEqual(m.text, "/// Add it.\n    public void Add(string name)\n    {\n        \n    }");
+  const done = declarationGhost("public int Count;", "The count.", "csharp", "\n", "    ", "    ");
+  assert.strictEqual(done.text, "/// The count.\n    public int Count;\n    ");
+});
+
 test("a served head with trailing whitespace or a non-string is tolerated", () => {
   assert.strictEqual(declarationGhost("fn f() {   ", "Say.", "rust", "\n", "", "  ").text, "/// Say.\nfn f() {\n  \n}");
   assert.strictEqual(declarationGhost(undefined, "Say.", "rust", "\n", "", "  ").text, "/// Say.\n\n");

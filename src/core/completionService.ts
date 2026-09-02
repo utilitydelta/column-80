@@ -720,7 +720,19 @@ export class CompletionService {
         // human actually saw, not the primary's) and whether the comment cut
         // shortened it (so the floor is not stacked on the cut's remainder).
         const shape = (gen: { text: string; stopped?: boolean }, which: string): Candidate => {
-          const pp = postprocessBounded(gen.text, ppCtx);
+          // A dictated request is an instruction, and the model likes to open its answer with a
+          // placeholder comment ("// Write your code here") before the code. The comment rule
+          // would cut the whole ghost there; for an intent the leading comment lines go and the
+          // code is kept, which is the rule's intent (no comment introduced) without the loss.
+          let raw = gen.text;
+          if (request.intent && commentSyntax !== undefined) {
+            const stripped = stripLeadingCommentLines(raw, commentSyntax.line);
+            if (stripped !== raw) {
+              this.log?.(`[fim] intent: leading comment line(s) stripped before the bound (${which})`);
+              raw = stripped;
+            }
+          }
+          const pp = postprocessBounded(raw, ppCtx);
           if (pp.bound?.refusedUnsafe) {
             unsafeRefusals.push(which);
           }
@@ -1303,6 +1315,20 @@ function unroot(s: string): string {
 // 0 on an empty line, or mid-indent) is a normal editor state inside a
 // block; anchoring depth at the nearest non-blank line above (Tabby's
 // reference behavior) keeps the scope filter live there.
+/** Drop blank and line-comment lines from the head of a raw generation; the rest is untouched. */
+function stripLeadingCommentLines(raw: string, openers: readonly string[]): string {
+  const lines = raw.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (t !== "" && !openers.some((o) => t.startsWith(o))) {
+      break;
+    }
+    i++;
+  }
+  return i === 0 || i === lines.length ? raw : lines.slice(i).join("\n");
+}
+
 function scopeAnchor(prefix: string): string {
   const currentLinePrefix = prefix.slice(prefix.lastIndexOf("\n") + 1);
   if (currentLinePrefix.trim() !== "") {

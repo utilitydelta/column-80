@@ -913,7 +913,7 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     if (intent !== undefined) {
       const lineText = document.lineAt(position.line).text;
       if (lineText.trim() === "") {
-        const want = blockIndentFor(document, position.line);
+        const want = blockIndentFor(document, position.line, intent.kind === "declaration");
         const have = /^[ \t]*/.exec(lineText)?.[0] ?? "";
         if (want.length > have.length && want.startsWith(have)) {
           virtualIndent = want.slice(have.length);
@@ -1883,7 +1883,7 @@ async function openDocumentText(uri: string): Promise<string | undefined> {
 /** The indent the next statement on a blank line inside a block should carry: the previous
  *  non-blank line's indent, plus one unit when that line opens a block. The unit is what the
  *  file already uses (a tab, or the width of the smallest indent step seen above). */
-export function blockIndentFor(document: vscode.TextDocument, line: number): string {
+export function blockIndentFor(document: vscode.TextDocument, line: number, forDeclaration: boolean = false): string {
   let prev = line - 1;
   while (prev >= 0 && document.lineAt(prev).text.trim() === "") {
     prev--;
@@ -1895,7 +1895,11 @@ export function blockIndentFor(document: vscode.TextDocument, line: number): str
   const indent = /^[ \t]*/.exec(text)?.[0] ?? "";
   const opens = /[{(\[:]\s*$/.test(text.replace(/\/\/.*$/, "").trimEnd());
   if (!opens) {
-    return indent;
+    // A statement continues its block at the previous line's indent. A DECLARATION after a
+    // closer sits at the closer's indent; after anything else (a Python body's last statement)
+    // the enclosing level is not derivable from one line, and module level is the honest guess:
+    // a line the developer already indented never reaches here.
+    return forDeclaration ? (/^[ \t]*[})\]]/.test(text) ? indent : "") : indent;
   }
   if (indent.startsWith("\t")) {
     return `${indent}\t`;
