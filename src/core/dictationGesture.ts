@@ -6,6 +6,10 @@
  * gesture be swept headless: one shortcut toggles on and off, turning it off is what generates,
  * the indicator goes live on the FIRST AUDIO BUFFER rather than on the press, each press is its
  * own comment, and a press over a living ghost dismisses it and re-records.
+ *
+ * Two site kinds share the mic. A line site ends in an intent and a FIM request; a comment
+ * site (the caret inside a comment at the press) ends by inserting the sentence into the
+ * comment and handing over to the tighten command. No intent, no ghost.
  */
 import { cleanTranscript, type DictationRefusal } from "./dictation";
 
@@ -25,10 +29,16 @@ export interface GestureState {
   heard?: string;
   pressedAt?: number;
   firstBufferMs?: number;
+  /** The press caret was inside a comment. Set at the press, kept by every spread, so the
+   *  transcript knows to insert rather than build an intent. */
+  commentSite?: true;
 }
 
 export const IDLE: GestureState = { phase: "idle" };
 
+/** The adapter's readiness at the press. The six booleans before `inComment` are refusal
+ *  inputs; `inComment` marks the site kind (comment or line) and refuses nothing; `platform`
+ *  is the detail string on a `binary-missing` refusal. */
 export interface Readiness {
   remote: boolean;
   binaryPresent: boolean;
@@ -61,7 +71,7 @@ export type GestureEvent =
    *  inside the grace. The editor never drew the item (session-v66). */
   | { type: "nothing-landed" };
 
-export type RefusalKind = DictationRefusal | "in-comment" | "not-served" | "failed" | "cancelled" | "nothing-landed";
+export type RefusalKind = DictationRefusal | "not-served" | "failed" | "cancelled" | "nothing-landed";
 
 export type Action =
   | { type: "hide-ghost" }
@@ -76,6 +86,9 @@ export type Action =
   | { type: "transcribe" }
   | { type: "build-intent"; sentence: string; languageId: string; indentColumns: number }
   | { type: "trigger-fim"; site: Site; comment: string }
+  /** Comment site: put the sentence at the press caret, then run the tighten there. */
+  | { type: "insert-comment"; site: Site; sentence: string }
+  | { type: "tighten"; site: Site }
   | { type: "refuse"; kind: RefusalKind; detail?: string }
   | { type: "log"; line: string };
 
@@ -120,9 +133,6 @@ function refusalFor(ready: Readiness, languageId: string): Extract<Action, { typ
   if (!ready.commentRow) {
     return { type: "refuse", kind: "no-comment-row", detail: languageId };
   }
-  if (ready.inComment) {
-    return { type: "refuse", kind: "in-comment" };
-  }
   return undefined;
 }
 
@@ -132,29 +142,33 @@ function press(state: GestureState, event: Extract<GestureEvent, { type: "press"
     case "ghost":
     case "requesting": {
       const rerecord = state.phase !== "idle";
+      const ready = event.ready !== null && typeof event.ready === "object" ? event.ready : ({} as Readiness);
       if (state.phase === "idle") {
-        const ready = event.ready !== null && typeof event.ready === "object" ? event.ready : ({} as Readiness);
         const refusal = refusalFor(ready, event.languageId);
         if (refusal !== undefined) {
           return { state, actions: [refusal, log(`[dictate] refused: ${refusal.kind}`)] };
         }
       }
+      const commentSite = Boolean(ready.inComment);
       const actions: Action[] = [];
+      if (state.phase === "requesting") {
+        // The abandoned intent has no TTL; a comment-site take never builds a replacement,
+        // so it must be dropped here or it rides the next keystroke request at its site.
+        actions.push({ type: "disarm-intent" });
+      }
       if (rerecord || event.ghostVisible) {
         actions.push({ type: "hide-ghost" });
       }
       actions.push({ type: "mute" }, { type: "start-capture" }, indicator("armed"));
-      actions.push(log(`[dictate] press at ${event.site.uri}:${event.site.line}${rerecord ? " (re-record)" : ""}`));
-      return {
-        state: {
-          phase: "arming",
-          site: event.site,
-          languageId: event.languageId,
-          indentColumns: event.indentColumns,
-          pressedAt: event.now,
-        },
-        actions,
+      actions.push(log(`[dictate] press at ${event.site.uri}:${event.site.line}${commentSite ? " (comment)" : ""}${rerecord ? " (re-record)" : ""}`));
+      const armed: GestureState = {
+        phase: "arming",
+        site: event.site,
+        languageId: event.languageId,
+        indentColumns: event.indentColumns,
+        pressedAt: event.now,
       };
+      return { state: commentSite ? { ...armed, commentSite: true } : armed, actions };
     }
     case "arming":
       return {
@@ -197,17 +211,37 @@ function transcript(state: GestureState, event: Extract<GestureEvent, { type: "t
   if (state.phase !== "finalising") {
     return ignored(state, event);
   }
+  // A comment site with no site to insert at is malformed by construction: ignored before
+  // the text is even cleaned, so an empty take cannot turn it into a line-site refusal.
+  if (state.commentSite === true && state.site === undefined) {
+    return ignored(state, event);
+  }
   const cleaned = cleanTranscript(event.text);
   if (cleaned.sentence === "") {
     return endWithRefusal("empty-transcript", `[dictate] heard nothing (decode=${ms(event.decodeMs)})`);
   }
   const stripped = cleaned.stripped.length > 0 ? `, stripped: ${cleaned.stripped.join(", ")}` : "";
+  const heardLine = log(`[dictate] heard: ${cleaned.sentence} (decode=${ms(event.decodeMs)}${stripped})`);
+  if (state.commentSite === true && state.site !== undefined) {
+    // The gesture ends here: the adapter inserts, hands over to the tighten, and nothing waits
+    // for an answer, so there is no requesting phase to hold the sentence in.
+    return {
+      state: IDLE,
+      actions: [
+        { type: "unmute" },
+        indicator("heard", cleaned.sentence),
+        heardLine,
+        { type: "insert-comment", site: state.site, sentence: cleaned.sentence },
+        { type: "tighten", site: state.site },
+      ],
+    };
+  }
   return {
     state: { ...state, phase: "requesting", heard: cleaned.sentence },
     actions: [
       { type: "unmute" },
       indicator("heard", cleaned.sentence),
-      log(`[dictate] heard: ${cleaned.sentence} (decode=${ms(event.decodeMs)}${stripped})`),
+      heardLine,
       { type: "build-intent", sentence: cleaned.sentence, languageId: state.languageId ?? "", indentColumns: state.indentColumns ?? 0 },
     ],
   };

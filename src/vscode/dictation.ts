@@ -642,6 +642,10 @@ export class Dictation implements vscode.Disposable {
       case "trigger-fim":
         this.triggerFim(action.site, action.comment);
         return;
+      case "insert-comment":
+      case "tighten":
+        this.log(`[dictate] ${action.type} (not built until phase 2)`);
+        return;
       case "refuse":
         this.refuse(action.kind, action.detail);
         return;
@@ -924,17 +928,15 @@ export class Dictation implements vscode.Disposable {
 
   private refuse(kind: RefusalKind, detail?: string): void {
     const sentence =
-      kind === "in-comment"
-        ? "Column 80: the cursor is inside a comment; dictation writes code, not the spec."
-        : kind === "not-served"
-          ? `Column 80: FIM does not serve ${detail ?? "this language"}; add it to column80.fimLanguages first.`
-          : kind === "failed"
-            ? `Column 80: dictation stopped: ${detail ?? "unknown error"}`
-            : kind === "cancelled"
-              ? "Column 80: dictation cancelled."
-              : kind === "nothing-landed"
-                ? "Column 80: nothing landed for the dictated ghost."
-                : refusalSentence(kind, detail);
+      kind === "not-served"
+        ? `Column 80: FIM does not serve ${detail ?? "this language"}; add it to column80.fimLanguages first.`
+        : kind === "failed"
+          ? `Column 80: dictation stopped: ${detail ?? "unknown error"}`
+          : kind === "cancelled"
+            ? "Column 80: dictation cancelled."
+            : kind === "nothing-landed"
+              ? "Column 80: nothing landed for the dictated ghost."
+              : refusalSentence(kind, detail);
     void vscode.window.setStatusBarMessage(sentence, REFUSAL_STATUS_MS);
     if (kind === "model-missing") {
       void this.ensureReady(true, true);

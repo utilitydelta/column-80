@@ -113,8 +113,22 @@ const REFUSALS = [
   { ready: { recogniserAlive: false }, kind: "server-down" },
   { ready: { served: false }, kind: "not-served", detail: "typescript" },
   { ready: { commentRow: false }, kind: "no-comment-row", detail: "typescript" },
-  { ready: { inComment: true }, kind: "in-comment" },
+  // AMENDED 2026-09-03 (session-v67, goal ruling 9): the in-comment refusal is retired; a press in a comment dictates into it.
 ];
+
+// AMENDED 2026-09-03 (session-v67, goal ruling 9): replaces the in-comment REFUSALS entry; inComment now marks a comment site and arms.
+test("rule 1 (amended v67): inComment true arms with commentSite and the (comment) log suffix", () => {
+  const out = reduce(IDLE, press({ ready: { inComment: true } }));
+  assert.strictEqual(out.state.phase, "arming");
+  assert.strictEqual(out.state.commentSite, true);
+  assert.ok(!out.actions.some((a) => a.type === "refuse"), "no refuse");
+  eqActions(out.actions, [
+    { type: "mute" },
+    { type: "start-capture" },
+    { type: "indicator", mode: "armed" },
+    { type: "log", line: "[dictate] press at file:///work/a.ts:10 (comment)" },
+  ]);
+});
 
 for (const r of REFUSALS) {
   test(`rule 1: ${r.kind} refuses and stays idle`, () => {
@@ -222,7 +236,9 @@ for (const phase of ["ghost", "requesting"]) {
     assert.strictEqual(out.state.pressedAt, 9000);
     assert.strictEqual(out.state.partial, undefined);
     assert.strictEqual(out.state.heard, undefined);
+    // AMENDED 2026-09-03 (review F1/F2/F3): a re-record from requesting leads with disarm-intent, then hide-ghost; from ghost hide-ghost still leads.
     eqActions(out.actions, [
+      ...(phase === "requesting" ? [{ type: "disarm-intent" }] : []),
       { type: "hide-ghost" },
       { type: "mute" },
       { type: "start-capture" },
@@ -234,7 +250,9 @@ for (const phase of ["ghost", "requesting"]) {
   test(`rule 3: press in ${phase} with ghostVisible true still emits exactly one hide-ghost`, () => {
     const out = reduce(at(phase), press({ now: 9000, ghostVisible: true }));
     assert.strictEqual(out.actions.filter((a) => a.type === "hide-ghost").length, 1);
-    assert.strictEqual(out.actions[0].type, "hide-ghost");
+    // AMENDED 2026-09-03 (review F1/F2/F3): from requesting the disarm-intent takes slot 0 and hide-ghost slot 1.
+    assert.strictEqual(out.actions[phase === "requesting" ? 1 : 0].type, "hide-ghost");
+    if (phase === "requesting") assert.strictEqual(out.actions[0].type, "disarm-intent");
     assert.ok(out.actions[out.actions.length - 1].line.endsWith(" (re-record)"));
   });
 }
@@ -808,7 +826,21 @@ function checkStep(prev, next, actions, tracker, label, ev) {
   if (CAPTURE.has(prev.phase) && next.phase === "idle") {
     assert.strictEqual(unmutes, 1, `${label}: ${prev.phase}->idle unmute count`);
     assert.ok(indicators.length > 0, `${label}: ${prev.phase}->idle without an indicator`);
-    assert.strictEqual(indicators[indicators.length - 1].mode, "off", `${label}: ${prev.phase}->idle indicator`);
+    // AMENDED 2026-09-03 (session-v67, goal ruling 9): I2(b), finalising->idle through the comment insert ends heard, with insert-comment then tighten.
+    if (types.includes("insert-comment")) {
+      assert.strictEqual(prev.phase, "finalising", `${label}: insert-comment out of ${prev.phase}`);
+      assert.strictEqual(indicators[indicators.length - 1].mode, "heard", `${label}: comment insert indicator`);
+      assert.strictEqual(types[types.indexOf("insert-comment") + 1], "tighten", `${label}: tighten not right after insert-comment`);
+      // AMENDED 2026-09-03 (review F1/F2/F3): I2(b) also says the unmute comes before the insert.
+      assert.ok(types.indexOf("unmute") < types.indexOf("insert-comment"), `${label}: insert-comment before unmute`);
+    } else {
+      assert.strictEqual(indicators[indicators.length - 1].mode, "off", `${label}: ${prev.phase}->idle indicator`);
+    }
+  }
+  // AMENDED 2026-09-03 (session-v67, goal ruling 9): I5, insert-comment excludes the intent actions and needs a comment-site previous state.
+  if (types.includes("insert-comment")) {
+    for (const t of types) assert.ok(!["build-intent", "trigger-fim", "disarm-intent"].includes(t), `${label}: insert-comment beside ${t}`);
+    assert.strictEqual(prev.commentSite, true, `${label}: insert-comment from a state without commentSite`);
   }
   if (prev.phase === "finalising" && next.phase === "requesting") {
     assert.strictEqual(unmutes, 1, `${label}: finalising->requesting unmute count`);
