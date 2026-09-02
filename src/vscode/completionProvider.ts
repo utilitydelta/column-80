@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { readFileSync } from "fs";
 import { CompletionService, INJECTION_DEADLINE_MS } from "../core/completionService";
 import { DICTATION_SURFACE_TOK } from "../core/budgetProfile";
+import { declarationGhost, type DeclarationGhost } from "../core/dictationDoc";
 import { trailingOverlapLength } from "../core/postprocess";
 import {
   EnumRhsSite,
@@ -131,6 +132,14 @@ export interface ArmedIntent {
   id: number;
   uri: string;
   line: number;
+  /** `line`: the sentence is a throwaway comment and the ghost is the next statement.
+   *  `declaration`: the sentence is the DOC COMMENT, kept in the file above the head FIM
+   *  writes; both land in the one accept (session-v65 gesture 2, first half). */
+  kind: "line" | "declaration";
+  /** The cleaned sentence, for the declaration ghost's doc comment or docstring. */
+  sentence: string;
+  /** One indent unit of the file, for the body line a declaration opens. */
+  unit: string;
   comment: string;
   /** Type names the dictation spoke and the matcher ticked, resolved FIRST
    *  (session-v65 pipeline ruling: above the signature's types and the body
@@ -1184,7 +1193,13 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
           // forwards to the post-accept check and then tells the gesture.
           command: intent === undefined ? "column80.fimAccepted" : "column80.dictationAccepted",
           title: "Column 80: post-accept compiler check",
-          arguments: [document.uri.toString(), document.offsetAt(range.start), text.length],
+          arguments: [
+            document.uri.toString(),
+            document.offsetAt(range.start),
+            text.length,
+            // Where the caret goes after a declaration lands: the body line, not the closer.
+            ...(caretOffsetInItem === undefined || text !== primary ? [] : [document.offsetAt(range.start) + caretOffsetInItem]),
+          ],
         };
         return item;
       };
@@ -1195,10 +1210,24 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       // Only when nothing but whitespace follows the caret: on a partly written line the
       // auto-closed `)` or `"` after the caret would otherwise ride onto the fresh line (the
       // phase 4 review). There the ghost fills the rest of the line and the caret stays.
+      let declaration: DeclarationGhost | undefined;
+      if (intent !== undefined && intent.kind === "declaration") {
+        declaration = declarationGhost(
+          result.text,
+          intent.sentence,
+          document.languageId,
+          intent.eol,
+          intent.indent + virtualIndent,
+          intent.unit,
+        );
+      }
       const primary =
-        intent === undefined || restOfLine.trim() !== ""
-          ? result.text
-          : `${virtualIndent}${result.text}${intent.eol}${intent.indent}${virtualIndent}`;
+        declaration !== undefined
+          ? `${virtualIndent}${declaration.text}`
+          : intent === undefined || restOfLine.trim() !== ""
+            ? result.text
+            : `${virtualIndent}${result.text}${intent.eol}${intent.indent}${virtualIndent}`;
+      const caretOffsetInItem = declaration === undefined ? undefined : virtualIndent.length + declaration.caretOffset;
       const items = [primary, ...(result.alternates ?? [])]
         .map(toItem)
         .filter((item): item is vscode.InlineCompletionItem => item !== undefined);

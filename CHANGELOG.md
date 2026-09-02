@@ -1,6 +1,16 @@
 # Changelog
 
-## 3.1.0
+## 3.2.0
+
+**Dictate a declaration, and the sentence stays as the doc comment.**
+
+On a blank line that is not inside a function body (module level, inside a struct, impl, class
+or interface, an empty file) dictation keeps what you said: it lands as the doc comment in the
+language's own form (`///`, `//`, `/** */`, or a Python docstring inside the body), the model
+writes the declaration head under it, the body's first line and closer land where the head opens
+one, and the caret is inside. One accept, the same write path as a line. The compiler check and
+repair on the head and the body generated from the doc comment are the second half, roadmap 78.
+
 
 **Say what the next block does, and the ghost writes it.**
 

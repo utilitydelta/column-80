@@ -227,6 +227,15 @@ qualified, and say what NOT to do. Single English words are never matched
 inside a sentence, because `open` and `close` and `file` are all real identifiers and matching
 them would rewrite what you said.
 
+**Dictate a declaration.** On a blank line that is not inside a function body (module level,
+inside a struct, impl, class or interface, an empty file) the sentence is not thrown away: it
+becomes the DOC COMMENT and stays in the file, in the language's own form (`///` in Rust and C#,
+`//` in Go, `/** */` in TypeScript, a docstring inside the body in Python), and the model writes
+the declaration head under it. Where the head opens a body, the body's first line and the closer
+land too and the caret is inside, ready for the next dictation or Generate Function Body. The
+compiler check and repair on the head, and the body generated from the doc comment, are
+roadmap item 78.
+
 The rules of the road:
 
 - Each press is its own sentence. Chaining is a new press on the same line; the last sentence is

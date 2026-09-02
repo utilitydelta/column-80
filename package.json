@@ -2,7 +2,7 @@
   "name": "column-80",
   "displayName": "Column 80",
   "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "publisher": "utilitydelta",
   "license": "Apache-2.0",
   "icon": "media/icon.png",

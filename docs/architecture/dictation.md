@@ -157,6 +157,20 @@ The speakers are muted for the take and restored only if this muted them: `wpctl
 on Linux, `osascript` on macOS, nothing yet on Windows (the channel says so). Setting
 `column80.dictation.muteSpeakers`, default on.
 
+## Gesture 2, first half: dictate a declaration
+
+`src/core/dictationDoc.ts`. At a blank line that fn-gen's resolver says is not inside a function
+(`resolveFunctionAtCursor` returns nothing), the sentence is the doc comment and stays. The model
+sees it above the cursor in the language's doc form (`docCommentAbove`: `///` for Rust and C#,
+`//` for Go, `/** */` for the TypeScript family; Python's docstring goes inside the body, so the
+model sees the line comment there). The served head is dressed by `declarationGhost` into one
+item: the doc comment, the head, and where the head opens a body an empty body line at one more
+indent unit plus the closer (a docstring line in Python), with the caret offset the accept
+command then honours. One accept, one write path, the comment kept because it is part of the
+ghost. The scout's measurement on 100 documented Rust heads (doc comment present: 81 declare,
+31 name right, 16 whole head within 0.9) is the ceiling this half ships at; the compiler check
+and repair on the head, and fn-gen's body from the doc, are roadmap item 78.
+
 ## Refusals
 
 Every refusal is one sentence in the product's voice on the status bar and a `[dictate]

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { CaptureTake, classifyCaptureExit, listCaptureDevices, type TakeResult } from "../core/capture";
 import { backtickSpokenNames, partialWindow, refusalSentence, timingLine, virtualComment } from "../core/dictation";
+import { docCommentAbove, docStyleFor } from "../core/dictationDoc";
 import { IDLE, reduce, type Action, type GestureEvent, type GestureState, type Readiness, type RefusalKind, type Site } from "../core/dictationGesture";
 import { commentSyntaxFor, cursorInComment } from "../core/fimComment";
 import { fimServesLanguage } from "../core/fimLanguages";
@@ -91,6 +92,27 @@ export function readDictationConfig(): DictationConfig {
 
 export interface DictationWiring {
   armIntent(intent: ArmedIntent): void;
+  /** fn-gen's resolver: undefined at a blank line means the cursor is not inside a function
+   *  body, which is what makes the line a declaration site. */
+  resolveFunction?: (document: vscode.TextDocument, position: vscode.Position) => Promise<unknown>;
+}
+
+/** One indent unit of the file: a tab where the file indents with tabs, else the smallest
+ *  space step seen above the line, else four. */
+export function indentUnitFor(document: vscode.TextDocument, line: number): string {
+  let unit = 0;
+  let tabs = false;
+  for (let i = Math.min(line, document.lineCount - 1); i >= 0 && i > line - 200; i--) {
+    const lead = /^[ \t]*/.exec(document.lineAt(i).text)?.[0] ?? "";
+    if (lead.startsWith("\t")) {
+      tabs = true;
+      break;
+    }
+    if (lead.length > 0 && (unit === 0 || lead.length < unit)) {
+      unit = lead.length;
+    }
+  }
+  return tabs ? "\t" : " ".repeat(unit === 0 ? 4 : unit);
 }
 
 interface Paths {
@@ -134,6 +156,8 @@ export class Dictation implements vscode.Disposable {
   private readonly statusItem: vscode.StatusBarItem | undefined;
   private micClosedAt = 0;
   private pendingRoots: string[] = [];
+  private pendingKind: "line" | "declaration" = "line";
+  private pendingSentence = "";
   private holdMovesUntil = 0;
   private gestureId = 0;
   private lingerHeard = false;
@@ -623,7 +647,38 @@ export class Dictation implements vscode.Disposable {
   }
 
   private buildIntent(sentence: string, languageId: string, indentColumns: number): void {
+    void this.buildIntentAsync(sentence, languageId, indentColumns);
+  }
+
+  /** A blank line that is not inside a function body is a DECLARATION site: the sentence
+   *  becomes the doc comment and stays. Inside a body it is the throwaway line comment. */
+  private async siteKind(editor: vscode.TextEditor, line: number): Promise<"line" | "declaration"> {
+    if (this.wiring.resolveFunction === undefined) {
+      return "line";
+    }
+    const doc = editor.document;
+    if (line >= doc.lineCount || doc.lineAt(line).text.trim() !== "") {
+      return "line";
+    }
+    try {
+      const fn = await this.wiring.resolveFunction(doc, new vscode.Position(line, doc.lineAt(line).text.length));
+      return fn === undefined ? "declaration" : "line";
+    } catch {
+      return "line";
+    }
+  }
+
+  private async buildIntentAsync(sentence: string, languageId: string, indentColumns: number): Promise<void> {
     const editor = vscode.window.activeTextEditor;
+    const site = this.state.site;
+    const kind = editor !== undefined && site !== undefined && docStyleFor(languageId) !== undefined
+      ? await this.siteKind(editor, site.line)
+      : "line";
+    if (this.state.phase !== "requesting") {
+      return;
+    }
+    this.pendingKind = kind;
+    this.pendingSentence = sentence;
     const names = editor === undefined ? [] : harvestSpokenNames(editor.document.getText());
     const ticked = backtickSpokenNames(sentence, names);
     if (ticked.matched.length > 0 || ticked.refused.length > 0) {
@@ -632,10 +687,18 @@ export class Dictation implements vscode.Disposable {
           ` refused=${ticked.refused.map((r) => `${r.phrase}→${r.identifier}(${r.reason})`).join(",") || "none"}`,
       );
     }
-    const comment = virtualComment(ticked.text, languageId, indentColumns);
+    // At a declaration site the model sees the doc comment itself (Python's docstring goes
+    // inside the body, so there the model sees the line comment and the ghost adds the docstring).
+    const comment =
+      kind === "declaration"
+        ? (docCommentAbove(ticked.text, languageId, indentColumns) ?? virtualComment(ticked.text, languageId, indentColumns))
+        : virtualComment(ticked.text, languageId, indentColumns);
     if (comment === undefined) {
       this.dispatch({ type: "error", message: refusalSentence("no-comment-row", languageId) });
       return;
+    }
+    if (kind === "declaration") {
+      this.log("[dictate] declaration site: the sentence is the doc comment and stays");
     }
     // The spoken TYPE names go to the resolver first; a ticked function or field name is
     // prose for the model, not a root.
@@ -712,6 +775,9 @@ export class Dictation implements vscode.Disposable {
       id: gestureId,
       uri: site.uri,
       line: site.line,
+      kind: this.pendingKind,
+      sentence: this.pendingSentence,
+      unit: indentUnitFor(editor.document, site.line),
       comment,
       roots: this.pendingRoots,
       eol,
@@ -935,8 +1001,18 @@ export function registerDictation(
     vscode.commands.registerCommand(SELECT_MIC_COMMAND, () => dictation.selectMicrophone()),
     vscode.commands.registerCommand(DOWNLOAD_MODEL_COMMAND, () => dictation.ensureReady(true, true)),
     vscode.commands.registerCommand(DICTATION_ACCEPTED_COMMAND, async (...args: unknown[]) => {
-      // The post-accept check first, exactly as a plain ghost gets it; then the gesture hears.
-      await Promise.resolve(vscode.commands.executeCommand("column80.fimAccepted", ...args)).catch((err) =>
+      // A declaration ghost says where the caret belongs (the body line); place it before the
+      // check runs, so the developer is already inside the body when the annotation lands.
+      const [uriString, , , caretOffset] = args as [string, number, number, number | undefined];
+      if (typeof caretOffset === "number") {
+        const editor = vscode.window.activeTextEditor;
+        if (editor !== undefined && editor.document.uri.toString() === uriString) {
+          const at = editor.document.positionAt(caretOffset);
+          editor.selection = new vscode.Selection(at, at);
+        }
+      }
+      // The post-accept check, exactly as a plain ghost gets it; then the gesture hears.
+      await Promise.resolve(vscode.commands.executeCommand("column80.fimAccepted", ...args.slice(0, 3))).catch((err) =>
         output.appendLine(`[dictate] post-accept check failed: ${String(err)}`),
       );
       dictation.accepted();

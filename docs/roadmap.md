@@ -1992,6 +1992,12 @@ the same file (scrap S65-4): the comment wants the word, the resolver wants the 
 
 ### 78. Dictate a declaration, then the compiler decides (gesture 2)
 
+Update 2026-09-02 (3.2.0): the first half shipped. At a declaration site the sentence stays as the
+doc comment in the language's form, the head lands under it, the caret goes inside the body
+(`docs/architecture/dictation.md`, "Gesture 2, first half"). Open here: the compiler check and
+repair on the head, the dictated name and parameter list matched rather than guessed, and
+fn-gen's body from the doc comment.
+
 Asked for 2026-09-02: cursor inside a struct, an impl, a class or an empty file, dictate the
 function raw; the dictation becomes the DOC COMMENT and stays (the one place it is kept), FIM
 writes the signature under it, the compiler check and repair loop run on the signature, then

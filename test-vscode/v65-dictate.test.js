@@ -355,6 +355,34 @@ suite('V65 dictate then FIM', function () {
     }
   });
 
+  test('a declaration site: the sentence stays as the doc comment, the head lands under it, the caret is inside', async () => {
+    process.env.C80_FAKE_WAV = path.join(FIXTURES, 'threat-level-3s.wav');
+    // The fixture's trailing empty line is module level: not inside any function.
+    const docLine = site.text.split('\n').length - 1;
+    const { doc, editor } = await openAt(docLine, 0);
+    const before = doc.getText();
+    const mark = logMark();
+    await press();
+    const live = await waitForLine(mark, ['[dictate] mic live', '[dictate] refused'], 10000);
+    assert.ok(live.hit, `mic live: ${live.text}`);
+    await sleep(3600);
+    await press();
+    const done = await waitForLine(mark, ['[dictate] ghost accepted', '[dictate] no ghost for the intent', '[dictate] heard nothing', '[dictate] error'], 60000);
+    assert.strictEqual(done.hit, '[dictate] ghost accepted', `declaration landed: ${done.text.slice(-700)}`);
+    assert.match(done.text, /\[dictate\] declaration site: the sentence is the doc comment and stays/, 'the site was read as a declaration');
+    await sleep(300);
+    const after = doc.getText();
+    const inserted = after.slice(before.length - (before.length - doc.offsetAt(new vscode.Position(docLine, 0))));
+    const insertedText = after.slice(doc.offsetAt(new vscode.Position(docLine, 0)));
+    fs.appendFileSync(path.join(process.env.C80_SCRATCH, `journey-${LANG}.txt`), `declaration:\n${insertedText}\n`);
+    const docTokens = { rust: '///', csharp: '///', go: '//', ts: '/**', python: '"""' };
+    assert.ok(insertedText.includes(docTokens[LANG]), `the doc comment is in the file: ${JSON.stringify(insertedText)}`);
+    assert.ok(/threat level/i.test(insertedText), `the sentence is in the file: ${JSON.stringify(insertedText)}`);
+    const lines = insertedText.split(/\r?\n/).filter((l) => l.trim() !== '');
+    assert.ok(lines.length >= 2, `a head landed under the doc: ${JSON.stringify(insertedText)}`);
+    assert.ok(editor.selection.active.line > docLine, `the caret moved into the landed text: ${editor.selection.active.line}`);
+  });
+
   test('the second press before the mic is live cancels, on the record', async () => {
     process.env.C80_FAKE_MIC_DELAY_MS = '1500';
     try {

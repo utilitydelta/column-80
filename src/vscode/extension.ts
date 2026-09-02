@@ -184,7 +184,10 @@ export function activate(context: vscode.ExtensionContext): void {
   registerFirstRun(context, output);
   // Dictate-then-FIM: the resident recogniser starts here (after the model's ratified
   // download), and the gesture arms one intent on the provider per press.
-  registerDictation(context, output, { armIntent: (intent) => provider.armIntent(intent) });
+  registerDictation(context, output, {
+    armIntent: (intent) => provider.armIntent(intent),
+    resolveFunction: (document, position) => resolveFunctionAtCursor(document, position),
+  });
 
   context.subscriptions.push(
     // Cross-file staleness: an edit in a REAL document evicts OTHER files'
