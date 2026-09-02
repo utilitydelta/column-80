@@ -10,8 +10,10 @@ timing line, the refusal sentences), `src/core/dictationGesture.ts` (the gesture
 reducer), `src/core/dictationNames.ts` (the name harvest), `src/core/recogniser.ts` (the resident
 whisper.cpp server), `src/core/capture.ts` (the recorder child), `src/core/speakerMute.ts`,
 `src/core/modelFile.ts` (the two model files and their download), `src/core/nativeLayout.ts`,
-`src/vscode/dictation.ts` (the adapter), the `intent` seam in `src/core/completionService.ts`
-and `armIntent` in `src/vscode/completionProvider.ts`, and `native/` (the two binaries).
+`src/core/signalChild.ts` (the one `kill()` on a child), `src/vscode/dictation.ts` (the
+adapter), the `intent` seam in `src/core/completionService.ts` and `armIntent` in
+`src/vscode/completionProvider.ts`, `src/vscode/tightenDocComment.ts` (the command gesture 3
+hands over to), and `native/` (the two binaries).
 
 ## The gesture
 
@@ -63,14 +65,16 @@ wins.
 Where the cursor may be: anywhere on the line. An empty line generates the line; a partly
 written line has its rest filled, and there the ghost carries no line break, because the
 auto-closed `)` or `"` after the caret would otherwise ride onto the fresh line. Inside a
-comment the press refuses before the mic opens, on the same identity argument FIM's own
-in-comment rule makes.
+comment the press is a third site kind: the sentence is written into the comment and no code
+is generated (gesture 3, below). FIM's own in-comment rule stays dark there; only the press
+changed.
 
 The gesture is a reducer (`reduce(state, event)` in `dictationGesture.ts`) and the adapter only
 executes its actions, which is what lets the whole thing be swept headless: 96 blind rows
 including three seeds of 2000 random events hold four invariants (no second `start-capture`
 without a stop between, every way back to idle unmutes once and turns the indicator off, and so
-on). Two ordering facts the adapter carries because the editor imposes them: the accept's
+on; the comment site's way out ends on the heard label instead, and never carries an intent
+action). Two ordering facts the adapter carries because the editor imposes them: the accept's
 cursor move reaches the adapter BEFORE the accept command does, so a move off the site line is
 held for 300ms after an edit on it; and a caret that wandered during the take goes back to the
 press line before the trigger, because the intent is keyed on that line.
@@ -187,6 +191,23 @@ The speakers are muted for the take and restored only if this muted them: `wpctl
 on Linux, `osascript` on macOS, nothing yet on Windows (the channel says so). Setting
 `column80.dictation.muteSpeakers`, default on.
 
+Every signal to a child goes through `signalChild` (`src/core/signalChild.ts`), which sends
+nothing when the child has no pid. Why: Node keeps a ChildProcess whose spawn failed open until
+the `error` event lands on the next tick and never writes a pid into it, so `kill()` on that
+handle reaches the kernel with whatever bytes sat in the field. Measured under strace on node
+24: `kill(995632904, SIGKILL)`. The outcome was a draw each time: ESRCH and nothing, or a
+process of the same user killed (the unit runner locally, the hosted CI agent once, hence a 45
+minute job with no log), or EPERM making Node emit a second `error` so the real ENOENT was
+thrown into the test with no listener. The window in the product is a recorder that failed to
+spawn (deleted between the readiness check and the press, EACCES, EAGAIN) followed by Escape
+while arming. `CaptureTake.abort()` now returns whether it signalled, the grace timer in
+`stop()` takes the same guard, and so do the recogniser's deadline kill and `dispose()`, the
+Claude Code instruct child's abort, the hardware probe and the four LSP clients' `dispose()`.
+The rows are `test/blind-v67-p0-kill.test.cjs` (a missing path then `abort()` returns false,
+throws nothing, settles `binary-missing`; the fake recorder returns true; a strace witness with
+no `kill(` line when strace is on the box) and `test/review-v66-p12.test.cjs` twenty times
+green, the file that used to kill its own runner one run in five.
+
 ## Gesture 2, first half: dictate a declaration
 
 `src/core/dictationDoc.ts`. At a blank line that fn-gen's resolver says is not inside a function
@@ -211,20 +232,82 @@ decorator lines (`#[derive(Debug)]`, `[Serializable]`, `@dataclass`) to the head
 (`headThroughAttributes` on the bound); before session-v66 a dictated Rust enum landed the doc
 comment over a bare `#[derive(Debug)]`.
 
+## Gesture 3: dictate a comment
+
+The human's ask, the day after 3.3.0: "if I want to dictate a comment, I can't do that." A `//`
+or a `#` with the caret after it, or a caret inside an existing comment, refused before the mic
+opened. Since session-v67 that press dictates INTO the comment. Same press, mic, partials,
+second press and decode; the tail is different. No intent, no FIM request, no ghost, no
+`armIntent`. The reducer never emits `build-intent`, `trigger-fim` or `disarm-intent` on a
+comment site, in any phase, for any event (invariant I5 in the sweep), and the site is a field
+on the state (`commentSite`), not a new phase, so every capture-phase rule is the line site's.
+
+What decides the site is what decided the refusal: `cursorInComment` over the prefix from
+`commentScanStart` to the press caret, the same answer FIM's dark rule (`darkInComment` in the
+provider) reads. So `//|` is a comment site, `code(); // |` is one, `/** | */` is one, a `//`
+inside a string literal is code, and `|// text` with the caret before the token is the line
+gesture. Every kind the scanner reports (`line`, `block`, `doc`) counts, in all five languages,
+Python docstrings included. Nothing new was taught about comments.
+
+The tail. The cleaned sentence (`cleanTranscript`, as for a line: noise stripped, first letter
+capitalised, full stop appended; `heard nothing` refuses as before) is inserted at the caret
+captured at the press, on the press line, as ONE edit with undo stops on both sides. One space
+goes in front when the character before the caret exists and is not whitespace: `//|` lands
+`// Sentence.`, `// already|` lands `// already Sentence.`, `//  |` lands `//  Sentence.`. No
+trailing newline; the caret ends after the text. Then the adapter runs
+`column80.tightenDocComment` with no arguments, exactly as the palette runs it: same pick, same
+diff, same accept, one write path for the tidy. The adapter waits on the tighten only to log a
+rejection and reads nothing else from it; the plain sentence stays whatever the tighten decides,
+and if it refuses (tier disabled, a language it does not serve, its own prose gates) the channel
+says which refusal. The host tier proved one: inside a block comment (`/* */`, `/** */`) the
+sentence lands and the tighten refuses, since it renders line comments, Python docstrings and
+naked prose only. So Ctrl+Z is two steps when the tighten applied and one when it did not.
+
+Why no backticks in the inserted text (goal ruling 4): `backtickSpokenNames` is the intent leg's
+tool and there is no intent here. Backticks in file text are the tighten's job, behind its
+existence gate, so a name is never ticked twice and never ticked on a fold guess. Ticks from the
+fold matcher would also read to the tighten's delta gate as the developer's own.
+
+Escape is unchanged: arming and recording abort the take and go idle, finalising goes idle and
+the late transcript is ignored on the record. There is no requesting or ghost phase to cancel.
+Keystroke FIM stays dark after the insert by the provider's rule; a row asserts no `[fim]`
+request follows with `column80.enabled` on. The heard label lingers as it does today and hides
+on its own after 2.5 seconds.
+
+The record: `[dictate] press at <uri>:<line> (comment)`, the mic lines, `heard: <sentence>
+(decode=<n>ms)`, `comment inserted at <uri>:<line>:<col> chars=<n> insert=<n>ms` (`col` is
+0-based like the line, `chars` counts the leading space, `insert` is action to edit resolved),
+`tighten invoked`, then whatever `[tighten]` writes. The heard line comes before the insert
+(goal ruling 8; the goal's own contract bullet had them the other way and lost). The insert's
+edit must resolve true before the tighten runs; on a false or rejected edit the channel says
+`comment insert failed: <reason>`, the status bar carries the failed refusal, and no tighten
+runs. A re-record press carries `(comment) (re-record)`, and a re-record from `requesting`
+disarms the abandoned intent first whatever the new site kind, or the old sentence would ride
+the next keystroke request.
+
+Two rulings are the human's to overturn, batched in `session-v67/scraps.md`: the interactive
+tighten against a silent re-wrap with no pick, and no dictation-matched backticks against the
+fold-matched ticks the intent leg computes. Built as ruled.
+
 ## Refusals
 
 Every refusal is one sentence in the product's voice on the status bar and a `[dictate]
 refused: <kind>` line, in this order at the press: Remote (the extension host is the server and
 the mic is the client; a `ui`-kind companion extension is the fix and is its own session), no
 recorder for this platform, model not downloaded (the toast is re-offered), recogniser not
-running, language not served by FIM, no comment syntax for the language, cursor in a comment.
-After the take: no device, device would not open, heard nothing. Over Remote the recogniser is
-not started and the model is not offered.
+running, language not served by FIM, no comment syntax for the language. After the take: no
+device, device would not open, heard nothing. Over Remote the recogniser is not started and the
+model is not offered. A caret in a comment is a site, not a refusal, since session-v67; a
+language with no comment syntax mapped cannot have a caret in one, so `no-comment-row` still
+covers that.
 
 ## Evidence
 
 `[dictate]` on the channel (session-v66 added `cancelled by Escape ...`, `intent disarmed`,
-`commit retried`, `nothing landed: ...`): `press at <uri>:<line>`, `mic live press-to-first-buffer=<n>ms`,
+`commit retried`, `nothing landed: ...`; session-v67 added `press at <uri>:<line> (comment)`,
+`comment inserted at <uri>:<line>:<col> chars=<n> insert=<n>ms`, `comment insert failed:
+<reason>`, `tighten invoked`, `tighten failed: <reason>`, followed by the `[tighten]` lines the
+command writes on its own): `press at <uri>:<line>`, `mic live press-to-first-buffer=<n>ms`,
 `stop after <n>ms`, `heard: <sentence> (decode=<n>ms, stripped: ...)`, `backticks:
 matched=... refused=...`, `intent matched=<n> refused=<n>`, `[fim] intent injected lines=<n>
 under surface lines=<n>`, `ghost served` or `no ghost for the intent`, `ghost accepted`, `site
@@ -235,6 +318,17 @@ charged to the recogniser or cleaner, not to the feature; and mic close to ghost
 second on the reference box.
 
 ## Tests
+
+Session-v67: `test/blind-v67-p0-kill.test.cjs` (no signal to a child without a pid, the strace
+witness), `test/blind-v67-p1-reducer.test.cjs` (the comment site in the reducer: the arming
+state, the action order, I5, the nine site rows), `test/blind-v67-p2-adapter.test.cjs` (site
+detection through the real `press()` in five languages, one edit with the leading-space rule,
+the tighten chained on the edit, nothing FIM-shaped on `executeCommand`), and the host tier
+`test-vscode/v67-comment-dictation.test.js` under `v67commentdictation.vscode-test.mjs` (opener
+then chord, caret inside an existing comment, Escape while recording, `|// text` is not a site;
+the buffer diffed at `tighten invoked`, the tighten's own outcome recorded not asserted because
+the tier has no instruct model). The `in-comment` rows in `blind-v65-p4-gesture` are amended
+with a dated note, not deleted.
 
 `test/blind-v66-p1-shape.test.cjs` (no item ends on an empty line, every declaration shape in
 five languages), `test/blind-v66-p2-gesture.test.cjs` (cancel and nothing-landed),
@@ -254,5 +348,6 @@ label per language, buffer diffed before and after the accept. Green in all five
 `columns = append(columns, "threat_level")`.
 
 What a test cannot see: the pulse of the indicator, the partial text arriving as the user
-talks, the feel of the fresh line landing. Those are in `session-v65/visual-residual.md` for
-the human to walk.
+talks, the feel of the fresh line landing, the sentence landing inside a comment while the heard
+label is still up and the pick opening a beat later. Those are in `session-v65/visual-residual.md`
+and `session-v67/visual-residual.md` for the human to walk.

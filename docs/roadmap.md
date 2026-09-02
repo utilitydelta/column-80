@@ -2067,8 +2067,10 @@ What is still owed, and why it is an item rather than done:
   intents were.
 - **The fifty-gesture falsifier** in `docs/architecture/dictation.md` ("Evidence") has not run:
   one real gesture is one data point.
-- **A mis-heard word now persists.** The kept doc comment is the one place the recogniser's
-  output reaches the file ("An unt terminated literal" landed on the first real gesture). Either
+- **A mis-heard word now persists.** The kept doc comment was the one place the recogniser's
+  output reaches the file ("An unt terminated literal" landed on the first real gesture). Since
+  session-v67 the kept comment is the second place: dictating into a comment inserts the heard
+  sentence verbatim before the tighten runs, so the same mis-hearing lands there too. Either
   the fuzzy matcher of item 77 earns its place on the doc leg, or repair is told it may fix the
   comment too. Ruled nowhere yet.
 

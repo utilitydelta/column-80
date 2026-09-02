@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+**Escape after a failed microphone spawn no longer kills a random process.**
+
+A recorder spawn that failed (the binary gone between the readiness check and the press, or a
+spawn error such as EACCES) followed by Escape while arming sent SIGKILL to a garbage pid: Node
+keeps the handle open until the spawn error lands and never writes a pid into it. The 3.3.0
+CI job hung for 45 minutes with no log, the next push failed one test row with a spawn ENOENT
+thrown into it, and a garbage-pid kill is the one mechanism that produces both. Every signal to a child now checks the child has a pid first, and aborting a take says whether
+it signalled anything.
+
+**Dictate a comment.**
+
+Type `//` (or `#` in Python) and press the chord, or put the caret inside an existing comment
+and press it: what you say is written into the comment, capitalised with a full stop, and no
+code is generated. Tighten Doc Comment then opens on the comment with its pick and diff, the way
+it runs from the palette. The tidy opens for line comments and Python docstrings; inside a
+block comment (`/* */`, `/** */`) the sentence lands and the tidy refuses. Ctrl+Z is two steps
+when the tighten applied and one when it did not. Before this a press in a comment refused with "dictation writes code, not the spec".
+
 ## 3.3.0
 
 **A dictated ghost at module level lands, and Escape is the way out.**

@@ -241,6 +241,15 @@ Enums, structs, records, classes, interfaces, traits and type aliases all land t
 attribute or decorator the model puts above the head (`#[derive(Debug)]`, `[Serializable]`,
 `@dataclass`) rides along with it.
 
+**Dictate a comment.** Type `//` (or `#` in Python) and press the chord, or put the caret
+inside a comment you already have and press it. No code is generated: what you said lands in
+the comment as a sentence, capitalised with a full stop, one space after whatever is already
+there. Then the tighten opens on it with its pick and diff, the palette command
+`Column 80: Tighten Doc Comment`, which re-wraps the comment at 80 and backticks the names it
+can prove exist. The tidy opens for line comments and Python docstrings; inside a block
+comment (`/* */`, `/** */`) the sentence lands and the tidy refuses. Ctrl+Z is two steps when
+the tighten applied and one when it did not.
+
 The rules of the road:
 
 - Each press is its own sentence. Chaining is a new press on the same line; the last sentence is
@@ -252,8 +261,8 @@ The rules of the road:
 - If the editor draws nothing for a dictated ghost, the gesture ends on its own within a second
   and the status bar says so, rather than leaving the "heard:" label up.
 - A partly written line has its rest filled, and the cursor stays where it is.
-- Inside a comment the press refuses. So does a file FIM does not serve, and a Remote window
-  (the microphone is on your machine and the extension host is on the server).
+- A file FIM does not serve refuses the press, and so does a Remote window (the microphone
+  is on your machine and the extension host is on the server).
 - Dictation without the keystroke ghosts: turn `column80.enabled` off (or Toggle FIM
   Autocomplete). A dictated request is still served; nothing is generated on typing.
 - Talk as long as you like. The whole take is decoded; nothing is cut.
