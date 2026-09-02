@@ -262,7 +262,8 @@ test("SUPERSEDED: the proposal lifecycle three plus the v65 dictation chords (on
   }
   assert.deepStrictEqual(
     [...new Set(bindings.map((b) => b.command))].sort(),
-    ["column80.dictate", "column80.dismissDictationGhost", "column80.dismissScopedGhost", "column80.proposalAccept", "column80.proposalReject"],
+    // session-v66: Escape cancels dictation at every point, one command under two contexts.
+    ["column80.cancelDictation", "column80.dictate", "column80.dismissDictationGhost", "column80.dismissScopedGhost", "column80.proposalAccept", "column80.proposalReject"],
   );
 });
 

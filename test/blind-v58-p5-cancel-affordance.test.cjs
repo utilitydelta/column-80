@@ -378,6 +378,10 @@ test("C2 [the keybinding set] SUPERSEDED: the v65 dictation pair is the only add
   assert.deepStrictEqual(
     seen,
     [
+      // SUPERSEDED 2026-09-02 (session-v66, awaiting ratification): Escape cancels dictation
+      // in every phase, so the mic-open and in-flight phases carry their own Escape.
+      "column80.cancelDictation :: escape",
+      "column80.cancelDictation :: escape",
       "column80.dictate :: ctrl+shift+alt+d",
       "column80.dictate :: f9",
       "column80.dictate :: shift+alt+d",

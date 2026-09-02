@@ -54,9 +54,14 @@ export type GestureEvent =
   | { type: "dismissed" }
   | { type: "edit"; site: Site }
   | { type: "cursor-moved"; site: Site }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  /** Escape. `now` only feeds the elapsed figure on the record. */
+  | { type: "cancel"; now: number }
+  /** The adapter's landing watch: the auto-commit resolved and no edit arrived on the site
+   *  inside the grace. The editor never drew the item (session-v66). */
+  | { type: "nothing-landed" };
 
-export type RefusalKind = DictationRefusal | "in-comment" | "not-served" | "failed";
+export type RefusalKind = DictationRefusal | "in-comment" | "not-served" | "failed" | "cancelled" | "nothing-landed";
 
 export type Action =
   | { type: "hide-ghost" }
@@ -65,6 +70,8 @@ export type Action =
   | { type: "start-capture" }
   | { type: "stop-capture" }
   | { type: "abort-capture" }
+  /** Drop the armed intent so the next keystroke request cannot consume a cancelled one. */
+  | { type: "disarm-intent" }
   | { type: "indicator"; mode: "armed" | "live" | "thinking" | "heard" | "off"; text?: string }
   | { type: "transcribe" }
   | { type: "build-intent"; sentence: string; languageId: string; indentColumns: number }
@@ -79,7 +86,7 @@ export interface Step {
 
 const EVENT_TYPES = new Set<string>([
   "press", "first-buffer", "partial", "stopped", "transcript", "intent", "served",
-  "accepted", "dismissed", "edit", "cursor-moved", "error",
+  "accepted", "dismissed", "edit", "cursor-moved", "error", "cancel", "nothing-landed",
 ]);
 const PHASES = new Set<string>(["idle", "arming", "recording", "finalising", "requesting", "ghost"]);
 const CAPTURE_PHASES = new Set<Phase>(["arming", "recording", "finalising"]);
@@ -231,6 +238,29 @@ function error(state: GestureState, event: Extract<GestureEvent, { type: "error"
   return { state: IDLE, actions };
 }
 
+/** Escape: the way out of every phase. The capture phases abort the take; `requesting` drops
+ *  the armed intent so a late answer has nothing to land on; a drawn ghost is dismissed. */
+function cancel(state: GestureState, event: Extract<GestureEvent, { type: "cancel" }>): Step {
+  const refuse: Action = { type: "refuse", kind: "cancelled" };
+  switch (state.phase) {
+    case "arming":
+      return { state: IDLE, actions: [{ type: "abort-capture" }, { type: "unmute" }, indicator("off"), refuse, log("[dictate] cancelled by Escape before the mic opened")] };
+    case "recording": {
+      const now = typeof event.now === "number" && Number.isFinite(event.now) ? event.now : undefined;
+      const elapsed = now !== undefined && state.pressedAt !== undefined ? now - state.pressedAt : 0;
+      return { state: IDLE, actions: [{ type: "abort-capture" }, { type: "unmute" }, indicator("off"), refuse, log(`[dictate] cancelled by Escape after ${ms(elapsed)}`)] };
+    }
+    case "finalising":
+      return { state: IDLE, actions: [{ type: "abort-capture" }, { type: "unmute" }, indicator("off"), refuse, log("[dictate] cancelled by Escape while decoding")] };
+    case "requesting":
+      return { state: IDLE, actions: [{ type: "disarm-intent" }, { type: "unmute" }, indicator("off"), refuse, log("[dictate] cancelled by Escape while requesting")] };
+    case "ghost":
+      return { state: IDLE, actions: [indicator("off"), log("[dictate] ghost dismissed")] };
+    default:
+      return ignored(state, event);
+  }
+}
+
 export function reduce(state: GestureState, event: GestureEvent): Step {
   if (state === null || typeof state !== "object" || !PHASES.has((state as GestureState).phase)) {
     return { state: IDLE, actions: [] };
@@ -295,6 +325,16 @@ export function reduce(state: GestureState, event: GestureEvent): Step {
       return siteLeft(state, event);
     case "error":
       return error(state, event);
+    case "cancel":
+      return cancel(state, event);
+    case "nothing-landed":
+      if (state.phase !== "ghost") {
+        return ignored(state, event);
+      }
+      return {
+        state: IDLE,
+        actions: [indicator("off"), { type: "refuse", kind: "nothing-landed" }, log("[dictate] nothing landed: no edit arrived on the site after the commit")],
+      };
     default:
       return { state: IDLE, actions: [] };
   }

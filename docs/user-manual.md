@@ -203,8 +203,10 @@ You used to type a comment above the cursor saying what the next line does, let 
 and then delete the comment. Say it instead. Put the cursor where the next statement goes,
 press `shift+alt+d`, watch the cursor line show a pulsing dot and "listening", say the sentence,
 press `shift+alt+d` again. What was heard shows on the line as a label, the code lands in the
-file, and the cursor drops to a fresh line at the block's indent with nothing pressed. Ctrl+Z
-takes it back. The sentence never enters the file. (`column80.dictation.autoAccept` off leaves
+file, and the cursor drops to a fresh line at the block's indent with nothing pressed. At
+module level (outside any block) the cursor stays at the end of the landed code instead, one
+Enter away: the editor refuses to draw a ghost that ends on an empty line, so there is no
+indented fresh line to give you there. Ctrl+Z takes it back. The sentence never enters the file. (`column80.dictation.autoAccept` off leaves
 the code as a ghost for Tab or Escape instead.)
 
 What makes it work is the sentence, not the words. The model reads intent: "loop over the tiles
@@ -233,14 +235,22 @@ becomes the DOC COMMENT and stays in the file, in the language's own form (`///`
 `//` in Go, `/** */` in TypeScript, a docstring inside the body in Python), and the model writes
 the declaration head under it. Where the head opens a body, the body's first line and the closer
 land too and the caret is inside, ready for the next dictation or Generate Function Body. The
-compiler check and repair on the head, and the body generated from the doc comment, are
-roadmap item 78.
+accept runs the same compiler check as any ghost, so a head whose empty body does not compile
+goes straight to repair, and repair writes the body from the doc comment and the signature.
+Enums, structs, records, classes, interfaces, traits and type aliases all land this way; an
+attribute or decorator the model puts above the head (`#[derive(Debug)]`, `[Serializable]`,
+`@dataclass`) rides along with it.
 
 The rules of the road:
 
 - Each press is its own sentence. Chaining is a new press on the same line; the last sentence is
   not carried.
 - A press while a ghost shows dismisses it and records again. Escape dismisses without recording.
+- Escape cancels at any point: while the mic is open (nothing is sent), while the take is
+  decoding or the code is being generated (the answer is dropped), or over the ghost. It works
+  with the Output panel focused too. With a vim keymap, Escape leaves insert mode instead.
+- If the editor draws nothing for a dictated ghost, the gesture ends on its own within a second
+  and the status bar says so, rather than leaving the "heard:" label up.
 - A partly written line has its rest filled, and the cursor stays where it is.
 - Inside a comment the press refuses. So does a file FIM does not serve, and a Remote window
   (the microphone is on your machine and the extension host is on the server).
@@ -1022,13 +1032,16 @@ Every command is under the **Column 80** category in the palette.
 | Clear Model Context | panel title |
 | Dump Completion Items At Cursor | palette, diagnostic only |
 
-Three keybindings ship, all three lifecycle:
+The keybindings that ship are lifecycle keys and the dictation toggle:
 
 | Key | When |
 |---|---|
 | `Enter` | accept, in a Column 80 diff preview |
 | `Escape` | reject, in a Column 80 diff preview (defers to the find widget or a selection first) |
 | `Escape` | dismiss the scoped ghost, when one is in force and the suggest widget is closed |
+| `Escape` | dismiss the dictated ghost, when one shows |
+| `Escape` | cancel dictation, while the mic is open or the take is decoding or generating (no editor focus needed) |
+| `shift+alt+d` | dictate (toggle the mic); the chord is `column80.dictation.shortcut` |
 
 The gestures ship with no default keybindings. Bind the ones you use through **Preferences: Open Keyboard Shortcuts** and search `column80`.
 

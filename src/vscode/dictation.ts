@@ -37,6 +37,9 @@ export const DICTATION_ACCEPTED_COMMAND = "column80.dictationAccepted";
 export const DISMISS_DICTATION_GHOST_COMMAND = "column80.dismissDictationGhost";
 export const DICTATION_GHOST_CONTEXT = "column80.dictationGhost";
 export const RECORDING_CONTEXT = "column80.recording";
+/** Raised while the take is decoding or the FIM request is in flight: Escape cancels there too. */
+export const DICTATION_BUSY_CONTEXT = "column80.dictationBusy";
+export const CANCEL_DICTATION_COMMAND = "column80.cancelDictation";
 
 /** The trailing window a streaming partial decodes, and how often. The spike held a 300ms loop
  *  on a six second window with margin; a longer window costs decode time per tick. */
@@ -51,6 +54,15 @@ const DECLINED_KEY = "column80.dictation.modelDeclined";
 /** How long after the ghost is served the gesture commits it; the editor needs a frame to
  *  draw the item before the commit command can take it. */
 const AUTO_COMMIT_DELAY_MS = 120;
+/** How long after the auto-commit resolves the gesture waits for the site's edit before it
+ *  concludes the editor never drew the item (session-v66: an item ending on an empty line is
+ *  dropped silently, and the commit is a no-op). */
+const LANDING_GRACE_MS = 300;
+/** Commits the watch retries before it concludes nothing landed. The first commit fires 120ms
+ *  after the provider returned the item, and a busy host (Pylance's, measured) can render it
+ *  later than that; a retry lands it, and only an item the editor refuses three times is one
+ *  that was never going to draw. */
+const LANDING_RETRIES = 2;
 /** How long the heard label stays after the code landed. */
 const HEARD_LINGER_MS = 2500;
 
@@ -92,6 +104,11 @@ export function readDictationConfig(): DictationConfig {
 
 export interface DictationWiring {
   armIntent(intent: ArmedIntent): void;
+  /** Drop the armed intent without serving it (Escape while requesting). */
+  disarmIntent?: () => void;
+  /** Whether the latest request at the site was the dictated one; a keystroke request after it
+   *  owns whatever the editor draws, and the gesture must not commit that. */
+  dictatedIsLatest?: (uri: string, line: number) => boolean;
   /** fn-gen's resolver: undefined at a blank line means the cursor is not inside a function
    *  body, which is what makes the line a declaration site. */
   resolveFunction?: (document: vscode.TextDocument, position: vscode.Position) => Promise<unknown>;
@@ -164,6 +181,9 @@ export class Dictation implements vscode.Disposable {
   private lingerTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly downloads = new Map<string, Promise<void>>();
   private heldMove: ReturnType<typeof setTimeout> | undefined;
+  private landedSinceCommit = false;
+  private landingWatch: ReturnType<typeof setTimeout> | undefined;
+  private landingAttempts = 0;
   private fimStartedAt = 0;
   private decodeMs = 0;
   private readonly disposables: vscode.Disposable[] = [];
@@ -364,6 +384,20 @@ export class Dictation implements vscode.Disposable {
     const phase = this.state.phase;
     void vscode.commands.executeCommand("setContext", RECORDING_CONTEXT, phase === "arming" || phase === "recording");
     void vscode.commands.executeCommand("setContext", DICTATION_GHOST_CONTEXT, phase === "ghost");
+    void vscode.commands.executeCommand("setContext", DICTATION_BUSY_CONTEXT, phase === "finalising" || phase === "requesting");
+  }
+
+  /** Escape. A drawn ghost is hidden first, the way the dismiss command does it; every other
+   *  phase is the reducer's call. */
+  cancel(): void {
+    if (this.landingWatch !== undefined) {
+      clearTimeout(this.landingWatch);
+      this.landingWatch = undefined;
+    }
+    if (this.state.phase === "ghost") {
+      void vscode.commands.executeCommand("editor.action.inlineSuggest.hide").then(undefined, () => undefined);
+    }
+    this.dispatch({ type: "cancel", now: Date.now() });
   }
 
   /** The shortcut. Everything the reducer needs to decide is read here, once. */
@@ -429,6 +463,7 @@ export class Dictation implements vscode.Disposable {
     const first = e.contentChanges[0];
     const site = { uri: e.document.uri.toString(), line: first.range.start.line };
     if (this.state.phase === "ghost" && this.state.site !== undefined && site.uri === this.state.site.uri && site.line === this.state.site.line) {
+      this.landedSinceCommit = true;
       // An accept lands as an edit on the site line, then the cursor moves to the fresh line,
       // and only THEN does the item's command run. Without a grace the move would read as
       // "site left" and the accept would arrive in idle (measured in the host tier).
@@ -466,6 +501,10 @@ export class Dictation implements vscode.Disposable {
       clearTimeout(this.heldMove);
       this.heldMove = undefined;
     }
+    if (this.landingWatch !== undefined) {
+      clearTimeout(this.landingWatch);
+      this.landingWatch = undefined;
+    }
     this.holdMovesUntil = 0;
     // The heard label stays on screen a moment after the code lands, so the user can read
     // what the line was written from; the reducer's `off` is deferred for it.
@@ -483,11 +522,69 @@ export class Dictation implements vscode.Disposable {
       if (this.state.phase !== "ghost") {
         return;
       }
-      void Promise.resolve(vscode.commands.executeCommand("editor.action.inlineSuggest.commit")).then(
-        () => this.log("[dictate] ghost committed by the gesture"),
-        (err) => this.log(`[dictate] auto-commit failed: ${String(err)}`),
-      );
+      this.landedSinceCommit = false;
+      this.landingAttempts = 0;
+      this.commitAndWatch();
     }, AUTO_COMMIT_DELAY_MS);
+  }
+
+  private commitAndWatch(): void {
+    const site = this.state.site;
+    if (site !== undefined && this.wiring.dictatedIsLatest !== undefined && !this.wiring.dictatedIsLatest(site.uri, site.line)) {
+      // A keystroke request at the site came after the dictated one; whatever the editor
+      // draws now is that request's, and committing it would land the wrong ghost.
+      this.log("[dictate] the dictated ghost was superseded by a keystroke request at the site; not committed");
+      void vscode.commands.executeCommand("editor.action.inlineSuggest.hide").then(undefined, () => undefined);
+      this.dispatch({ type: "nothing-landed" });
+      return;
+    }
+    this.landingAttempts += 1;
+    void Promise.resolve(vscode.commands.executeCommand("editor.action.inlineSuggest.commit")).then(
+      () => {
+        this.log(this.landingAttempts === 1 ? "[dictate] ghost committed by the gesture" : `[dictate] commit retried (${this.landingAttempts - 1} of ${LANDING_RETRIES}): no edit landed inside the grace`);
+        this.watchLanding();
+      },
+      (err) => {
+        // A rejected commit is an attempt that landed nothing; the watch decides, as it does
+        // for a resolved one (review finding 3).
+        this.log(`[dictate] auto-commit failed: ${String(err)}`);
+        this.watchLanding();
+      },
+    );
+  }
+
+  /** The commit resolved. If the site's edit has not arrived by the grace, the editor never
+   *  drew the item and the gesture must not sit in `ghost` with a stale label. */
+  private watchLanding(): void {
+    if (this.landingWatch !== undefined) {
+      clearTimeout(this.landingWatch);
+    }
+    this.landingWatch = setTimeout(() => {
+      this.landingWatch = undefined;
+      if (this.state.phase !== "ghost") {
+        return;
+      }
+      if (this.landedSinceCommit) {
+        // An edit reached the site but the accept command has not: the goal's reasoned third
+        // defect. One more grace, then the gesture ends rather than sitting in `ghost`.
+        this.landingWatch = setTimeout(() => {
+          this.landingWatch = undefined;
+          if (this.state.phase === "ghost") {
+            this.log("[dictate] an edit landed on the site but no accept arrived; the gesture ends");
+            this.dispatch({ type: "nothing-landed" });
+          }
+        }, ACCEPT_GRACE_MS);
+        return;
+      }
+      if (this.landingAttempts <= LANDING_RETRIES) {
+        this.commitAndWatch();
+        return;
+      }
+      // An item the editor refused three times will not draw later either; hide whatever it
+      // might still hold so no orphan ghost outlives the gesture.
+      void vscode.commands.executeCommand("editor.action.inlineSuggest.hide").then(undefined, () => undefined);
+      this.dispatch({ type: "nothing-landed" });
+    }, LANDING_GRACE_MS);
   }
 
   // ---- actions out
@@ -521,6 +618,12 @@ export class Dictation implements vscode.Disposable {
         return;
       case "stop-capture":
         this.stopCapture();
+        return;
+      case "disarm-intent":
+        // A later answer for this gesture must find nothing to end; the provider must not
+        // hand the cancelled comment to the next keystroke request.
+        this.gestureId += 1;
+        this.wiring.disarmIntent?.();
         return;
       case "abort-capture":
         this.clearPartials();
@@ -782,10 +885,10 @@ export class Dictation implements vscode.Disposable {
       roots: this.pendingRoots,
       eol,
       indent,
-      onServed: (ghost) => {
+      onServed: (ghost): boolean => {
         if (gestureId !== this.gestureId) {
           this.log(`[dictate] served answer for an earlier gesture ignored (ghost=${ghost})`);
-          return;
+          return false;
         }
         const now = Date.now();
         this.log(
@@ -798,6 +901,7 @@ export class Dictation implements vscode.Disposable {
           }),
         );
         this.dispatch({ type: "served", ghost });
+        return true;
       },
     });
     // HIDE, then trigger, always. The explicit trigger preserves whatever item is drawn and
@@ -806,7 +910,15 @@ export class Dictation implements vscode.Disposable {
     // what the gesture committed on the human's box while the dictated serve sat at index 1.
     void Promise.resolve(vscode.commands.executeCommand("editor.action.inlineSuggest.hide"))
       .then(undefined, () => undefined)
-      .then(() => vscode.commands.executeCommand("editor.action.inlineSuggest.trigger"))
+      .then(() => {
+        // Escape between the hide and the trigger: the intent is disarmed and the gesture is
+        // idle, so a trigger now would be a plain request at the cancelled site.
+        if (gestureId !== this.gestureId || this.state.phase !== "requesting") {
+          this.log("[dictate] trigger withheld: the gesture ended before the request left");
+          return undefined;
+        }
+        return vscode.commands.executeCommand("editor.action.inlineSuggest.trigger");
+      })
       .then(undefined, (err) => this.dispatch({ type: "error", message: `the inline suggestion trigger failed: ${String(err)}` }));
   }
 
@@ -818,7 +930,11 @@ export class Dictation implements vscode.Disposable {
           ? `Column 80: FIM does not serve ${detail ?? "this language"}; add it to column80.fimLanguages first.`
           : kind === "failed"
             ? `Column 80: dictation stopped: ${detail ?? "unknown error"}`
-            : refusalSentence(kind, detail);
+            : kind === "cancelled"
+              ? "Column 80: dictation cancelled."
+              : kind === "nothing-landed"
+                ? "Column 80: nothing landed for the dictated ghost."
+                : refusalSentence(kind, detail);
     void vscode.window.setStatusBarMessage(sentence, REFUSAL_STATUS_MS);
     if (kind === "model-missing") {
       void this.ensureReady(true, true);
@@ -970,6 +1086,10 @@ export class Dictation implements vscode.Disposable {
     if (this.lingerTimer !== undefined) {
       clearTimeout(this.lingerTimer);
     }
+    if (this.landingWatch !== undefined) {
+      clearTimeout(this.landingWatch);
+      this.landingWatch = undefined;
+    }
     this.state = IDLE;
     this.syncContextKeys();
     if (this.heldMove !== undefined) {
@@ -1017,6 +1137,7 @@ export function registerDictation(
       );
       dictation.accepted();
     }),
+    vscode.commands.registerCommand(CANCEL_DICTATION_COMMAND, () => dictation.cancel()),
     vscode.commands.registerCommand(DISMISS_DICTATION_GHOST_COMMAND, async () => {
       await Promise.resolve(vscode.commands.executeCommand("editor.action.inlineSuggest.hide")).catch(() => undefined);
       dictation.dispatch({ type: "dismissed" });

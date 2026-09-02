@@ -30,6 +30,36 @@ for a moment. `column80.dictation.autoAccept` off leaves the ghost for Tab or Es
 A press while a ghost shows dismisses it and re-records. Each press is its own comment: nothing
 is carried to the next request.
 
+At MODULE LEVEL the fresh line is withheld and the caret stays at the end of the landed text,
+one Enter away. The editor never renders an inline item that ends on an empty line (measured
+with a bare provider, no product code in the loop, on VS Code 1.132.0 and 1.135.0; the row is
+`test-vscode/v66-module-level.test.js` A), so a fresh line with no indent would lose the whole
+item silently. `freshLineAfter` in `src/core/dictationDoc.ts` is the one place that decides it,
+for the line ghost and the declaration ghost alike. The human found this on 3.2.0's release day:
+a dictated `export type Point = {...};` at the last line of a file served, committed to nothing,
+and left the "heard:" label on the status bar (session-v66).
+
+A commit that lands nothing ends the gesture. After the auto-commit resolves the adapter waits
+300ms for the site's edit, retries the commit twice (a busy host renders the item later than
+the first commit; measured with Pylance), and only then hides whatever the editor holds and
+dispatches `nothing-landed`: idle, indicator off, `nothing landed: the editor drew no ghost for
+the item` on the channel and one sentence on the status bar. An edit that reaches the site
+with no accept command behind it gets one more grace and then ends the gesture the same way
+(`an edit landed on the site but no accept arrived`). With keystroke FIM on, a keystroke
+request that follows the dictated one at the site owns whatever the editor draws, and the
+gesture refuses to commit it (`superseded by a keystroke request`). The editor can drop an
+item for reasons this session did not meet; the state machine survives every one.
+
+Escape cancels at every point. While the mic is arming or open the take is aborted, the
+speakers put back, nothing requested (`cancelled by Escape after <n>ms`). While the take
+decodes or the request is in flight the gesture goes idle, the armed intent is disarmed
+(`intent disarmed`), and the late transcript or served answer is ignored on the record. Over a
+drawn ghost it dismisses. The two bindings for the mic-open and in-flight phases
+(`column80.recording`, `column80.dictationBusy`) do NOT require editor focus, because the human
+reads the Output panel while talking; the ghost binding does. Escape is not the shortcut: a
+press while recording still stops and generates. A vim keymap's Escape leaves insert mode and
+wins.
+
 Where the cursor may be: anywhere on the line. An empty line generates the line; a partly
 written line has its rest filled, and there the ghost carries no line break, because the
 auto-closed `)` or `"` after the caret would otherwise ride onto the fresh line. Inside a
@@ -168,8 +198,18 @@ item: the doc comment, the head, and where the head opens a body an empty body l
 indent unit plus the closer (a docstring line in Python), with the caret offset the accept
 command then honours. One accept, one write path, the comment kept because it is part of the
 ghost. The scout's measurement on 100 documented Rust heads (doc comment present: 81 declare,
-31 name right, 16 whole head within 0.9) is the ceiling this half ships at; the compiler check
-and repair on the head, and fn-gen's body from the doc, are roadmap item 78.
+31 name right, 16 whole head within 0.9) is the ceiling this half ships at.
+
+The accept runs through `column80.fimAccepted`, so the compiler check and the repair loop
+already run on the landed head: on 2026-09-02 the human dictated the doc comment of
+`endOfLiteral` in `src/core/brackets.ts`, the head landed, tsc went red on the empty body, and
+repair wrote the body. What roadmap item 78 still owes is the dictated name and parameter list
+matched rather than guessed, and the fifty-gesture falsifier. A head that opens no body (a type
+alias, `struct Foo;`, a trait method) lands with the caret at its end at module level, or on a
+fresh line at the block's indent inside a block. A dictated request reads through attribute and
+decorator lines (`#[derive(Debug)]`, `[Serializable]`, `@dataclass`) to the head under them
+(`headThroughAttributes` on the bound); before session-v66 a dictated Rust enum landed the doc
+comment over a bare `#[derive(Debug)]`.
 
 ## Refusals
 
@@ -183,7 +223,8 @@ not started and the model is not offered.
 
 ## Evidence
 
-`[dictate]` on the channel: `press at <uri>:<line>`, `mic live press-to-first-buffer=<n>ms`,
+`[dictate]` on the channel (session-v66 added `cancelled by Escape ...`, `intent disarmed`,
+`commit retried`, `nothing landed: ...`): `press at <uri>:<line>`, `mic live press-to-first-buffer=<n>ms`,
 `stop after <n>ms`, `heard: <sentence> (decode=<n>ms, stripped: ...)`, `backticks:
 matched=... refused=...`, `intent matched=<n> refused=<n>`, `[fim] intent injected lines=<n>
 under surface lines=<n>`, `ghost served` or `no ghost for the intent`, `ghost accepted`, `site
@@ -195,6 +236,11 @@ second on the reference box.
 
 ## Tests
 
+`test/blind-v66-p1-shape.test.cjs` (no item ends on an empty line, every declaration shape in
+five languages), `test/blind-v66-p2-gesture.test.cjs` (cancel and nothing-landed),
+`test-vscode/v66-module-level.test.js` (the editor rule with no product in the loop, the
+module-level shapes landing, Escape in each phase, a forced no-op commit; the recogniser is
+`helpers/fake-recogniser.cjs`, so a row dictates any sentence), and from session-v65:
 `test/blind-v65-p2-dictation.test.cjs` (the core contract), `blind-v65-p3-runtime` (the
 processes, with a fake recorder and a fake server, plus witness rows on the real binaries when
 present), `blind-v65-p4-gesture` (the reducer sweep), `impl-v65-p4-intent-seam` (the service

@@ -2,7 +2,7 @@
   "name": "column-80",
   "displayName": "Column 80",
   "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "publisher": "utilitydelta",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -186,6 +186,11 @@
         "category": "Column 80"
       },
       {
+        "command": "column80.cancelDictation",
+        "title": "Cancel Dictation",
+        "category": "Column 80"
+      },
+      {
         "command": "column80.downloadSpeechModel",
         "title": "Download Speech Model",
         "category": "Column 80"
@@ -211,6 +216,16 @@
         "command": "column80.dismissDictationGhost",
         "key": "escape",
         "when": "editorTextFocus && column80.dictationGhost && !suggestWidgetVisible && !findWidgetVisible && !editorHasSelection && !editorHoverVisible && !referenceSearchVisible && !vim.active && !inSnippetMode && !editorHasMultipleSelections && !inlineChatVisible && !editorReadonly && !inDebugRepl && !parameterHintsVisible"
+      },
+      {
+        "command": "column80.cancelDictation",
+        "key": "escape",
+        "when": "column80.recording && !editorHasSelection && !editorHasMultipleSelections && !editorReadonly && !suggestWidgetVisible && !findWidgetVisible && !inQuickOpen && !editorHoverVisible && !referenceSearchVisible && !vim.active && !inSnippetMode && !inlineChatVisible && !inDebugRepl && !parameterHintsVisible"
+      },
+      {
+        "command": "column80.cancelDictation",
+        "key": "escape",
+        "when": "column80.dictationBusy && !editorHasSelection && !editorHasMultipleSelections && !editorReadonly && !suggestWidgetVisible && !findWidgetVisible && !inQuickOpen && !editorHoverVisible && !referenceSearchVisible && !vim.active && !inSnippetMode && !inlineChatVisible && !inDebugRepl && !parameterHintsVisible"
       },
       {
         "command": "column80.dictate",
@@ -671,7 +686,7 @@
             "F9 (VS Code's Toggle Breakpoint; only pick this if you never use it)",
             "No default chord; bind column80.dictate yourself in Keyboard Shortcuts"
           ],
-          "markdownDescription": "The chord that toggles dictation. Pick one here, or `none` and bind `column80.dictate` to anything in the Keyboard Shortcuts editor. Ctrl+Alt chords are not offered: that is AltGr on many Windows layouts."
+          "markdownDescription": "The chord that toggles dictation. Pick one here, or `none` and bind `column80.dictate` to anything in the Keyboard Shortcuts editor. Ctrl+Alt chords are not offered: that is AltGr on many Windows layouts. Escape cancels a take at any point (`column80.cancelDictation`)."
         }
       }
     },

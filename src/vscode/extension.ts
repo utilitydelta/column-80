@@ -186,6 +186,8 @@ export function activate(context: vscode.ExtensionContext): void {
   // download), and the gesture arms one intent on the provider per press.
   registerDictation(context, output, {
     armIntent: (intent) => provider.armIntent(intent),
+    disarmIntent: () => provider.disarmIntent(),
+    dictatedIsLatest: (uri, line) => provider.dictatedIsLatest(uri, line),
     resolveFunction: (document, position) => resolveFunctionAtCursor(document, position),
   });
 

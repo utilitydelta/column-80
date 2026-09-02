@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.3.0
+
+**A dictated ghost at module level lands, and Escape is the way out.**
+
+The editor never draws an inline item that ends on an empty line, and a dictated ghost outside
+any block ended on one (its fresh line carried no indent), so a type alias, a `struct Foo;` or
+any head that opens no body served, committed to nothing, and left the "heard:" label on the
+status bar. Now the fresh line is withheld at module level and the caret stays at the end of
+the landed code, one Enter away. A commit that lands nothing ends the gesture on its own,
+retrying the commit twice for a slow host first, and says so on the status bar. Escape cancels
+dictation at every point: mic open, decoding, generating, or over the ghost, with the Output
+panel focused or not. A dictated head reads through the attribute or decorator lines the
+model puts above it (`#[derive(Debug)]`, `[Serializable]`, `@dataclass`) instead of landing the
+doc comment over a bare attribute. A C# positional record ending in `;` no longer gets a body.
+
 ## 3.2.0
 
 **Dictate a declaration, and the sentence stays as the doc comment.**

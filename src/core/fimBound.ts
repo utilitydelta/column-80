@@ -39,6 +39,60 @@ export interface BoundContext {
   currentLinePrefix: string;
   /** Override for MAX_BOUND_LINES. Tests only; production passes nothing. */
   maxLines?: number;
+  /** A dictated request: attribute and decorator lines at the head of the generation
+   *  (`#[derive(Debug)]`, `[Serializable]`, `@dataclass`) are a prefix of the head, kept and
+   *  read through, rather than a one-line unit the bound stops on. Measured 2026-09-02: a
+   *  dictated Rust enum served `#[derive(Debug)]` as its first line and the line bound landed
+   *  the doc comment over a bare attribute. Keystroke FIM is untouched. */
+  headThroughAttributes?: boolean;
+}
+
+/** Attribute and decorator lines per language family: whole-line, nothing else on them. */
+const ATTRIBUTE_LINE: Record<string, RegExp> = {
+  rust: /^#!?\[[^\]]*\]$/,
+  csharp: /^\[[^\]]*\]$/,
+  python: /^@[\w.]+(\(.*\))?$/,
+  typescript: /^@[\w.]+(\(.*\))?$/,
+  typescriptreact: /^@[\w.]+(\(.*\))?$/,
+  javascript: /^@[\w.]+(\(.*\))?$/,
+  javascriptreact: /^@[\w.]+(\(.*\))?$/,
+};
+
+/** Every content line from `lead` on is an attribute or decorator line. */
+function attributesOnly(lines: string[], lead: number, ctx: BoundContext): boolean {
+  const pattern = ATTRIBUTE_LINE[ctx.languageId];
+  if (pattern === undefined) {
+    return false;
+  }
+  let seen = 0;
+  for (let i = lead; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t === "") {
+      continue;
+    }
+    if (!pattern.test(t)) {
+      return false;
+    }
+    seen++;
+  }
+  return seen > 0;
+}
+
+/** The index of the head line: past the leading blanks, and past any attribute lines when the
+ *  context asks for it, as long as a content line follows them. */
+export function headLineIndex(lines: string[], lead: number, ctx: BoundContext): number {
+  if (ctx.headThroughAttributes !== true) {
+    return lead;
+  }
+  const pattern = ATTRIBUTE_LINE[ctx.languageId];
+  if (pattern === undefined) {
+    return lead;
+  }
+  let at = lead;
+  while (at < lines.length - 1 && pattern.test(lines[at].trim()) && lines[at + 1].trim() !== "") {
+    at++;
+  }
+  return at;
 }
 
 export type BoundRule = "line" | "statement" | "construct" | "cap" | "empty";
@@ -287,7 +341,7 @@ export function boundContinuation(raw: string, ctx: BoundContext): BoundResult {
     return { text: "", rule: "empty", droppedLines, appended: "", refusedUnsafe: true };
   }
   const cut = lines.slice(0, bound.end).join("\n");
-  const appended = missingClosers(cut, ctx.languageId);
+  const appended = missingClosers(cut, ctx);
   return { text: withClosers(cut, appended), rule: bound.rule, droppedLines, appended, refusedUnsafe: false };
 }
 
@@ -312,12 +366,20 @@ export function boundReached(raw: string, ctx: BoundContext): boolean {
   const lead = leadingBlanks(complete);
   // Content lines, as rule 4 counts them: an interior blank line is not one of
   // the cap's slots here either.
-  const contentSeen = contentLinesIn(complete, lead, complete.length);
+  // Counted from the head line, past any attribute lines a dictated request reads through, so
+  // the stop and the final bound see the same lines (review round 2, finding 2).
+  const contentSeen = contentLinesIn(complete, headLineIndex(complete, lead, ctx), complete.length);
   if (contentSeen <= 0) {
     return false;
   }
   if (contentSeen >= capOf(ctx)) {
     return true; // nothing past the cap can move the cut
+  }
+  // A dictated head whose lines so far are all attributes is still waiting for the head: the
+  // attribute line is balanced and ends a statement, which is exactly the stop that landed a
+  // doc comment over a bare `#[derive(Debug)]`.
+  if (ctx.headThroughAttributes === true && attributesOnly(complete, lead, ctx)) {
+    return false;
   }
   return computeBound(complete, lead, ctx).decided;
 }
@@ -327,7 +389,7 @@ export function boundReached(raw: string, ctx: BoundContext): boolean {
  *  the missing closers. Idempotent, and never extends. */
 export function sealCut(text: string, ctx: BoundContext): { text: string; appended: string } {
   const cut = retractToSafeCut(text, ctx);
-  const appended = missingClosers(cut, ctx.languageId);
+  const appended = missingClosers(cut, ctx);
   return { text: withClosers(cut, appended), appended };
 }
 
@@ -341,7 +403,7 @@ export function retractToSafeCut(text: string, ctx: BoundContext): string {
   const lines = text.split("\n");
   const head = safetyHead(leadingBlanks(lines), ctx.currentLinePrefix);
   let end = lines.length;
-  while (end > 0 && !safeTail(lines.slice(0, end).join("\n"), head, ctx.languageId)) {
+  while (end > 0 && !safeTail(lines.slice(0, end).join("\n"), head, ctx)) {
     end--;
   }
   return lines.slice(0, end).join("\n");
@@ -368,8 +430,9 @@ interface Scan {
   rule: BoundRule;
 }
 
-function computeBound(lines: string[], lead: number, ctx: BoundContext): Bound {
+function computeBound(lines: string[], leadIn: number, ctx: BoundContext): Bound {
   const cap = capOf(ctx);
+  const lead = headLineIndex(lines, leadIn, ctx);
   const first = lines[lead].trim();
   const opensConstruct = constructOpenersFor(ctx.languageId).some((pattern) => pattern.test(first));
   // The construct test comes first: a first content line that opens one takes
@@ -500,7 +563,7 @@ function pythonConstructScan(lines: string[], lead: number, cap: number, ctx: Bo
 function safePoint(lines: string[], lead: number, cap: number, scan: Scan, rule: BoundRule, ctx: BoundContext): Bound {
   const end = scan.end;
   const head = safetyHead(lead, ctx.currentLinePrefix);
-  const safeAt = (at: number): boolean => safeTail(lines.slice(lead, at).join("\n"), head, ctx.languageId);
+  const safeAt = (at: number): boolean => safeTail(lines.slice(lead, at).join("\n"), head, ctx);
   if (safeAt(end)) {
     return { end, rule, refusedUnsafe: false, decided: scan.stable };
   }
@@ -541,7 +604,8 @@ function safetyHead(lead: number, prefix: string): string {
   return lead === 0 ? prefix : prefix + "\n";
 }
 
-function safeTail(text: string, head: string, languageId: string): boolean {
+function safeTail(text: string, head: string, ctx: BoundContext): boolean {
+  const languageId = ctx.languageId;
   const tail = text.replace(/\s+$/, "");
   if (tail === "") {
     return true;
@@ -580,7 +644,10 @@ function safeTail(text: string, head: string, languageId: string): boolean {
   // makes the ghost the signature the human was typing rather than a signature
   // plus a body plus a brace. Past one line there is a statement above the
   // opener and serving that unbalanced was never measured.
-  if (opensBlockAtTail(tail, stack, languageId) && contentLinesIn(text.split("\n"), 0, Infinity) === 1) {
+  // The head is counted from past any attribute lines a dictated request read through
+  // (`#[derive(Debug)]` above `struct Point {` is still a one-line head), as the seal counts it.
+  const textLines = text.split("\n");
+  if (opensBlockAtTail(tail, stack, languageId) && contentLinesIn(textLines, headLineIndex(textLines, leadingBlanks(textLines), ctx), Infinity) === 1) {
     return true;
   }
   if (stack[stack.length - 1] === last) {
@@ -668,14 +735,19 @@ function isCommentOnlyLine(line: string, syntax: BracketSyntax): boolean {
 // is the buffer's, and the editor has usually auto-inserted its closer into the
 // suffix already. Measured need: a bounded ghost leaves unbalanced parens at 7%
 // of brace-language declaration heads and 45% of Python ones.
-function missingClosers(text: string, languageId: string): string {
+function missingClosers(text: string, ctx: BoundContext): string {
+  const languageId = ctx.languageId;
   const stack = scanBrackets(text, bracketSyntaxFor(languageId)).stack;
   const tail = text.replace(/\s+$/, "");
   // The block the ghost just opened stays open. Closing it is what turned a
   // signature into `fn foo(a: T) -> R {}`, an empty function, at 117 of 152
   // cap-rule sites. Same predicate rule 5 uses to let the tail stand, so the
-  // two rules cannot disagree about the same character.
-  if (opensBlockAtTail(tail, stack, languageId) && contentLinesIn(text.split("\n"), 0, Infinity) === 1) {
+  // two rules cannot disagree about the same character. The head is counted
+  // from past any attribute lines a dictated request read through: an
+  // `#[derive(Debug)]` above `enum Kind {` is still one head line.
+  const lines = text.split("\n");
+  const from = headLineIndex(lines, leadingBlanks(lines), ctx);
+  if (opensBlockAtTail(tail, stack, languageId) && contentLinesIn(lines, from, Infinity) === 1) {
     return "";
   }
   let closers = "";

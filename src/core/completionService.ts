@@ -377,6 +377,8 @@ export class CompletionService {
       ? {
           languageId: request.languageId ?? "",
           currentLinePrefix: prefix.slice(prefix.lastIndexOf("\n") + 1),
+          // A dictated head reads through its attribute lines (session-v66).
+          ...(request.intent ? { headThroughAttributes: true } : {}),
         }
       : undefined;
 
@@ -637,7 +639,18 @@ export class CompletionService {
           // The stop ends the READ, which releases the connection and stops
           // ollama generating: that release is the latency win (p50 300ms to
           // 141ms), not the shorter string.
-          ...(boundCtx ? { stopWhen: (t: string) => boundReached(t, boundCtx) } : {}),
+          ...(boundCtx
+            ? {
+                stopWhen: (t: string) => {
+                  const reached = boundReached(t, boundCtx);
+                  if (reached && request.intent) {
+                    // Evidence for a dictated request: the text the bound decided on.
+                    this.log?.(`[fim] bound stop after ${t.length} chars: ${JSON.stringify(t.slice(-120))}`);
+                  }
+                  return reached;
+                },
+              }
+            : {}),
         };
         // Extras launch BEFORE the primary is awaited so all runs share the
         // wall clock. A failed extra degrades to one fewer option; only the

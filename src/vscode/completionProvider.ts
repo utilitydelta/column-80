@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { readFileSync } from "fs";
 import { CompletionService, INJECTION_DEADLINE_MS } from "../core/completionService";
 import { DICTATION_SURFACE_TOK } from "../core/budgetProfile";
-import { declarationGhost, type DeclarationGhost } from "../core/dictationDoc";
+import { declarationGhost, freshLineAfter, type DeclarationGhost } from "../core/dictationDoc";
 import { trailingOverlapLength } from "../core/postprocess";
 import {
   EnumRhsSite,
@@ -147,7 +147,9 @@ export interface ArmedIntent {
   roots: readonly string[];
   eol: string;
   indent: string;
-  onServed(ghost: boolean): void;
+  /** Answers whether the gesture still wants the serve: `false` when it was cancelled after
+   *  the request left, and the provider then serves nothing for it. */
+  onServed(ghost: boolean): boolean | void;
 }
 
 /** The production clock and timer, with a no-op re-render. Exported so the
@@ -272,6 +274,32 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     this.pendingIntent = intent;
     this.downgradeNextManual = true;
   }
+
+  private lastRequest: { uri: string; line: number; dictated: boolean } | undefined;
+
+  /** Whether the most recent request at `uri:line` was the dictated one, so the item the
+   *  editor holds there, if any, is the dictated ghost and not a keystroke ghost. */
+  dictatedIsLatest(uri: string, line: number): boolean {
+    const last = this.lastRequest;
+    return last !== undefined && last.uri === uri && last.line === line && last.dictated;
+  }
+
+  /** Drop the armed intent without serving it: Escape while the request was still to come.
+   *  Nothing answers `onServed`; the gesture already moved on. */
+  disarmIntent(): void {
+    if (this.pendingIntent !== undefined) {
+      this.output.appendLine(`[dictate] intent disarmed at ${this.pendingIntent.uri}:${this.pendingIntent.line}`);
+      this.pendingIntent = undefined;
+    }
+    // The request may already have taken the intent and be waiting on the model; its answer
+    // is refused at the serve point rather than drawn with the gesture idle (review finding 2).
+    if (this.servingIntentId !== undefined) {
+      this.cancelledIntentId = this.servingIntentId;
+    }
+  }
+
+  private servingIntentId: number | undefined;
+  private cancelledIntentId: number | undefined;
 
   /** Whether a dictated intent is waiting for THIS site, without consuming it. */
   private intentArmedFor(uri: string, line: number): boolean {
@@ -905,6 +933,13 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     }
 
     const intent = this.takeIntent(document.uri.toString(), position.line);
+    // The last request at each site, dictated or not. The gesture asks before it commits:
+    // a keystroke request that followed the dictated one owns whatever the editor draws now
+    // (session-v66: a retry commit landed a plain `#[cfg(test)]` over a hidden dictated ghost).
+    this.lastRequest = { uri: document.uri.toString(), line: position.line, dictated: intent !== undefined };
+    if (intent !== undefined) {
+      this.servingIntentId = intent.id;
+    }
     // A dictated request on a BLANK line gets the block's indent virtually: the prompt ends
     // with it, so the model continues at the right column instead of inventing one at column
     // 0, and the served item carries it into the document. What Enter would have given, without
@@ -944,11 +979,12 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       };
     }
     let intentSettled = false;
-    const settleIntent = (ghost: boolean) => {
+    const settleIntent = (ghost: boolean): boolean | void => {
       if (intent !== undefined && !intentSettled) {
         intentSettled = true;
-        intent.onServed(ghost);
+        return intent.onServed(ghost);
       }
+      return undefined;
     };
     try {
       const manual =
@@ -1221,12 +1257,19 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
           intent.unit,
         );
       }
+      if (declaration !== undefined && declaration.text.trim() === "") {
+        // A python module-level ghost with an empty head has no doc line above and no head:
+        // nothing to draw, and an empty item is not an item (session-v66 contract rule 16).
+        this.applyServe(0, selected !== undefined, requested.requestId);
+        settleIntent(false);
+        return this.noGhost("the model served an empty head");
+      }
       const primary =
         declaration !== undefined
           ? `${virtualIndent}${declaration.text}`
           : intent === undefined || restOfLine.trim() !== ""
             ? result.text
-            : `${virtualIndent}${result.text}${intent.eol}${intent.indent}${virtualIndent}`;
+            : `${virtualIndent}${result.text}${freshLineAfter(intent.eol, intent.indent + virtualIndent)}`;
       const caretOffsetInItem = declaration === undefined ? undefined : virtualIndent.length + declaration.caretOffset;
       const items = [primary, ...(result.alternates ?? [])]
         .map(toItem)
@@ -1238,6 +1281,18 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       // the widget closed, ghost or no ghost, because that is the state the
       // second Escape acts on. While the widget is open, Escape belongs to
       // the widget.
+      // A dictated answer the gesture no longer wants (Escape after the request left) is
+      // refused BEFORE it is counted as a serve, so nothing downstream reads a ghost that was
+      // never drawn (review round 2, finding 7).
+      if (intent !== undefined && intent.id === this.cancelledIntentId) {
+        settleIntent(false);
+        this.applyServe(0, selected !== undefined, requested.requestId);
+        return this.noGhost("the dictated request was cancelled while it ran");
+      }
+      if (items.length > 0 && settleIntent(true) === false) {
+        this.applyServe(0, selected !== undefined, requested.requestId);
+        return this.noGhost("the dictated request was cancelled while it ran");
+      }
       this.applyServe(items.length, selected !== undefined, requested.requestId);
       if (items.length === 0) {
         settleIntent(false);
@@ -1247,7 +1302,6 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
             : `every generated item was dropped under the scope ${scope.name} (reasons above)`,
         );
       }
-      settleIntent(true);
       return items;
     } catch (err) {
       settleIntent(false);
