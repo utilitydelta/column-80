@@ -40,6 +40,17 @@ v66 because its "compiler check and repair" clause was already true through the 
 (proven on the human's box before anyone had built it). Read `session-v66/scraps.md` before
 believing 3.3.0's guard against committing the wrong ghost is ratified: it is not (S66-1).
 
+Caught up again on 2026-09-08 by session-v67, released as **3.4.0**. Two things, and the human
+asked for the first one the day after 3.3.0: "if I want to dictate a comment, I can't do that."
+Now a `//` or a caret inside an existing comment is a dictation site, the heard sentence lands in
+the comment, no code is generated, and Tighten Doc Comment takes it from there. The other is a
+defect the 3.3.0 release day produced and nobody could see: a recorder spawn that failed left a
+child handle with no pid, and Escape sent SIGKILL to whatever that number happened to be. It hung
+one CI job for 45 minutes with no log. Every signal now checks for a pid first.
+
+S67-D3 recommended tagging the pid guard alone as 3.3.1 before the feature merged. The human
+ruled one minor release instead, so the guard ships inside 3.4.0 and 3.3.1 does not exist.
+
 Split out of the roadmap on 2026-08-21 by session-v56. Nothing here is an instruction. If a line
 here reads like work, it belongs back in the roadmap as a numbered item, not here.
 

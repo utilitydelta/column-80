@@ -46,6 +46,11 @@ wrote the body. Session-v66 leaves four rulings for the human (S66-1 to S66-4, b
 "Decisions waiting on the human") and its deferrals under "Deferred fixes"; the full record is
 `session-v66/scraps.md` and the release history is in `docs/roadmap-history.md`.
 
+Session-v67 (2026-09-03) shipped 3.4.0: dictate into a comment, and the pid guard behind the
+3.3.0 CI hang. Its decisions and deferrals are S67-D1 to S67-D3 and S67-1 to S67-6 in
+`session-v67/scraps.md`, and none of them are ratified. One known limit rather than an item
+yet: inside a block comment the sentence lands and Tighten Doc Comment refuses (S67-4).
+
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
