@@ -1427,6 +1427,38 @@ export { FnGenService } from "../src/core/fnGenService";
   oErr = e;
 }
 
+/** Session-v70 phase 1, INSTRUMENTATION ONLY. The row below is green on a
+ *  developer box and red on a hosted runner, and the channel it prints says
+ *  only that the check started. This runs the product's own Rust command
+ *  against the same crate and puts the answer in the failure message, so the
+ *  next CI run says WHY rather than leaving it to be guessed. It is never
+ *  reached on a passing row and it changes no assertion. */
+function toolchainWitness(crate) {
+  const { spawnSync } = require("node:child_process");
+  const run = (label, cmd, args, opts) => {
+    const t0 = Date.now();
+    const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 120000, ...opts });
+    const ms = Date.now() - t0;
+    const tail = (x) => String(x ?? "").split("\n").slice(0, 6).join("\n").slice(0, 900);
+    return (
+      `  ${label}: status=${r.status} signal=${r.signal} err=${r.error ? r.error.code || r.error.message : "none"} ` +
+      `${ms}ms\n    stdout: ${tail(r.stdout)}\n    stderr: ${tail(r.stderr)}`
+    );
+  };
+  return (
+    "---- TOOLCHAIN WITNESS (session-v70 phase 1) ----\n" +
+    `  PATH=${process.env.PATH}\n  HOME=${process.env.HOME} CARGO_HOME=${process.env.CARGO_HOME}\n` +
+    run("cargo --version", "cargo", ["--version"]) +
+    "\n" +
+    run(
+      "the product's command",
+      "cargo",
+      ["check", "--all-targets", "--keep-going", "--message-format=json"],
+      { cwd: crate },
+    )
+  );
+}
+
 const REPAIRBENCH = path.join(__dirname, "fixtures", "repairbench");
 /** How long the refine round gets to reach the fake transport. See the note at
  *  the wait: the measured cost is ~60ms, cargo check included. */
@@ -1553,10 +1585,13 @@ test(
     // So the budget is 250x the observed cost and still small enough that a
     // genuinely hung row fails as one test instead of reading like a hung
     // suite. The old 280s was longer than the entire gate.
+    const waitStarted = Date.now();
     const arrived = await within(reached, REFINE_BUDGET_MS);
     assert.ok(
       !arrived.timedOut,
-      `the refine round did not reach the transport within ${REFINE_BUDGET_MS}ms. Channel: ${JSON.stringify(channel)}`,
+      `the refine round did not reach the transport within ${REFINE_BUDGET_MS}ms ` +
+        `(waited ${Date.now() - waitStarted}ms). Channel: ${JSON.stringify(channel)}\n` +
+        toolchainWitness(crate),
     );
     assert.ok(await waitFor(() => registry.count() > 0, 200), "the round must have taken a claim");
 
