@@ -808,10 +808,17 @@ test("precedence is fixed, so the reported reason is stable: async -> io -> need
   assert.strictEqual(classifyGoTestability("func F(n int)", DOC).reason, "underspecified");
 });
 
-test("async is a channel or a context, because Go has no async keyword", () => {
+// SUPERSESSION S32 (session-v68 phase 5, ruled by the human 2026-09-10). This row
+// asserted a channel and a context are both "async", on the reading that Go has no
+// async keyword and these are its two equivalents. Phase 5 split them: a context is
+// satisfiable in one word, `context.Background()`, so refusing it cost a class of
+// testable functions for nothing, while a channel still refuses because a blind test
+// cannot know who fills it, when, or how many times.
+test("async is a channel and NOT a context, because `context.Background()` satisfies a context in one word (S32)", () => {
   assert.strictEqual(classifyGoTestability("func F(c chan int) int", DOC).reason, "async");
   assert.strictEqual(classifyGoTestability("func F(c <-chan int) int", DOC).reason, "async");
-  assert.strictEqual(classifyGoTestability("func F(ctx context.Context, n int) int", DOC).reason, "async");
+  assert.match(classifyGoTestability("func F(c chan int) int", DOC).detail, /channel/, "the refusal names the channel");
+  assert.strictEqual(classifyGoTestability("func F(ctx context.Context, n int) int", DOC).testable, true);
   assert.strictEqual(classifyGoTestability("func F(n int) int", DOC).testable, true, "a goroutine in the BODY is invisible here, and that is an accepted residual");
 });
 

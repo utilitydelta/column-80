@@ -36,7 +36,16 @@ import * as os from "os";
 import * as path from "path";
 import type { TestCaseResult, TestFailureDetail, TestOutcome } from "./compilerOracle";
 import type { FailureLocation } from "./failureDigest";
-import { CsOracle, dotnetEnv } from "./csOracle";
+import {
+  CsFsDeps,
+  CsOracle,
+  csCandidateDirs,
+  csIsTestProject,
+  csProjectReferenceIncludes,
+  csTestProjectsFor,
+  csprojTextsIn,
+  dotnetEnv,
+} from "./csOracle";
 import {
   LiteralProfile,
   TestInsertionPlan,
@@ -46,7 +55,9 @@ import {
   testMarkers,
   topLevelArgs,
 } from "./testAssembly";
-import type { TestabilityVerdict } from "./testability";
+import type { TestabilityContext, TestabilityVerdict } from "./testability";
+import { LAST_COLUMN_CLAUSE } from "./prompt";
+import { deadColumns, attributeTables, mergeTableAndInline } from "./tddTable";
 import { BlankValueResult, escapeSnippet } from "./tabstop";
 import {
   PlacementRefusal,
@@ -380,9 +391,18 @@ export function csReturnTypeOf(signature: string): string | undefined {
 // Testability
 // ===========================================================================
 
+/** Session-v68 phase 5 admits `Task` / `ValueTask` returns rather than refusing
+ *  them — a test method is `public async Task` and awaits — so what used to be
+ *  the async marker set is now read by the UNIT-RETURN check alone. */
 /** `Task`, `Task<T>`, `ValueTask` and `ValueTask<T>`: the return types that mean
- *  "async" to a caller whether or not the `async` modifier is spelled. */
+ *  "async" to a caller whether or not the `async` modifier is spelled. Session-v68
+ *  phase 5 ADMITS these rather than refusing them - a test method is
+ *  `public async Task` and awaits - so this is now read only to tell the prompt
+ *  the target is async. */
 const CS_ASYNC_RETURN = /^(Task|ValueTask)\s*(<|$)/;
+
+/** A bare `Task` / `ValueTask` with no type argument: awaited, it yields nothing. */
+const CS_ASYNC_UNIT_RETURN = /^(Task|ValueTask)\s*$/;
 
 /**
  * The IO/network marker set, from the contract.
@@ -435,18 +455,25 @@ const CS_IO = /\b(Stream|File|FileInfo|HttpClient|Socket|DbConnection)\b/;
 export function classifyCsTestability(
   signature: string,
   docComment?: string,
-  ctx?: { internalsVisible?: boolean },
+  ctx?: TestabilityContext,
 ): TestabilityVerdict {
   const sig = signature ?? "";
   const head = csMethodHead(sig, 0);
   const modifiers = head?.modifiers ?? [];
   const returnType = head?.returnType ?? "";
 
-  if (modifiers.includes("async") || CS_ASYNC_RETURN.test(returnType)) {
+  // ADMITTED session-v68 phase 5. A test method is `public async Task` and it
+  // awaits; all three frameworks await a returned Task. Nothing to detect.
+  //
+  // `async void` is the exception and stays refused BY NAME: it cannot be
+  // awaited, so a test that calls it returns before the method has done
+  // anything and observes nothing at all. That is not a limitation of this
+  // gesture, it is what `async void` means.
+  if (modifiers.includes("async") && /^void$/.test(returnType.trim())) {
     return {
       testable: false,
       reason: "async",
-      detail: "async, or a Task/ValueTask return: a blind unit test cannot drive it",
+      detail: "async void: it cannot be awaited, so a test that calls it observes nothing",
     };
   }
   if (CS_IO.test(sig)) {
@@ -461,7 +488,7 @@ export function classifyCsTestability(
     // verdict assembled out of a failed parse.
     return { testable: false, reason: "underspecified", detail: "not a readable C# method signature: nothing to author a blind test from" };
   }
-  if (!modifiers.includes("static")) {
+  if (!modifiers.includes("static") && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
@@ -481,6 +508,16 @@ export function classifyCsTestability(
   }
   if (returnType === "void" || returnType.length === 0) {
     return { testable: false, reason: "underspecified", detail: "returns `void`: nothing to assert on" };
+  }
+  // A bare `Task` / `ValueTask` is void once awaited. It reached the async rung
+  // before phase 5 admitted async; now that it does not, the unit-return rule
+  // has to say so, or an admitted target would produce a test asserting nothing.
+  if (CS_ASYNC_UNIT_RETURN.test(returnType.trim())) {
+    return {
+      testable: false,
+      reason: "underspecified",
+      detail: `returns \`${returnType.trim()}\` with no type argument: awaiting it gives nothing to assert`,
+    };
   }
   return { testable: true };
 }
@@ -630,7 +667,15 @@ export function csInternalsVisibleTo(projectDir: string, deps: TddDeps, testAsse
  * Absent grants answer false, which is the safe default the whole visibility leg
  * is built on.
  */
-function csTestabilityContext(filePath: string, placement: TestPlacement, deps: TddDeps): { internalsVisible?: boolean } {
+function csTestabilityContext(filePath: string, placement: TestPlacement, deps: TddDeps): TestabilityContext {
+  // All three frameworks await a returned Task, so the async half needs no
+  // detection and can never be missing. Stated rather than left absent, because
+  // an absent `asyncTest` reads as "nothing here can drive it" in every other leg.
+  const asyncTest = { asyncTest: { shape: "a `public async Task` test method with `await` in it" } } as const;
+  return { ...asyncTest, ...csInternalsContext(filePath, placement, deps) };
+}
+
+function csInternalsContext(filePath: string, placement: TestPlacement, deps: TddDeps): { internalsVisible?: boolean } {
   const readFile = readFileOf(deps);
   const oracle = new CsOracle({
     fileExists: fileExistsOf(deps),
@@ -1496,11 +1541,7 @@ function buildCsCommand(placement: TestPlacement, testNames: string[]): TestRunC
  *  practice; reading all of them costs nothing and means a repo that holds two
  *  is not silently half-read. */
 function csprojTexts(dir: string, deps: TddDeps): Array<{ path: string; text: string }> {
-  const readFile = readFileOf(deps);
-  return (readDirOf(deps)(dir) ?? [])
-    .filter((n) => n.toLowerCase().endsWith(".csproj"))
-    .sort()
-    .map((n) => ({ path: path.join(dir, n), text: readFile(path.join(dir, n)) ?? "" }));
+  return csprojTextsIn(dir, csFsOf(deps));
 }
 
 /** Does any project in `dir` reference a package whose Include matches? */
@@ -1540,6 +1581,49 @@ const CS_CLASS_ATTRIBUTE: Record<string, string> = {
   nunit: "[TestFixture]",
 };
 
+// TABLE-AWARE (session-v68 phase 2). All three C# frameworks put their rows in
+// ATTRIBUTES - `[TestCase(…)]`, `[InlineData(…)]`, `[DataRow(…)]` - so one
+// finder reads all three and the wrappers differ only in which inline locator
+// they wrap. The runner's assertion reads a METHOD PARAMETER (`want`), which the
+// bare locators would have blanked.
+function csTableSpans(text: string) {
+  return attributeTables(text, CS_LITERALS);
+}
+
+function mstestTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, csTableSpans(text), mstestExpectedValueSpans(text)).spans;
+}
+
+function mstestTableAwareUnresolved(text: string): number {
+  return (
+    mstestUnresolvedAssertions(text) +
+    mergeTableAndInline(text, csTableSpans(text), mstestExpectedValueSpans(text)).unresolvedRowRefs
+  );
+}
+
+function xunitTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, csTableSpans(text), xunitExpectedValueSpans(text)).spans;
+}
+
+function xunitTableAwareUnresolved(text: string): number {
+  return (
+    xunitUnresolvedAssertions(text) +
+    mergeTableAndInline(text, csTableSpans(text), xunitExpectedValueSpans(text)).unresolvedRowRefs
+  );
+}
+
+function nunitTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, csTableSpans(text), nunitExpectedValueSpans(text)).spans;
+}
+
+function nunitTableAwareUnresolved(text: string): number {
+  return (
+    nunitUnresolvedAssertions(text) +
+    mergeTableAndInline(text, csTableSpans(text), nunitExpectedValueSpans(text)).unresolvedRowRefs
+  );
+}
+
+
 const MSTEST: TestFramework = {
   id: "mstest",
   displayName: "MSTest (dotnet test)",
@@ -1553,14 +1637,28 @@ const MSTEST: TestFramework = {
   failureLocation: trxFailureLocation,
   stripHarnessFrames: trxStripHarnessFrames,
 
-  assertionInstruction:
-    "Assert with `Assert.AreEqual(<expected>, <call>)`: the EXPECTED value is the FIRST argument and the " +
-    "call under test is the SECOND. Write each expected value inline as the first argument of its own " +
-    "assert, one case per test method, and mark every test method `[TestMethod] public void`.",
+  // `[DataRow]` takes COMPILE-TIME CONSTANTS only, so knob rule 1 (prefer a
+  // constructed column) is structurally unreachable here. The honest answer is
+  // the group rule rather than a scalarised column: a case needing a constructed
+  // value becomes its own `[TestMethod]`.
+  rowsAreConstantsOnly: true,
 
-  expectedValueSpans: mstestExpectedValueSpans,
+  tableShape:
+    "Put the cases in ONE table: about five `[DataRow(...)]` attributes on a single `[DataTestMethod]` " +
+    "whose parameters the rows fill in order. Name the LAST parameter `want`, so " +
+    `${LAST_COLUMN_CLAUSE}. Every \`[DataRow(...)]\` sits on ONE line. \`[DataRow]\` takes ` +
+    "compile-time constants only, so a case needing a constructed value gets its own `[TestMethod]` " +
+    "instead of being flattened into a scalar column.",
+
+  assertionInstruction:
+    "Assert with `Assert.AreEqual(want, <call>)`: the EXPECTED value is the FIRST argument and the call " +
+    "under test is the SECOND, so the `want` PARAMETER goes first. One assert in the body, and mark the " +
+    "table method `[DataTestMethod] public void` with its `[DataRow(...)]` rows; mark any separate " +
+    "single-case method `[TestMethod] public void`.",
+
+  expectedValueSpans: mstestTableAwareSpans,
   classifiesBuildError: true,
-  unresolvedAssertions: mstestUnresolvedAssertions,
+  unresolvedAssertions: mstestTableAwareUnresolved,
 };
 
 const XUNIT: TestFramework = {
@@ -1576,14 +1674,25 @@ const XUNIT: TestFramework = {
   failureLocation: trxFailureLocation,
   stripHarnessFrames: trxStripHarnessFrames,
 
-  assertionInstruction:
-    "Assert with `Assert.Equal(<expected>, <call>)`: the EXPECTED value is the FIRST argument and the " +
-    "call under test is the SECOND. Write each expected value inline as the first argument of its own " +
-    "assert, one case per test method, and mark every test method `[Fact] public void`.",
+  // Same compile-time-constant limit as `[DataRow]`; same answer.
+  rowsAreConstantsOnly: true,
 
-  expectedValueSpans: xunitExpectedValueSpans,
+  tableShape:
+    "Put the cases in ONE table: about five `[InlineData(...)]` attributes on a single `[Theory]` whose " +
+    "parameters the rows fill in order. Name the LAST parameter `want`, so " +
+    `${LAST_COLUMN_CLAUSE}. Every \`[InlineData(...)]\` sits on ONE line. \`[InlineData]\` takes ` +
+    "compile-time constants only, so a case needing a constructed value gets its own `[Fact]` instead " +
+    "of being flattened into a scalar column.",
+
+  assertionInstruction:
+    "Assert with `Assert.Equal(want, <call>)`: the EXPECTED value is the FIRST argument and the call " +
+    "under test is the SECOND, so the `want` PARAMETER goes first. One assert in the body, and mark the " +
+    "table method `[Theory] public void` with its `[InlineData(...)]` rows; mark any separate " +
+    "single-case method `[Fact] public void`.",
+
+  expectedValueSpans: xunitTableAwareSpans,
   classifiesBuildError: true,
-  unresolvedAssertions: xunitUnresolvedAssertions,
+  unresolvedAssertions: xunitTableAwareUnresolved,
 };
 
 const NUNIT: TestFramework = {
@@ -1599,14 +1708,28 @@ const NUNIT: TestFramework = {
   failureLocation: trxFailureLocation,
   stripHarnessFrames: trxStripHarnessFrames,
 
-  assertionInstruction:
-    "Assert with `Assert.That(<call>, Is.EqualTo(<expected>))`: the EXPECTED value is the argument of " +
-    "`Is.EqualTo` and the call under test is the first argument of `Assert.That`. Write each expected " +
-    "value inline, one case per test method, and mark every test method `[Test] public void`.",
+  // Same compile-time-constant limit as `[DataRow]`; same answer. NUnit needs no
+  // second marker attribute — `[TestCase]` both declares the row and marks the
+  // method — so the instruction must NOT also ask for `[Test]`, which makes NUnit
+  // run the method a sixth time with no arguments.
+  rowsAreConstantsOnly: true,
 
-  expectedValueSpans: nunitExpectedValueSpans,
+  tableShape:
+    "Put the cases in ONE table: about five `[TestCase(...)]` attributes on a single method whose " +
+    "parameters the rows fill in order, with NO `[Test]` attribute beside them. Name the LAST parameter " +
+    `\`want\`, so ${LAST_COLUMN_CLAUSE}. Every \`[TestCase(...)]\` sits on ONE ` +
+    "line. `[TestCase]` takes compile-time constants only, so a case needing a constructed value gets " +
+    "its own `[Test]` method instead of being flattened into a scalar column.",
+
+  assertionInstruction:
+    "Assert with `Assert.That(<call>, Is.EqualTo(want))`: the call under test is the first argument of " +
+    "`Assert.That` and the row's `want` parameter the argument of `Is.EqualTo`. One assert in the body. " +
+    "A table method carries its `[TestCase(...)]` rows and nothing else; mark any separate single-case " +
+    "method `[Test] public void`.",
+
+  expectedValueSpans: nunitTableAwareSpans,
   classifiesBuildError: true,
-  unresolvedAssertions: nunitUnresolvedAssertions,
+  unresolvedAssertions: nunitTableAwareUnresolved,
 };
 
 const CS_FRAMEWORKS = [MSTEST, XUNIT, NUNIT];
@@ -1648,9 +1771,7 @@ function propertyValue(text: string, name: string): string | undefined {
 }
 
 /** Every `<ProjectReference Include="…">` path of a project, as written. */
-function projectReferenceIncludes(text: string): string[] {
-  return [...text.matchAll(/<ProjectReference\b[^>]*\bInclude\s*=\s*"([^"]*)"/gi)].map((m) => m[1]);
-}
+const projectReferenceIncludes = csProjectReferenceIncludes;
 
 /** Every `<ProjectReference Include="…">` of a project, resolved to an absolute
  *  path. MSBuild writes these with BACKSLASHES whatever the platform, which is
@@ -1660,12 +1781,6 @@ function projectReferenceIncludes(text: string): string[] {
  *  nonsense, because nothing here evaluates MSBuild. It is dropped rather than
  *  resolved, and `unresolvedTestProjectRefs` is what turns that silence into a
  *  sentence the human can act on. */
-function projectReferences(csprojPath: string, text: string): string[] {
-  const dir = path.dirname(csprojPath);
-  return projectReferenceIncludes(text)
-    .filter((include) => !include.includes("$("))
-    .map((include) => path.resolve(dir, include.split("\\").join(path.sep)));
-}
 
 /** The NAMESPACE a C# file declares, in either spelling (`namespace X;` and
  *  `namespace X { … }`), or undefined.
@@ -1711,58 +1826,19 @@ interface TestProjectCandidate {
 
 /** Is this project a TEST project? Either signal, per the contract, and both are
  *  present in `Contoso.ProcessingLogic.Tests.csproj`. */
-function isTestProject(text: string): boolean {
-  return propertyIsTrue(text, "IsTestProject") || /<PackageReference\b[^>]*\bInclude\s*=\s*"Microsoft\.NET\.Test\.Sdk"/i.test(text);
-}
+const isTestProject = csIsTestProject;
 
 /** Every directory worth looking in for a test project: the source project's
  *  SIBLINGS, plus every project a solution above it lists. The corpus is the
  *  sibling shape; the solution walk is what makes a `src/` + `test/` layout
  *  work, where the test project is not a sibling at all. */
 function candidateDirs(sourceProjectDir: string, deps: TddDeps): string[] {
-  const readDir = readDirOf(deps);
-  const dirs = new Set<string>();
-  const parent = path.dirname(sourceProjectDir);
-  for (const name of readDir(parent) ?? []) {
-    dirs.add(path.join(parent, name));
-  }
-  // The solution: up to four levels above the project, which covers
-  // `<sln>/src/<proj>` and `<sln>/source/<area>/<proj>` without walking to `/`.
-  let dir = parent;
-  for (let depth = 0; depth < 4; depth++) {
-    for (const name of readDir(dir) ?? []) {
-      if (!/\.slnx?$/i.test(name)) {
-        continue;
-      }
-      const text = readFileOf(deps)(path.join(dir, name)) ?? "";
-      for (const m of text.matchAll(/"([^"]*\.csproj)"/g)) {
-        dirs.add(path.dirname(path.resolve(dir, m[1].split("\\").join(path.sep))));
-      }
-    }
-    const up = path.dirname(dir);
-    if (up === dir) {
-      break;
-    }
-    dir = up;
-  }
-  dirs.delete(sourceProjectDir);
-  return [...dirs].sort();
+  return csCandidateDirs(sourceProjectDir, csFsOf(deps));
 }
 
 /** The test projects that reference `sourceCsproj`. */
 function testProjectsFor(sourceProjectDir: string, sourceCsproj: string, deps: TddDeps): TestProjectCandidate[] {
-  const found: TestProjectCandidate[] = [];
-  for (const dir of candidateDirs(sourceProjectDir, deps)) {
-    for (const { path: csproj, text } of csprojTexts(dir, deps)) {
-      if (!isTestProject(text)) {
-        continue;
-      }
-      if (projectReferences(csproj, text).some((ref) => path.resolve(ref) === path.resolve(sourceCsproj))) {
-        found.push({ dir, csproj, text });
-      }
-    }
-  }
-  return found;
+  return csTestProjectsFor(sourceProjectDir, sourceCsproj, csFsOf(deps));
 }
 
 /**
@@ -1799,6 +1875,11 @@ function unresolvedTestProjectRefs(sourceProjectDir: string, deps: TddDeps): Arr
 function findCsproj(dir: string, deps: TddDeps): string | undefined {
   const names = (readDirOf(deps)(dir) ?? []).filter((n) => n.toLowerCase().endsWith(".csproj")).sort();
   return names.length > 0 ? path.join(dir, names[0]) : undefined;
+}
+
+/** `TddDeps` as the plain readers the shared topology helpers take. */
+function csFsOf(deps: TddDeps): CsFsDeps {
+  return { readDir: (dir) => readDirOf(deps)(dir) ?? [], readFile: readFileOf(deps) };
 }
 
 function refuse(reason: PlacementRefusal["reason"], detail: string): PlacementResult {
@@ -2448,6 +2529,13 @@ const CS_TDD_LANG: TddLang = {
   scaffold: csScaffold,
 
   markerPrefix: CS_MARKER_PREFIX,
+
+  isAsyncSignature: (signature: string) => {
+    const head = csMethodHead(signature ?? "", 0);
+    return (head?.modifiers ?? []).includes("async") || CS_ASYNC_RETURN.test(head?.returnType ?? "");
+  },
+
+  deadTableColumns: (text: string) => deadColumns(text, attributeTables(text, CS_LITERALS), CS_LITERALS),
 
   generatedTestNames: csGeneratedTestNames,
 

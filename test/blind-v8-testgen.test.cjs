@@ -66,15 +66,27 @@ test("no docComment -> no doc section, still valid (signature + blind directive 
   assert.ok(/(do not|don't|never|without)[\s\S]{0,80}implementation/i.test(p), "blind directive still present without a doc");
 });
 
-test("a SINGLE #[test] fn, one assert per case — NOT split across fns, NOT looped over a table [P1 §1 'One test fn, one assert per case']", () => {
+// SUPERSEDED by S31 (session-v68, ruled by the human 2026-09-10). Through v67 this
+// row asserted the opposite: one inline `assert_eq!` per case, and the table/loop
+// shape explicitly forbidden, on the reasoning that a data table hides the
+// expected values where the blanker cannot reach them. The blanker now reaches
+// them — the row's LAST COLUMN is the expected-value span — and the reversal is
+// an affordance decision, not an output-quality one: a developer who spots a
+// missing case adds one line to an array instead of copying a whole test
+// function. What this row still guards is unchanged and is the load-bearing
+// half: ONE #[test] fn, about five cases, and every expected value a LITERAL
+// written on its own line rather than pulled from a name.
+test("a SINGLE #[test] fn holding ONE table, every expected value a literal in its own row [P1 §1, superseded by S31]", () => {
   const p = assembleTestGenPrompt(FULL_INPUT);
   assert.ok(/single\s+`?#\[test\]/i.test(p), "the prompt instructs a single #[test] fn holding the cases");
-  assert.ok(/one\s+`?assert_eq!.*line per case/is.test(p), "one assert line per case, not one fn per case");
-  // The blank-value tabstop core blanks each assert's 2nd argument; a data
-  // table hides the expected values where the blanker cannot reach them, so the
-  // table/loop shape is explicitly forbidden here (the shipped contradiction fix).
-  assert.ok(/(never|not|no).{0,40}(table|loop)/is.test(p), "the prompt forbids looping over a table of rows");
-  assert.ok(/inline/i.test(p), "each expected value is written inline as the assert's 2nd argument");
+  assert.ok(/table of cases/i.test(p), "the cases go in ONE table, not one fn per case");
+  assert.ok(/last column of every row/i.test(p), "the expected value is the row's last column, which is what the blanker reaches");
+  assert.ok(/row sits on ONE line/i.test(p), "one row per line: each expected value is still reviewed and typed on its own line");
+  assert.ok(
+    /NEVER pull it from a shared variable and NEVER from a named constant/i.test(p),
+    "the surviving half of the inline rule: a literal in the row, never a name"
+  );
+  assert.ok(!/NEVER loop over a table of rows/i.test(p), "the superseded clause is gone, not merely contradicted");
 });
 
 test("~5 cases named — the sweet spot, batches degrade the impl [P1 §1 'About five cases', finding 4]", () => {

@@ -1406,7 +1406,20 @@ test("no-run: classifiesBuildError is set on every framework whose parse names i
 // ATTACK 3. The prompt and the reply guard, which the contract never mentioned.
 // ===========================================================================
 
-test("prompt: the RUST branch is byte-identical to the pre-phase-6 assembler (differential, against 73b85a7's own bytes)", () => {
+// SUPERSESSION S31 (session-v68, ruled by the human 2026-09-10) moved the Rust
+// INSTRUCTION: it asked for one inline `assert_eq!` per case and forbade a table
+// of rows; it now asks for one parameterised table whose last column is the
+// expected value. So the row can no longer assert the whole prompt is
+// byte-identical, and deleting it would throw away what it was really guarding.
+//
+// What it guards now is the half that did NOT move and must not: the RENDERING.
+// The separator, the collaborator section, the fence adaptation and the contract
+// block are byte-identical to the pre-phase-6 assembler for every input. The tail
+// is cut at the mocks clause, which survives the supersession verbatim in both
+// instructions. The second half of the row asserts the instruction DID move, and
+// moved in exactly the ruled direction, so the supersession is evidenced here
+// rather than silently dropped.
+test("prompt: the RUST branch's RENDERING is byte-identical to the pre-phase-6 assembler, and only the instruction moved (S31)", () => {
   const os2 = require("os");
   const dir = fs.mkdtempSync(path.join(os2.tmpdir(), "review-v31-oldprompt-"));
   // THE BASELINE IS A COMMITTED FIXTURE, not a git revision (2026-08-10). It
@@ -1430,12 +1443,41 @@ test("prompt: the RUST branch is byte-identical to the pre-phase-6 assembler (di
     { signature: "pub fn widen(n: i32) -> i64", docComment: "/// Widens.", languageId: "rust", calleeSurface: "pub struct P;" },
     { signature: "pub fn widen(n: i32) -> i64", calleeSurface: "pub struct P;" },
   ];
+  // The last sentence of the instruction, unchanged by S31 in both branches.
+  const MOCKS_CLAUSE = "tested without a fake, say so instead of inventing one.";
+  const renderedTail = (text) => {
+    const at = text.lastIndexOf(MOCKS_CLAUSE);
+    assert.ok(at >= 0, "the mocks clause anchors the cut in both branches");
+    return text.slice(at + MOCKS_CLAUSE.length);
+  };
+  // And the HEAD: the blind directive and the `#[cfg(test)] mod tests` reply
+  // shape are the first two paragraphs, S31 touched neither, and cutting only
+  // at the tail left them guarded by substring regexes alone. Paragraph 1 is the
+  // standing "nothing about the function body" constraint, which is the last
+  // thing that should be pinned loosely.
+  const HEAD_CUT = "Inside the module write a SINGLE";
+  const instructionHead = (text) => {
+    const at = text.indexOf(HEAD_CUT);
+    assert.ok(at >= 0, "the head cut is present in both branches");
+    return text.slice(0, at);
+  };
   for (const i of inputs) {
+    const now = C.assembleTestGenPrompt(i);
     assert.strictEqual(
-      C.assembleTestGenPrompt(i),
-      before(i),
-      `the Rust test-gen prompt moved for input ${JSON.stringify(i)}`
+      instructionHead(now),
+      instructionHead(before(i)),
+      `the Rust blind directive or reply shape moved for input ${JSON.stringify(i)}`
     );
+    assert.strictEqual(
+      renderedTail(now),
+      renderedTail(before(i)),
+      `the Rust test-gen RENDERING moved for input ${JSON.stringify(i)}`
+    );
+    // And the instruction moved, in the ruled direction.
+    assert.notStrictEqual(now, before(i), "S31 moved the Rust instruction; a byte-identical prompt means it did not ship");
+    assert.ok(/NEVER loop over a table of rows/.test(before(i)), "the superseded instruction forbade the table");
+    assert.ok(!/NEVER loop over a table of rows/.test(now), "the shipped instruction no longer forbids the table");
+    assert.ok(/TABLE of cases/.test(now), "the shipped instruction asks for a table of cases");
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });

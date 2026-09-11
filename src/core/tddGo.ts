@@ -27,7 +27,7 @@ import {
   skipLiteralOrComment,
   testMarkers,
 } from "./testAssembly";
-import type { TestabilityVerdict } from "./testability";
+import type { TestabilityContext, TestabilityVerdict } from "./testability";
 import { BlankValueResult, escapeSnippet } from "./tabstop";
 import {
   PlacementResult,
@@ -41,6 +41,7 @@ import {
   fileExistsOf,
   readFileOf,
 } from "./tddLang";
+import { deadColumns, goStructTables, mergeTableAndInline } from "./tddTable";
 
 // ===========================================================================
 // The Go literal profile, and the one depth scanner every Go rule shares
@@ -210,7 +211,13 @@ function returnArity(returnType: string | undefined): number {
 // and a context parameter. A goroutine in the BODY is invisible to a
 // signature-only classifier and is an accepted residual, named here so it is not
 // rediscovered as a bug.
-const GO_ASYNC = /\bchan\b|\bcontext\.Context\b/;
+// SPLIT session-v68 phase 5. It used to be `chan` OR `context.Context`, and the
+// two are not the same problem. A `context.Context` parameter is satisfiable in
+// one word — `context.Background()` — so refusing it cost a whole class of
+// perfectly testable functions for nothing. A CHANNEL is not: a blind test would
+// have to know who fills it, when, and how many times, and the contract says none
+// of that. So the channel rung stays, and its detail names the channel.
+const GO_CHANNEL = /\bchan\b/;
 
 // The IO/network marker set: a qualified type from `os`, `net`, `io`, `bufio` or
 // `http`. `http.` is in the set because of a measurement, not a hunch: net/http
@@ -236,14 +243,18 @@ const GO_RECEIVER = /^\s*func\s*\(/;
  * to it and is a first-class target — `rpad`, `safeUint16` and
  * `getMapFromFormData` are all real survivors from the corpus.
  */
-export function classifyGoTestability(signature: string, docComment?: string): TestabilityVerdict {
+export function classifyGoTestability(
+  signature: string,
+  docComment?: string,
+  ctx?: TestabilityContext,
+): TestabilityVerdict {
   const sig = signature ?? "";
 
-  if (GO_ASYNC.test(sig)) {
+  if (GO_CHANNEL.test(sig)) {
     return {
       testable: false,
       reason: "async",
-      detail: "a channel or context.Context in the signature — a blind unit test cannot drive it",
+      detail: "a channel in the signature — a blind test cannot know who fills it, when, or how many times",
     };
   }
   if (GO_IO.test(sig)) {
@@ -253,7 +264,7 @@ export function classifyGoTestability(signature: string, docComment?: string): T
       detail: "IO/network in the signature (os, net, io, bufio, http) — integration territory, not a blind unit test",
     };
   }
-  if (GO_RECEIVER.test(sig)) {
+  if (GO_RECEIVER.test(sig) && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
@@ -831,6 +842,44 @@ export function goTestStripHarnessFrames(message: string): string {
     .replace(/\s+$/, "");
 }
 
+// Go's table is the language's own convention: a slice of anonymous structs,
+// then `for _, tt := range cases { t.Run(tt.name, …) }`. The expected column is
+// the struct's `want` field, keyed or positional.
+function goTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, goStructTables(text, GO_LITERALS), goExpectedValueSpans(text)).spans;
+}
+
+// Go's unresolved counter is the odd one of the nine: it counts test-function
+// BODIES holding no expected-value span, not assertion SITES that failed to
+// resolve. So it cannot simply be added to - it has to be re-asked against the
+// MERGED spans, or a table-driven body reads as unresolved while its rows are
+// blanked perfectly, and the floor refuses a good pass.
+//
+// Re-asking also makes `unresolvedRowRefs` redundant here rather than additive:
+// a body whose only expected value was a dropped row reference has no span in it
+// either way, and counting both would report one site twice.
+function goTableAwareUnresolved(text: string): number {
+  const tables = goStructTables(text, GO_LITERALS);
+  const merged = mergeTableAndInline(text, tables, goExpectedValueSpans(text));
+  let unresolved = 0;
+  for (const body of goTestFunctionBodies(text)) {
+    if (merged.spans.some((s) => s.start >= body.start && s.end <= body.end)) {
+      continue;
+    }
+    // A table declared at FILE SCOPE is blanked perfectly and its spans sit
+    // OUTSIDE the test function that walks it, so "no span inside this body"
+    // is not evidence of anything. A body that reads a row of a parsed table is
+    // resolved by that table wherever the table happens to live.
+    const bodyText = text.slice(body.start, body.end);
+    if (tables.some((t) => t.knobs.some((k) => new RegExp(`\\b${escapeRegex(k)}\\b`).test(bodyText)))) {
+      continue;
+    }
+    unresolved++;
+  }
+  return unresolved;
+}
+
+
 const GO_TESTING: TestFramework = {
   id: "gotest",
   displayName: "go test (testing)",
@@ -873,16 +922,19 @@ const GO_TESTING: TestFramework = {
   parseOutput: parseGoTestOutput,
 
   assertionInstruction:
-    "Go has no assert library in the standard library. Write ONE case per test function, no table-driven loops: " +
-    "`got := <call>` on one line, then `want := <expected>` on the next, then " +
-    "`if got != want { t.Errorf(\"<call> = %v, want %v\", got, want) }`. " +
-    "The EXPECTED value is the right-hand side of `want :=` and nothing else. " +
+    "Go has no assert library in the standard library. Inside `t.Run` write `got := <call>` on one line, " +
+    "then `if got != tt.want { t.Errorf(\"<call> = %v, want %v\", got, tt.want) }`. " +
+    "The EXPECTED value is the row's `want` field and nothing else - never re-declare `want` in the body. " +
     "Every test function must be named `Test` followed by an uppercase letter and take `t *testing.T`.",
 
-  expectedValueSpans: goExpectedValueSpans,
+  // TABLE-AWARE (session-v68 phase 2). The bare locator keys on `want :=`,
+  // which a table-driven test has not got, so on the shape the prompt now asks
+  // for it found NOTHING and the zero-hole floor refused. The wrapper reads the
+  // `[]struct` rows instead.
+  expectedValueSpans: goTableAwareSpans,
 
   classifiesBuildError: true,
-  unresolvedAssertions: goUnresolvedAssertions,
+  unresolvedAssertions: goTableAwareUnresolved,
 };
 
 // ===========================================================================
@@ -1134,6 +1186,13 @@ const GO_TDD_LANG: TddLang = {
   },
 
   markerPrefix: "//",
+
+  // Go has no async target shape: a `context.Context` parameter is satisfied
+  // with `context.Background()` inside an ordinary `func TestX(t *testing.T)`,
+  // and a channel is refused outright. So nothing is ever async here.
+  isAsyncSignature: () => false,
+
+  deadTableColumns: (text: string) => deadColumns(text, goStructTables(text, GO_LITERALS), GO_LITERALS),
 
   generatedTestNames(fileText: string, markerId: string): string[] {
     const { begin, end } = testMarkers(markerId, GO_TDD_LANG.markerPrefix);

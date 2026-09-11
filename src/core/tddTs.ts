@@ -35,7 +35,7 @@ import {
   testMarkers,
   topLevelArgs,
 } from "./testAssembly";
-import type { TestabilityVerdict } from "./testability";
+import type { TestabilityContext, TestabilityVerdict } from "./testability";
 import { BlankValueResult, escapeSnippet } from "./tabstop";
 import {
   PlacementResult,
@@ -48,6 +48,7 @@ import {
   fileExistsOf,
   readFileOf,
 } from "./tddLang";
+import { deadColumns, eachTables, mergeTableAndInline } from "./tddTable";
 
 // ===========================================================================
 // The TypeScript literal profile
@@ -364,17 +365,25 @@ const TS_EXPORTED = /^\s*export\b/;
  *    signature is all there is to read and a wrong import line produces a red the
  *    human cannot act on.
  */
-export function classifyTsTestability(signature: string, docComment?: string): TestabilityVerdict {
+export function classifyTsTestability(
+  signature: string,
+  docComment?: string,
+  ctx?: TestabilityContext,
+): TestabilityVerdict {
   const sig = signature ?? "";
   const returnType = tsReturnTypeOf(sig);
 
-  if (TS_ASYNC_KEYWORD.test(sig) || (returnType !== undefined && TS_ASYNC_RETURN.test(returnType))) {
-    return {
-      testable: false,
-      reason: "async",
-      detail: "async function or a promise-returning function — a blind unit test cannot drive it",
-    };
-  }
+  // ADMITTED session-v68 phase 5. vitest and jest both AWAIT a promise the test
+  // returns, so an async target needs no detection and no plugin: the test is an
+  // `async` callback with an `await` in it. Nothing was standing between this
+  // language and its async functions except a rung written when the seam was
+  // Rust-only.
+  //
+  // The PRECEDENCE is deliberately untouched. `Promise<void>` still has nothing
+  // to assert, and it must fall to `underspecified` below rather than being
+  // admitted here as testable — an admitted target with no return value would
+  // produce a test asserting nothing at all.
+  const asyncTarget = TS_ASYNC_KEYWORD.test(sig) || (returnType !== undefined && TS_ASYNC_RETURN.test(returnType));
   if (TS_IO.test(sig)) {
     return {
       testable: false,
@@ -382,21 +391,21 @@ export function classifyTsTestability(signature: string, docComment?: string): T
       detail: "IO/network in the signature (node:fs, fs, fetch, http, https) — integration territory, not a blind unit test",
     };
   }
-  if (TS_THIS_PARAM.test(sig)) {
+  if (TS_THIS_PARAM.test(sig) && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
       detail: "an explicit `this` parameter — needs a constructed receiver",
     };
   }
-  if (!TS_TOP_LEVEL_BINDING.test(sig) && TS_METHOD_FORM.test(sig)) {
+  if (!TS_TOP_LEVEL_BINDING.test(sig) && TS_METHOD_FORM.test(sig) && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
       detail: "class method — needs a constructed instance the blind test has no contract for",
     };
   }
-  if (!TS_TOP_LEVEL_BINDING.test(sig) && TS_CLASS_FIELD_ARROW.test(sig)) {
+  if (!TS_TOP_LEVEL_BINDING.test(sig) && TS_CLASS_FIELD_ARROW.test(sig) && ctx?.receiverConstructible !== true) {
     // Amendment 5: this is a class member too, and the reason has to say so.
     // Falling through to the visibility leg told the human to `export` a class
     // property, which cannot be done.
@@ -406,7 +415,25 @@ export function classifyTsTestability(signature: string, docComment?: string): T
       detail: "class field holding a function — needs a constructed instance, and a class property cannot be exported",
     };
   }
-  if (!TS_EXPORTED.test(sig)) {
+  // A CLASS MEMBER is not "not exported": it is reached through its class, not
+  // through an import of its own, and `export` is not something you can write on
+  // it. The method form is BOTH this leg's tell and the fixture leg's tell, so
+  // lifting the fixture rung dropped every member straight onto this one — a
+  // rung it was never really standing on, which the phase 6 blind oracle caught
+  // in TypeScript and in no other language.
+  //
+  // Lifting it needs TWO facts, and the review was right that one is not enough:
+  // that the receiver is constructible, and that the CLASS is reachable from the
+  // test site. The surface resolving proves the first and says nothing about the
+  // second, so `receiverExported` is resolved separately where the document is.
+  // Absent means not established, which keeps the refusal — the conservative
+  // direction, and the one this whole phase is governed by.
+  const isClassMember =
+    !TS_TOP_LEVEL_BINDING.test(sig) && (TS_METHOD_FORM.test(sig) || TS_CLASS_FIELD_ARROW.test(sig) || TS_THIS_PARAM.test(sig));
+  if (
+    !TS_EXPORTED.test(sig) &&
+    !(ctx?.receiverConstructible === true && ctx?.receiverExported === true && isClassMember)
+  ) {
     // The one refusal Rust and Go never need. The generated tests live in a
     // SEPARATE MODULE and reach the unit through an import, so the fix is
     // named rather than implied.
@@ -420,9 +447,22 @@ export function classifyTsTestability(signature: string, docComment?: string): T
     return { testable: false, reason: "underspecified", detail: "no doc comment — no contract to author a blind test from" };
   }
   if (returnType === undefined) {
-    // `void`, or no annotation at all. `Promise<void>` never reaches here: async
-    // claimed it, per Amendment 3.
     return { testable: false, reason: "underspecified", detail: "returns void or has no return annotation — nothing to assert" };
+  }
+  // `Promise<void>` USED to be claimed by the async rung (Amendment 3's ruled
+  // precedence). Now that async is admitted, it reaches here, and it must be
+  // `underspecified` rather than testable: awaiting it yields nothing to assert.
+  // Unwrapping is what makes the reported reason true instead of merely stable.
+  const awaited = /^(?:Promise|PromiseLike|Thenable)\s*<([\s\S]*)>$/.exec(returnType)?.[1]?.trim();
+  if (awaited !== undefined && (awaited === "" || awaited === "void" || awaited === "undefined" || awaited === "unknown")) {
+    return {
+      testable: false,
+      reason: "underspecified",
+      detail: `resolves to \`${awaited === "" ? "nothing" : awaited}\` — awaiting it gives nothing to assert`,
+    };
+  }
+  if (asyncTarget && returnType === "void") {
+    return { testable: false, reason: "underspecified", detail: "returns void — nothing to assert" };
   }
   return { testable: true };
 }
@@ -1461,10 +1501,23 @@ const VITEST_IMPORT = "import { describe, expect, it } from 'vitest';";
 const JEST_IMPORT = "import { describe, expect, it } from '@jest/globals';";
 
 const TS_ASSERTION_INSTRUCTION =
-  "Assert with `expect(<call>).toBe(<expected>)`, or `toEqual` for objects and arrays. " +
-  "The EXPECTED value is the SOLE ARGUMENT OF THE MATCHER that ends the expect chain — never an " +
-  "argument of the call under test. Write each expected value inline in its own matcher. " +
-  "One `it` per case, and put the function's name in every `it` title.";
+  "Assert with `expect(<call>).toBe(want)`, or `toEqual` for objects and arrays, where `want` is the " +
+  "row's last column. The EXPECTED value is the SOLE ARGUMENT OF THE MATCHER that ends the expect " +
+  "chain — never an argument of the call under test. One `it.each` table per function under test, and " +
+  "put the function's name in the `it.each` title.";
+
+// vitest and jest share the locator, so they share the wrapper. The table is
+// `it.each([ … ])`, whose rows are arrays and whose last element is the expected
+// value.
+function tsTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, eachTables(text, TS_LITERALS), tsExpectedValueSpans(text)).spans;
+}
+
+function tsTableAwareUnresolved(text: string): number {
+  const merged = mergeTableAndInline(text, eachTables(text, TS_LITERALS), tsExpectedValueSpans(text));
+  return tsUnresolvedAssertions(text) + merged.unresolvedRowRefs;
+}
+
 
 const VITEST: TestFramework = {
   id: "vitest",
@@ -1485,9 +1538,11 @@ const VITEST: TestFramework = {
   failureLocation: nodeStackFailureLocation,
   stripHarnessFrames: nodeStackStripHarnessFrames,
   assertionInstruction: TS_ASSERTION_INSTRUCTION,
-  expectedValueSpans: tsExpectedValueSpans,
+  // TABLE-AWARE (session-v68 phase 2): `it.each([ […, want], … ])` rows, and the
+  // runner's `toBe(want)` dropped rather than blanked.
+  expectedValueSpans: tsTableAwareSpans,
   classifiesBuildError: true,
-  unresolvedAssertions: tsUnresolvedAssertions,
+  unresolvedAssertions: tsTableAwareUnresolved,
 };
 
 // MEASURED, on jest 29.7.0 in `~/work/utilitydelta-io/utilitydelta-app` against
@@ -1521,9 +1576,11 @@ const JEST: TestFramework = {
   failureLocation: nodeStackFailureLocation,
   stripHarnessFrames: nodeStackStripHarnessFrames,
   assertionInstruction: TS_ASSERTION_INSTRUCTION,
-  expectedValueSpans: tsExpectedValueSpans,
+  // TABLE-AWARE (session-v68 phase 2): `it.each([ […, want], … ])` rows, and the
+  // runner's `toBe(want)` dropped rather than blanked.
+  expectedValueSpans: tsTableAwareSpans,
   classifiesBuildError: true,
-  unresolvedAssertions: tsUnresolvedAssertions,
+  unresolvedAssertions: tsTableAwareUnresolved,
 };
 
 // ===========================================================================
@@ -1901,6 +1958,18 @@ function makeTsLang(languageId: string, displayName: string): TddLang {
     // vitest and in jest, and a model that wrote `test(` used to yield no names
     // at all — which the rung reports as "run Generate Tests first", which is
     // not what happened.
+    // vitest and jest both AWAIT a promise the test returns, so there is nothing
+    // to detect and nothing that can be missing. Stated rather than left absent,
+    // because an absent context reads as "could not resolve" everywhere else.
+    testabilityContextFor: () => ({ asyncTest: { shape: "an `async` callback with `await` in it" } }),
+
+    isAsyncSignature: (signature: string) => {
+      const rt = tsReturnTypeOf(signature ?? "");
+      return TS_ASYNC_KEYWORD.test(signature ?? "") || (rt !== undefined && TS_ASYNC_RETURN.test(rt));
+    },
+
+    deadTableColumns: (text: string) => deadColumns(text, eachTables(text, TS_LITERALS), TS_LITERALS),
+
     generatedTestNames(fileText: string, markerId: string): string[] {
       const { begin, end } = testMarkers(markerId, TS_MARKER_PREFIX);
       const bi = fileText.indexOf(begin);

@@ -63,7 +63,8 @@ yet: inside a block comment the sentence lands and Tighten Doc Comment refuses (
 - **27.** v34's items 1 and 2 exist for Rust only; four languages have the same hole
 - **35.** the payload elision, in the two languages v37 and v40 did not build
 - **37.** the worked-example leg quotes the wrong docs on 80% of its blocks
-- **53.** a ratified test suite passes against a body replaced with `{ 0 }`
+- **53.** a ratified test suite passes against a body replaced with `{ 0 }` (scouted; both
+  candidates struck, the table shipped instead, item stays open)
 - **54.** injection walks downward only, so no caller-direction fact ever reaches the model
 - **17.** ask the model which types it needs, then inject their surfaces
 - **39.** other agent CLIs as fn-gen backends
@@ -80,6 +81,8 @@ yet: inside a block comment the sentence lands and Tighten Doc Comment refuses (
 - **73.** thinking becomes a palette action, and numCtx becomes a setting - RULED, buildable
 - **71.** the wrong-tree refusal, extended to TypeScript and Python
 - **33.** the spike harness spliced on stale offsets: a record and three standing rules
+- **80.** the C# check loses the source project's warnings once it builds the test project
+- **81.** a `src/` + `tests/` C# layout with no solution file resolves no test project
 - **18.** the rest, unchanged in priority
 
 **Measurements pending** - a number from the harness is a hypothesis until the instrument that
@@ -389,6 +392,34 @@ Two candidate builds, not exclusive:
 Detection belongs to item 13, whose ranking puts a single trivial-return mutant first for exactly this
 reason. This item is the defect; 13 is the instrument that would have caught it.
 
+**SCOUTED AND PARTLY ANSWERED, session-v68 (2026-09-10). Both candidates were measured and BOTH
+are struck; a third thing shipped instead.**
+
+Candidate 2, supplying the constants, is **struck on population rather than on effect**. Nominally
+best of eight arms at 3 of 5 against 2 of 5, which is noise at that sample. The census is the reason
+to stop: 680 constants are defined in the corpus, 1,686 functions carry a doc comment, and only **87
+of those 1,686, 5.2%, name a constant that is defined**. The leg fires on one documented function in
+twenty. It also caused its own failure once, by making the model reference a constant that is not
+visible at the test site.
+
+Candidate 1, refusing, was not built because nothing measured says which functions to refuse.
+
+Eight arms were run and **the target decided the outcome, not the arm**: every arm agreed on six of
+eight targets, three compiled in zero of eight, and half of all rows never compiled at all. The
+dominant errors are reaching a COLLABORATOR (`E0599`, `E0433`), not designing a test. A split
+brainstorm-then-serial pass matched one-shot at 2.9x the latency; thinking on a 9B spent 96 seconds
+and 48,000 characters of trace and reproduced this item's failure shape verbatim.
+
+**What shipped is the TABLE (supersession S31), and its argument is different from this item's.**
+Five identical `0`s are invisible across five functions and obvious as a column, which is real and
+secondary. The real argument is that the model is proven bad adversarially, so the artefact's job is
+to be cheap for the developer to EXTEND: one line into an array, against copying a whole test
+function, renaming it and rebuilding a fixture. It is an affordance answer to a quality problem,
+chosen because eight arms said the quality answer is not available.
+
+This item stays OPEN. The table makes the defect visible and easier to fix by hand; it does not make
+the model write the 4 MiB fixture. Full evidence in `session-v68/scout-notes.md`.
+
 ### 54. Injection walks downward only, so no caller-direction fact ever reaches the model
 
 Raised 2026-08-12. REASONED, from the injection log of four real generations.
@@ -695,6 +726,80 @@ tests, every surviving mutant is a proven hole no coverage number can fake. Expe
 Scout: shell out (cargo-mutants, Stryker, mutmut; Go support thinner) or mutate through the product's
 own span machinery, and does runtime make it a nightly?
 
+**SCOUTED 2026-09-10, session-v68, and the ranking above now has a REASON it did not have.** It was
+ranked on cost. Cost happens to agree, but it is not why.
+
+**No instrument may tell the model anything about the function body.** RULED by the human,
+2026-09-10. Blind-oracle discipline is a CORRECTNESS rule, not a privacy one: it exists so that when
+the implementation is wrong, the test disagrees with it. An instrument that leaks the body produces
+tests asserting what the code DOES rather than what the contract PROMISES, and a test that agrees
+with a bug locks it in and goes green forever. Worse than no test.
+
+| instrument | what it tells the model about the body | blind-safe |
+| --- | --- | --- |
+| trivial-return mutant | one bit: does the suite distinguish this function from a constant | **yes** |
+| property-test counterexample | an INPUT, from the input space | **yes** |
+| fuzz crash | an INPUT. The backtrace names internal lines and must be dropped | **yes, minus the backtrace** |
+| code coverage | which lines and branches exist, and which ran | **no** |
+| full mutation testing | a diff of the body, one surviving mutant at a time | **no, maximally** |
+
+So rungs 1, 2 and 4 are blind-safe and rungs 3 and 5 are not, which is the same ordering cost gave
+and a much better reason for it.
+
+**Coverage is either violating or useless, with nothing in between.** Bare line numbers are
+unactionable: nothing can be done with "lines 41 to 47 never ran" unless the model is also shown what
+is at lines 41 to 47, and that is the body.
+
+**The two-step launder does not work.** Coverage to a first model, that model writes a synthetic doc
+comment, the TDD model authors from that. It fails worse than the leak it was built to fix, because
+the first model must read the body to describe the uncovered region, so its prose describes what the
+code does and the tests then agree with the bug. And it is undetectable: source in a prompt can be
+grepped for, a paraphrase cannot. A synthetic doc comment derived from a body is a reference
+implementation wearing prose.
+
+**The legitimate two-step has a human in the middle, and that is the product's thesis rather than a
+workaround.** Coverage tells the DEVELOPER their ratified suite never executes 7 of 19 lines. They
+look, decide whether the CONTRACT is thin, and write the missing clause into the doc comment. The
+gesture then re-authors blind from the better contract. Coverage's honest job is showing where a
+contract is under-specified, which is the same lever as the 68.4% of functions that carry none.
+
+One narrow survival: a coverage number describing the SUITE rather than the body can gate whether the
+product speaks at all. "Your suite executes 3 of 19 lines, so this verdict is not worth trusting" is
+a fact about the suite. It still never enters a prompt.
+
+**Rung 1 has a name in the literature and the literature answers the value question.** The
+trivial-return verdict is *extreme mutation testing*, and what it finds are *pseudo-tested methods*:
+"covered by the test suite, yet no test case fails when the method body is removed" (Vera-Perez et
+al., EMSE 24, 2019, verified against the paper's own abstract; 28,000+ methods). It is cheap - 0.28s
+on a small crate, 7.0s on the largest here, and a warm shadow tree runs a full cycle in 0.45s with
+ZERO writes to the developer's source, which keeps the three-write-paths invariant intact by
+construction. The same paper's developer study found under 30% of pseudo-tested methods judged
+clearly worth the effort, so it reports a problem most people will not act on. Item 53 is a case
+where the developer clearly WOULD have wanted to know.
+
+**It was CUT for session-v68** for two reasons: the table shape (S31) already surfaces the case it
+was built for, delivered earlier and free, and the published prior says most of what it finds goes
+unacted-on. Two details to carry if it is revived: **one constant is not enough** - a `-> bool` whose
+every test expects `true` kills a `{ false }` stub while never testing the false branch, so several
+constants per return type and the suite is strong only if it kills all of them; and a return type
+with no cheap constant means the instrument could not produce the case, which must never be reported
+as a pass.
+
+**Tooling, checked by running rather than by recall (2026-09-10).** `cargo-mutants`, `cargo-fuzz` and
+`cargo-afl` are present on this box; Stryker, Stryker.NET, mutmut, cosmic-ray, go-mutesting and
+gremlins are all absent, so "full mutation testing" means a per-language third-party matrix in four
+languages where nothing is installed. Go needs nothing (`go test -cover` 1.0s, `go test -fuzz`
+native). C# has `coverlet.collector` in the nuget cache. Rust wants `cargo-llvm-cov`, not installed.
+TypeScript and Python need a package in the USER's project, so any coverage leg must detect and
+refuse by naming what is missing, the way `PlacementRefusalReason` already does.
+
+**Naming a technique to an agent does not work, and that is measured.** Over 26 conditions and 80
+runs each: told to use property-based testing, agents find a trivial property; told to use
+differential testing, 135 of 160 runs wrote the same implementation twice with the same bug in both;
+formal conditions proved vacuous `A => A`. **Default, with no additional instructions, scored above
+average.** Do not paste testing vocabulary into the TDD instruction. Any such edit needs an arm, not
+an argument, and the prior says it will cost.
+
 The mocking question, answered honestly or not at all:
 
 - The standing rule stays: refuse un-auto-testable functions rather than emit hollow or mocked tests.
@@ -843,6 +948,51 @@ must verify its own offsets before it writes, and must say out loud how many it 
 THROW rather than skip: a guard that skips leaves a smaller corpus that still looks complete. And
 re-capturing the corpus is not a drop-in repair when the candidate id embeds its own offsets, because
 a fresh capture renames every row and orphans the generations already recorded against the old ones.
+
+### 80. The C# check loses the source project's WARNINGS once it builds the test project
+
+Session-v69 phase 4 moved the C# build target to the test project that references the source,
+because a test project references the source and never the reverse, so building the source project
+could not compile the tests the product had just written there.
+
+One `/p:ErrorLog=<path>` is a global property: it applies to every project in the build, and each
+`csc` invocation OVERWRITES that file. The test project compiles last, so its SARIF wins.
+
+**Errors are safe and the reason is structural, not luck.** A source ERROR stops the referencing
+test project compiling at all, so the SARIF holds the source errors and the build fails either way.
+MEASURED on a two-project probe, 2026-09-11: source warning CS0219 plus a clean test project gave a
+SARIF holding only the test project's own notes; the warning appeared on stdout and nowhere else.
+
+**The obvious fix is REFUTED, so do not spend the hour.** `/p:ErrorLog=…$(MSBuildProjectName).sarif`
+is taken LITERALLY — a command-line global property is not expanded — and produced a file named
+`multi-$(MSBuildProjectName).sarif` on disk. A real fix needs either a per-project ErrorLog injected
+some other way (a `Directory.Build.props` the product would have to write, which it will not), or
+parsing dotnet's stdout beside the SARIF, which is a second diagnostic source with its own shape.
+
+Warnings are display-only on this path: they never fail the check and `classifyEligibility` refuses
+them for repair. So this is a real loss with a small blast radius, and it is written down because
+the next person to see a missing C# warning should not have to rediscover the mechanism.
+
+### 81. A `src/` + `tests/` C# layout with no solution file resolves no test project
+
+Not caused by session-v69, and now visible in two places instead of one. The test-project search is
+the source project's SIBLING directories plus every project a `.sln` / `.slnx` up to four levels
+above lists. `src/App` and `tests/App.Tests` are not siblings, so with no solution file nothing
+connects them.
+
+**The two halves agree, which is the only good thing about it.** `placementFor` refuses to WRITE a
+test there (`no-test-project`, run live on this box), and since v69 the CHECK equally does not build
+it. One shared implementation, so they cannot drift — and there is nothing for the check to miss,
+because the product never writes there.
+
+What it costs is a real and increasingly common layout: a repo that builds with `dotnet build` over
+a directory, or leans on `Directory.Build.props`, and keeps no solution file. The gesture is simply
+unavailable there and the refusal tells the human to create a `<Source>.Tests` project they already
+have.
+
+The fix is a wider candidate set — a `tests/` or `test/` sibling of the source project's PARENT —
+and it must be measured against the one-to-many trap the corpus already carries, where one test
+project serves three source projects. Widening the search widens that too.
 
 ### 18. The rest, unchanged in priority
 

@@ -882,7 +882,13 @@ ttest("returnTypeOf ts: THE THREE A NAIVE REGEX BREAKS - a function-typed parame
 
 const DOC = "/** Returns twice the given count of shards. */";
 
-ttest("classifyTestability ts: `async function` and a `Promise<T>` return are 'async' [contract-ts.md 'async: `async function`, or a `Promise<T>` return']", () => {
+// SUPERSESSION S32 (session-v68 phase 5, ruled by the human 2026-09-10). This row
+// asserted an `async function` or a `Promise<T>` return is refused as 'async'. That
+// sentence was written when the seam was Rust-only, and Rust is the one language
+// here with no stdlib answer. vitest and jest both AWAIT a promise the test returns,
+// so an async target needs no detection and no plugin: the generated test is an
+// async callback with an await in it. `Promise<void>` is still refused, underneath.
+ttest("classifyTestability ts: `async function` and a `Promise<T>` return are TESTABLE, because vitest and jest await a returned promise (S32)", () => {
   for (const sig of [
     "export async function load(n: number): Promise<number>",
     "export function load(n: number): Promise<number>",
@@ -890,10 +896,15 @@ ttest("classifyTestability ts: `async function` and a `Promise<T>` return are 'a
   ]) {
     assert.strictEqual(
       tsLang.classifyTestability(sig, DOC).reason,
-      "async",
-      `${JSON.stringify(sig)} returns a promise, which a blind synchronous assertion cannot express`
+      undefined,
+      `${JSON.stringify(sig)} resolves to a value the test can await and assert on, so there is nothing here to refuse`
     );
   }
+  assert.strictEqual(
+    tsLang.classifyTestability("export function flush(n: number): Promise<void> {", DOC).reason,
+    "underspecified",
+    "the rung moved rather than vanished: a promise resolving to nothing is still refused, for the reason underneath"
+  );
 });
 
 ttest("classifyTestability ts: `node:fs` and `fetch` in the signature are 'io' [contract-ts.md 'io: `node:fs`, `fs`, `fetch`, `http`, `https` types in the signature']", () => {
@@ -965,15 +976,27 @@ ttest("classifyTestability ts: PLAIN `void`, an ABSENT return type and an ABSENT
   );
 });
 
-ttest("classifyTestability ts: `Promise<void>` is 'async', NOT 'underspecified' - precedence claims it, and what is being protected is that the reported reason is PREDICTABLE rather than dependent on which legs happen to match. The function is refused either way, so only the sentence changes, and it names the first and most fundamental blocker [contract-ts.md Amendment 3 'This INCLUDES `Promise<void>` ... precedence resolves it to async. The property being protected is that the reported reason is predictable, not the individual verdict']", () => {
+// SUPERSESSION S32 (session-v68 phase 5). This row asserted `Promise<void>` is
+// 'async'. Amendment 3 ruled that async claimed it, and the property Amendment 3 was
+// protecting - that the reported reason is PREDICTABLE rather than whichever leg
+// happens to match - was about precedence among REFUSALS. Async is not a refusal any
+// more, so the honest reason is that awaiting it gives nothing to assert. The
+// function is still refused; only the sentence moved, and it moved to a true one.
+ttest("classifyTestability ts: `Promise<void>` is 'underspecified' and STILL REFUSED - only the sentence moved, and it moved to a true one (S32)", () => {
   for (const sig of [
     "export function flush(n: number): Promise<void> {",
     "export async function flush(n: number): Promise<void> {",
   ]) {
+    const v = tsLang.classifyTestability(sig, DOC);
     assert.strictEqual(
-      tsLang.classifyTestability(sig, DOC).reason,
-      "async",
-      `${JSON.stringify(sig)}: carving an exception out of first-match-wins would make the reason depend on which legs matched, which is exactly the predictability the shipped Rust classifier's header promises`
+      v.testable,
+      false,
+      `${JSON.stringify(sig)} is refused either way; admitting it would produce a test asserting nothing at all`
+    );
+    assert.strictEqual(
+      v.reason,
+      "underspecified",
+      `${JSON.stringify(sig)}: with async no longer a refusal, the reason underneath is the true one - awaiting it gives nothing to assert`
     );
   }
   assert.strictEqual(
@@ -997,17 +1020,24 @@ ttest("classifyTestability ts: an EXPORTED, documented, non-this, synchronous fu
   }
 });
 
-ttest("classifyTestability ts: first-match-wins precedence holds in the contract's order, so the reported reason is STABLE and repeated calls agree [contract-ts.md 'async -> io -> needs-fixture -> not-exported -> underspecified -> testable']", () => {
+// SUPERSESSION S32 (session-v68 phase 5). Three of these rows expected 'async',
+// which used to head the chain. Phase 5 admits an async target in TypeScript, so
+// async is no longer a leg and each of those inputs reports the verdict underneath.
+// The precedence is still FIXED and this row still asserts it, over the remaining
+// order io -> needs-fixture -> not-exported -> underspecified -> testable, which
+// S32 did not touch.
+ttest("classifyTestability ts: first-match-wins precedence holds over io -> needs-fixture -> not-exported -> underspecified, so the reported reason is STABLE and repeated calls agree (S32)", () => {
   const rows = [
-    ["async before io", 'async function dump(fh: import("node:fs").WriteStream): Promise<number>', DOC, "async"],
+    ["io is now the head of the chain, async having left it", 'async function dump(fh: import("node:fs").WriteStream): Promise<number>', DOC, "io"],
     ["io before needs-fixture", 'dump(this: Store, fh: import("node:fs").WriteStream): string {', DOC, "io"],
     ["needs-fixture before not-exported", "total(a: number): number {", DOC, "needs-fixture"],
     ["not-exported before underspecified", "function helper(a: number) {", DOC, "not-exported"],
     ["not-exported before underspecified, no doc either", "function helper(a: number): number {", undefined, "not-exported"],
-    // Amendment 3's ruling stated as a precedence property rather than as a
-    // special case: async is simply reached first.
-    ["async before underspecified", "export function flush(n: number): Promise<void> {", DOC, "async"],
-    ["async before not-exported", "async function helper(n: number): Promise<number>", DOC, "async"],
+    // Amendment 3's ruling was that async reached `Promise<void>` first. S32
+    // removed async from the chain, so each of these reports the leg underneath,
+    // and the order among the remaining legs is unchanged.
+    ["a Promise<void> falls to underspecified, the verdict that was underneath", "export function flush(n: number): Promise<void> {", DOC, "underspecified"],
+    ["not-exported still precedes underspecified, and an async target no longer jumps the queue", "async function helper(n: number): Promise<number>", DOC, "not-exported"],
   ];
   for (const [label, sig, doc, want] of rows) {
     const first = tsLang.classifyTestability(sig, doc).reason;

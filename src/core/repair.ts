@@ -20,6 +20,7 @@ import { LogFn } from "./completionService";
 import { fenceFor } from "./instructPostprocess";
 import { Diagnostic, DiagnosticSpan, OracleCheckResult, resolveDiagnosticPath, rustcAssertionMessage } from "./compilerOracle";
 import { dedentReplyCode } from "./placeReply";
+import { testMarkers } from "./testAssembly";
 import { dedentDocComment } from "./reindent";
 import { ContextBlock, GenKind, SECTION_SEPARATOR, renderContextBlock } from "./prompt";
 
@@ -294,6 +295,93 @@ export function spanScopedMessage(verdict: SpanScopedVerdict, symbol?: string): 
   return `no error landed inside ${what}; ${placed} ${noun} ${verb} outside the touched span${where}${unplacedTail}`;
 }
 
+/** One error that landed inside a marked generated-test region. */
+export interface GeneratedTestError {
+  /** Absolute path of the file the region lives in. */
+  readonly filePath: string;
+  /** The marker id the region carries, which is the target's symbol name. */
+  readonly markerId: string;
+  readonly diagnostic: Diagnostic;
+}
+
+/**
+ * Which of `diagnostics` sit inside a `column80-tests:<markerId>:begin/end` region.
+ *
+ * ADDED session-v69 phase 6. Phases 2 to 5 make the check SEE the test code this
+ * product wrote; this is what lets the human be TOLD so. Without it the existing
+ * sentence is "no error landed inside `first_even`; 2 errors remain outside the
+ * touched span, in tdd.rs", which is true and buries the fact that matters: the
+ * errors are in code this product wrote, into a region it marked, for the very
+ * function the cursor is in.
+ *
+ * THE FILE IS THE DIAGNOSTIC'S OWN, never a derived path. Rust's region lives in
+ * the source file and the other four languages' live in a sibling, and reading
+ * the file the error names works identically for both without this function
+ * knowing anything about placement.
+ *
+ * Pure over its two injected readers, and total: an unreadable file, a region
+ * with no end marker, and a span with the -1 no-offset sentinel all contribute
+ * nothing rather than throwing or guessing.
+ */
+export function generatedTestErrors(
+  diagnostics: readonly Diagnostic[],
+  opts: {
+    readonly markerId: string;
+    readonly markerPrefix: string;
+    readonly resolvePath: (fileName: string) => string;
+    readonly readFile: (absPath: string) => string | undefined;
+  },
+): GeneratedTestError[] {
+  const out: GeneratedTestError[] = [];
+  if (opts.markerId.length === 0) {
+    return out;
+  }
+  const { begin, end } = testMarkers(opts.markerId, opts.markerPrefix);
+  // One read per file per call, however many diagnostics point at it. A file
+  // that could not be read caches as `undefined` so it is not read again.
+  const regions = new Map<string, { start: number; end: number } | undefined>();
+  const regionOf = (abs: string): { start: number; end: number } | undefined => {
+    if (regions.has(abs)) {
+      return regions.get(abs);
+    }
+    let found: { start: number; end: number } | undefined;
+    const text = opts.readFile(abs);
+    if (text !== undefined) {
+      const bi = text.indexOf(begin);
+      const ei = bi === -1 ? -1 : text.indexOf(end, bi + begin.length);
+      if (bi !== -1 && ei !== -1) {
+        // BYTES, because a diagnostic span's offsets are the toolchain's UTF-8
+        // bytes and indexOf answers in UTF-16 code units. They agree on ASCII
+        // and disagree on any file with a non-ASCII character above the region.
+        found = {
+          start: Buffer.byteLength(text.slice(0, bi), "utf8"),
+          end: Buffer.byteLength(text.slice(0, ei + end.length), "utf8"),
+        };
+      }
+    }
+    regions.set(abs, found);
+    return found;
+  };
+
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.level !== "error") {
+      continue;
+    }
+    for (const span of diagnostic.spans) {
+      if (!span.isPrimary || span.byteStart < 0) {
+        continue;
+      }
+      const abs = opts.resolvePath(span.fileName);
+      const region = regionOf(abs);
+      if (region !== undefined && span.byteStart >= region.start && span.byteStart <= region.end) {
+        out.push({ filePath: abs, markerId: opts.markerId, diagnostic });
+        break; // SOME primary is enough; one entry per diagnostic.
+      }
+    }
+  }
+  return out;
+}
+
 export interface RepairPromptInput {
   /** The failing replacement text as it sits in the document now: the
    *  complete function, signature included. */
@@ -485,6 +573,15 @@ export type RepairRoundIndex = 1 | 2;
 
 export type SurfaceReason =
   | "clean"
+  /** The check FAILED and produced nothing parseable: a crashed toolchain, not
+   *  passing code. Session-v69 adversarial review, finding 2. It used to answer
+   *  `clean` — the branch below asked only whether the diagnostic list was empty
+   *  — so an unrestored project, a corrupt diagnostics file, or a toolchain that
+   *  died read exactly like a green build, and on a manual gesture the refine
+   *  round and the covering-test leg then ran over a tree that does not compile.
+   *  `runOracleCheck` already logs it and surfaces an env reason; this is the
+   *  decision half. */
+  | "check-failed"
   | "disabled"
   | "no-eligible"
   | "no-eligible-in-span"
@@ -546,7 +643,11 @@ export class RepairSession {
     }
     const errors = check.diagnostics.filter((d) => d.level === "error");
     if (errors.length === 0) {
-      return this.surface("clean", check.diagnostics);
+      // `success` is the toolchain's OWN verdict, and it is not "diagnostics
+      // empty": warnings leave it true, and a crash leaves it false with nothing
+      // to parse. Asking only the list is how a dead check came to read as a
+      // green build.
+      return this.surface(check.success ? "clean" : "check-failed", check.diagnostics);
     }
     // The check already ran; disabling repair never disables the oracle.
     if (!this.enabled) {

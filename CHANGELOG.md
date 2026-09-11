@@ -1,5 +1,77 @@
 # Changelog
 
+## 3.5.0
+
+**The compiler check now compiles the tests Column 80 wrote.**
+
+It did not. `cargo check` skips `#[cfg(test)]` bodies and `go build` compiles no `_test.go` file
+at all, so the gesture wrote test code and then validated it with a command that could not see
+it. Repair reported a clean build over tests that did not compile, and did nothing, honestly, on
+a false input. Rust now runs `cargo check --all-targets` and Go now runs `go test -c`, which
+compiles the test binary and never runs it. Both are strict supersets of the old commands: no
+diagnostic you used to get has gone away.
+
+If your existing tests do not compile, you will start seeing those errors after a generation.
+They sit outside the function you touched, so nothing is sent to a model over them and the
+message says where they are. Two shapes catch people out and neither is a fault in your code: a
+crate that builds on stable while its benches need nightly, and a Go module whose tests import a
+package that is not in your local module cache — the check runs `GOPROXY=off` and will not fetch
+it. **The Rust check now needs cargo 1.74 and the Go check needs Go 1.21.** An older toolchain
+refuses the command and Column 80 reports a crashed check in the toolchain's own words; it never
+reads as a clean build.
+
+**A generated test can no longer be named after the function it tests.**
+
+Asking for one test per function invited naming the test after the function, and in Rust that is
+a compile error: inside `mod tests` a local `fn first_even` beats `use super::*`, so the test
+calls itself. The name is now renamed deterministically before anything is written, and the
+channel says what moved. Python gets the same guard for its star-import equivalent.
+
+**Generated tests are a table, and a missing case is one line to add.**
+
+Generate Tests used to write one assertion per case and was told never to loop over a table of
+rows. It now writes ONE parameterised table per language - `let cases = [ ... ]` and a loop in
+Rust, a slice of anonymous structs in Go, `it.each` in TypeScript, `@pytest.mark.parametrize`
+under pytest, `cases = [ ... ]` with `subTest` under unittest, and `[TestCase]` / `[InlineData]`
+/ `[DataRow]` in C# - whose LAST COLUMN is the expected value you fill in.
+
+The reason is not that the model writes better cases that way. Eight measurement arms said it
+does not write better cases at all, whatever you ask. The reason is that when YOU spot a case
+the model missed, you add one line to an array instead of copying a whole test function,
+renaming it and rebuilding a fixture. Every expected value is still a literal on its own line,
+still blanked into a hole for you to type.
+
+**A table that declares a column it never reads is refused.**
+
+If the generated table binds a column and the body never uses it, a row value there changes
+nothing, so the table covers less than it looks like it does. Nothing is written and the message
+names the column.
+
+**Async functions are testable now, in the four languages where a test can drive one.**
+
+Every `async` function used to be refused with the same sentence in all five languages, and that
+sentence was only true for Rust. C#, TypeScript and Python under unittest now generate an async
+test directly. Go stops refusing a `context.Context` parameter, which a test satisfies with
+`context.Background()`; a channel is still refused, and now the message says so. Python under
+pytest asks your interpreter for pytest-asyncio or anyio and names them if they are missing.
+Rust reads your Cargo.toml for tokio, async-std or smol and writes the attribute you actually
+have; with none of them, the refusal names all three. Nothing installs anything, ever.
+
+**Methods are testable when the type says how to build one.**
+
+A method used to be refused because constructing a receiver is work the gesture does not
+attempt. If the enclosing type's own API carries something that produces one, the tests get
+generated and the API comes with them. If it does not, the refusal names the type, so you know
+what to add.
+
+**Context blocks reach the test prompt.**
+
+Anything you stage in the context panel now reaches Generate Tests, the way it already reached
+Generate and Repair - so if your project drives async tests with something in-house, hand over a
+test-function template and it is used. One block is left out on purpose: one covering the body
+of the function under test. Tests are written from your doc comment alone, and a test written
+from the implementation agrees with its bugs. When that happens it is said out loud.
+
 ## 3.4.0
 
 **Dictate a comment.**

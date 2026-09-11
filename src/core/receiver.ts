@@ -373,3 +373,176 @@ export function producesType(rendered: string | undefined, typeName: string, sty
   const clause = RETURN_CLAUSE[style](rendered ?? "");
   return clause.trim().length === 0 || namesType(clause, typeName);
 }
+
+
+/**
+ * Does a RENDERED enclosing-type surface carry anything a test could construct
+ * one of `typeName` with?
+ *
+ * The question session-v68 phase 6 asks before lifting the fixture rung, and the
+ * asymmetry decides every judgement call in it: a FALSE POSITIVE admits a target
+ * whose generated test cannot compile, while a FALSE NEGATIVE only leaves the
+ * honest refusal that already stood. So it is deliberately stricter than
+ * `producesType`, which answers true for a member with no readable return clause
+ * at all — right when the cost is dropping one candidate from a prompt, wrong
+ * here.
+ *
+ * Four things the first cut got wrong, all of them false positives found by the
+ * phase 5/6 adversarial review:
+ *
+ *   - an INSTANCE method returning the type is not a producer. `fn clone(&self)
+ *     -> Widget` needs a Widget before it can make one.
+ *   - a member merely TAKING the type is not a producer: `void Add(Widget w)`
+ *     matched a bare "the name followed by a paren".
+ *   - a constructor a test cannot CALL is not a producer: `private Widget()`,
+ *     `private constructor()`.
+ *   - a mention inside a COMMENT is not a member at all.
+ *
+ * And one false negative: a GENERIC receiver (`Widget<T>`) could never match,
+ * because the name was stripped of its punctuation into `WidgetT`.
+ */
+export function surfaceProducesType(languageId: string, surface: string, typeName: string): boolean {
+  // The base name: `Widget<T>` and `Widget` are the same type to construct.
+  const t = typeName.split("<")[0].trim().replace(/[^\w]/g, "");
+  if (t.length === 0) {
+    return false;
+  }
+  const namesT = new RegExp(`(^|[^\\w])(?:Self|${t})(\\s*<[^>]*>)?([^\\w]|$)`);
+  for (const raw of surface.split(/\r?\n/)) {
+    const line = stripSurfaceComment(raw).trim();
+    if (line.length === 0) {
+      continue;
+    }
+    if (producesLine(languageId, line, t, namesT)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** A rendered surface carries doc comments beside its members. A mention of the
+ *  type inside one is prose, never a callable. */
+function stripSurfaceComment(line: string): string {
+  const trimmed = line.trim();
+  if (/^(\/\/|\/\*|\*|#)/.test(trimmed) || trimmed.startsWith('"""') || trimmed.startsWith("'''")) {
+    return "";
+  }
+  return line.replace(/\/\/.*$/, "");
+}
+
+/** The RETURN clause of a rendered member: everything after its top-level
+ *  parameter list. undefined when the line declares no callable, so a field or a
+ *  property can never be read as a producer by accident. */
+function returnClauseOf(line: string): string | undefined {
+  const open = line.indexOf("(");
+  if (open === -1) {
+    return undefined;
+  }
+  let depth = 0;
+  for (let i = open; i < line.length; i++) {
+    const c = line[i];
+    if (c === "(" || c === "[") {
+      depth++;
+    } else if (c === ")" || c === "]") {
+      depth--;
+      if (depth === 0 && c === ")") {
+        return line.slice(i + 1);
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The parameter list of a rendered member. */
+function paramsOf(line: string): string {
+  const open = line.indexOf("(");
+  const rest = returnClauseOf(line);
+  if (open === -1 || rest === undefined) {
+    return "";
+  }
+  return line.slice(open + 1, line.length - rest.length - 1);
+}
+
+function hasSelfReceiver(params: string): boolean {
+  return /^\s*(&\s*)?('\w+\s+)?(mut\s+)?(self|cls)\b/.test(params);
+}
+
+function producesLine(languageId: string, line: string, t: string, namesT: RegExp): boolean {
+  const ret = returnClauseOf(line);
+  const params = paramsOf(line);
+  // A "producer" that CONSUMES one is not a starting point. `fn merge(a: Widget,
+  // b: Widget) -> Widget`, `static combine(a: Widget, b: Widget): Widget`,
+  // `func Clone(w *Widget) *Widget` — every one of them needs a Widget before it
+  // can make a Widget, and a blind test starts from nothing. Excluding
+  // instance methods closed the same chicken-and-egg in its receiver form; this
+  // closes the free-function and static forms of it.
+  //
+  // `WidgetConfig` is not `Widget`: `namesT` requires a non-word character or
+  // the end of the string after the name, so a differently-named type carrying
+  // it as a prefix does not exclude anything.
+  if (namesT.test(params)) {
+    return false;
+  }
+  const headEnd = line.indexOf("(");
+  const head = headEnd === -1 ? line : line.slice(0, headEnd);
+  switch (languageId) {
+    case "rust":
+      // An ASSOCIATED function — no `self` receiver — whose return names the
+      // type or `Self`. An instance method returning one needs one already.
+      return /\bfn\s/.test(line) && !hasSelfReceiver(params) && ret !== undefined && namesT.test(ret);
+    case "csharp": {
+      if (ret === undefined || /\b(private|protected)\b/.test(head)) {
+        return false;
+      }
+      // A CONSTRUCTOR: the member's NAME is the type and it declares no return
+      // type, so the type sits immediately before the parameter list.
+      if (new RegExp(`(^|[^\\w.])${t}\\s*$`).test(head)) {
+        return true;
+      }
+      // A STATIC FACTORY: `public static Widget Create(...)`. C# writes the
+      // return type in the HEAD, so drop the member name and look at what is
+      // left. The type appearing only in `params` is a taker, not a producer.
+      return /\bstatic\b/.test(head) && namesT.test(head.replace(/\b[\w<>]+\s*$/, ""));
+    }
+    case "typescript":
+    case "typescriptreact":
+    case "javascript":
+    case "javascriptreact": {
+      if (/\b(private|protected)\b/.test(head)) {
+        return false;
+      }
+      if (/\bconstructor\s*$/.test(head)) {
+        return true;
+      }
+      // A static factory, whose return annotation follows the parameter list.
+      return /\bstatic\b/.test(head) && ret !== undefined && namesT.test(ret);
+    }
+    case "python":
+      // `__init__` is the constructor. Otherwise an annotated return naming the
+      // type on something that is not an instance method.
+      return (
+        /\bdef\s+__init__\s*\(/.test(line) ||
+        (/\bdef\s/.test(line) && !hasSelfReceiver(params) && ret !== undefined && namesT.test(ret.replace(/["']/g, "")))
+      );
+    case "go": {
+      // Go has no constructors. A package-level `NewWidget`, or any function
+      // whose RESULT names the type. The result is what follows the parameter
+      // list; a callback PARAMETER that produces one is not a producer, which is
+      // exactly what a naive scan of the whole line reads it as.
+      //
+      // Go's METHOD receiver is the first paren group, so `returnClauseOf` reads
+      // it as the parameter list and `func (w *Widget) WithSize(int) *Widget`
+      // looked like a producer. It is an instance method: it needs a Widget to
+      // make one.
+      if (/^\s*func\s*\(/.test(line)) {
+        return false;
+      }
+      return (
+        new RegExp(`\\bfunc\\s+New${t}\\s*\\(`).test(line) ||
+        (/\bfunc\s/.test(line) && ret !== undefined && namesT.test(ret))
+      );
+    }
+    default:
+      return false;
+  }
+}

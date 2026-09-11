@@ -217,7 +217,14 @@ test("F7b: a poisoned GOFLAGS does not reach the check either, which is the knob
       /undefinedIdentifierProvingTheTagWasHonoured/,
       `GOENV=off must drop the user's GOFLAGS; the tagged file compiled: ${pinned}`,
     );
-    assert.equal(pinned.trim(), "", `and a module with no tag applied must build clean: ${pinned}`);
+    // Not `=== ""`: session-v69 widened the check to `go test -c`, which prints
+    // one `?   pkg   [no test files]` line per package. That is inventory, not a
+    // diagnostic — what this row means is that NOTHING was reported.
+    assert.deepStrictEqual(
+      new GoOracle().parseCheckOutput(pinned, f.root, Date.now()),
+      [],
+      `and a module with no tag applied must build clean: ${pinned}`,
+    );
   } finally {
     f.dispose();
   }

@@ -772,9 +772,16 @@ test("placement: a source file that IS a test file targets itself and imports no
   assert.equal(p.importLine, undefined, "a helper in a test file is already in scope");
 });
 
-test("placement: the unittest project gets `import unittest`, the pytest project gets no framework import", () => {
+// SUPERSEDED by S31 (session-v68, ruled by the human 2026-09-10). This row read
+// "the pytest project gets NO framework import", and the reason was true at the
+// time: the pytest idiom was a bare `assert widen(3) == 7`, which binds nothing.
+// S31 made the idiom a `@pytest.mark.parametrize` table, and the reply shape
+// forbids the model from writing imports, so the PLACEMENT is now the only thing
+// that can bind `pytest`. Without it the generated module dies at collection with
+// a NameError before a single case runs.
+test("placement: the unittest project gets `import unittest`, the pytest project gets `import pytest` (S31)", () => {
   const withPytest = okPlacement(py().placementFor("/p/src/pkg/foo.py", "widen", projectDeps()));
-  assert.equal(withPytest.frameworkImportLine, undefined, "pytest needs no import: the idiom is a bare assert");
+  assert.equal(withPytest.frameworkImportLine, "import pytest", "the parametrize table needs pytest bound");
 
   const files = ["/q/pyproject.toml", "/q/pkg/foo.py"];
   const noPytest = deps(files, { "/q/pyproject.toml": "[project]\nname='x'\n" }, { probe: () => ({ exitCode: 1 }) });

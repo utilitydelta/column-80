@@ -858,19 +858,35 @@ gtest("returnTypeOf go: THE TWO A NAIVE REGEX BREAKS - a pointer receiver and a 
 //     underspecified -> testable]
 // ===========================================================================
 
-gtest("classifyTestability go: a `chan` type or a `context.Context` parameter is 'async' - Go has no async keyword, these are the equivalents [contract-go.md 'The equivalents are a `chan` type in the signature, or a `context.Context` parameter']", () => {
+// SUPERSESSION S32 (session-v68 phase 5, ruled by the human 2026-09-10). This row
+// asserted `chan` and `context.Context` are the same refusal, on the reading that
+// Go has no async keyword and both are its equivalents. Phase 5 SPLIT the rung,
+// because they are not the same problem: a context parameter is satisfiable in one
+// word, `context.Background()`, so refusing it cost a whole class of testable
+// functions for nothing. A channel still refuses, and its detail names the channel.
+gtest("classifyTestability go: a `chan` type is 'async' and its detail names the channel, while a `context.Context` parameter is TESTABLE (S32)", () => {
   for (const sig of [
     "func drain(c chan int) int",
     "func drain(c <-chan int) int",
     "func fanout(n int) chan int",
-    "func fetch(ctx context.Context, id int) int",
   ]) {
+    const v = goLang.classifyTestability(sig, DOC);
     assert.strictEqual(
-      goLang.classifyTestability(sig, DOC).reason,
+      v.reason,
       "async",
-      `${JSON.stringify(sig)} is Go's async shape`
+      `${JSON.stringify(sig)} is Go's async shape: a blind test cannot know who fills the channel, when, or how many times`
+    );
+    assert.match(
+      v.detail,
+      /channel/,
+      `${JSON.stringify(sig)}: the surviving half of the rung must name the channel, not a blanket awaitable`
     );
   }
+  assert.strictEqual(
+    goLang.classifyTestability("func fetch(ctx context.Context, id int) int", DOC).reason,
+    undefined,
+    "a context parameter is satisfied by `context.Background()`, so there is nothing here a blind test cannot supply"
+  );
 });
 
 gtest("classifyTestability go: an `os.File` and an `http.ResponseWriter` in the signature are 'io' - the `http.` marker is a MEASURED CORRECTION, ten of Go's 104 survivors carried one [goal.md Amendment 1 'Go's io marker set in item 2 misses `net/http`, which is imported as `http`']", () => {
@@ -944,11 +960,22 @@ gtest("classifyTestability go: a doc comment that does NOT start with the functi
   );
 });
 
-gtest("classifyTestability go: first-match-wins precedence holds, so the reported reason is stable [contract-go.md 'Same first-match-wins precedence as Rust so the reported reason is stable']", () => {
+// SUPERSESSION S32 (session-v68 phase 5). The first row asserted that a method
+// taking a `context.Context` reports 'async', because the async rung refused a
+// context and sat above needs-fixture. The rung was split: the channel half stays
+// and still precedes needs-fixture, and a context no longer refuses at all, so the
+// same method now reports the receiver, which was its real blocker. The precedence
+// is still FIXED and this row still asserts it.
+gtest("classifyTestability go: first-match-wins precedence holds, so the reported reason is stable, with the channel half of the async rung at the head (S32)", () => {
+  assert.strictEqual(
+    goLang.classifyTestability("func (s *Shard) Fetch(c chan int) int", DOC).reason,
+    "async",
+    "async precedes needs-fixture, so a method taking a channel reports async"
+  );
   assert.strictEqual(
     goLang.classifyTestability("func (s *Shard) Fetch(ctx context.Context) int", DOC).reason,
-    "async",
-    "async precedes needs-fixture, so a method taking a context reports async"
+    "needs-fixture",
+    "a context is no longer a refusal, so this method reports the receiver it always actually needed"
   );
   assert.strictEqual(
     goLang.classifyTestability("func (s *Shard) Dump(fh *os.File) int", DOC).reason,

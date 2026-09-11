@@ -269,9 +269,45 @@ export class RustOracle implements CompilerOracle {
   }
 
   buildCheckCommand(crateRoot: string): CheckCommand {
-    // No --all-targets: the oracle checks what `cargo check` checks, so
-    // #[cfg(test)] bodies are outside its sight (named trade in the surface).
-    return { command: "cargo", args: ["check", "--message-format=json"], cwd: crateRoot };
+    // `--all-targets` since session-v69 (supersession S33). The old command was
+    // plain `cargo check`, whose named trade was that `#[cfg(test)]` bodies were
+    // outside its sight. That trade was correct while the oracle only ever
+    // checked generated FUNCTION BODIES, and became wrong the moment the product
+    // started WRITING `#[cfg(test)] mod tests`: it validated its own test code
+    // with a command that cannot see test code, reported clean in 42ms, and
+    // repair honestly did nothing.
+    //
+    // `--all-targets` rather than `--tests`, and the difference is a false
+    // admit. MEASURED on a probe crate 2026-09-11: `--tests` does NOT check the
+    // plain lib build, so an error under `#[cfg(not(test))]` that plain `cargo
+    // check` reports today would VANISH. `--all-targets` is a strict superset of
+    // the old command — it keeps every diagnostic the old one produced and adds
+    // the test targets. Widening the checker must never open a new way to report
+    // clean.
+    //
+    // Cost, measured warm on ~/repos/rust-scratch/crates/playground the same
+    // day: 0.03s to 0.06s. Cold, it pays for the test targets once.
+    //
+    // `--keep-going` because widening the command bought MORE UNITS, and cargo
+    // stops starting units once one has failed ("build failed, waiting for other
+    // jobs to finish"). Adversarial review found it and it is this session's own
+    // defect in a new coat: MEASURED on a probe crate, one unrelated broken
+    // `examples/e1.rs` swallowed the generated test's E0061 entirely, leaving
+    // only the example's E0308 — so the span-scoped verdict says "no error
+    // landed inside `first_even`" over a test that does not compile. With
+    // `--keep-going` both come back and the exit code is still 101, so it adds
+    // diagnostics and opens no new way to report clean. Under the OLD one-unit
+    // command nothing could pre-empt anything, which is why this arrives with
+    // the widening rather than before it.
+    //
+    // Cargo floor: `--keep-going` stabilised in 1.74. An older cargo rejects it
+    // with a plain-text usage error, which parses to zero JSON diagnostics and
+    // routes to `describeCheckFailure` — an honest crash, never a quiet green.
+    return {
+      command: "cargo",
+      args: ["check", "--all-targets", "--keep-going", "--message-format=json"],
+      cwd: crateRoot,
+    };
   }
 
   parseCheckOutput(stdout: string): Diagnostic[] {
@@ -743,6 +779,65 @@ const coverageWinner = new Map<string, string | undefined>();
 // is the probed fallback list, so a repeat accept surfaces the same
 // evidence-bearing reason without spawning anything.
 const coverageDark = new Map<string, string[]>();
+
+/**
+ * Will the check for `filePath` actually COMPILE it?
+ *
+ * ADDED session-v69 phase 6. `runOracleCheck` already asks this of the file it
+ * is about to check, and drops a check it cannot earn. The test-authoring
+ * gesture needs the same answer about a DIFFERENT file: the one it is about to
+ * write tests into. TypeScript is the case — a `foo.test.ts` beside the source
+ * is compiled only because the project's `include` happens to cover it, and a
+ * project whose tests live under a separate `tsconfig.test.json` is exactly as
+ * blind as `go build` was. The goal's words: verify the written path is inside
+ * the resolved project rather than assume it.
+ *
+ * Three answers, and the middle one matters: `true` covered, `false` NOT covered
+ * (a clean probe that did not list the file), `undefined` unanswerable — no
+ * probe on this strategy, no project, or a probe that failed. Fails OPEN by
+ * answering `undefined`, never `false`: telling a human their tests are
+ * unchecked when they are is worse than saying nothing.
+ */
+export async function fileIsCheckable(
+  oracle: CompilerOracle,
+  filePath: string,
+  opts?: { runCommand?: RunCommandFn; signal?: AbortSignal; log?: LogFn },
+): Promise<boolean | undefined> {
+  if (!oracle.buildCoverageCommand || !oracle.fileCovered) {
+    return undefined;
+  }
+  const crateRoot = oracle.detectCrateRoot(filePath);
+  if (crateRoot === undefined) {
+    return undefined;
+  }
+  const runCommand = opts?.runCommand ?? spawnRunCommand;
+  try {
+    const probe = await runCommand(oracle.buildCoverageCommand(crateRoot), opts?.signal);
+    if (probe.exitCode !== 0) {
+      return undefined;
+    }
+    if (oracle.fileCovered(probe.stdout, crateRoot, filePath)) {
+      return true;
+    }
+  } catch (err) {
+    opts?.log?.(`[oracle] coverage probe failed for ${filePath}: ${String(err)}`);
+    return undefined;
+  }
+  // The nearest project says no. Ask the fallbacks the check itself would ask
+  // before calling it uncovered, or this would report a false alarm on every
+  // solution-shell tsconfig.
+  for (const candidate of oracle.coverageFallbackProjects?.(crateRoot) ?? []) {
+    try {
+      const probe = await runCommand(oracle.buildCoverageCommand(crateRoot, candidate), opts?.signal);
+      if (probe.exitCode === 0 && oracle.fileCovered(probe.stdout, crateRoot, filePath)) {
+        return true;
+      }
+    } catch {
+      return undefined; // unanswerable, not uncovered
+    }
+  }
+  return false;
+}
 
 export async function runOracleCheck(
   oracle: CompilerOracle,

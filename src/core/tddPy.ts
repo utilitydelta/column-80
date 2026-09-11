@@ -32,7 +32,7 @@ import * as os from "os";
 import * as path from "path";
 import type { TestCaseResult, TestFailureDetail, TestOutcome } from "./compilerOracle";
 import type { FailureLocation } from "./failureDigest";
-import { resolvePythonInterpreter } from "./pyOracle";
+import { pythonTddProjectRoot, pythonTestDir, resolvePythonInterpreter, tomlStringList } from "./pyOracle";
 import {
   LiteralProfile,
   TestInsertionPlan,
@@ -42,7 +42,7 @@ import {
   testMarkers,
   topLevelArgs,
 } from "./testAssembly";
-import type { TestabilityVerdict } from "./testability";
+import type { TestabilityContext, TestabilityVerdict } from "./testability";
 import { BlankValueResult, escapeSnippet } from "./tabstop";
 import {
   PlacementResult,
@@ -59,6 +59,8 @@ import {
   readDirOf,
 } from "./tddLang";
 import { XmlTag, attrNumber, elementText, scanXmlTags } from "./xmlReader";
+import { LAST_COLUMN_CLAUSE } from "./prompt";
+import { deadColumns, mergeTableAndInline, pyTables } from "./tddTable";
 
 // ===========================================================================
 // The Python literal profile, and the depth scanner every Python rule shares
@@ -248,16 +250,31 @@ const PY_IO = /\bopen\s*\(|\bpathlib\b|\bPath\b|\bsocket\b|\brequests\b/;
  * PARAMETER, so the method form needs no separate tell and this leg does not
  * over-refuse a free function that happens to sit in a class-shaped file.
  */
-export function classifyPyTestability(signature: string, docComment?: string): TestabilityVerdict {
+export function classifyPyTestability(
+  signature: string,
+  docComment?: string,
+  ctx?: TestabilityContext,
+): TestabilityVerdict {
   const sig = signature ?? "";
   const returnType = pyReturnTypeOf(sig);
 
+  // ADMITTED session-v68 phase 5, but not unconditionally: it depends on the
+  // FRAMEWORK, which is why the answer arrives as a resolved context rather than
+  // being decided here. `unittest.IsolatedAsyncioTestCase` is stdlib since 3.8
+  // and always available; pytest cannot collect an `async def` test at all
+  // without `pytest-asyncio` or `anyio`, and would report it as SKIPPED with a
+  // warning - a false green, which is the one outcome worse than a refusal.
   if (PY_ASYNC_KEYWORD.test(sig) || (returnType !== undefined && PY_ASYNC_RETURN.test(returnType))) {
-    return {
-      testable: false,
-      reason: "async",
-      detail: "async def, or an awaitable return: a blind unit test cannot drive it",
-    };
+    if (ctx?.asyncTest === undefined) {
+      return {
+        testable: false,
+        reason: "async",
+        detail:
+          ctx?.asyncLookedFor ??
+          "async def, and this project's interpreter has neither pytest-asyncio nor anyio, so pytest would " +
+            "collect the test and skip it. This gesture never installs a package.",
+      };
+    }
   }
   if (PY_IO.test(sig)) {
     return {
@@ -267,7 +284,7 @@ export function classifyPyTestability(signature: string, docComment?: string): T
     };
   }
   const first = parametersOf(sig)[0];
-  if (first !== undefined && /^(self|cls)\b/.test(first)) {
+  if (first !== undefined && /^(self|cls)\b/.test(first) && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
@@ -1105,6 +1122,28 @@ function nodeIdPath(placement: TestPlacement): string {
   return rel.split(path.sep).join("/");
 }
 
+// Python carries BOTH table shapes and both wrappers look for both, because a
+// reply can hold either and the locator must not depend on which framework
+// resolved. `pyTables` is that union.
+function pytestTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, pyTables(text, PY_LITERALS), pytestExpectedValueSpans(text)).spans;
+}
+
+function pytestTableAwareUnresolved(text: string): number {
+  const merged = mergeTableAndInline(text, pyTables(text, PY_LITERALS), pytestExpectedValueSpans(text));
+  return pytestUnresolvedAssertions(text) + merged.unresolvedRowRefs;
+}
+
+function unittestTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, pyTables(text, PY_LITERALS), unittestExpectedValueSpans(text)).spans;
+}
+
+function unittestTableAwareUnresolved(text: string): number {
+  const merged = mergeTableAndInline(text, pyTables(text, PY_LITERALS), unittestExpectedValueSpans(text));
+  return unittestUnresolvedAssertions(text) + merged.unresolvedRowRefs;
+}
+
+
 const PYTEST: TestFramework = {
   id: "pytest",
   displayName: "pytest",
@@ -1172,13 +1211,14 @@ const PYTEST: TestFramework = {
   parseOutput: parsePytestJunitXml,
 
   assertionInstruction:
-    "Assert with a plain `assert <call> == <expected>`: the EXPECTED value is the RIGHT-hand side of the " +
-    "`==`, and the call under test is the left. Write each expected value inline in its own assert, one " +
-    "case per test function. Every test function must be named `test_` followed by the function under test.",
+    "Assert with a plain `assert <call> == want`: the call under test is the LEFT-hand side of the `==` " +
+    "and the row's last column the right. One assert in the body, reading the parametrized names. " +
+    "Every test function must be named `test_` followed by the function under test.",
 
-  expectedValueSpans: pytestExpectedValueSpans,
+  // TABLE-AWARE (session-v68 phase 2): the `@pytest.mark.parametrize` rows.
+  expectedValueSpans: pytestTableAwareSpans,
   classifiesBuildError: true,
-  unresolvedAssertions: pytestUnresolvedAssertions,
+  unresolvedAssertions: pytestTableAwareUnresolved,
 };
 
 // ===========================================================================
@@ -1409,14 +1449,25 @@ const UNITTEST: TestFramework = {
     "holding the test methods and nothing else: no imports, no `if __name__` block, no prose, no code " +
     "before or after the block.",
 
-  assertionInstruction:
-    "Assert with `self.assertEqual(<call>, <expected>)`: the EXPECTED value is the SECOND argument. " +
-    "Write each expected value inline as the second argument of its own assert. Every test is a method " +
-    "named `test_` followed by the function under test.",
+  // unittest has no `parametrize`, so its rows live in a plain list the body
+  // walks under `self.subTest` — which is what makes ONE failing row name itself
+  // instead of sinking the whole method.
+  tableShape:
+    "Put the cases in ONE table inside the test method: `cases = [ ... ]` with about five row tuples, " +
+    "then `for a, b, want in cases:` with a `with self.subTest(...):` inside. Name the last element of " +
+    `each row \`want\`, so ${LAST_COLUMN_CLAUSE}. Every row sits on ONE line.`,
 
-  expectedValueSpans: unittestExpectedValueSpans,
+  assertionInstruction:
+    "Assert with `self.assertEqual(<call>, want)`: the call under test is the FIRST argument and the " +
+    "row's last column the SECOND. One assert inside the `with self.subTest(...):` block that walks " +
+    "`cases = [ ... ]`, reading the row. Every test is a method named `test_` followed by the function " +
+    "under test.",
+
+  // TABLE-AWARE (session-v68 phase 2): unittest has no `parametrize`, so its
+  // rows are a plain `cases = [ … ]` list walked under `self.subTest`.
+  expectedValueSpans: unittestTableAwareSpans,
   classifiesBuildError: true,
-  unresolvedAssertions: unittestUnresolvedAssertions,
+  unresolvedAssertions: unittestTableAwareUnresolved,
 };
 
 // ===========================================================================
@@ -1428,21 +1479,10 @@ const UNITTEST: TestFramework = {
  *  accepts a bare workspace folder, but a test RUN needs a real project: the
  *  seam already says the rung's root and the check's root are not the same
  *  thing. */
-const PY_ROOT_MARKERS = ["pyproject.toml", "setup.py", "setup.cfg", "tox.ini"];
-
-function detectProjectRoot(filePath: string, exists: (p: string) => boolean): string | undefined {
-  let dir = path.dirname(filePath);
-  for (;;) {
-    if (PY_ROOT_MARKERS.some((marker) => exists(path.join(dir, marker)))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      return undefined;
-    }
-    dir = parent;
-  }
-}
+/** The leg's root walk, shared with the oracle's companion derivation since
+ *  session-v69: the oracle has to look for a test file where THIS function would
+ *  put it, and the oracle's own `ROOT_MARKERS` answer a different question. */
+const detectProjectRoot = pythonTddProjectRoot;
 
 /**
  * The value of `key` inside TOML table `table`, as a list of strings. A targeted
@@ -1454,25 +1494,6 @@ function detectProjectRoot(filePath: string, exists: (p: string) => boolean): st
  * Anything it cannot read answers [], which lands on the same fallbacks a
  * project without the key gets.
  */
-function tomlStringList(toml: string, table: string, key: string): string[] {
-  const section = new RegExp(`^\\s*\\[${table.replace(/[.[\]]/g, "\\$&")}\\]\\s*$`, "m").exec(toml);
-  if (section === null) {
-    return [];
-  }
-  const from = section.index + section[0].length;
-  const nextSection = /^\s*\[/m.exec(toml.slice(from));
-  const body = toml.slice(from, nextSection === null ? toml.length : from + nextSection.index);
-  const entry = new RegExp(`^\\s*${key}\\s*=\\s*`, "m").exec(body);
-  if (entry === null) {
-    return [];
-  }
-  const at = entry.index + entry[0].length;
-  // An ARRAY runs to its `]` however many lines that takes, which real
-  // pyproject.toml files do spell across lines; anything else is one line.
-  const close = body[at] === "[" ? body.indexOf("]", at) : -1;
-  const raw = (close === -1 ? (body.slice(at).split("\n")[0] ?? "") : body.slice(at, close)).replace(/#[^\n]*/g, "");
-  return [...raw.matchAll(/"([^"]*)"|'([^']*)'/g)].map((m) => m[1] ?? m[2]).filter((s) => s.length > 0);
-}
 
 // ===========================================================================
 // Framework detection, pure over the injected deps
@@ -1804,13 +1825,7 @@ function pyGeneratedTestNames(fileText: string, markerId: string): string[] {
  *  only leg whose target directory is configurable, and the corpus configures
  *  it. */
 function testDirFor(root: string, sourceDir: string, deps: TddDeps): string {
-  const exists = fileExistsOf(deps);
-  const readFile = readFileOf(deps);
-  const testpaths = tomlStringList(readFile(path.join(root, "pyproject.toml")) ?? "", "tool.pytest.ini_options", "testpaths");
-  if (testpaths.length > 0) {
-    return path.resolve(root, testpaths[0]);
-  }
-  return exists(path.join(root, "tests")) ? path.join(root, "tests") : sourceDir;
+  return pythonTestDir(root, sourceDir, fileExistsOf(deps), readFileOf(deps));
 }
 
 function pyPlacementFor(filePath: string, symbolName: string, deps: TddDeps): PlacementResult {
@@ -1832,7 +1847,13 @@ function pyPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
   const base = path.basename(filePath);
   const stem = base.replace(/\.pyi?$/, "");
   const interpreter = resolvePythonInterpreter(root, exists);
-  const frameworkImportLine = PYTEST.detect(root, { ...deps, log: undefined }) ? undefined : "import unittest";
+  // BOTH frameworks now need an import line, and pytest's is new in session-v68.
+  // Before S31 the pytest reply was plain `def test_x(): assert f(1) == 2`,
+  // which binds nothing; the table shape asks for `@pytest.mark.parametrize`,
+  // and the reply shape forbids the model from writing imports, so the SCAFFOLD
+  // has to supply it. Without this the generated module dies at collection with
+  // a NameError on `pytest`, before a single case runs.
+  const frameworkImportLine = PYTEST.detect(root, { ...deps, log: undefined }) ? "import pytest" : "import unittest";
 
   // A source file that IS a test file has no `test_test_foo.py` sibling to make:
   // the target IS the source, the mode has to SAY so, and there is nothing to
@@ -1984,6 +2005,37 @@ function pyRunTargetForTestFile(testFilePath: string, deps: TddDeps): PlacementR
 // The language
 // ===========================================================================
 
+/**
+ * Python's async answer, and it differs by FRAMEWORK, which is why it is
+ * resolved here rather than decided in the classifier.
+ *
+ * unittest has a stdlib answer since 3.8 (`IsolatedAsyncioTestCase`), so it
+ * needs nothing. pytest cannot collect an `async def` test at all without a
+ * plugin: it emits a warning and reports the test as SKIPPED, which is a FALSE
+ * GREEN — a board that goes green while nothing ran is the one outcome worse
+ * than a refusal. So the interpreter is ASKED, exactly the way `PYTEST.detect`
+ * asks it, through the probe dep and pure over injected deps.
+ */
+function pyAsyncSupport(root: string, placement: TestPlacement, deps: TddDeps): TestabilityContext {
+  if (placement.frameworkId === "unittest") {
+    return { asyncTest: { shape: "unittest.IsolatedAsyncioTestCase" } };
+  }
+  for (const [module, shape] of [
+    ["pytest_asyncio", "@pytest.mark.asyncio"],
+    ["anyio", "@pytest.mark.anyio"],
+  ] as const) {
+    if (importResolves(root, module, deps) === true) {
+      return { asyncTest: { shape } };
+    }
+  }
+  return {
+    asyncLookedFor:
+      "async def, and this project's interpreter imports neither pytest-asyncio nor anyio. pytest would " +
+      "collect the test and SKIP it, which is a green board with nothing run. This gesture never installs " +
+      "a package.",
+  };
+}
+
 const PY_TDD_LANG: TddLang = {
   languageId: "python",
   displayName: "Python",
@@ -2002,6 +2054,27 @@ const PY_TDD_LANG: TddLang = {
   // The one leg that is not `//`. testMarkers already takes the prefix, so the
   // marker format has one source across all five languages.
   markerPrefix: PY_MARKER_PREFIX,
+
+  isAsyncSignature: (signature: string) => {
+    const rt = pyReturnTypeOf(signature ?? "");
+    return PY_ASYNC_KEYWORD.test(signature ?? "") || (rt !== undefined && PY_ASYNC_RETURN.test(rt));
+  },
+
+  deadTableColumns: (text: string) => deadColumns(text, pyTables(text, PY_LITERALS), PY_LITERALS),
+
+  // The signature is what makes this affordable. This resolver SPAWNS the
+  // project's interpreter to ask whether pytest-asyncio imports, and it was
+  // doing that on EVERY test generation, including the synchronous majority that
+  // can never use the answer. A caller that names the target lets it skip.
+  //
+  // An ABSENT signature still answers, because the resolver's contract is to
+  // answer what it was asked. Not spawning there would silently disable the
+  // async leg for any caller that forgot the argument, which is a worse failure
+  // than a spawn: it is invisible.
+  testabilityContextFor: (_filePath, placement, deps, signature) =>
+    signature !== undefined && !PY_TDD_LANG.isAsyncSignature(signature)
+      ? {}
+      : pyAsyncSupport(placement.runRoot, placement, deps),
 
   generatedTestNames: pyGeneratedTestNames,
 

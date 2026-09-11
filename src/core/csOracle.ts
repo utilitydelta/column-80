@@ -51,6 +51,118 @@ export interface CsOracleDeps {
  *  inapplicability for the whole C# oracle (a deliberate scope decision). */
 const SDK_FLOOR_MAJOR = 8;
 
+/** The filesystem reads the project-topology helpers need. Plain functions
+ *  rather than a deps object shape, so both the oracle (which holds its own
+ *  injected readers) and the TDD leg (which holds `TddDeps`) can pass theirs. */
+export interface CsFsDeps {
+  readonly readDir: (dir: string) => string[];
+  readonly readFile: (p: string) => string | undefined;
+}
+
+/** A test project that references some source project. */
+export interface CsTestProject {
+  readonly dir: string;
+  readonly csproj: string;
+  readonly text: string;
+}
+
+/** Every `*.csproj` in `dir`, as text. A project directory holds one in
+ *  practice; reading all of them costs nothing and means a repo that holds two
+ *  is not silently half-read. */
+export function csprojTextsIn(dir: string, deps: CsFsDeps): Array<{ path: string; text: string }> {
+  return (deps.readDir(dir) ?? [])
+    .filter((n) => n.toLowerCase().endsWith(".csproj"))
+    .sort()
+    .map((n) => ({ path: path.join(dir, n), text: deps.readFile(path.join(dir, n)) ?? "" }));
+}
+
+function csPropertyIsTrue(text: string, name: string): boolean {
+  const m = new RegExp(`<${name}>\\s*([^<]*)</${name}>`, "i").exec(text);
+  return m !== null && m[1].trim().toLowerCase() === "true";
+}
+
+/** Is this project a TEST project? Either signal, and both are present in the
+ *  corpus's own test projects. */
+export function csIsTestProject(text: string): boolean {
+  return (
+    csPropertyIsTrue(text, "IsTestProject") ||
+    /<PackageReference\b[^>]*\bInclude\s*=\s*"Microsoft\.NET\.Test\.Sdk"/i.test(text)
+  );
+}
+
+/** Every `<ProjectReference Include="…">` path of a project, as written. */
+export function csProjectReferenceIncludes(text: string): string[] {
+  return [...text.matchAll(/<ProjectReference\b[^>]*\bInclude\s*=\s*"([^"]*)"/gi)].map((m) => m[1]);
+}
+
+/** Every `<ProjectReference Include="…">` of a project, resolved to an absolute
+ *  path. MSBuild writes these with BACKSLASHES whatever the platform, which is
+ *  the whole reason this is not a `path.resolve` one-liner.
+ *
+ *  A path holding an MSBuild VARIABLE (`..\$(SrcDir)\Src.csproj`) resolves to
+ *  nonsense, because nothing here evaluates MSBuild. It is dropped rather than
+ *  resolved. */
+export function csProjectReferences(csprojPath: string, text: string): string[] {
+  const dir = path.dirname(csprojPath);
+  return csProjectReferenceIncludes(text)
+    .filter((include) => !include.includes("$("))
+    .map((include) => path.resolve(dir, include.split("\\").join(path.sep)));
+}
+
+/** Every directory worth looking in for a test project: the source project's
+ *  SIBLINGS, plus every project a solution above it lists. The corpus is the
+ *  sibling shape; the solution walk is what makes a `src/` + `test/` layout
+ *  work, where the test project is not a sibling at all. */
+export function csCandidateDirs(sourceProjectDir: string, deps: CsFsDeps): string[] {
+  const dirs = new Set<string>();
+  const parent = path.dirname(sourceProjectDir);
+  for (const name of deps.readDir(parent) ?? []) {
+    dirs.add(path.join(parent, name));
+  }
+  // The solution: up to four levels above the project, which covers
+  // `<sln>/src/<proj>` and `<sln>/source/<area>/<proj>` without walking to `/`.
+  let dir = parent;
+  for (let depth = 0; depth < 4; depth++) {
+    for (const name of deps.readDir(dir) ?? []) {
+      if (!/\.slnx?$/i.test(name)) {
+        continue;
+      }
+      const text = deps.readFile(path.join(dir, name)) ?? "";
+      for (const m of text.matchAll(/"([^"]*\.csproj)"/g)) {
+        dirs.add(path.dirname(path.resolve(dir, m[1].split("\\").join(path.sep))));
+      }
+    }
+    const up = path.dirname(dir);
+    if (up === dir) {
+      break;
+    }
+    dir = up;
+  }
+  dirs.delete(sourceProjectDir);
+  return [...dirs].sort();
+}
+
+/** The test projects that reference `sourceCsproj`.
+ *
+ *  MOVED here from tddCs in session-v69 phase 4. The TDD leg writes a test into
+ *  one of these and the ORACLE now has to BUILD one, so both read the project
+ *  topology through one implementation rather than two that can disagree about
+ *  which project tests which. */
+export function csTestProjectsFor(sourceProjectDir: string, sourceCsproj: string, deps: CsFsDeps): CsTestProject[] {
+  const found: CsTestProject[] = [];
+  for (const dir of csCandidateDirs(sourceProjectDir, deps)) {
+    for (const { path: csproj, text } of csprojTextsIn(dir, deps)) {
+      if (!csIsTestProject(text)) {
+        continue;
+      }
+      if (csProjectReferences(csproj, text).some((ref) => path.resolve(ref) === path.resolve(sourceCsproj))) {
+        found.push({ dir, csproj, text });
+      }
+    }
+  }
+  return found;
+}
+
 export class CsOracle implements CompilerOracle {
   readonly language = "csharp";
   readonly checkLabel = "dotnet build";
@@ -192,8 +304,139 @@ export class CsOracle implements CompilerOracle {
     return path.join(os.tmpdir(), `column80-cs-${hash}.sarif`);
   }
 
+  /**
+   * The project to BUILD for a check anchored on `crateRoot`.
+   *
+   * Session-v69 phase 4. It was always the source project, and the product
+   * writes this project's tests into a SEPARATE test project — which references
+   * the source, never the reverse — so building the source project could not
+   * compile the tests. PROVEN on a two-project probe: `dotnet build <source>`
+   * reported 0 errors while the test project held two.
+   *
+   * A test project builds its source project as a dependency, so moving the
+   * target keeps every ERROR the old command produced. Named trade: it does not
+   * keep the source project's WARNINGS. One `/p:ErrorLog` applies to every
+   * project in the build and each csc invocation overwrites the file, so the
+   * test project's compile (which runs last) wins. Measured, and the obvious fix
+   * is refuted: `/p:ErrorLog=…$(MSBuildProjectName).sarif` is taken LITERALLY,
+   * because a command-line global property is not expanded. Errors survive
+   * because a source error stops the test project compiling, so the SARIF holds
+   * the source errors and the build fails either way.
+   *
+   * RESTORED OR NOTHING. `--no-restore` against an unrestored project fails with
+   * NETSDK1004, and a check that used to pass must not start failing because a
+   * test project nobody has restored happens to sit beside the source. The
+   * assets file is a file-existence check, not a spawn.
+   *
+   * Exactly one candidate, or today's command. Two test projects referencing one
+   * source project is real on the corpus, and picking one of them by name here
+   * would be a guess about which tests matter.
+   */
+  private buildTargetFor(crateRoot: string, sourceCsproj: string): string {
+    const deps: CsFsDeps = { readDir: this.readDir, readFile: this.readFile };
+    const candidates = csTestProjectsFor(crateRoot, sourceCsproj, deps);
+    if (candidates.length !== 1) {
+      if (candidates.length > 1) {
+        this.log?.(
+          `[oracle] csharp: ${candidates.length} test projects reference ${path.basename(sourceCsproj)}, ` +
+            "so the check builds the source project alone and cannot see their tests",
+        );
+      }
+      return sourceCsproj;
+    }
+    const testCsproj = candidates[0].csproj;
+    // RESTORED, AND NOT STALE. The guard was existence alone, and a stale assets
+    // file passes it: restore the test project, then retarget it or add a
+    // package without restoring, and `--no-restore` fails NETSDK1005 while
+    // `dotnet build <source>` still exits 0. A check that used to succeed then
+    // starts failing because of a project the human may never have built
+    // (session-v69 adversarial review finding 3).
+    //
+    // MTIME, not a TFM comparison. The assets file must be newer than the csproj
+    // that produced it; anything else is a restore that has not caught up. A
+    // csproj merely touched refuses the move, which is the safe direction — the
+    // check falls back to today's command and loses only sight of the tests.
+    const assets = path.join(path.dirname(testCsproj), "obj", "project.assets.json");
+    const assetsAt = this.statMtimeMs(assets);
+    const csprojAt = this.statMtimeMs(testCsproj);
+    if (assetsAt !== undefined && csprojAt !== undefined && csprojAt > assetsAt) {
+      this.log?.(
+        `[oracle] csharp: ${path.basename(testCsproj)} has changed since it was restored, so building it would ` +
+          "fail on a stale assets file; the check builds the source project alone. Run `dotnet restore` on it.",
+      );
+      return sourceCsproj;
+    }
+    // THE RACE GATE, and it is a FALSE-ADMIT gate rather than a tidiness one.
+    // Found by adversarial review, measured: `dotnet build` runs with
+    // -maxcpucount, and one `/p:ErrorLog` applies to every csc in the build. Two
+    // projects that compile CONCURRENTLY both write that one file, and the loser
+    // is either overwritten or interleaved into unparseable bytes. On a
+    // `Tests -> Sut + TestUtils` tree — the ordinary shape — five cold runs gave
+    // one empty SARIF and four corrupt ones, while `dotnet build Sut.csproj`
+    // reported the CS0029 every time. The source project's error VANISHED.
+    //
+    // The old command could not hit it: a project's own references are
+    // dependencies of the one target, so the target's csc always wrote last.
+    // Moving the target is what introduced concurrency, so moving the target is
+    // what has to prove there is none.
+    //
+    // The only topology that provably cannot race is a two-node CHAIN: the test
+    // project references exactly the source project, the source project
+    // references nothing, and neither is multi-TFM (inner per-TFM csc runs race
+    // each other through the same file, which review finding 6 measured at 4 of
+    // 4 cold builds). Anything else keeps today's command and says why.
+    const reason = this.chainRefusal(sourceCsproj, testCsproj);
+    if (reason !== undefined) {
+      this.log?.(
+        `[oracle] csharp: ${path.basename(testCsproj)} tests ${path.basename(sourceCsproj)}, but ${reason}, ` +
+          "so two projects could write the shared diagnostics file at once and lose an error. " +
+          "The check builds the source project alone and cannot see the tests.",
+      );
+      return sourceCsproj;
+    }
+    if (!this.fileExists(path.join(path.dirname(testCsproj), "obj", "project.assets.json"))) {
+      this.log?.(
+        `[oracle] csharp: ${path.basename(testCsproj)} tests ${path.basename(sourceCsproj)} but is not restored, ` +
+          "so the check builds the source project alone; run `dotnet restore` on it to have its tests checked",
+      );
+      return sourceCsproj;
+    }
+    this.log?.(
+      `[oracle] csharp: building ${path.basename(testCsproj)}, which tests ${path.basename(sourceCsproj)}, ` +
+        "so the generated tests are compiled too",
+    );
+    return testCsproj;
+  }
+
+  /** Why this pair is NOT a safe two-node chain, or undefined when it is. */
+  private chainRefusal(sourceCsproj: string, testCsproj: string): string | undefined {
+    const testText = this.readFile(testCsproj);
+    const sourceText = this.readFile(sourceCsproj);
+    if (testText === undefined || sourceText === undefined) {
+      return "one of the two project files could not be read";
+    }
+    const testRefs = csProjectReferences(testCsproj, testText);
+    if (testRefs.length !== 1) {
+      return `it references ${testRefs.length} project(s) rather than only this one`;
+    }
+    const sourceRefs = csProjectReferences(sourceCsproj, sourceText);
+    if (sourceRefs.length > 0) {
+      return `${path.basename(sourceCsproj)} itself references ${sourceRefs.length} project(s), which build concurrently`;
+    }
+    for (const [label, text] of [
+      [path.basename(testCsproj), testText],
+      [path.basename(sourceCsproj), sourceText],
+    ] as const) {
+      if (/<TargetFrameworks>/i.test(text)) {
+        return `${label} is multi-targeted, and its inner per-framework compiles race each other`;
+      }
+    }
+    return undefined;
+  }
+
   buildCheckCommand(crateRoot: string): CheckCommand {
-    const csproj = this.findCsproj(crateRoot) ?? crateRoot;
+    const sourceCsproj = this.findCsproj(crateRoot) ?? crateRoot;
+    const csproj = this.findCsproj(crateRoot) === undefined ? crateRoot : this.buildTargetFor(crateRoot, sourceCsproj);
     // The comma between the ErrorLog path and `version=2` is %2c-ESCAPED: as a
     // single argv token MSBuild splits a RAW comma into two properties (a bogus
     // `version=2` and SARIF v1.0.0). %2c keeps it part of the ErrorLog value
@@ -465,8 +708,15 @@ export class CsOracle implements CompilerOracle {
    *  from the SARIF) is the not-restored inapplicability: name the fix
    *  (restore), NEVER an auto-restore (the offline invariant). */
   describeCheckFailure(exitCode: number, evidence?: string): string {
-    if (evidence && /NETSDK1004/.test(evidence)) {
-      return `project is not restored — run \`dotnet restore\` first (the oracle never restores: offline invariant)`;
+    // NETSDK1004 is "no assets file"; NETSDK1005 is "the assets file has no
+    // target for <TFM>", which is a STALE one. Both mean the same thing to the
+    // human and both take the same remedy, and only the first was matched — so a
+    // test project restored once and then retargeted told them "dotnet build
+    // crashed (exit 1)" and nothing they could act on (session-v69 adversarial
+    // review finding 3). The restore guard on the build target is an EXISTENCE
+    // check, which a stale file passes, so this sentence is the backstop.
+    if (evidence && /NETSDK100[45]/.test(evidence)) {
+      return `project is not restored, or its restore is stale — run \`dotnet restore\` first (the oracle never restores: offline invariant)`;
     }
     if (exitCode < 0) {
       return `dotnet could not be spawned${evidence ? `: ${evidence}` : ""}`;

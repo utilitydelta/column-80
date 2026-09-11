@@ -56,9 +56,11 @@ import {
   RepairSession,
   TestRepairAuthorization,
   assembleRepairPrompt,
+  generatedTestErrors,
   spanScopedMessage,
   spanScopedVerdict,
 } from "../core/repair";
+import { tddLangFor } from "../core/tddLang";
 import {
   HallucinationClass,
   assembleCsMemberPayload,
@@ -1056,6 +1058,43 @@ async function executeSession(
       `[tests] the covering tests were not run: this press spent ${session.roundsUsed} compiler repair round(s)` +
         ` getting the build clean. Press Repair Function again to run them against the code as it stands now.`,
     );
+  } else if (ctx.manualRefine === true && action.why === "no-eligible-in-span") {
+    // ADDED session-v69 phase 6, and it is a side effect of widening the check.
+    // The refine and the covering-test leg run only on a CLEAN build. A crate
+    // with a broken test used to be clean by accident and now honestly is not,
+    // so both are skipped — correctly, because polishing style over code that
+    // does not compile is the wrong order. But the skip was SILENT, and from
+    // where the developer sits a press that did nothing right and a press that
+    // did nothing at all look the same.
+    //
+    // `no-eligible-in-span` ONLY, and not its sibling `no-eligible`. The
+    // parenthetical below is a GEOMETRY claim, and only this reason earns it:
+    // it is reached when span scoping did the refusing. `no-eligible` is reached
+    // when nothing was refused for being out of span at all — an error refused
+    // as assertion-shaped INSIDE the touched span gets there, and so does one
+    // with no primary span to place. Saying "none inside <symbol>" over either
+    // is a guess, which phase 6's own contract rule 3 forbids for exactly this
+    // situation (adversarial review finding 7).
+    const errors = action.diagnostics.filter((d) => d.level === "error").length;
+    log(
+      `[repair] the refine and the covering tests were both skipped: the build is not clean (${errors} error(s), ` +
+        `none inside ${resolved?.symbolName ?? "the touched span"}). Both run on a clean build only.`,
+    );
+  } else if (ctx.manualRefine === true && action.why === "no-eligible") {
+    const errors = action.diagnostics.filter((d) => d.level === "error").length;
+    log(
+      `[repair] the refine and the covering tests were both skipped: the build is not clean ` +
+        `(${errors} error(s), none of them repairable). Both run on a clean build only.`,
+    );
+  } else if (ctx.manualRefine === true && action.why === "check-failed") {
+    // The check FAILED and parsed nothing. Not a clean build, not repairable
+    // code, and until session-v69's review it was read as `clean` — which sent
+    // the refine and the covering tests over a tree that does not compile.
+    log(
+      "[repair] the refine and the covering tests were both skipped: the check itself failed and " +
+        "produced no diagnostics, so nothing here knows whether the code is good. The reason is on " +
+        "the [oracle] line above.",
+    );
   }
 
   // The give-up. The rounds ran out (route-exhausted) or hit the cap
@@ -1101,6 +1140,21 @@ async function executeSession(
       const symbol = resolved?.symbolName;
       const files = verdict.outOfSpanFiles.map((f) => f.split(/[\\/]/).pop()).join(",");
       log(`[oracle] span-scoped clean symbol=${symbol ?? "-"} out-of-span=${verdict.outOfSpan.length} files=${files || "-"}`);
+      // ARE THEY OURS? (session-v69 phase 6.) Phases 2 to 5 made the check SEE
+      // the test code this product wrote. Without this the human reads "2 errors
+      // remain outside the touched span, in tdd.rs" and goes hunting through
+      // their own crate, when the errors are in a region THIS PRODUCT wrote, for
+      // the very function the cursor is in.
+      //
+      // Repair does not gain a write path into that region — this session
+      // changes what is CHECKED, never what is written or where — so the whole
+      // remedy is saying so, clearly, once.
+      const ours = ourGeneratedTests(ctx, check, verdict.outOfSpan, symbol, resolvePath, log);
+      if (ours) {
+        // One sentence about one situation: the general out-of-span note would
+        // say something vaguer about the same errors.
+        return;
+      }
       const message = spanScopedMessage(verdict, symbol);
       // Defensive for headless stubs that do not implement setStatusBarMessage.
       if (message && typeof vscode.window.setStatusBarMessage === "function") {
@@ -1108,6 +1162,62 @@ async function executeSession(
       }
     }
   }
+}
+
+/**
+ * Name the out-of-span errors that landed inside the generated-test region for
+ * this target, and return whether any did.
+ *
+ * A WARNING toast rather than the transient status-bar note the general case
+ * gets, because this one is the product's own output and the human can act on
+ * it. Only on a manual gesture: an automatic post-accept check that finds the
+ * human's older generated tests broken has no business interrupting them.
+ */
+function ourGeneratedTests(
+  ctx: PostAcceptContext,
+  check: OracleCheckResult,
+  outOfSpan: readonly Diagnostic[],
+  symbol: string | undefined,
+  resolvePath: (root: string, fileName: string) => string,
+  log: (line: string) => void,
+): boolean {
+  if (symbol === undefined || ctx.manualRefine !== true) {
+    return false;
+  }
+  const lang = tddLangFor(ctx.document.languageId);
+  if (lang === undefined) {
+    return false;
+  }
+  const mine = generatedTestErrors(outOfSpan, {
+    markerId: symbol,
+    markerPrefix: lang.markerPrefix,
+    resolvePath: (fileName) => resolvePath(check.crateRoot, fileName),
+    readFile: (abs) => {
+      try {
+        return fs.readFileSync(abs, "utf8");
+      } catch {
+        return undefined;
+      }
+    },
+  });
+  if (mine.length === 0) {
+    return false;
+  }
+  const where = [...new Set(mine.map((m) => m.filePath.split(/[\\/]/).pop()))].join(", ");
+  log(`[oracle] the generated tests for ${symbol} do not compile: ${mine.length} error(s) in ${where}`);
+  for (const m of mine) {
+    log(m.diagnostic.rendered ?? m.diagnostic.message);
+  }
+  const first = mine[0].diagnostic;
+  const code = first.code ? `${first.code}: ` : "";
+  void vscode.window.showWarningMessage(
+    oneLineWithPointer(
+      `Column 80: the tests it generated for ${symbol} do not compile — ${code}${first.message}` +
+        `${mine.length > 1 ? ` (and ${mine.length - 1} more)` : ""}. Nothing was repaired: this gesture repairs the ` +
+        "function, not the tests. Fix them, or run Generate Tests again.",
+    ),
+  );
+  return true;
 }
 
 /**

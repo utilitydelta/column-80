@@ -471,15 +471,22 @@ const LIVE_ORDER_TODAY = [
   "test/blind-goalmd-csrecursiveshape-live.test.cjs",
 ];
 
+// RE-CUT session-v69. The row pinned the whole list with a deepStrictEqual, so it
+// went red on every later APPEND - which is the thing it was written to permit.
+// Its promise is that the existing order is contract and a new file goes on the
+// END; that is what it asserts now, and it still catches a reorder, a removal,
+// and an insertion anywhere but the tail.
 test("item 17: impl-v13-bodyonly-live joins test:live, appended at the END, with the existing order untouched", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8"));
   const live = String(pkg.scripts["test:live"] || "");
   const files = live.split(/\s+/).filter((t) => t.endsWith(".test.cjs"));
+  const expectedPrefix = [...LIVE_ORDER_TODAY, "test/impl-v13-bodyonly-live.test.cjs"];
   assert.deepStrictEqual(
-    files,
-    [...LIVE_ORDER_TODAY, "test/impl-v13-bodyonly-live.test.cjs"],
+    files.slice(0, expectedPrefix.length),
+    expectedPrefix,
     "the list's order is contract (a warm serial context); the new file is appended, nothing is reordered",
   );
+  assert.strictEqual(new Set(files).size, files.length, `no file is listed twice: ${JSON.stringify(files)}`);
 });
 
 // ===========================================================================

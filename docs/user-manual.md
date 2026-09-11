@@ -45,7 +45,7 @@ Per language, so you know what you get before you install.
 | Member-name output gate | no | no | yes | yes | yes |
 | Function generation | yes | yes | yes | yes | yes |
 | Type generation (struct/enum/class/interface) | yes | yes | yes | yes | yes |
-| Compiler check after accept | `cargo check` | `go build` | project's `tsc` | `dotnet build` | bundled pyright |
+| Compiler check after accept | `cargo check --all-targets` | `go test -c` | project's `tsc` | `dotnet build` | bundled pyright |
 | Gated repair | yes | partial (see limits) | yes | yes | yes |
 | TDD test generation | yes | yes | yes | yes | yes |
 | Test runner rung | libtest | `go test` | vitest, jest | MSTest, xUnit, NUnit | pytest, unittest |
@@ -413,13 +413,17 @@ After you accept a generation (or a FIM completion) in a served language, the ex
 
 | Language | Command | Root |
 |---|---|---|
-| Rust | `cargo check --message-format=json` | nearest `Cargo.toml` |
-| Go | `go build -o /dev/null ./...` | nearest `go.mod` |
+| Rust | `cargo check --all-targets --keep-going --message-format=json` | nearest `Cargo.toml` |
+| Go | `go test -c -o /dev/null ./...` (compiles the test binary, never runs it) | nearest `go.mod` |
 | TypeScript/JS | the project's own `tsc --noEmit` | nearest `tsconfig.json` |
 | C# | `dotnet build` with SARIF, `--no-restore` | nearest `.csproj` |
 | Python | bundled pyright `--outputjson`, against the project's own interpreter | nearest project root with a venv |
 
 You get an inline summary at the edit site (`cargo check: 1 error(s), 0 warning(s)`) with full rendered diagnostics on hover. The document is saved first, because compilers read disk.
+
+**Toolchain floors.** The Rust check needs **cargo 1.74** (`--keep-going`) and the Go check needs **Go 1.21** (multi-package `go test -c`). Older toolchains refuse the command, which Column 80 reports as a crashed check with the toolchain's own words. It never reads as a clean build.
+
+**The check compiles your tests, and that is new.** `cargo check --all-targets` also builds your examples, benches and `tests/` directory; `go test -c` also compiles your `_test.go` files and the dependencies they need. If any of those were already broken you will start seeing those errors after a generation. They sit outside the function you touched, so nothing is sent to a model over them. Two shapes catch people out: a crate that builds on stable while its benches need nightly, and a Go module whose tests import a package that is not in your local module cache (the check runs `GOPROXY=off` and will not fetch it).
 
 Column 80 publishes nothing to the Problems panel. That panel belongs to your language server, which reports these errors already and clears them as you type.
 
@@ -1133,7 +1137,7 @@ Stated plainly. Most have the fix direction already recorded.
 - **Go repair rides the Rust classifier**, which never fires on `go build` diagnostics, so Go gets check-and-surface plus generic repair but no compiler-directed surface injection.
 - **Workspace-member gap.** A standalone crate nested under an unrelated ancestor manifest (fixture crates, `examples/` layouts) can lose repair entirely.
 - **fn-gen quits repair early.** A generation-sourced failure gets exactly one self-repair round. If that round shrinks the errors without clearing them, the loop stops anyway.
-- **Rust oracle blind spot.** `cargo check` runs without `--all-targets`, so code under `#[cfg(test)]` is outside its sight. Only the accepted document is saved before a check; other dirty buffers are checked as they sit on disk.
+- **Only the accepted document is saved before a check.** Other dirty buffers are checked as they sit on disk.
 - **No context persistence.** Blocks die with the window, deliberately.
 - **Cancelling a Claude Code generation leaves orphans.** Escape kills the `claude` process, not its process group, so any tool subprocess it already spawned runs to completion. A process-group kill is not portable to Windows, so this ships as a known gap rather than a half-fix. Nothing has been observed writing into the CLI's working directory, which is checked and empty after every round measured so far.
 - **A block whose file changed while its document was closed is lost, not re-found.** The extension re-checks the recorded lines when it next reads them and gives up if they no longer match. There is no content search anywhere, in either direction, so a block that drifted while nobody was watching is never hunted for. Renames are the exception that is handled: a block follows its file. Deletes lose it, and so does saving an untitled buffer.

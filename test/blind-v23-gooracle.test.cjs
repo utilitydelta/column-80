@@ -128,11 +128,24 @@ const VENDOR_TEXT =
 // Construction + registration. [surface: 'new GoOracle(deps?)' + oracleFor]
 // ===========================================================================
 
-gtest("construction: GoOracle takes optional deps, pins language 'go' and checkLabel 'go build' [surface: language === 'go', checkLabel === 'go build']", () => {
+// RE-CUT session-v69 phase 3 (S33), adversarial review finding 4. The label was
+// 'go build' and is rendered verbatim on the edit-site decoration, so it must
+// name the command that RAN. A human who copied 'go build' to reproduce an error
+// the check had just shown them would get a clean build, because 'go build' is
+// exactly the command that cannot see a _test.go.
+gtest("construction: GoOracle takes optional deps, pins language 'go' and checkLabel 'go test -c' [surface: language === 'go', checkLabel names the command that runs]", () => {
   assert.strictEqual(new GoOracle().language, "go", "language is the readonly literal 'go'");
   assert.strictEqual(new GoOracle({ log: () => {} }).language, "go", "deps object accepted, language holds");
   assert.strictEqual(new GoOracle({ fileExists: () => false }).language, "go", "fileExists dep accepted");
-  assert.strictEqual(new GoOracle().checkLabel, "go build", "the verdict-line label is exactly 'go build'");
+  assert.strictEqual(new GoOracle().checkLabel, "go test -c", "the verdict-line label is exactly 'go test -c'");
+  // Not a second spelling of the row above: the label and the command are two
+  // fields that drifted apart once already, and this is what catches the next
+  // time one moves without the other.
+  const cmd = new GoOracle({ fileExists: () => true }).buildCheckCommand("/w/proj");
+  assert.ok(
+    `${cmd.command} ${cmd.args.join(" ")}`.startsWith(new GoOracle().checkLabel),
+    `the label must PREFIX the real command, got label ${JSON.stringify(new GoOracle().checkLabel)} and command ${JSON.stringify(`${cmd.command} ${cmd.args.join(" ")}`)}`
+  );
 });
 
 gtest("construction: required strategy methods present, the coverage pair present, NO test rung [surface: CompilerOracle interface + goal 'coverage probe is go list -json' + goal 'TDD gesture ... not this slice']", () => {
@@ -257,11 +270,18 @@ gtest("workspace refusal: GOWORK=off DISABLES the refusal - a go.work parent no 
 // buildCheckCommand. [surface: the exact spelling is load-bearing]
 // ===========================================================================
 
-gtest("buildCheckCommand: exactly `go build -o /dev/null ./...` at crateRoot, GOPROXY=off + GOWORK=off pinned, GOFLAGS never -mod=vendor/-mod=mod [surface: goal 'checker is go build -o /dev/null ./...' + the spawn-env pins]", () => {
+// RE-CUT session-v69 phase 3, supersession S33. The verb was `build`, and
+// `go build` does not compile `_test.go` files at ALL - while the product WRITES
+// them. `test -c` compiles the test binary and does not run it; `-o /dev/null`
+// is cmd/go's own sanctioned multi-package spelling and keeps the
+// nothing-is-dropped property the old command had. Proven a strict superset
+// live in test/impl-v69-p23-check-sees-tests-live.test.cjs.
+gtest("buildCheckCommand: exactly `go test -c -o /dev/null ./...` at crateRoot, GOPROXY=off + GOWORK=off pinned, GOFLAGS never -mod=vendor/-mod=mod [surface: S33 + the spawn-env pins]", () => {
   const root = path.join(path.sep, "w", "proj");
   const cmd = new GoOracle({ fileExists: () => true }).buildCheckCommand(root);
   assert.strictEqual(cmd.command, "go", "the command is the go binary");
-  assert.deepStrictEqual(cmd.args, ["build", "-o", "/dev/null", "./..."], "the exact spelling: bare build drops a binary, -o <dir> skips non-main packages (golang/go#37378), -o /dev/null compiles everything and writes nothing");
+  assert.deepStrictEqual(cmd.args, ["test", "-c", "-o", "/dev/null", "./..."], "the exact spelling: -c compiles the test binary and does NOT run it (a check on a keystroke path must not execute init or TestMain), and -o /dev/null is the multi-package form cmd/go sanctions - it compiles everything and writes nothing");
+  assert.ok(!cmd.args.includes("build"), "the OLD promise, kept as the record: the verb used to be `build`, which never compiled a _test.go [SUPERSEDED by S33]");
   assert.strictEqual(cmd.cwd, root, "cwd is the module root");
   assert.ok(cmd.env, "a child env is set (go env -w user config leaks into every spawned go command)");
   assert.strictEqual(cmd.env.GOPROXY, "off", "GOPROXY=off: the offline invariant holds only for what the spawn pins");
@@ -433,8 +453,11 @@ gtest("fileCovered: GoFiles covered; IgnoredGoFiles/TestGoFiles/XTestGoFiles and
     { file: path.join(libDir, "lib.go"), want: true, why: "GoFiles in the second package of the stream -> covered" },
     { file: path.join(libDir, "util.go"), want: true, why: "every GoFiles entry counts, not just the first" },
     { file: path.join(root, "ignored.go"), want: false, why: "IgnoredGoFiles (//go:build ignore et al) never reach go build: the unearned green is refused" },
-    { file: path.join(libDir, "lib_test.go"), want: false, why: "TestGoFiles: go build ignores _test.go entirely, a broken test file builds green" },
-    { file: path.join(libDir, "lib_x_test.go"), want: false, why: "XTestGoFiles are outside go build's sight too" },
+    // RE-CUT session-v69 (S33). Both were `false` because the check was
+    // `go build`, which ignores _test.go entirely. The check is `go test -c`
+    // now, so a test file IS an input of the command that runs.
+    { file: path.join(libDir, "lib_test.go"), want: true, why: "TestGoFiles: `go test -c` compiles the test binary, so a _test.go is an input [was false under `go build`, S33]" },
+    { file: path.join(libDir, "lib_x_test.go"), want: true, why: "XTestGoFiles are compiled by `go test -c` too [was false under `go build`, S33]" },
     { file: path.join(root, "orphan", "nowhere.go"), want: false, why: "a file in no listed package is not covered" },
   ];
   for (const c of cases) {
@@ -483,7 +506,8 @@ gtest("runOracleCheck with a GoOracle: probe first, then the pinned build comman
     assert.ok(calls.length >= 2, `probe then check, got ${calls.length} spawn(s)`);
     assert.ok(isProbe(calls[0]), "the FIRST spawn is the coverage probe (go list -json)");
     const check = calls[calls.length - 1];
-    assert.deepStrictEqual(check.args, ["build", "-o", "/dev/null", "./..."], "the last spawn is the pinned check command");
+    // Re-cut with the command, session-v69 phase 3 (S33).
+    assert.deepStrictEqual(check.args, ["test", "-c", "-o", "/dev/null", "./..."], "the last spawn is the pinned check command");
     assert.strictEqual(result.success, false, "exit 1 -> failure verdict");
     assert.strictEqual(result.crateRoot, dir);
     assert.strictEqual(result.diagnostics.length, 1, `the stderr diagnostic rode out (the runner honored the stderr flag); got ${JSON.stringify(result.diagnostics.map((d) => d.message))}`);

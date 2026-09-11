@@ -1640,3 +1640,217 @@ be true. The default shadows VS Code's "Detect Language from Content", which the
 
 **Not proven.** The `config.` when-clause gate is documented VS Code behaviour; no key injector on
 the reference box, so the switch-over is on the human's residual list, not in the host tier.
+
+## S31. The generated tests are a TABLE, and the expected value is the row's last column
+
+**Ratified by the human, 2026-09-10, session-v68.**
+
+**What changed.** The blind test-authoring instruction asked for one INLINE assertion per case and
+said, in every language: "NEVER pull it from a shared variable, a constant or a table of rows."
+It now asks for ONE parameterised table per language — `let cases = [ … ]` and a loop in Rust, a
+slice of anonymous structs in Go, `it.each` in TypeScript, `@pytest.mark.parametrize` in pytest, a
+`cases` list under `self.subTest` in unittest, and the row attribute of each C# framework — whose
+LAST COLUMN is the expected value. `TestFramework.expectedValueSpans` reads that column in all nine
+registrations.
+
+**Why the old behaviour was wrong, and it is not the reason first written down.** The first
+argument was that a table makes roadmap item 53 visible: five identical `0`s are invisible across
+five functions and obvious as a column. True, and secondary.
+
+The real argument is that **the model is proven bad adversarially, so the artefact's job is to be
+cheap for the developer to EXTEND.** Eight measurement arms deep — a split brainstorm-then-serial
+pass, supplied constant values, two model sizes, thinking on and off, two table shapes — nothing
+made the model write better cases. The target decided the outcome, not the arm: every arm agreed on
+six of eight targets and three compiled in zero of eight. Given that, the shape that wins is the one
+where a developer who spots a missing case can add it without ceremony. One line into an array,
+against copying a whole test function, renaming it and rebuilding a fixture.
+
+That reframes the question. It is an affordance question, not an output-quality question, and the
+output-quality answer was already known and bad.
+
+**What survives, and it is the load-bearing half.** Every expected value is still a LITERAL, spelled
+out on its own line, never pulled from a name, because each one is reviewed and typed by the human.
+One row per line. That is what keeps the blank-value invariant standing.
+
+**Why the two halves had to ship together.** On a table reply the shipped inline locators did not
+merely miss. Eight of the nine found the runner's assertion and blanked the LOOP VARIABLE, which
+produces a snippet whose runner reads a hole while every row still carries the model's guess: the
+invariant inverted, the human ratifying nothing, and the suite green forever. Go's was the only leg
+that failed safe, by finding nothing and tripping the zero-hole floor.
+
+**Blast radius.** `TEST_FUNCTION_SHAPES.csharp` had to widen: `[TestCase(` and `[DataTestMethod]`
+both missed a regex requiring `]` or `(` immediately after the attribute name, so two of C#'s three
+frameworks refused the exact reply the new prompt demands. `pyPlacementFor` now emits `import
+pytest`, because the parametrize table needs it bound and the reply shape forbids the model from
+importing. Measured live on dotnet 10.0.111: the shipped `--filter FullyQualifiedName=` exact match
+selects a `[TestCase]` or `[DataRow]` method AND every row under it, so the run rung is unaffected.
+
+**Pinned by.** `test/blind-v68-table-instruction.test.cjs` (44 rows), `test/blind-v68-table-locator.test.cjs`
+(160 rows), `test/review-v68-p1.test.cjs`, `test/review-v68-p2.test.cjs`. The re-cut rows in
+`test/blind-v8-testgen.test.cjs` and `test/review-v31-phase6.test.cjs` carry the old promise and the
+new one side by side.
+
+## S32. An async function is a test target where a test can actually drive it
+
+**Ratified by the human as `session-v68/goal.md` §2, 2026-09-10.** Built in session-v68 phase 5.
+
+**What changed.** Every `async` function in all five languages was refused with a blanket sentence,
+"a blind unit test cannot drive it". Four of the five can drive one, and now do:
+
+- **C#, TypeScript, python/unittest** admit async unconditionally. There is nothing to detect: all
+  three await natively. `async void` stays refused BY NAME, because it cannot be awaited and a test
+  that calls it observes nothing.
+- **Go splits the rung.** It used to refuse `chan` OR `context.Context` together. A
+  `context.Context` parameter is satisfiable in one word, `context.Background()`, so refusing it cost
+  a whole class of testable functions for nothing. A CHANNEL still refuses, and the detail names it.
+- **python/pytest ASKS.** `pytest-asyncio` then `anyio` are probed through `TddDeps.probe`, the same
+  way `PYTEST.detect` asks. Absent, the refusal names them, because pytest COLLECTS an `async def`
+  test without a plugin and reports it SKIPPED — a green board with nothing run, which is the one
+  outcome worse than a refusal.
+- **Rust reads `Cargo.toml`.** tokio (with `macros` or `full`), then async-std with `attributes`,
+  then smol-potat; the detected attribute is what the generated test carries. No runtime found means
+  the refusal names all three. A tokio dependency WITHOUT `macros` gets its own sentence, because
+  `#[tokio::test]` does not exist in that project and emitting it would produce a test that does not
+  compile.
+
+**Why the old behaviour was wrong.** It was written when the seam was Rust-only, and Rust is the one
+language of the five with no stdlib answer. The sentence was true for Rust and false for four
+languages, and it was the same sentence in all five, so it told four sets of users something untrue
+about their own toolchain.
+
+**The rule that shaped every decision here.** Lifting a rung without the machinery behind it just
+swaps an honest refusal for a red test. A refusal is a true sentence the human can act on; a
+generated test that does not compile is worse than both. So each language admits async only where it
+can WRITE a test that drives it, and every refusal in this phase NAMES what is missing.
+
+**What it is worth, and it is less than the brain dump assumed.** Measured over 5,500 real Rust
+functions with the product's own classifier: the gesture admits 7.0%, and async is 23.5% of the
+refusals. Delete the async and member rungs together and the ceiling moves to **16.0%, not 46%**,
+because the freed functions land on the next refusal — 68.4% of real functions carry no doc comment
+at all, and the doc comment is the contract a blind test is authored from. A real 2.3x, and not the
+main constraint.
+
+**The precedence changes as a consequence, in three places.** These were `async` and are now the
+verdict underneath, because async is no longer a refusal that could claim them:
+
+- TypeScript `Promise<void>` is `underspecified`. Amendment 3 ruled that async claimed it, and the
+  property Amendment 3 was protecting — that the reported reason is PREDICTABLE rather than
+  whichever leg happens to match — was about precedence among REFUSALS. Async is not one any more,
+  so the honest reason is that awaiting it gives nothing to assert. `Promise<void>` is still
+  refused; only the sentence moved, and it moved to a true one.
+- An async CLASS METHOD and an async class-field arrow in TypeScript are `needs-fixture`. Their real
+  blocker was always the receiver.
+- A C# bare `Task` / `ValueTask` return is `underspecified`, for the same reason as `Promise<void>`.
+
+**The context block is the escape hatch, not the mechanism.** Phase 4 wired staged context blocks
+into this prompt so a developer with an in-house runtime can hand over a test-function template.
+That is a PROMPT input and deliberately never a classifier input: a rung whose verdict depends on
+what is staged is a rung whose refusals move under the human without warning.
+
+**Pinned by.** `test/blind-v68-async-rung.test.cjs` (42 rows, including 21 non-async rows pinning the
+unchanged verdicts). The re-cut rows in `test/blind-v31-{cs,go,ts}.test.cjs` and
+`test/impl-v31-{cs,go,ts}.test.cjs` carry the old promise and the new one side by side.
+
+## S33. The check compiles the tests we wrote
+
+**Ruled 2026-09-11, session-v69 phases 2 and 3. Measured, not argued: every number below came
+off this box the same day.**
+
+The old promise, in `compilerOracle.ts` and in the Go oracle beside it:
+
+> No `--all-targets`: the oracle checks what `cargo check` checks, so `#[cfg(test)]` bodies are
+> outside its sight (named trade in the surface).
+
+That trade was correct while the oracle only ever checked generated FUNCTION BODIES. It became
+wrong the moment the product started WRITING `#[cfg(test)] mod tests` and `foo_test.go`, and
+nobody revisited it. **The product wrote test code and then validated it with a command blind to
+test code.** On the crate that opened session-v69: `cargo check` 0.066s, clean; `cargo check
+--tests`, two real errors. The oracle logged `check done ms=42 errors=0 success=true`, repair
+said the build was clean, and did nothing. Every downstream sentence was honest and every one of
+them followed from a false input.
+
+**Rust now runs `cargo check --all-targets --keep-going --message-format=json`. Go now runs
+`go test -c -o os.devNull ./...`.**
+
+**`--keep-going` is not decoration and it arrived WITH the widening.** More targets means cargo can
+stop starting units once one has failed. Measured on a probe crate: one unrelated broken
+`examples/e1.rs` swallowed the generated test's E0061 entirely, leaving only the example's E0308 —
+so the span-scoped verdict said "no error landed inside `first_even`" over a test that does not
+compile, which is this supersession's own defect wearing a different coat. With `--keep-going` both
+come back and the exit code is still 101. Under the old single-unit command nothing could pre-empt
+anything, so the flag was not needed and is not a fix for anything that shipped.
+
+**Toolchain floors, named because nothing else names them.** `--keep-going` stabilised in cargo
+1.74; multi-package `go test -c -o <devnull>` landed in Go 1.21. An older toolchain refuses the
+command in plain text, parses to zero diagnostics, and routes to `describeCheckFailure`. Go's
+refusal is `go: `-prefixed, which the parser previously turned into a span-less compile error — one
+diagnostic, so the zero-diagnostics branch never fired and the human would have got
+`go test -c: 1 error(s)` on the accepted line of every Go generation forever. `GO_USAGE_REFUSAL` is
+an allow-list of cmd/go refusing its own command line, never a blanket change to the `go: ` branch:
+`go: updates to go.mod needed` and `go: inconsistent vendoring` ARE verdicts and still reach the
+human as diagnostics.
+
+**Why `--all-targets` and not `--tests`, which is the obvious narrower choice.** `--tests` does
+not check the plain lib build. An error under `#[cfg(not(test))]` that plain `cargo check`
+reports today VANISHES under `--tests` — proven on a probe crate. That is a new way to report
+clean, which is precisely the defect this supersession exists to close. `--all-targets` is a
+strict superset of the old command: every diagnostic it produced is still produced, plus the
+test targets. Cost warm on a real crate: 0.03s to 0.06s.
+
+**Why `go test -c` and not the two obvious alternatives.** `go test -run='^$' ./...` RUNS the
+test binary, so a package's `init` and its `TestMain` execute — on a check that fires after every
+accept. A check that executes the user's code is not a check. `go vet ./...` does not execute,
+but it stops at the FIRST type error per package (measured: 1 of 2 planted errors), prefixes
+`vet: `, and mixes analyser findings into a surface that promises compile errors. `go test -c`
+compiles the test binary without running it, reports every error in the standard
+`./file:line:col:` format the parser already reads, and covers packages with no test files and
+`main` packages, which makes it a strict superset too. `-o os.devNull` is cmd/go's own sanctioned
+multi-package spelling.
+
+**What this changes for a user, and it is wider than the tests.** The widened commands also see
+examples, benches, `tests/` directories and test-only dependencies. Two shapes go from green to
+permanently red without the user changing anything: a crate that builds on stable while its benches
+need nightly, and a Go module whose tests import a package outside the local module cache (the
+check pins `GOPROXY=off` and will not fetch it). Both are FALSE RED, which is the cheap direction,
+and both stay out of the touched span. Session-v69 `scraps.md` D1 carries the reproductions and the
+ruling: accept the cost, say so in the release notes. Narrowing the command back would trade a
+false red for a false admit, which is the direction this supersession exists to fix.
+
+A crate or module whose EXISTING tests do not compile now
+reports those errors on every check. They are out of the touched span, so repair refuses them and
+the span-scoped verdict says so; nothing new reaches a model. A test suite that was quietly broken
+becomes loudly broken, which is the point.
+
+**Pinned by.** `test/impl-v69-p23-check-sees-tests-live.test.cjs`, 8 LIVE rows spawning the real
+toolchain through the oracles' own commands: RED on known-bad test code first, GREEN on the same
+tree with the defect removed, the two superset rows, and the row proving the Go check does not
+run the binary. The re-cut contract rows in `test/blind4-oracle-run.test.cjs` and
+`test/blind-v23-gooracle.test.cjs` carry the old promise and the new one side by side.
+
+## S34. A generated test may not be named after the function it tests
+
+**Ruled 2026-09-11, session-v69 phase 1.**
+
+Session-v68's `TEST_GEN_INSTRUCTION` asks for "a SINGLE `#[test]` fn". One test per target
+invites naming it after the target, and in Rust that is a compile error the product writes into
+the human's file: a locally declared item beats a glob import, so inside
+`mod tests { use super::*; }` the name `first_even` IS the zero-argument test, and
+`assert_eq!(first_even(xs), expected)` calls the test with an argument. Before v68 the model
+wrote several functions with descriptive names, which almost never collide. Nothing in the
+prompt constrained the name and no code checked for the clash.
+
+**The guard is deterministic and it RENAMES.** The three existing floors — no hole located, an
+unresolved assertion site, a dead table column — all refuse, because none of them can know what
+the human meant. This one knows exactly what is wrong and exactly what to write instead. A test
+function's own name is referenced by nothing, so the rename touches one identifier and every call
+to the function under test is byte-identical. Refusing would charge the human a whole generation
+for a defect the product's own prompt invites.
+
+`guardShadowedTestNames` runs for Rust (`fn NAME`) and Python (a column-zero `def NAME(`, the
+star-import hazard). Go, C# and TypeScript get their input back untouched: `TestXxx`, a method on
+a test class and `it("…")` are all structurally distinct from the target's name, and a guard that
+fires where it cannot be needed is a guard nobody trusts. Fifty taken candidate names refuse the
+whole pass rather than land a partial rename.
+
+**Pinned by.** `test/blind-v69-p1-shadow-guard.test.cjs` (62 contract rows, written blind) and
+`test/impl-v69-p1-shadow-guard.test.cjs` (27 rows, including the dogfood reply and the regen leg).

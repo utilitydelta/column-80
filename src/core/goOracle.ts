@@ -78,9 +78,34 @@ const DIAG_LINE = /^(.+\.go):(\d+)(?::(\d+))?: (.+)$/;
  *  F4). */
 const GO_INFO_LINE = /^go: (downloading|finding|extracting)/;
 
+/** cmd/go refusing its own COMMAND LINE, which is a crashed check and not a
+ *  fault in the user's code.
+ *
+ *  The case that forced it: multi-package `go test -c` landed in Go 1.21, and an
+ *  older toolchain answers `go: cannot use -c flag with multiple packages`. That
+ *  line is `go: `-prefixed, so the verdict branch below turned it into a
+ *  span-less compile error — one parseable diagnostic, which means
+ *  `runOracleCheck`'s zero-diagnostics branch never fires and
+ *  `describeCheckFailure` never speaks. The human would get
+ *  `go test -c: 1 error(s)` painted on the accepted line of EVERY Go generation,
+ *  forever, with a hover quoting a go usage string. `GOPROXY=off` also blocks the
+ *  GOTOOLCHAIN auto-upgrade that would otherwise rescue them.
+ *
+ *  An ALLOW-LIST of usage refusals, never a blanket change to the `go: ` branch.
+ *  P1 review F4 already burned that: `go: updates to go.mod needed` and
+ *  `go: inconsistent vendoring` ARE verdicts and must keep reaching the human as
+ *  diagnostics. A compile error never carries this prefix — cmd/go prints those
+ *  as `file.go:line:col:`. */
+const GO_USAGE_REFUSAL = /^go: (cannot use|unknown flag|flag provided but not defined|unknown command)\b/;
+
 export class GoOracle implements CompilerOracle {
   readonly language = "go";
-  readonly checkLabel = "go build";
+  // The command the human sees on the edit-site decoration, so it must be the
+  // command that RAN. It said `go build` until session-v69 moved the check to
+  // `go test -c`, and a human who copied `go build` to reproduce would get a
+  // clean build — because `go build` is exactly the command that cannot see the
+  // error being shown to them.
+  readonly checkLabel = "go test -c";
 
   private readonly fileExists: (p: string) => boolean;
   private readonly readFile: (p: string) => string | undefined;
@@ -146,10 +171,32 @@ export class GoOracle implements CompilerOracle {
     this.logEnvDivergenceOnce();
     return {
       command: "go",
-      // os.devNull IS "/dev/null" here (the measured spelling); it keeps the
-      // no-binary-dropped property on the one platform where the literal
-      // would instead create a file named "/dev/null" (P1 review F10).
-      args: ["build", "-o", os.devNull, "./..."],
+      // `go test -c` since session-v69 (supersession S33). It was
+      // `go build -o os.devNull ./...`, which does not compile `_test.go` files
+      // at all — and the product WRITES `_test.go` files. MEASURED 2026-09-11:
+      // a `_test.go` calling an undefined identifier left `go build` at exit 0
+      // printing nothing.
+      //
+      // `-c` compiles the test binary and does NOT run it, which is the whole
+      // point: this check runs on every accept, and executing a package's
+      // `init` or `TestMain` on a keystroke path is not a check, it is a side
+      // effect. `go test -run='^$'` was the other candidate and it RUNS the
+      // binary, so it lost on that alone. `go vet` lost differently: it stops
+      // at the FIRST type error per package (measured: 1 of 2 planted errors),
+      // prefixes `vet: `, and mixes analyser findings into a surface that
+      // promises compile errors.
+      //
+      // A STRICT SUPERSET of the old command, proven on a probe module the same
+      // day: a broken library package with no test files, and a broken `main`
+      // package, both still report every error. Widening a checker must not open
+      // a new way to report clean.
+      //
+      // `-o os.devNull` is the sanctioned multi-package spelling — cmd/go says
+      // "with multiple packages, -o must refer to a directory or os.DevNull" —
+      // and keeps the no-binary-dropped property `go build` had. A toolchain too
+      // old to accept it fails the whole check, which `describeCheckFailure`
+      // reports; it does not go quietly green.
+      args: ["test", "-c", "-o", os.devNull, "./..."],
       cwd: crateRoot,
       env: { ...GO_SPAWN_ENV },
       diagnosticsOnStderr: true,
@@ -219,7 +266,7 @@ export class GoOracle implements CompilerOracle {
       // Module-level verdicts (`go: inconsistent vendoring ...`) carry no
       // file position but ARE the failure; a span-less diagnostic keeps them
       // on the record instead of buried in a crash line.
-      if (line.startsWith("go: ") && !GO_INFO_LINE.test(line)) {
+      if (line.startsWith("go: ") && !GO_INFO_LINE.test(line) && !GO_USAGE_REFUSAL.test(line)) {
         out.push({
           kind: "compile-error",
           level: "error",
@@ -355,12 +402,23 @@ export class GoOracle implements CompilerOracle {
         const files = pkg[field];
         return Array.isArray(files) && files.some((f) => typeof f === "string" && path.resolve(physicalDir, f) === target);
       };
-      if (inList("GoFiles")) {
+      // TestGoFiles and XTestGoFiles are COVERED since session-v69: the check is
+      // `go test -c`, which compiles the test binary, so a `_test.go` is an input
+      // of the command that actually runs. The old comment here said "test files
+      // are never go build inputs at all", which was true of `go build` and
+      // stopped being true the moment the command moved.
+      //
+      // Found by adversarial review, and it was not cosmetic: phase 6's
+      // `warnIfTestsAreUncheckable` warns on exactly `false`, so every Go test
+      // generation would have ended with a toast telling the human their tests
+      // are unchecked, over a check that compiles them. The comment on
+      // `fileIsCheckable` calls that the expensive direction.
+      if (inList("GoFiles") || inList("TestGoFiles") || inList("XTestGoFiles")) {
         return true;
       }
       // Named but not built: build tags, `_` prefix, OS/arch suffix land in
-      // IgnoredGoFiles; test files are never go build inputs at all.
-      if (inList("IgnoredGoFiles") || inList("TestGoFiles") || inList("XTestGoFiles")) {
+      // IgnoredGoFiles. Those the check genuinely cannot see.
+      if (inList("IgnoredGoFiles")) {
         return false;
       }
     }
@@ -368,7 +426,7 @@ export class GoOracle implements CompilerOracle {
   }
 
   describeNotCovered(_crateRoot: string, filePath: string): string {
-    return `go build does not load ${filePath} (build-tag excluded, \`_\`-prefixed, or a _test.go — go build ignores test files); the check cannot see it`;
+    return `go test -c does not load ${filePath} (build-tag excluded, \`_\`-prefixed, or an OS/arch suffix that does not match this platform); the check cannot see it`;
   }
 
   describeMissingRoot(filePath: string): string | undefined {
@@ -387,7 +445,7 @@ export class GoOracle implements CompilerOracle {
     if (exitCode < 0) {
       return `go could not be spawned${evidence ? `: ${evidence}` : ""}`;
     }
-    return `go build failed with nothing parseable (exit ${exitCode})${evidence ? `: ${evidence}` : ""}`;
+    return `go test -c failed with nothing parseable (exit ${exitCode})${evidence ? `: ${evidence}` : ""}`;
   }
 
   private nearestGoMod(filePath: string): string | undefined {

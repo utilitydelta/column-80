@@ -177,10 +177,17 @@ test("returnTypeOf answers undefined for a unit return, the supersession-S1 prec
 
 const DOC = "/** Widen a number. */";
 
-test("classify: the precedence is fixed and first-match-wins", () => {
-  assert.equal(classifyTsTestability("export async function load(): Promise<number> {", DOC).reason, "async");
-  assert.equal(classifyTsTestability("export const load = async (a: number): Promise<number> =>", DOC).reason, "async");
-  assert.equal(classifyTsTestability("export function later(): Promise<Widget> {", DOC).reason, "async");
+// SUPERSESSION S32 (session-v68 phase 5, ruled by the human 2026-09-10). The first
+// three lines asserted these report "async", which used to head the chain. vitest
+// and jest both await a promise the test returns, so an async target needs no
+// detection and no plugin, and phase 5 admits it. The precedence is still FIXED and
+// this row still asserts every remaining rung of it; io is now the head, and the
+// three admitted shapes stay in the row as the pass they became.
+test("classify: the precedence is fixed and first-match-wins, and it now starts at io (S32)", () => {
+  assert.equal(classifyTsTestability("export async function load(): Promise<number> {", DOC).testable, true);
+  assert.equal(classifyTsTestability("export const load = async (a: number): Promise<number> =>", DOC).testable, true);
+  assert.equal(classifyTsTestability("export function later(): Promise<Widget> {", DOC).testable, true);
+  assert.equal(classifyTsTestability('export async function dump(fh: import("node:fs").WriteStream): Promise<number> {', DOC).reason, "io", "io heads the chain");
   assert.equal(classifyTsTestability("export function read(p: string): fs.Stats {", DOC).reason, "io");
   assert.equal(classifyTsTestability("export function get(url: string): ReturnType<typeof fetch> {", DOC).reason, "io");
   // A type spelled through a module specifier is the same world, reached a
@@ -196,17 +203,27 @@ test("classify: the precedence is fixed and first-match-wins", () => {
   assert.deepEqual(classifyTsTestability("export function widen(n: number): number {", DOC), { testable: true });
 });
 
-test("classify: Promise<void> is `async`, not `underspecified` (Amendment 3)", () => {
-  // goal.md item 3 listed it under both. Precedence stands: the reported reason
-  // must be predictable, and it is the first and most fundamental blocker.
+// SUPERSESSION S32 (session-v68 phase 5). This row asserted `Promise<void>` is
+// "async". Amendment 3 ruled that async claimed it, and what Amendment 3 was
+// protecting - a PREDICTABLE reported reason - was a property of precedence among
+// REFUSALS. Async is not a refusal any more, so the reason underneath is the honest
+// one: awaiting it gives nothing to assert. The function is still refused, which is
+// what the first assertion below now pins, so only the sentence moved.
+test("classify: Promise<void> is `underspecified`, not `async`, and it is still refused (S32)", () => {
   const v = classifyTsTestability("export async function save(w: Widget): Promise<void> {", DOC);
   assert.equal(v.testable, false);
-  assert.equal(v.reason, "async");
+  assert.equal(v.reason, "underspecified");
+  assert.match(v.detail, /nothing to assert/);
   // Plain void and an absent annotation are unaffected.
   assert.equal(classifyTsTestability("export function save(w: Widget): void {", DOC).reason, "underspecified");
 });
 
-test("classify: needs-fixture is the METHOD FORM, because a body is never in scope (Amendment 4)", () => {
+// SUPERSESSION S32 (session-v68 phase 5) touched ONE line of this row: an async
+// class method used to report "async", because the async leg outranked the form.
+// Its real blocker was always the receiver, and with async admitted the form is what
+// it reports. Everything else here is Amendment 4 unchanged: the classifier sees a
+// signature and never a body, so the METHOD FORM is the tell.
+test("classify: needs-fixture is the METHOD FORM, because a body is never in scope (Amendment 4, S32)", () => {
   // The classifier receives a signature and a doc comment. Whether a method
   // touches `this` is a fact about a body it never sees, so the form is the
   // tell — and the over-refusal is the stated, honest direction.
@@ -220,9 +237,9 @@ test("classify: needs-fixture is the METHOD FORM, because a body is never in sco
   ]) {
     assert.equal(classifyTsTestability(sig, DOC).reason, "needs-fixture", sig);
   }
-  // Precedence still outranks the form: an async method reports `async`, which
-  // is the first and most fundamental blocker.
-  assert.equal(classifyTsTestability("  async load(): Promise<Widget> {", DOC).reason, "async");
+  // An async method reports the FORM: its real blocker was always the receiver,
+  // and async is no longer a refusal that could claim it first (S32).
+  assert.equal(classifyTsTestability("  async load(): Promise<Widget> {", DOC).reason, "needs-fixture");
   // And what must NOT read as a method: the three declaration forms.
   assert.notEqual(classifyTsTestability("function f(a: number): number {", DOC).reason, "needs-fixture");
   assert.notEqual(classifyTsTestability("export function f(a: number): number {", DOC).reason, "needs-fixture");
@@ -1305,7 +1322,12 @@ test("classify: the corpus survivor count is 0, and no class member is refused w
   assert.ok((counts["needs-fixture"] ?? 0) > (counts["not-exported"] ?? 0), JSON.stringify(counts));
 });
 
-test("classify: a class field holding an arrow is needs-fixture, not not-exported (Amendment 5)", () => {
+// SUPERSESSION S32 (session-v68 phase 5) touched ONE line of this row: an async
+// class-field arrow used to report "async", because the async leg outranked the
+// form. Its real blocker was always the receiver, and with async admitted the form
+// is what it reports. Everything else here is Amendment 5 unchanged: a class member
+// must not be told to add `export`, which a class property cannot take.
+test("classify: a class field holding an arrow is needs-fixture, not not-exported (Amendment 5, S32)", () => {
   // 13 of the corpus's 23 not-exported verdicts were this shape — the MobX
   // bound-action idiom. Amendment 4 exempted "an arrow binding" from the method
   // form, so they fell through to the visibility leg and the human was told to
@@ -1319,8 +1341,8 @@ test("classify: a class field holding an arrow is needs-fixture, not not-exporte
   ]) {
     assert.equal(classifyTsTestability(sig, DOC).reason, "needs-fixture", sig);
   }
-  // Precedence still outranks the form.
-  assert.equal(classifyTsTestability("  run = async (): Promise<void> => {", DOC).reason, "async");
+  // An async class field reports the FORM too, for the same reason (S32).
+  assert.equal(classifyTsTestability("  run = async (): Promise<void> => {", DOC).reason, "needs-fixture");
   const v = classifyTsTestability("private onKeyDown = (e: KeyboardEvent): void => {", DOC);
   assert.doesNotMatch(v.detail, /add `export`/, "the detail must not name a fix a class property cannot take");
   // A TOP-LEVEL arrow is unaffected: the binding keyword is what tells them

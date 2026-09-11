@@ -41,7 +41,9 @@ import {
   rustUnresolvedAssertions,
   skipLiteralOrComment,
 } from "./testAssembly";
-import { TestabilityVerdict, classifyTestability } from "./testability";
+import { assignedTupleTables, deadColumns, mergeTableAndInline } from "./tddTable";
+import { FUTURE_RETURN as RUST_FUTURE_RETURN, TestabilityContext, TestabilityVerdict, classifyTestability } from "./testability";
+export type { AsyncTestSupport, TestabilityContext } from "./testability";
 import { BlankValueResult, StructFieldShape, renderBlankValue } from "./tabstop";
 import { CS_TDD_LANG } from "./tddCs";
 import { GO_TDD_LANG } from "./tddGo";
@@ -333,6 +335,27 @@ export interface TestFramework {
    *  Absent means this framework's shape IS its language's default, which is true
    *  of the other eight. */
   readonly replyShape?: string;
+  /** ADDED session-v68 phase 1. The prompt fragment naming what ONE
+   *  parameterised table looks like in THIS framework, for a framework whose
+   *  table idiom is not its language's default.
+   *
+   *  Same reason as `assertionInstruction` and `replyShape`: the table clause
+   *  and the assertion clause land in ONE prompt and must not contradict, and
+   *  only the framework knows both. C# forces it - NUnit spells a row
+   *  `[TestCase(...)]`, xUnit `[Theory]` plus `[InlineData(...)]` and MSTest
+   *  `[DataTestMethod]` plus `[DataRow(...)]`, three idioms inside one
+   *  languageId. python/unittest is the other: it has no `parametrize`, so its
+   *  rows live in a plain list walked under `self.subTest`.
+   *
+   *  Absent means this framework's table idiom IS its language's default, which
+   *  is true of libtest, gotest, vitest, jest and pytest. */
+  readonly tableShape?: string;
+  /** ADDED session-v68 phase 1 (adversarial review). Do THIS framework's rows
+   *  take compile-time constants only? C#'s `[TestCase]`, `[InlineData]` and
+   *  `[DataRow]` do, which makes the constructed-column knob rule unreachable
+   *  and, if stated anyway, a contradiction inside one prompt. Absent means the
+   *  rows can hold a constructed value. */
+  readonly rowsAreConstantsOnly?: boolean;
   /** The EXPECTED-VALUE spans in generated test text: exactly the byte ranges
    *  the human must type. Safety-critical. Getting the argument order wrong
    *  blanks the call under test and keeps the model's guess, which inverts the
@@ -403,6 +426,29 @@ export interface TddLang {
   readonly displayName: string;
 
   placementFor(filePath: string, symbolName: string, deps: TddDeps): PlacementResult;
+
+  /** ADDED session-v68 phase 3. The columns a generated case TABLE binds and its
+   *  runner never READS, by name, so the floor can refuse the pass and say which.
+   *
+   *  Rows are cheap and columns are not: a table whose column the body never
+   *  reads cannot exercise that column, and a row value there changes nothing.
+   *  The prompt asks for no dead column and this checks for one, because a model
+   *  will not obey it — the measured harness-and-rows arm declared a `max_bytes`
+   *  knob, put it in the failure message, and never used it.
+   *
+   *  Empty for a reply with no table, which is every reply that shipped before
+   *  the table supersession. Pure and total. */
+  deadTableColumns(text: string): string[];
+
+  /** ADDED session-v68 phase 5. Is THIS signature async?
+   *
+   *  Distinct from `classifyTestability`, which answers whether an async target
+   *  is DRIVABLE here. This one answers only whether the target is async at all,
+   *  because the prompt needs to know: an admitted async target must be asked
+   *  for as an async test, and a synchronous one must keep its exact prior
+   *  prompt bytes. Reading the verdict cannot answer it — an admitted async
+   *  target and a synchronous one both come back `{testable: true}`. */
+  isAsyncSignature(signature: string): boolean;
 
   /** ADDED session-v60 phase A2. What ONE spawn of this language's runner
    *  covers, MEASURED off the shipped `buildCommand` bodies rather than
@@ -485,13 +531,23 @@ export interface TddLang {
    *  Moving the decision into placement was the rejected alternative:
    *  `not-exported` is a testability VERDICT the human reads as a reason, and
    *  splitting it across two steps puts half the classifier where nobody looks. */
-  classifyTestability(signature: string, docComment?: string, ctx?: { internalsVisible?: boolean }): TestabilityVerdict;
+  classifyTestability(signature: string, docComment?: string, ctx?: TestabilityContext): TestabilityVerdict;
 
   /** ADDED phase 6. Resolve the ctx above from a placement the caller already
    *  holds, so the consumer never has to know WHICH language has a project fact.
    *  Absent means the language has none and the ctx stays empty, which is Rust,
    *  Go, TypeScript and Python. */
-  testabilityContextFor?(filePath: string, placement: TestPlacement, deps: TddDeps): { internalsVisible?: boolean };
+  /** `signature` was ADDED session-v68 phase 5 (adversarial review F10): the
+   *  Python leg SPAWNS the project's interpreter to ask whether pytest-asyncio
+   *  imports, and it was doing that on every single test generation, including
+   *  the synchronous majority that can never use the answer. A resolver that
+   *  costs a process spawn has to know whether the question is being asked. */
+  testabilityContextFor?(
+    filePath: string,
+    placement: TestPlacement,
+    deps: TddDeps,
+    signature?: string,
+  ): TestabilityContext;
 
   /** THIS language's return-type extraction. The shipped fnGen one is
    *  `->`-only and is wrong for four of five. */
@@ -561,6 +617,27 @@ export function rustReturnTypeOf(signature: string): string | undefined {
 // Rust: the adapter
 // ===========================================================================
 
+// Rust's table shape is `let cases = [ (…, want), … ];` walked by a `for` loop.
+// The profile is Rust's, which is the scanner's default, so no profile is
+// passed.
+function rustTables(text: string) {
+  return assignedTupleTables(text, undefined);
+}
+
+function rustTableAwareSpans(text: string): Array<{ start: number; end: number }> {
+  return mergeTableAndInline(text, rustTables(text), rustExpectedValueSpans(text)).spans;
+}
+
+function rustDeadTableColumns(text: string): string[] {
+  return deadColumns(text, rustTables(text));
+}
+
+function rustTableAwareUnresolved(text: string): number {
+  const merged = mergeTableAndInline(text, rustTables(text), rustExpectedValueSpans(text));
+  return rustUnresolvedAssertions(text) + merged.unresolvedRowRefs;
+}
+
+
 const RUST_LIBTEST: TestFramework = {
   id: "libtest",
   displayName: "cargo test (libtest)",
@@ -594,17 +671,21 @@ const RUST_LIBTEST: TestFramework = {
   stripHarnessFrames: libtestStripHarnessFrames,
 
   assertionInstruction:
-    "Assert with `assert_eq!(<call>, <expected>)`: the EXPECTED value is the SECOND argument. " +
-    "Write each expected value inline as the second argument of its own assert.",
+    "Assert with `assert_eq!(<call>, <row's last column>)`: the call under test is the FIRST argument " +
+    "and the row's expected value the SECOND. One `assert_eq!` inside the loop, reading the row.",
 
-  expectedValueSpans: rustExpectedValueSpans,
+  // TABLE-AWARE (session-v68 phase 2). `rustExpectedValueSpans` itself is
+  // untouched and stays byte-frozen - `blankTestModule` calls it directly and
+  // `blind-v8-assembly` pins that. The wrapper adds the case table's rows and
+  // drops the runner's `want`, which the bare locator would otherwise blank.
+  expectedValueSpans: rustTableAwareSpans,
 
   // The literal reading of "walked but unresolved" for this locator: it matched
   // `assert_eq!(` / `assert_ne!(` and the call did not yield a second top-level
   // argument, so the assertion the human would have typed a value into produced
   // no hole. A macro whose arguments the locator never reached at all is not
   // counted; this is the silence the locator can SEE.
-  unresolvedAssertions: rustUnresolvedAssertions,
+  unresolvedAssertions: rustTableAwareUnresolved,
 };
 
 // A generated `mod tests { … }` wrapper, already present or added.
@@ -713,6 +794,142 @@ function rustNameContext(ctx?: TestNameContext): RustTestNameContext | undefined
   };
 }
 
+/**
+ * Which async test runtime this Rust project has, read out of `Cargo.toml`.
+ *
+ * Rust is the one language of the five with no stdlib answer: `#[test]` cannot
+ * await, so a generated async test needs an attribute from a dev-dependency, and
+ * the product must not guess which. Three are checked in order, and the FEATURE
+ * matters as much as the dependency — `tokio` without `macros` provides no
+ * `#[tokio::test]` at all, so emitting the attribute anyway would produce a test
+ * that does not compile, which is worse than the refusal it replaced.
+ *
+ * Pure over the injected deps: the manifest is READ here, in the context
+ * resolver, and never inside the classifier.
+ */
+function rustAsyncRuntime(filePath: string, deps: TddDeps): TestabilityContext {
+  const fileExists = deps.fileExists ?? REAL_TDD_DEPS.fileExists;
+  const readFile = deps.readFile ?? REAL_TDD_DEPS.readFile;
+  const manifests: string[] = [];
+  let dir = path.dirname(filePath);
+  for (let up = 0; up < 32; up++) {
+    const candidate = path.join(dir, "Cargo.toml");
+    if (fileExists(candidate)) {
+      const text = readFile(candidate);
+      if (text !== undefined) {
+        manifests.push(text);
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  const lookedFor =
+    "async fn, and no async test runtime found in Cargo.toml — looked for tokio (with the `macros` feature), " +
+    "async-std and smol. This gesture never adds a dependency.";
+  if (manifests.length === 0) {
+    return { asyncLookedFor: lookedFor };
+  }
+  // EVERY manifest up to the workspace root, not just the first. A member crate
+  // writes `tokio = { workspace = true }` and the features live in the ROOT's
+  // `[workspace.dependencies]`, so stopping at the member manifest reads a real
+  // runtime as absent.
+  let sawTokio = false;
+  let inheritedTokio = false;
+  for (const manifest of manifests) {
+    const tokio = dependencyEntry(manifest, "tokio");
+    if (tokio !== undefined) {
+      sawTokio = true;
+      if (/\bworkspace\s*=\s*true\b/.test(tokio)) {
+        inheritedTokio = true;
+      }
+      if (/\bmacros\b|\bfull\b/.test(tokio)) {
+        return { asyncTest: { shape: "#[tokio::test]" } };
+      }
+    }
+    const asyncStd = dependencyEntry(manifest, "async-std");
+    if (asyncStd !== undefined && /\battributes\b/.test(asyncStd)) {
+      return { asyncTest: { shape: "#[async_std::test]" } };
+    }
+    if (dependencyEntry(manifest, "smol-potat") !== undefined) {
+      return { asyncTest: { shape: "#[smol_potat::test]" } };
+    }
+  }
+  if (inheritedTokio) {
+    // The member crate writes `tokio = { workspace = true }` and the features
+    // live in a `[workspace.dependencies]` table this walk did not find. Saying
+    // "declares tokio but not macros" would assert a fact that was never
+    // checked, so the refusal says what is actually true.
+    return {
+      asyncLookedFor:
+        "async fn. This crate inherits tokio from the workspace, and no `[workspace.dependencies] tokio` " +
+        "entry was found to read its features from, so whether `#[tokio::test]` exists here could not be " +
+        "determined. Stage a test-function template as a context block, or spell the feature in this crate.",
+    };
+  }
+  if (sawTokio) {
+    return {
+      asyncLookedFor:
+        "async fn. Cargo.toml declares tokio but not its `macros` feature, so `#[tokio::test]` does not exist " +
+        "here. This gesture never adds a dependency or a feature.",
+    };
+  }
+  return { asyncLookedFor: lookedFor };
+}
+
+/**
+ * The declaration of `crate` in a Cargo.toml, as the text a feature check may
+ * read, or undefined when it is not declared in a section that reaches TESTS.
+ *
+ * Three things this has to get right, and the first cut got none of them. The
+ * feature check must be scoped to the crate's OWN entry: `/\bfull\b/` over the
+ * whole manifest is satisfied by any unrelated crate enabling `full`, and by the
+ * word appearing in a comment. The SECTION matters: `[build-dependencies]` is
+ * not linked into a test binary, so a tokio there provides no `#[tokio::test]`.
+ * And `tokio-util = …` must not read as `tokio`.
+ *
+ * Comments are stripped first, so nothing in one ever satisfies anything.
+ */
+function dependencyEntry(manifest: string, crate: string): string | undefined {
+  const name = crate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let section = "";
+  const wanted = /^\[(?:workspace\.)?(?:dependencies|dev-dependencies)\]$|dependencies\]$/;
+  const rejected = /^\[(?:.*\.)?build-dependencies\]$/;
+  let inline: string | undefined;
+  let table: string[] | undefined;
+  for (const raw of manifest.split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, "").trim();
+    if (line.startsWith("[")) {
+      // A dedicated `[dependencies.tokio]` table, or a section change ending one.
+      if (table !== undefined) {
+        break;
+      }
+      section = line;
+      if (new RegExp(`^\\[(?:.*\\.)?(?:dev-)?dependencies\\.${name}\\]$`).test(line) && !rejected.test(line)) {
+        table = [];
+      }
+      continue;
+    }
+    if (table !== undefined) {
+      table.push(line);
+      continue;
+    }
+    if (!wanted.test(section) || rejected.test(section)) {
+      continue;
+    }
+    const m = new RegExp(`^${name}(\\.\\w+)?\\s*=`).exec(line);
+    if (m !== null) {
+      inline = line;
+    }
+  }
+  if (table !== undefined) {
+    return table.join("\n");
+  }
+  return inline;
+}
+
 const RUST_TDD_LANG: TddLang = {
   languageId: "rust",
   displayName: "Rust",
@@ -785,6 +1002,23 @@ const RUST_TDD_LANG: TddLang = {
   },
 
   classifyTestability,
+
+  deadTableColumns: rustDeadTableColumns,
+
+  // The future test reads the RETURN TYPE, not the whole signature. A function
+  // that TAKES a future (`fn spawn(f: BoxFuture<()>) -> u32`) is not async and
+  // was getting the async prompt clause, which asks the test to await a call
+  // that returns a plain value.
+  isAsyncSignature: (signature) =>
+    /\basync\s+fn\b/.test(signature) ||
+    RUST_FUTURE_RETURN.test(/->\s*([^{]*)/.exec(signature ?? "")?.[1]?.trim() ?? ""),
+
+  // Rust's project fact is the async test RUNTIME. Added session-v68 phase 5;
+  // before it, Rust was the one leg with no context resolver at all.
+  // Reading a manifest is cheap, but it is still only asked when the answer can
+  // be used.
+  testabilityContextFor: (filePath, _placement, deps, signature) =>
+    signature !== undefined && !RUST_TDD_LANG.isAsyncSignature(signature) ? {} : rustAsyncRuntime(filePath, deps),
 
   returnTypeOf: rustReturnTypeOf,
 
@@ -866,6 +1100,60 @@ export interface SeamBlankResult {
    *  assertions still produced holes, so a holes-based floor would pass while
    *  the model's guess shipped beside them. */
   unresolved: number;
+}
+
+/**
+ * The prompt fields a RESOLVED framework contributes to the test-authoring pass:
+ * its assertion idiom, its reply shape, its table idiom and whether its rows can
+ * hold a constructed value.
+ *
+ * It exists because these four must not drift between production and the tests
+ * that judge production. Session-v68's adversarial review found the drift twice
+ * in one phase: the blind oracle drove `assembleTestGenPrompt` with
+ * `assertionInstruction` alone, so the shipped NUnit table clause — the one that
+ * broke the reply guard — was in no prompt any test read, and the review's own
+ * mirror of the call site went stale the moment a fifth field was added. A
+ * harness must use the product's mapping, not a re-derived one.
+ *
+ * `languageName` comes off the LANG, the other four off the FRAMEWORK, because
+ * assertion order, reply shape and row idiom all differ WITHIN a language: C#
+ * carries three frameworks and Python two.
+ */
+export function testGenFieldsFor(
+  lang: TddLang,
+  framework: TestFramework,
+  target?: { signature: string; ctx?: TestabilityContext; receiverTypeName?: string },
+): {
+  languageId: string;
+  languageName: string;
+  assertionInstruction: string;
+  replyShape?: string;
+  tableShape?: string;
+  rowsAreConstantsOnly?: boolean;
+  asyncTestShape?: string;
+  receiverTypeName?: string;
+} {
+  // The ASYNC decision lives here and nowhere else. It needs two facts that sit
+  // apart — whether THIS signature is async (the language knows) and how this
+  // PROJECT drives an async test (the resolved ctx knows) — and splitting it
+  // across the call site and the assembler is how the clause would end up on a
+  // synchronous target, or missing from an async one. Same reason the rest of
+  // this function exists.
+  const asyncTestShape =
+    target !== undefined && lang.isAsyncSignature(target.signature) ? target.ctx?.asyncTest?.shape : undefined;
+  return {
+    languageId: lang.languageId,
+    languageName: lang.displayName,
+    assertionInstruction: framework.assertionInstruction,
+    replyShape: framework.replyShape,
+    tableShape: framework.tableShape,
+    rowsAreConstantsOnly: framework.rowsAreConstantsOnly,
+    ...(asyncTestShape === undefined ? {} : { asyncTestShape }),
+    // Only when the fixture rung was actually LIFTED for this target. A free
+    // function carries no receiver clause, and a method the gesture refused
+    // never reaches a prompt at all.
+    ...(target?.receiverTypeName === undefined ? {} : { receiverTypeName: target.receiverTypeName }),
+  };
 }
 
 /**

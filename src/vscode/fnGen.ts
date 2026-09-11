@@ -104,19 +104,21 @@ import {
   ReceiverJob,
   SignatureRules,
   receiverNameOffset,
+  surfaceProducesType,
 } from "../core/receiver";
 import { renderImportHint } from "../core/usePath";
 import { bodyTextOfSpan, harvestBodyComments } from "../core/scaffold";
 import { makeHostScopedCatalogFetcher } from "../core/catalog";
 import { assembleAntiPuntReprompt, looksLikePunt, puntDiagnosis } from "../core/punt";
-import { blankSnippetToDisplay } from "../core/testAssembly";
+import { blankSnippetToDisplay, withoutMarkedRegion } from "../core/testAssembly";
 import { StructFieldShape } from "../core/tabstop";
 // The TDD gesture speaks five languages through this seam (docs/supersessions.md
 // S2). Everything that used to be Rust-literal in the two commands — the
 // return-type reader, the scaffold, the blanker, the marker format, the
 // testability classifier and the assertion idiom — comes off the resolved leg.
-import { TddDeps, TestPlacement, blankExpectedValues, frameworkFor, tddLangFor, tddLanguageIds } from "../core/tddLang";
-import { TestOracleResult, oracleFor, runFrameworkTestsAt, runOracleCheck } from "../core/compilerOracle";
+import { TddDeps, TestPlacement, blankExpectedValues, frameworkFor, tddLangFor, tddLanguageIds, testGenFieldsFor } from "../core/tddLang";
+import { guardShadowedTestNames } from "../core/tddShadow";
+import { TestOracleResult, fileIsCheckable, oracleFor, runFrameworkTestsAt, runOracleCheck } from "../core/compilerOracle";
 // The Run Covering Tests gesture: the walk and its transport, the classifier's
 // language names, the grouper's target resolution, and the ONE pure module that
 // owns every sentence the gesture can say about a result.
@@ -5482,6 +5484,49 @@ interface DroppedAnnouncer {
   pending: boolean;
 }
 
+/**
+ * Say so when the tests we just wrote sit OUTSIDE the project the check compiles.
+ *
+ * Session-v69 phase 6. The goal's words: the build must decide whether to VERIFY
+ * the written path is inside the resolved project rather than assume it.
+ * TypeScript is the case and the reason — a `foo.test.ts` beside the source is
+ * compiled only because the project's `include` happens to cover it, and a
+ * project whose tests live under a separate `tsconfig.test.json` is exactly as
+ * blind as `go build` was before this session.
+ *
+ * AFTER the write and never before it, fire-and-forget: the probe is a real
+ * spawn and the human has already waited for a model. Nothing here blocks the
+ * snippet, and an unanswerable probe says nothing at all — telling somebody
+ * their tests are unchecked when they are not is the expensive direction.
+ */
+async function warnIfTestsAreUncheckable(
+  targetPath: string,
+  languageId: string,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const oracle = oracleFor(languageId);
+  if (oracle === undefined) {
+    return;
+  }
+  let covered: boolean | undefined;
+  try {
+    covered = await fileIsCheckable(oracle, targetPath, { log: (l) => output.appendLine(l) });
+  } catch {
+    return;
+  }
+  if (covered !== false) {
+    return;
+  }
+  output.appendLine(
+    `[tdd] ${targetPath} is not an input of the project ${oracle.checkLabel} compiles, so Column 80 cannot check these tests`,
+  );
+  void vscode.window.showWarningMessage(
+    `Column 80: the tests went into ${path.basename(targetPath)}, which your project does not compile — ` +
+      `it is not an input of the ${oracle.checkLabel} Column 80 runs, so nothing will tell you if they stop building. ` +
+      "Add it to the project's includes, or point the project at the directory your tests live in.",
+  );
+}
+
 function announceOnce(): DroppedAnnouncer {
   return { pending: true };
 }
@@ -6516,10 +6561,76 @@ export function registerFnGen(
         return;
       }
       // Honest-failure gate: TDD generation fits a minority of functions. Surface
-      // WHY, never emit a hollow or mocked test. The ctx carries the one PROJECT
-      // fact a signature cannot show, and the LEG resolves it (C# alone has one).
-      const testabilityCtx = lang.testabilityContextFor?.(document.uri.fsPath, placement, tddDeps);
-      const testability = lang.classifyTestability(resolved.signature, resolved.docComment, testabilityCtx);
+      // WHY, never emit a hollow or mocked test. The ctx carries the PROJECT
+      // facts a signature cannot show, and the LEG resolves them: C#'s
+      // InternalsVisibleTo, and since session-v68 phase 5 the async test shape —
+      // which Cargo.toml runtime this crate actually has, whether this
+      // interpreter can collect an async pytest test at all.
+      const testabilityCtx = lang.testabilityContextFor?.(
+        document.uri.fsPath,
+        placement,
+        tddDeps,
+        resolved.signature,
+      );
+      let testability = lang.classifyTestability(resolved.signature, resolved.docComment, testabilityCtx);
+
+      // THE RECEIVER LEG, session-v68 phase 6. `needs-fixture` refuses a METHOD
+      // because constructing a meaningful receiver is work the gesture does not
+      // attempt. It is Go's LARGEST refusal at 60.6% and Rust's third at 15.5%,
+      // and it is worth lifting where the enclosing type's own surface says how
+      // to build one.
+      //
+      // THE ORDER IS THE DESIGN, because resolving that surface costs a real
+      // pre-fill. Paying it before this gate would charge EVERY refusal for it,
+      // including the 68.4% of real functions that have no doc comment. So the
+      // classifier is asked a second time with the fixture rung skipped: a
+      // refusal underneath means the receiver is not the only blocker and
+      // nothing is resolved, and only a clean `testable` is worth paying for.
+      let receiverSurface: string | undefined;
+      let liftedReceiverType: string | undefined;
+      if (!testability.testable && testability.reason === "needs-fixture") {
+        const ifBuildable = lang.classifyTestability(resolved.signature, resolved.docComment, {
+          ...testabilityCtx,
+          receiverConstructible: true,
+          // TypeScript alone needs this: a class member is reached through its
+          // CLASS, and whether the class is exported is a fact about the
+          // document, not about the member's signature.
+          receiverExported: enclosingTypeIsExported(document, resolved),
+        });
+        if (ifBuildable.testable) {
+          receiverSurface = await resolvePrefill(injectionExtractor(document.languageId), document, resolved, log, {
+            importTargetPath: placement.targetPath,
+            forConstruction: true,
+          });
+          const prefillLang = prefillLangFor(document.languageId);
+          const receiverType = prefillLang
+            ? resolveReceiver(prefillLang, document, resolved, enclosingContainer(prefillLang, document, resolved))
+                ?.typeName
+            : undefined;
+          if (
+            receiverSurface !== undefined &&
+            receiverType !== undefined &&
+            surfaceProducesType(document.languageId, receiverSurface, receiverType)
+          ) {
+            testability = ifBuildable;
+            liftedReceiverType = receiverType;
+            output.appendLine(
+              `[tdd] receiver constructible fn=${resolved.symbolName} type=${receiverType ?? "?"}; the fixture rung is lifted`,
+            );
+          } else {
+            // Named, because a refusal the human cannot act on is worth less
+            // than one they can: add a constructor, or make one visible.
+            testability = {
+              testable: false,
+              reason: "needs-fixture",
+              detail: receiverType === undefined
+                ? "a method, and the enclosing type could not be resolved, so there is no surface to construct one from"
+                : `a method, and nothing in \`${receiverType}\`'s surface produces a \`${receiverType}\`, so a test has no way to construct one`,
+            };
+          }
+        }
+      }
+
       if (!testability.testable) {
         output.appendLine(`[tdd] not auto-testable fn=${resolved.symbolName} reason=${testability.reason}`);
         void vscode.window.showInformationMessage(`Column 80: not auto-testable — ${testability.detail}.`);
@@ -6535,10 +6646,53 @@ export function registerFnGen(
       }
       // Blind: the test pass sees the contract + the resolved callee surface,
       // NEVER a reference implementation (independence — the red signal).
-      const calleeSurface = await resolvePrefill(injectionExtractor(document.languageId), document, resolved, log, {
-        importTargetPath: placement.targetPath,
-        forConstruction: true,
-      });
+      // Resolved ONCE. The receiver leg above may already have paid for this
+      // exact surface to answer whether the receiver is constructible, and it is
+      // the same surface the prompt wants.
+      const calleeSurface =
+        receiverSurface ??
+        (await resolvePrefill(injectionExtractor(document.languageId), document, resolved, log, {
+          importTargetPath: placement.targetPath,
+          forConstruction: true,
+        }));
+      // THE BLOCKS, session-v68 phase 4. Test authoring was the one of the four
+      // ways into the model that never saw them, so a developer could stage the
+      // async test attribute their project uses — tokio, async-std, smol, or
+      // something in-house, which the product cannot guess — and watch it reach
+      // generation and repair and not the tests.
+      //
+      // ONE block must not come through, and it is decidable rather than
+      // guessed: the TARGET'S OWN BODY. This pass is blind by contract, and a
+      // test authored from the implementation asserts what the code DOES rather
+      // than what the contract PROMISES, which locks a bug in and goes green
+      // forever. The span was resolved seconds ago in this document, so the
+      // overlap is exact. Everything else the human staged is their explicit
+      // choice and is none of the product's business — including a block in
+      // another file that happens to hold an implementation.
+      const stagedBlocks = await resolveContextBlocks(announceOnce());
+      const targetUri = document.uri.toString();
+      const spanStartLine = document.positionAt(resolved.span.start).line + 1;
+      const spanEndLine = document.positionAt(resolved.span.end).line + 1;
+      const selfBlocks = stagedBlocks.filter(
+        (b) => b.uri === targetUri && b.range.startLine <= spanEndLine && b.range.endLine >= spanStartLine,
+      );
+      const contextBlocks = stagedBlocks.filter((b) => !selfBlocks.includes(b));
+      if (selfBlocks.length > 0) {
+        // Said out loud on both surfaces. A silent drop would leave the human
+        // believing the template they staged was used.
+        const named = selfBlocks.map((b) => `L${b.range.startLine}-L${b.range.endLine}`).join(", ");
+        output.appendLine(
+          `[tdd] dropped ${selfBlocks.length} context block(s) covering ${resolved.symbolName}'s own body (${named}); ` +
+            "the test-authoring pass is blind of the implementation",
+        );
+        void vscode.window.showWarningMessage(
+          `Column 80: ${selfBlocks.length === 1 ? "a context block covers" : `${selfBlocks.length} context blocks cover`} ` +
+            `${resolved.symbolName}'s own body (${named}), so ${selfBlocks.length === 1 ? "it was" : "they were"} left ` +
+            "out of the test prompt. Tests are authored from the contract alone; a test written from the implementation " +
+            "agrees with its bugs and goes green forever.",
+        );
+      }
+
       let result;
       try {
         result = await vscode.window.withProgress(
@@ -6553,11 +6707,18 @@ export function registerFnGen(
               {
                 signature: resolved.signature,
                 docComment: resolved.docComment,
+                contextBlocks,
                 calleeSurface,
-                languageId: resolved.languageId,
-                assertionInstruction: framework.assertionInstruction,
-                replyShape: framework.replyShape,
-                languageName: lang.displayName,
+                // The framework's four prompt fields and the language's name come
+                // from ONE mapping the tests read too, so a fifth field cannot be
+                // added here and missed there (session-v68 review, finding 9).
+                // The mapping decides the async clause too: it is the one place
+                // that holds both halves of that question.
+                ...testGenFieldsFor(lang, framework, {
+                  signature: resolved.signature,
+                  ctx: testabilityCtx,
+                  ...(liftedReceiverType === undefined ? {} : { receiverTypeName: liftedReceiverType }),
+                }),
                 span: resolved.span,
               },
               controller.signal,
@@ -6606,9 +6767,44 @@ export function registerFnGen(
         : vscode.workspace.textDocuments.find((d) => !d.isClosed && d.uri.fsPath === placement.targetPath);
       const existingText = openTarget !== undefined ? openTarget.getText() : safeReadFile(placement.targetPath) ?? "";
       const structFields: StructFieldShape[] | undefined = undefined;
+      // THE SHADOW GUARD (session-v69 phase 1), ahead of the scaffold so what
+      // gets wrapped, blanked, previewed and written is the renamed text.
+      //
+      // A single test named after its target is a compile error the product
+      // wrote itself: in Rust a local `fn first_even` beats `use super::*`, so
+      // the loop calls the TEST with an argument. Renamed rather than refused —
+      // a test function's own name is referenced by nothing, so moving it is
+      // deterministic, and refusing would charge the human a whole generation
+      // for a defect the "a SINGLE #[test] fn" clause invites.
+      //
+      // The file MINUS the region this pass is about to replace: on a
+      // regeneration the previous generation's own test name is still in the
+      // text, and reading it as taken climbs `_test_2`, `_test_3` on every regen
+      // for a name that is being deleted.
+      const shadow = guardShadowedTestNames(
+        document.languageId,
+        result.text,
+        resolved.symbolName,
+        withoutMarkedRegion(existingText, resolved.symbolName, lang.markerPrefix),
+      );
+      if (shadow.refusals.length > 0) {
+        output.appendLine(
+          `[tdd] refused: the generated tests declare ${resolved.symbolName} itself and no free name was available; nothing written`,
+        );
+        void vscode.window.showWarningMessage(
+          `Column 80: the generated tests declare a function called ${resolved.symbolName}, which shadows the function under test, and no free name was available to rename it to. Nothing was written. Run it again for a different generation.`,
+        );
+        return;
+      }
+      if (shadow.renames.length > 0) {
+        output.appendLine(
+          `[tdd] shadow guard: renamed ${shadow.renames.map((r) => `${r.from} -> ${r.to}`).join(", ")} ` +
+            `(a test named after ${resolved.symbolName} would call itself)`,
+        );
+      }
       const plan = lang.scaffold({
         existingText,
-        generatedTests: result.text,
+        generatedTests: shadow.text,
         markerId: resolved.symbolName,
         placement,
       });
@@ -6650,6 +6846,33 @@ export function registerFnGen(
         );
         return;
       }
+      // THE THIRD FLOOR (session-v68 phase 3). A case table that BINDS a column
+      // its runner never READS cannot exercise that column: a row value there
+      // changes nothing, so the table looks like it covers more than it does.
+      // The prompt asks for no dead column and this checks for one, because a
+      // model will not obey it — the measured arm declared a `max_bytes` knob,
+      // put it in the failure message, and never used it.
+      //
+      // Refused, never repaired. Nothing here edits the model's text, and like
+      // the two floors above it lands ahead of BOTH write paths and ahead of the
+      // preview.
+      const deadColumns = lang.deadTableColumns(plan.text);
+      if (deadColumns.length > 0) {
+        const named = deadColumns.map((c) => `\`${c}\``).join(", ");
+        output.appendLine(
+          `[tdd] declined: the generated table for ${resolved.symbolName} declares ${named} and never reads ${
+            deadColumns.length === 1 ? "it" : "them"
+          }; nothing written`,
+        );
+        void vscode.window.showWarningMessage(
+          `Column 80: the generated test table for ${resolved.symbolName} declares ${named} and never reads ` +
+            `${deadColumns.length === 1 ? "that column" : "those columns"}, so a row value there would change ` +
+            "nothing and the table covers less than it looks like it does. Nothing was written. Run it again " +
+            "for a different generation.",
+        );
+        return;
+      }
+
       if (document.isClosed || document.version !== versionAtResolve) {
         void vscode.window.showWarningMessage(
           "Column 80: TDD tests discarded — the document changed during generation.",
@@ -6683,6 +6906,7 @@ export function registerFnGen(
           void vscode.window.showInformationMessage(
             `Tests created in ${path.basename(placement.targetPath)} — Tab through the ${blanked.holes} blank value(s), type each expected value, then generate the function and run "Run TDD Tests".`,
           );
+          void warnIfTestsAreUncheckable(placement.targetPath, document.languageId, output);
         }
         return;
       }
@@ -6780,6 +7004,7 @@ export function registerFnGen(
       void vscode.window.showInformationMessage(
         `Tests inserted — Tab through the ${blanked.holes} blank value(s), type each expected value, then generate the function and run "Run TDD Tests".`,
       );
+      void warnIfTestsAreUncheckable(placement.targetPath, document.languageId, output);
     }),
 
     // Run TDD Tests — the test rung. Surfaces PASS or the RED
@@ -7362,4 +7587,35 @@ async function closePreviewTabs(previewUri: vscode.Uri): Promise<void> {
   if (toClose.length > 0) {
     await vscode.window.tabGroups.close(toClose);
   }
+}
+
+/**
+ * Is the TYPE enclosing this target exported from its own module?
+ *
+ * TypeScript's `not-exported` rung asks about the unit the test IMPORTS, and for
+ * a class member that unit is the class, never the method. The member's
+ * signature cannot say, so the answer is read here, off the resolved container's
+ * own declaration line in the live document.
+ *
+ * Absent evidence answers FALSE, which keeps the refusal. That is the direction
+ * this whole leg is governed by: a refusal is a true sentence the human can act
+ * on, and an admitted target whose test cannot import its class is a red test.
+ */
+function enclosingTypeIsExported(document: vscode.TextDocument, resolved: ResolvedFunction): boolean {
+  const lang = prefillLangFor(document.languageId);
+  if (!lang) {
+    return false;
+  }
+  const container = enclosingContainer(lang, document, resolved);
+  const anchor = container?.selectionRange?.start ?? container?.range?.start;
+  if (!anchor) {
+    return false;
+  }
+  // The declaration head, which is the line the symbol's name sits on. `export`
+  // may sit on it or on the line above (`export`, then a decorator, then the
+  // class), so two lines are read and no more: a wider window starts reading a
+  // neighbouring declaration's modifier.
+  const from = Math.max(0, anchor.line - 1);
+  const head = document.getText(new vscode.Range(from, 0, anchor.line, Number.MAX_SAFE_INTEGER));
+  return /\bexport\b/.test(head);
 }

@@ -275,8 +275,15 @@ test("an explicit interface implementation keeps its dotted name", () => {
 
 const DOC = "/// <summary>Doubles n.</summary>";
 
-test("the precedence is fixed: async wins over everything, then io, then the fixture, then visibility", () => {
-  assert.strictEqual(classifyCsTestability("private async Task<int> F(Stream s)", DOC).reason, "async");
+// SUPERSESSION S32 (session-v68 phase 5, ruled by the human 2026-09-10). The first
+// line asserted `private async Task<int> F(Stream s)` reports "async", because the
+// async leg claimed every awaitable and headed the chain. C# awaits natively and a
+// test method is `public async Task`, so phase 5 admits the awaitable and only
+// `async void` still refuses. The precedence is still FIXED, and this row still
+// asserts every rung of it; the head of the chain is what moved.
+test("the precedence is fixed: `async void` wins over everything, then io, then the fixture, then visibility (S32)", () => {
+  assert.strictEqual(classifyCsTestability("private async void F(Stream s)", DOC).reason, "async");
+  assert.strictEqual(classifyCsTestability("private async Task<int> F(Stream s)", DOC).reason, "io");
   assert.strictEqual(classifyCsTestability("private int F(Stream s)", DOC).reason, "io");
   assert.strictEqual(classifyCsTestability("private int F(int n)", DOC).reason, "needs-fixture");
   assert.strictEqual(classifyCsTestability("private static int F(int n)", DOC).reason, "not-exported");
@@ -285,9 +292,21 @@ test("the precedence is fixed: async wins over everything, then io, then the fix
   assert.strictEqual(classifyCsTestability("public static int F(int n)", DOC).testable, true);
 });
 
-test("a Task return is async even without the modifier", () => {
-  for (const sig of ["public static Task Go()", "public static Task<int> Go()", "public static ValueTask<int> Go()"]) {
-    assert.strictEqual(classifyCsTestability(sig, DOC).reason, "async", sig);
+// SUPERSESSION S32 (session-v68 phase 5). This row asserted all three of these are
+// "async", the modifier being irrelevant because the RETURN TYPE is what makes a
+// method awaitable to its caller. That reading still holds; what changed is that an
+// awaitable is no longer a refusal, so a `Task<T>` return is testable. A BARE `Task`
+// is void once awaited, so it lands on the unit-return rule and reports
+// underspecified, which is the verdict that was underneath the async leg all along.
+test("a `Task<T>` return is testable with or without the modifier, and a bare `Task` is underspecified (S32)", () => {
+  for (const sig of ["public static Task<int> Go()", "public static ValueTask<int> Go()", "public static async Task<int> Go()"]) {
+    assert.strictEqual(classifyCsTestability(sig, DOC).testable, true, sig);
+  }
+  for (const sig of ["public static Task Go()", "public static ValueTask Go()", "public static async Task Go()"]) {
+    const v = classifyCsTestability(sig, DOC);
+    assert.strictEqual(v.testable, false, sig);
+    assert.strictEqual(v.reason, "underspecified", sig);
+    assert.match(v.detail, /nothing to assert/, sig);
   }
 });
 

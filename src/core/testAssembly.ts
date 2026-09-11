@@ -1077,6 +1077,29 @@ export function testMarkers(markerId: string, prefix = "//"): { begin: string; e
 }
 
 /**
+ * `fileText` with the marked region for `markerId` REMOVED, or `fileText`
+ * unchanged when no complete region is there.
+ *
+ * For asking what the file will hold AFTER a regeneration replaces that region.
+ * The shadow guard is the caller: without this, regenerating tests for the same
+ * target reads the previous generation's own test name as taken and picks
+ * `first_even_test_2`, then `_test_3`, climbing on every regen for a name that
+ * is about to be deleted.
+ */
+export function withoutMarkedRegion(fileText: string, markerId: string, prefix = "//"): string {
+  const { begin, end } = testMarkers(markerId, prefix);
+  const bi = fileText.indexOf(begin);
+  if (bi === -1) {
+    return fileText;
+  }
+  const ei = fileText.indexOf(end, bi);
+  if (ei === -1) {
+    return fileText;
+  }
+  return fileText.slice(0, bi) + fileText.slice(ei + end.length);
+}
+
+/**
  * The `#[test]` fns previously generated for `markerId` (between its markers) as
  * libtest FILTERS — for scoping the cargo test rung to EXACTLY this function's
  * tests, so a red never blames the whole crate's tests on this implementation.

@@ -51,11 +51,18 @@ test("fileCovered: a garbled object yields fewer packages, never a crashed probe
   assert.strictEqual(o.fileCovered(stream, "/m", "/m/main.go"), false, "garbled object claims nothing");
 });
 
+// RE-CUT session-v69 (S33, adversarial review finding 4). TestGoFiles and
+// XTestGoFiles were `false` because the check was `go build`, which compiles no
+// test file at all. The check is `go test -c` now, which compiles the test
+// binary, so a _test.go IS an input of the command that runs. The old answer was
+// not cosmetic: phase 6 warns the human on exactly `false`, so every Go test
+// generation would have ended with a toast saying their tests are unchecked,
+// over a check that compiles them.
 const coverageCases = [
   ["GoFiles", true, "a built file is covered"],
   ["IgnoredGoFiles", false, "a build-tag-excluded file is named but not covered"],
-  ["TestGoFiles", false, "an in-package test file is named but not covered"],
-  ["XTestGoFiles", false, "an external test file is named but not covered"],
+  ["TestGoFiles", true, "an in-package test file IS compiled by `go test -c` [was false under `go build`, S33]"],
+  ["XTestGoFiles", true, "an external test file IS compiled by `go test -c` [was false under `go build`, S33]"],
 ];
 for (const [field, want, why] of coverageCases) {
   test(`fileCovered: ${field} -> ${want} [${why}]`, () => {

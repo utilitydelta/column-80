@@ -50,13 +50,26 @@ for (const { id, want } of languageCases) {
   });
 }
 
-// ---- buildCheckCommand [surface: 'exactly { command: "cargo", args: ["check", "--message-format=json"], cwd: crateRoot }']
+// ---- buildCheckCommand [surface: 'exactly { command: "cargo", args: ["check", "--all-targets", "--keep-going", "--message-format=json"], cwd: crateRoot }']
+//
+// RE-CUT session-v69 phase 2, supersession S33. The old row demanded the ABSENCE
+// of --all-targets, on the trade that #[cfg(test)] bodies were outside the
+// oracle's sight. That trade was correct until the product started WRITING
+// #[cfg(test)] code, at which point it validated its own tests with a command
+// blind to them.
+//
+// `--keep-going` arrived with the widening and not before it: more targets means
+// cargo can stop starting units once one fails, and one unrelated broken example
+// was measured swallowing the generated test's own error entirely. There is no
+// second row asserting the absence of either flag - the deepStrictEqual below
+// pins the whole args array, so a row saying "it used to be shorter" could never
+// go red on its own and would be a falsifier that cannot fail.
 
-test("buildCheckCommand is exactly the contracted shape, no --all-targets, cwd is the crate root", () => {
+test("buildCheckCommand is exactly the contracted shape: --all-targets --keep-going, cwd is the crate root", () => {
   const cmd = new RustOracle().buildCheckCommand("/w/ws/member");
   assert.deepStrictEqual(cmd, {
     command: "cargo",
-    args: ["check", "--message-format=json"],
+    args: ["check", "--all-targets", "--keep-going", "--message-format=json"],
     cwd: "/w/ws/member",
   });
 });
@@ -124,7 +137,7 @@ test("compile-error run: cargo exits 101, the promise RESOLVES, diagnostics pars
   assert.strictEqual(runnerCalls.length, 1);
   assert.deepStrictEqual(
     { command: runnerCalls[0].command, args: runnerCalls[0].args, cwd: runnerCalls[0].cwd },
-    { command: "cargo", args: ["check", "--message-format=json"], cwd: "/w/crate" }
+    { command: "cargo", args: ["check", "--all-targets", "--keep-going", "--message-format=json"], cwd: "/w/crate" }
   );
   // Evidence lines [surface: '[oracle] and [repair] line formats, complete list'].
   assert.ok(lines.includes(`[oracle] check crate=/w/crate file=${FILE}`), `got ${JSON.stringify(lines)}`);

@@ -1582,19 +1582,40 @@ ptest("returnTypeOf csharp: a GENERIC METHOD's own type parameters belong to the
 //    [contract-cs.md '## Testability']
 // ===========================================================================
 
-ptest("classifyTestability csharp: an `async` modifier, or a `Task<T>` / `ValueTask<T>` return, is 'async' [contract-cs.md '**async**: an `async` modifier, or a `Task<T>` / `ValueTask<T>` return']", () => {
+// SUPERSESSION S32 (session-v68 phase 5, ruled by the human 2026-09-10). This row
+// asserted that an `async` modifier or a `Task<T>` / `ValueTask<T>` return is
+// refused as 'async'. That sentence was written when the seam was Rust-only, and
+// Rust is the one language here with no stdlib answer; C# awaits natively, a test
+// method is `public async Task` and all three frameworks await the returned Task,
+// so there was never anything to detect. `async void` stays refused BY NAME.
+ptest("classifyTestability csharp: a `Task<T>` / `ValueTask<T>` return is TESTABLE, and `async void` is the one shape still refused by name (S32)", () => {
   for (const sig of [
-    "public async Task<int> WidenAsync(int n)",
+    "public static async Task<int> WidenAsync(int n)",
     "public static Task<int> WidenAsync(int n)",
     "public static ValueTask<int> WidenAsync(int n)",
-    "public async void Fire(int n)",
   ]) {
     assert.strictEqual(
       csLang.classifyTestability(sig, DOC).reason,
-      "async",
-      `${JSON.stringify(sig)}: a blind unit test cannot drive an awaitable`
+      undefined,
+      `${JSON.stringify(sig)}: a test method is \`public async Task\` and it awaits, so there is nothing here to refuse`
     );
   }
+  const fire = csLang.classifyTestability("public async void Fire(int n)", DOC);
+  assert.strictEqual(
+    fire.reason,
+    "async",
+    "`async void` cannot be awaited, so a test that calls it returns before the method has done anything"
+  );
+  assert.match(
+    fire.detail,
+    /async void/,
+    "the surviving refusal names the shape, because that is what the human has to change"
+  );
+  assert.strictEqual(
+    csLang.classifyTestability("public async Task<int> WidenAsync(int n)", DOC).reason,
+    "needs-fixture",
+    "the instance form's real blocker was always the receiver, and now the reported reason says so"
+  );
 });
 
 ptest("classifyTestability csharp: `Stream`, `File`, `FileInfo`, `HttpClient`, `Socket` and `DbConnection` in the SIGNATURE are 'io' [contract-cs.md '**io**: `Stream`, `File`, `FileInfo`, `HttpClient`, `Socket`, `DbConnection` in the signature']", () => {
@@ -1736,11 +1757,22 @@ ptest("classifyTestability csharp: a `void` return or a MISSING `///` doc commen
   );
 });
 
-ptest("classifyTestability csharp: first-match-wins precedence holds, so the reported reason is STABLE rather than dependent on which legs happen to match [contract-cs.md 'async -> io -> needs-fixture -> not-exported -> underspecified -> testable'; goal.md Amendment 3 'what makes the reported reason PREDICTABLE']", () => {
+// SUPERSESSION S32 (session-v68 phase 5). The first row asserted that
+// `private async Task<int> LoadAsync(Stream s)` reports 'async', because the async
+// leg claimed every awaitable and sat at the head of the chain. Phase 5 admits an
+// awaitable, so the only async refusal left is `async void`, and everything else
+// falls to the verdict underneath. The precedence is still FIXED and this row
+// still asserts it; the chain just no longer opens with a refusing awaitable.
+ptest("classifyTestability csharp: first-match-wins precedence holds and the reported reason is STABLE, with `async void` at the head and io underneath it (S32)", () => {
+  assert.strictEqual(
+    csLang.classifyTestability("private async void Fire(Stream s)", undefined).reason,
+    "async",
+    "the async leg that survives, `async void`, still precedes everything"
+  );
   assert.strictEqual(
     csLang.classifyTestability("private async Task<int> LoadAsync(Stream s)", undefined).reason,
-    "async",
-    "async precedes everything"
+    "io",
+    "an awaitable is no longer a refusal, so io is the first leg this signature trips"
   );
   assert.strictEqual(
     csLang.classifyTestability("private int Load(Stream s)", undefined).reason,

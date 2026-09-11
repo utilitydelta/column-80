@@ -75,6 +75,91 @@ export function resolvePythonInterpreter(root: string, fileExists: (p: string) =
   ].find((c) => fileExists(c));
 }
 
+
+/**
+ * A `[table] key = [...]` string list out of a TOML document, with no TOML
+ * parser. Moved here from tddPy in session-v69 so `pythonTestDir` and the TDD
+ * placement leg read `testpaths` through ONE implementation: the oracle now
+ * derives the same companion path the placement leg writes to, and two
+ * derivations that can disagree is the defect, not the duplication.
+ */
+export function tomlStringList(toml: string, table: string, key: string): string[] {
+  const section = new RegExp(`^\\s*\\[${table.replace(/[.[\]]/g, "\\$&")}\\]\\s*$`, "m").exec(toml);
+  if (section === null) {
+    return [];
+  }
+  const from = section.index + section[0].length;
+  const nextSection = /^\s*\[/m.exec(toml.slice(from));
+  const body = toml.slice(from, nextSection === null ? toml.length : from + nextSection.index);
+  const entry = new RegExp(`^\\s*${key}\\s*=\\s*`, "m").exec(body);
+  if (entry === null) {
+    return [];
+  }
+  const at = entry.index + entry[0].length;
+  // An ARRAY runs to its `]` however many lines that takes, which real
+  // pyproject.toml files do spell across lines; anything else is one line.
+  const close = body[at] === "[" ? body.indexOf("]", at) : -1;
+  const raw = (close === -1 ? (body.slice(at).split("\n")[0] ?? "") : body.slice(at, close)).replace(/#[^\n]*/g, "");
+  return [...raw.matchAll(/"([^"]*)"|'([^']*)'/g)].map((m) => m[1] ?? m[2]).filter((s) => s.length > 0);
+}
+
+/** Where this project's tests live: `[tool.pytest.ini_options] testpaths`'s
+ *  first entry resolved against the project root, else `<root>/tests` when that
+ *  directory exists, else the source file's own directory. */
+export function pythonTestDir(
+  root: string,
+  sourceDir: string,
+  exists: (p: string) => boolean,
+  readFile: (p: string) => string | undefined,
+): string {
+  const testpaths = tomlStringList(readFile(path.join(root, "pyproject.toml")) ?? "", "tool.pytest.ini_options", "testpaths");
+  if (testpaths.length > 0) {
+    return path.resolve(root, testpaths[0]);
+  }
+  return exists(path.join(root, "tests")) ? path.join(root, "tests") : sourceDir;
+}
+
+/** The markers the TDD placement leg walks for, which are NOT the oracle's own
+ *  `ROOT_MARKERS`. The oracle's set is wider on purpose — pyright needs no
+ *  manifest, so `requirements.txt` and `pyrightconfig.json` are enough to scope a
+ *  CHECK — while the leg's set is what decides where tests can RUN.
+ *
+ *  Both sets are correct for their question, and sharing the last step
+ *  (`pythonTestDir`) does not make them agree when the first step differs.
+ *  Adversarial review measured it: a tree with a root `pyproject.toml` and a
+ *  `pkg/requirements.txt` put the leg's write target at `<root>/tests/test_fns.py`
+ *  and left the oracle looking for a companion under `pkg/`, so phase 5 did
+ *  nothing for that tree. The companion derivation uses THIS set. */
+const TDD_ROOT_MARKERS = ["pyproject.toml", "setup.py", "setup.cfg", "tox.ini"];
+
+/** The project root the TDD placement leg resolves. Exported so the leg and the
+ *  oracle's companion derivation walk one function. */
+export function pythonTddProjectRoot(filePath: string, exists: (p: string) => boolean): string | undefined {
+  let dir = path.dirname(filePath);
+  for (;;) {
+    if (TDD_ROOT_MARKERS.some((marker) => exists(path.join(dir, marker)))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return undefined;
+    }
+    dir = parent;
+  }
+}
+
+/** A source file's stem without its `.py` / `.pyi` suffix. */
+function pythonStem(filePath: string): string {
+  return path.basename(filePath).replace(/\.pyi?$/, "");
+}
+
+/** Is this file ITSELF a test file? `test_x.py` and `x_test.py` have no
+ *  companion: the tests are already in them. */
+export function isPythonTestFile(filePath: string): boolean {
+  const stem = pythonStem(filePath);
+  return /^test_/.test(stem) || /_test$/.test(stem);
+}
+
 export class PyOracle implements CompilerOracle {
   readonly language = "python";
   readonly checkLabel = "pyright";
@@ -213,12 +298,49 @@ export class PyOracle implements CompilerOracle {
       args.push("--pythonpath", interpreter);
     }
     args.push(target);
+    // THE COMPANION TEST FILE (session-v69 phase 5). pyright analyses the files
+    // it is HANDED, and it was handed one: the source. The product writes this
+    // function's tests into `test_<stem>.py` under the project's test directory,
+    // so the check that was supposed to verify them never opened the file.
+    //
+    // Derived through `pythonTestDir`, which is the SAME function the TDD
+    // placement leg derives its write target from. Two derivations that can
+    // disagree would be the defect.
+    //
+    // Only when it EXISTS, so a project with no generated tests keeps today's
+    // command byte for byte; and never for a file that is itself a test file,
+    // which has no companion because the tests are already in it.
+    const companion = this.companionTestFile(crateRoot, filePath);
+    if (companion !== undefined) {
+      args.push(companion);
+      this.log?.(`[oracle] python: also checking ${companion}, the tests written for ${path.basename(target)}`);
+    }
     return {
       command: process.execPath,
       args,
       cwd: crateRoot,
       env: { ELECTRON_RUN_AS_NODE: "1" },
     };
+  }
+
+  /** The `test_<stem>.py` this project's tests for `filePath` are written into,
+   *  when that file exists. Undefined for a missing file, for a file that is
+   *  itself a test, and when there is no `filePath` to derive from. */
+  private companionTestFile(_crateRoot: string, filePath?: string): string | undefined {
+    if (filePath === undefined || isPythonTestFile(filePath)) {
+      return undefined;
+    }
+    // THE LEG'S ROOT, not the check's. They are different walks with different
+    // marker sets and they answer different questions; using `crateRoot` here
+    // looked like sharing and was not, and on a tree where the two disagree the
+    // companion was hunted in a directory the leg never writes to.
+    const tddRoot = pythonTddProjectRoot(filePath, this.fileExists);
+    if (tddRoot === undefined) {
+      return undefined; // the leg would refuse to write a test at all
+    }
+    const dir = pythonTestDir(tddRoot, path.dirname(filePath), this.fileExists, this.readFile);
+    const companion = path.join(dir, `test_${pythonStem(filePath)}.py`);
+    return companion !== path.resolve(filePath) && this.fileExists(companion) ? companion : undefined;
   }
 
   parseCheckOutput(stdout: string, _crateRoot?: string, checkStartMs?: number): Diagnostic[] {

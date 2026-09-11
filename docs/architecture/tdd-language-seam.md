@@ -65,6 +65,126 @@ type-hint comment; a container's contents are hinted with the ELEMENT type. The 
 `renderBlankValue("u32")` gives `${1}`, `("Option<u32>")` gives `${1:/* Option<u32> */}`,
 `("Vec<String>")` gives `vec![${1:/* String */}]`.
 
+## The check reaches the tests (supersessions S33 and S34, session-v69)
+
+The gesture writes test code. Until session-v69 the oracle validated it with a command that could not
+SEE test code, in four of five languages, so the whole feature had been shipping unverified output
+and the repair loop that exists to catch exactly that reported a clean build. Where the tests land is
+the seam's business, so where the CHECK must look is too.
+
+| language | where the tests land | what makes the check reach them |
+| --- | --- | --- |
+| Rust | the same file, `#[cfg(test)] mod tests` | `cargo check --all-targets --keep-going` |
+| Go | `foo_test.go`, same dir and package | `go test -c -o os.devNull ./...`, module-wide |
+| TypeScript | `foo.test.ts` beside the source | `tsc -p` already compiled it, WHEN the project includes it |
+| Python | `tests/test_<stem>.py`, else beside the source | pyright is handed the companion file too |
+| C# | a SEPARATE test project | the build target moves to the test project that references the source |
+
+Two derivations MOVED into the oracles to make that work: `pythonTestDir` (from `tddPy`) and the C#
+project topology, `csTestProjectsFor` and friends (from `tddCs`). The leg writes a test into one of
+those places and the check has to look there, so they read the same function. Two topologies that can
+disagree about where tests live is the defect, not the duplication.
+
+**TypeScript is the leg with a condition rather than a command.** Whether a `.test.ts` is compiled is
+a fact about the project's `include`, not about the language, so the gesture VERIFIES rather than
+assumes: `fileIsCheckable` probes the written path after the write and warns when the project does not
+compile it. Three answers, not two — an unanswerable probe says nothing, because telling a human their
+tests are unchecked when they are not is the expensive direction.
+
+**A generated test may not be named after its target** (S34). One test per function invites naming
+the test after the function, and in Rust that is a compile error the product writes into the human's
+file. `guardShadowedTestNames` renames it before anything lands, for Rust and Python; the other three
+are structurally safe.
+
+## The table (supersession S31, session-v68)
+
+The prompt used to ask for one INLINE assertion per case and to forbid a table of rows. It now asks
+for ONE parameterised table per language, and **the expected value is the LAST COLUMN of every row**
+in all five. That sentence is one exported constant, `LAST_COLUMN_CLAUSE`, because ONE locator rule
+reads it and two wordings would drift.
+
+The idiom comes off the FRAMEWORK, not the language, for the same reason `assertionInstruction` and
+`replyShape` do: C# carries three row attributes inside one languageId and python/unittest has no
+`parametrize`. `TestFramework.tableShape` and `rowsAreConstantsOnly` are those two facts.
+`testGenFieldsFor(lang, framework, target?)` is the ONE mapping from a resolved framework to prompt
+fields, and production and every oracle read it — a hand-copied field list at the call site went
+stale the moment a fifth field was added, twice in one session.
+
+`src/core/tddTable.ts` is the locator. Five finders, one scanner (the shared
+`skipLiteralOrComment` / `matchDelim` with each language's `LiteralProfile`), and two rules that are
+the whole of its safety:
+
+- **A LIST OF TUPLES IS NOT A TABLE.** It is a table only when a runner WALKS it and binds a name per
+  column. Without that gate, ordinary shared setup (`let pairs = [(1, 2), (3, 4)];` above a set of
+  inline asserts) had every second element blanked as an expected value, so the human typed into the
+  test's own INPUTS while the real expected values shipped as the model guessed them.
+- **A ROW REFERENCE is not a hole.** On a table reply the shipped inline locators did not merely
+  miss: eight of the nine found the runner's assertion and blanked the LOOP VARIABLE, leaving every
+  guessed row literal in the buffer. Go's was the only leg that failed safe. A bare name is a
+  reference when it is a declared column or one of `want`/`wants`/`expected`/`exp`; a DOTTED path is
+  one when its root is a declared column or a row holder (`tt`, `tc`, `c`, `cs`, `row`, `case`), or
+  its leaf is a conventional expected name. A bare `c` is NOT: it is a common local, and treating it
+  as a row read turned a working pass into a refusal. A leading `*` or `&` is stripped, because a
+  Rust `for` over an array by reference makes the runner read `*want`.
+
+A row reference found with NO table parsed counts as UNRESOLVED, so the floor refuses the whole pass.
+That is the honest outcome for a table the locator could not read; blanking the wrong place is not.
+
+`TddLang.deadTableColumns` is the third floor, beside the zero-hole and unresolved ones: a table that
+BINDS a column its runner never READS cannot exercise it. A read is a word occurrence in the runner's
+BODY outside literals and comments, and that exclusion is the rung rather than a detail — naming the
+column in a `t.Errorf` format string passes nothing. The body is deliberately NOT the region the
+locator uses: the header that binds the names must sit outside it, or binding a column would count as
+using it. A half-written reply gets no verdict at all, because this rung refuses and a false refusal
+costs a working pass while a missed dead column leaves the human where they were.
+
+## The async rung (supersession S32, session-v68)
+
+Every `async` function in all five languages used to be refused with one sentence, and that sentence
+was written when the seam was Rust-only. Rust is the one language with no stdlib answer, so it was
+true there and false in four places.
+
+C#, TypeScript and python/unittest admit async unconditionally — all three await natively, and there
+is nothing to detect. `async void` stays refused BY NAME. Go SPLITS its rung: `context.Context` is
+satisfiable with `context.Background()`, a channel is not, and the detail names the channel.
+python/pytest ASKS the interpreter for `pytest-asyncio` then `anyio` through `TddDeps.probe`, because
+pytest COLLECTS an `async def` test without a plugin and reports it SKIPPED — a green board with
+nothing run. Rust reads `Cargo.toml` for tokio (with `macros` or `full`), async-std with
+`attributes`, then smol-potat; a tokio dependency WITHOUT `macros` gets its own sentence, because
+`#[tokio::test]` does not exist in that project.
+
+`TestabilityContext` carries all of it, resolved by `testabilityContextFor` and never read inside
+`classifyTestability`: a rung that read the filesystem itself could not be tested without one.
+`TddLang.isAsyncSignature` is separate from the verdict, because an admitted async target and a
+synchronous one both come back `{testable: true}` and only the prompt needs to tell them apart.
+
+**The rule that shaped every decision here: lifting a rung without the machinery behind it just swaps
+an honest refusal for a red test.** A refusal is a true sentence the human can act on; a generated
+test that does not compile is worse than both. Every refusal in this phase names what is missing.
+
+**Measured, 12,059 functions from a real Rust corpus, four arms on one population.** Base 6.6%;
+shipped with no runtime detected 6.6% (exact, all four categories — nothing moves for a project
+without one); shipped with tokio detected 11.5%; both rungs lifted 15.9%. The last is a CEILING, not
+a shipped number: it assumes every receiver is constructible.
+
+## The receiver leg (session-v68)
+
+`TestabilityContext.receiverConstructible` skips the fixture rung and nothing else, in all five
+languages. TypeScript also skips `not-exported` under it, and the argument is specific: the method
+form is BOTH tells, a class member is reached through its class rather than an import, and `export`
+is not something you can write on one.
+
+**The gate asks the classifier TWICE and the order is the entire design.** Resolving the enclosing
+type's surface costs a real pre-fill, so paying it before the honest-failure gate would charge every
+refusal for it — including the 68.4% of real functions with no doc comment. A `needs-fixture` verdict
+is re-asked with the flag set; a refusal underneath means the receiver is not the only blocker and
+nothing is resolved. Only a clean `testable` is worth paying for, and the surface that answers the
+question is the surface the prompt then gets.
+
+`surfaceProducesType` is deliberately stricter than `producesType`, which answers true for a member
+with no readable return clause at all. That permissiveness is right when a false negative drops one
+prompt candidate and wrong here, where a false positive admits a target whose test cannot compile.
+
 **Red-before-green rules that bind every leg.** An empty `testNames` array must NEVER produce a
 match-nothing filter (`^()$`, `()$`, or the whole suite): refuse upstream. The green rule is
 `passed + failed > 0`, load-bearing in all five languages. `markerPrefix` is the single source

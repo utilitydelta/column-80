@@ -2,7 +2,7 @@
   "name": "column-80",
   "displayName": "Column 80",
   "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "publisher": "utilitydelta",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -707,7 +707,7 @@
     "test:unit": "SKIP_LIVE=1 node --test 'test/**/*.test.cjs' 'test/**/*.test.mjs'",
     "test:vscode": "npm run build && vscode-test --config test-vscode/.vscode-test.mjs",
     "test:vscode:ci": "npm run build && xvfb-run -a vscode-test --config test-vscode/.vscode-test.mjs",
-    "test:live": "node --test --test-concurrency=1 test/blind-integration-live.test.cjs test/impl-integration-live.test.cjs test/blind2-integration-live.test.cjs test/impl2-integration-live.test.cjs test/blind4-integration-live.test.cjs test/impl4-integration-live.test.cjs test/blind5-integration-live.test.cjs test/impl5-integration-live.test.cjs test/blind6-ra-live.test.cjs test/blind7-loop-live.test.cjs test/impl8-qualify-live.test.cjs test/impl-v3-structgen-live.test.cjs test/impl-v8-testrung-live.test.cjs test/blind-v10-oracle-live.test.cjs test/impl-v10-oracle-live.test.cjs test/blind-v10-extractor-live.test.cjs test/impl-v10-csextractor-live.test.cjs test/blind-v10-gestures-live.test.cjs test/blind-goalmd-csworkspacesymbol-live.test.cjs test/blind-goalmd-csusing-live.test.cjs test/blind-goalmd-csrecursiveshape-live.test.cjs test/impl-v13-bodyonly-live.test.cjs"
+    "test:live": "node --test --test-concurrency=1 test/blind-integration-live.test.cjs test/impl-integration-live.test.cjs test/blind2-integration-live.test.cjs test/impl2-integration-live.test.cjs test/blind4-integration-live.test.cjs test/impl4-integration-live.test.cjs test/blind5-integration-live.test.cjs test/impl5-integration-live.test.cjs test/blind6-ra-live.test.cjs test/blind7-loop-live.test.cjs test/impl8-qualify-live.test.cjs test/impl-v3-structgen-live.test.cjs test/impl-v8-testrung-live.test.cjs test/blind-v10-oracle-live.test.cjs test/impl-v10-oracle-live.test.cjs test/blind-v10-extractor-live.test.cjs test/impl-v10-csextractor-live.test.cjs test/blind-v10-gestures-live.test.cjs test/blind-goalmd-csworkspacesymbol-live.test.cjs test/blind-goalmd-csusing-live.test.cjs test/blind-goalmd-csrecursiveshape-live.test.cjs test/impl-v13-bodyonly-live.test.cjs test/impl-v69-p23-check-sees-tests-live.test.cjs test/blind-v69-p45-check-reaches-tests-live.test.cjs test/impl-v69-p6-wiring-live.test.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

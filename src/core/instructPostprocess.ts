@@ -237,6 +237,328 @@ export function extractRequestedFunction(
   };
 }
 
+/** Per-language lexing for the bare path's completeness scan, and the shape a
+ *  bare reply's FIRST line may take.
+ *
+ *  The counting lens above deliberately stays as it is (the Rust lexer, over
+ *  every language) because changing it would move the FENCED path, which is the
+ *  measurement baseline for every language arm in the roadmap. This table is
+ *  only ever consulted for a reply that arrived with no fence at all, so it can
+ *  be right per language without moving anything that already shipped. */
+interface BareLangRules {
+  /** Line-comment markers. */
+  readonly line: readonly string[];
+  /** Block comments, when the language has them. Rust's nest; nobody else's do. */
+  readonly block?: { readonly open: string; readonly close: string; readonly nests?: true };
+  /** String delimiters, longest first so a triple quote wins over a single one. */
+  readonly quotes: readonly string[];
+  /** Suite-structured: the language ends its last statement with a newline
+   *  rather than a delimiter, so the tail is anchored on INDENTATION. */
+  readonly suite?: true;
+  /** What may open a reply that is NOTHING BUT the tests. A reply opening with
+   *  anything else is a chatty reply, and finding code inside one of those is
+   *  the FENCE's job and stays the fence's job. */
+  readonly opener: RegExp;
+}
+
+const BARE_LANG_RULES: Record<string, BareLangRules> = {
+  rust: {
+    line: ["//"],
+    block: { open: "/*", close: "*/", nests: true },
+    quotes: ['"'],
+    opener: /^(#!?\[|mod\s|use\s|pub\s|fn\s|impl\s|extern\s|\/\/|\/\*)/,
+  },
+  go: {
+    line: ["//"],
+    block: { open: "/*", close: "*/" },
+    quotes: ['"', "`"],
+    opener: /^(package\s|import\s|func\s|var\s|const\s|type\s|\/\/|\/\*)/,
+  },
+  typescript: {
+    line: ["//"],
+    block: { open: "/*", close: "*/" },
+    quotes: ['"', "'", "`"],
+    // `let\s` used to accept "let me know if you want more edge cases covered."
+    // and a bare `@` used to accept a unified diff's `@@ -1,4 +1,9 @@` hunk
+    // header. A declaration keyword has to be followed by something being
+    // declared, and a decorator by an identifier.
+    opener:
+      /^(import\s|export\s|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*[:=]|function\s|class\s|async\s|@[A-Za-z_$]|describe\s*[.(]|it\s*[.(]|test\s*[.(]|suite\s*\(|beforeEach\s*\(|afterEach\s*\(|\/\/|\/\*)/,
+  },
+  python: {
+    // Python closes its last statement with a NEWLINE, not a delimiter, so the
+    // "nothing after the outermost close" rule below cannot be applied to it and
+    // indentation is the anchor instead.
+    suite: true,
+    line: ["#"],
+    quotes: ['"""', "'''", '"', "'"],
+    // `from\s` used to accept "from the docstring, parse raises ValueError...".
+    // A `from` line is only an import when the `import` is on it.
+    opener: /^(import\s|from\s+[\w.]+\s+import\b|def\s|class\s|async\s|@[A-Za-z_]|#)/,
+  },
+  csharp: {
+    line: ["//"],
+    block: { open: "/*", close: "*/" },
+    quotes: ['"', "'"],
+    // `using\s` used to accept "using the signature above, here are the tests".
+    // A using DIRECTIVE ends in a `;` on its own line; a using STATEMENT opens
+    // a paren.
+    opener:
+      /^(using\s+static\s|using\s*\(|using\s+[\w.]+\s*(?:=[^;]*)?;|namespace\s|public\s|internal\s|private\s|protected\s|static\s|partial\s|class\s|sealed\s|\[|\/\/|\/\*)/,
+  },
+};
+BARE_LANG_RULES.typescriptreact = BARE_LANG_RULES.typescript;
+BARE_LANG_RULES.javascript = BARE_LANG_RULES.typescript;
+BARE_LANG_RULES.javascriptreact = BARE_LANG_RULES.typescript;
+
+/**
+ * The whole reply as a code block, for a reply that carries no fence at all.
+ *
+ * The Claude Code backend takes one outer fence off every reply by design (the
+ * CLI wraps code in markdown and the fn-gen splice cannot carry a fence line).
+ * The test-gen path keyed its extraction on that same fence, so every
+ * well-formed test reply from that backend was refused in all five languages
+ * and the user was told the reply contained no usable tests. It was not a bad
+ * reply; it was a fence the backend had already removed.
+ *
+ * The fence was doing two jobs and only one of them needs a fence. FINDING the
+ * code inside a chatty reply genuinely needs a delimiter, and that stays the
+ * fence's job. REFUSING a reply that is not code does not: a reply that is
+ * nothing but the tests satisfies it without one, because there is no prose to
+ * separate from. So the discriminator moves from "has a fence" to "is a fence,
+ * or is NOTHING BUT the tests", and every guard that keeps prose and bare
+ * functions out of a document still runs afterwards on what this returns.
+ *
+ * Three things have to hold, and the second and third are what the fence used
+ * to prove for free:
+ *
+ *  1. No fence line anywhere, decided on the RAW text, either marker. A lens
+ *     would be more precise and is not worth it: being wrong the lenient way
+ *     writes a bare fence line into a source file, and being wrong the strict
+ *     way refuses a reply that documents its tests with a fenced example, which
+ *     is rare and costs a re-run.
+ *  2. It opens and closes as code, not as prose. A fenced reply may be chatty
+ *     either side of its block; a bare one may not be, because there is nothing
+ *     to say where the prose stops. Splicing on a guessed boundary is worse
+ *     than refusing.
+ *  3. It is structurally complete. A truncated reply stops mid-block, and a
+ *     fenced one advertises that by having no closing fence. Not hypothetical:
+ *     the Claude Code CLI ignores the token cap, and one reply in the measured
+ *     arm ran to 2,809 output tokens.
+ */
+function bareCodeBlock(reply: string, languageId: string): string | undefined {
+  const rules = BARE_LANG_RULES[languageId];
+  if (rules === undefined) {
+    return undefined;
+  }
+  const lines = reply.split("\n");
+  for (const line of lines) {
+    if (fenceRun(line.trim()) !== undefined) {
+      return undefined;
+    }
+  }
+  let first = 0;
+  let last = lines.length - 1;
+  while (first <= last && lines[first].trim() === "") {
+    first++;
+  }
+  while (last > first && lines[last].trim() === "") {
+    last--;
+  }
+  if (first > last || lines[first].trim() === "") {
+    return undefined;
+  }
+  if (!rules.opener.test(lines[first].trim())) {
+    return undefined;
+  }
+  const text = lines.slice(first, last + 1).join("\n");
+  const scanned = scanBare(text, rules);
+  if (scanned === undefined) {
+    return undefined;
+  }
+  return closesAsCode(scanned, rules) ? text : undefined;
+}
+
+/**
+ * The reply must CLOSE as code, not merely contain some punctuation.
+ *
+ * The first cut tested one character class against the last non-blank line, and
+ * an English sentence carrying a call walked straight through it: "Note: these
+ * tests cover add(1, 2) and the overflow path." was ADMITTED and spliced into the
+ * source file, as were markdown bullets and a unified diff's hunk body. A model
+ * appending a coverage note is everyday behaviour, and the note does not even have
+ * to sit outside the model's own fence to arrive here: the Claude Code backend
+ * strips only the first and last lines when they are a fence pair, so
+ * fence / module / note / fence lands on this path with no fence line in it.
+ *
+ * Prose is not trimmed off and the rest spliced. A guessed boundary is worse than
+ * a refusal, and the contract says refused rather than silently trimmed.
+ *
+ * Two mechanisms, because two kinds of language:
+ *
+ *  - A BRACE language closes its last construct with a delimiter, so the anchor is
+ *    exact: nothing but whitespace, `;` or `,` may follow the point where the
+ *    outermost delimiter last returned to depth 0. A comment may follow, because
+ *    the lens has already blanked it.
+ *  - A SUITE language (Python) closes with a newline and has no such anchor, so
+ *    the last non-blank line must be INDENTED, which a top-level prose sentence is
+ *    not. The cost is a module whose final line sits at column 0, and that is the
+ *    honest cheap answer rather than an indentation parser.
+ */
+function closesAsCode(scanned: ScannedBare, rules: BareLangRules): boolean {
+  const lines = scanned.text.split("\n");
+  let tail = lines.length - 1;
+  while (tail > 0 && lines[tail].trim() === "") {
+    tail--;
+  }
+  if (rules.suite === true) {
+    const line = lines[tail];
+    if (!/^[ \t]/.test(line) || line.trim() === "") {
+      return false;
+    }
+    // Indentation says the line belongs to a suite; it does not say the line
+    // FINISHED. A delimiter count is close to vacuous in Python, because a
+    // statement opens nothing, so a reply cut mid-expression balances perfectly:
+    // `assert add(1, 2) ==` was admitted, and what lands is a SyntaxError. Two
+    // shapes cover what truncation actually produces - a header whose suite never
+    // arrived, and an expression cut after its operator.
+    return !/(?::|,|[=+\-*/%<>!&|^~]|\b(?:and|or|not|in|is|if|else|return|assert|yield|await|lambda))\s*$/.test(line);
+  }
+  if (scanned.lastClose === undefined) {
+    // No delimiter ever opened, so there is no construct here to close.
+    return false;
+  }
+  // The last line must be nothing BUT the closing delimiters. "Nothing after the
+  // outermost close" was the first attempt and prose defeats it: a markdown
+  // bullet `- the overflow case (wrapping)` opens and closes a paren of its own,
+  // which drags the close position forward into the prose and then finds nothing
+  // after it. Where the construct ends cannot be read off a delimiter count when
+  // the trailing text has delimiters too.
+  //
+  // The cost is a module written entirely on one line, which is refused. A model
+  // asked for a table of rows does not write one, and a false refusal is the
+  // direction that costs a re-run rather than a corrupted file.
+  return /^[\s})\];,]+$/.test(lines[tail]);
+}
+
+/**
+ * One lexing pass for the bare path: neutralise comments and strings with THIS
+ * language's rules, and refuse outright when the text ends inside one or leaves
+ * a delimiter open.
+ *
+ * Returns the neutralised text, or undefined when the reply is not structurally
+ * complete. An unterminated literal is its own answer rather than something
+ * inferred from the delimiter count, because a reply can be cut after its last
+ * brace closes and still be half a string.
+ */
+interface ScannedBare {
+  /** Comments and strings blanked, so a brace inside either is invisible. */
+  readonly text: string;
+  /** Index just past the character at which the outermost delimiter last
+   *  returned to depth 0, or undefined when nothing ever opened. */
+  readonly lastClose: number | undefined;
+}
+
+function scanBare(text: string, rules: BareLangRules): ScannedBare | undefined {
+  const out: string[] = [];
+  const blank = (ch: string) => out.push(ch === "\n" ? "\n" : " ");
+  let curly = 0;
+  let round = 0;
+  let square = 0;
+  let lastClose: number | undefined;
+  let i = 0;
+  while (i < text.length) {
+    const lineMarker = rules.line.find((m) => text.startsWith(m, i));
+    if (lineMarker !== undefined) {
+      while (i < text.length && text[i] !== "\n") {
+        blank(text[i]);
+        i++;
+      }
+      continue;
+    }
+    if (rules.block !== undefined && text.startsWith(rules.block.open, i)) {
+      const { open, close, nests } = rules.block;
+      let depth = 1;
+      for (let k = 0; k < open.length; k++) {
+        blank(open[k]);
+      }
+      i += open.length;
+      while (i < text.length && depth > 0) {
+        if (nests === true && text.startsWith(open, i)) {
+          depth++;
+          for (let k = 0; k < open.length; k++) {
+            blank(open[k]);
+          }
+          i += open.length;
+        } else if (text.startsWith(close, i)) {
+          depth--;
+          for (let k = 0; k < close.length; k++) {
+            blank(close[k]);
+          }
+          i += close.length;
+        } else {
+          blank(text[i]);
+          i++;
+        }
+      }
+      if (depth > 0) {
+        return undefined;
+      }
+      continue;
+    }
+    const quote = rules.quotes.find((q) => text.startsWith(q, i));
+    if (quote !== undefined) {
+      for (let k = 0; k < quote.length; k++) {
+        blank(quote[k]);
+      }
+      i += quote.length;
+      let closed = false;
+      while (i < text.length) {
+        if (text[i] === "\\" && i + 1 < text.length) {
+          blank(text[i]);
+          blank(text[i + 1]);
+          i += 2;
+          continue;
+        }
+        if (text.startsWith(quote, i)) {
+          for (let k = 0; k < quote.length; k++) {
+            blank(quote[k]);
+          }
+          i += quote.length;
+          closed = true;
+          break;
+        }
+        blank(text[i]);
+        i++;
+      }
+      if (!closed) {
+        return undefined;
+      }
+      continue;
+    }
+    const c = text[i];
+    if (c === "{") {
+      curly++;
+    } else if (c === "}") {
+      if (--curly < 0) return undefined;
+    } else if (c === "(") {
+      round++;
+    } else if (c === ")") {
+      if (--round < 0) return undefined;
+    } else if (c === "[") {
+      square++;
+    } else if (c === "]") {
+      if (--square < 0) return undefined;
+    }
+    if (curly + round + square === 0 && (c === "}" || c === ")" || c === "]")) {
+      lastClose = i + 1;
+    }
+    out.push(c);
+    i++;
+  }
+  return curly === 0 && round === 0 && square === 0 ? { text: out.join(""), lastClose } : undefined;
+}
+
 export interface TestModuleExtraction {
   /** The reply cut to the mod tests block (the fenced content). */
   text: string;
@@ -252,10 +574,10 @@ export interface TestModuleExtraction {
  * test pass cannot reuse extractRequestedFunction.
  */
 export function extractTestModule(reply: string): TestModuleExtraction | undefined {
-  // A complete fenced block is required: a `mod tests` sitting in bare prose is
-  // not a reply we splice, and demanding the fence keeps this symmetric with how
-  // the model is instructed to answer (one fenced block, nothing outside).
-  const block = extractFirstCodeBlock(reply);
+  // A complete fenced block, or a reply that is NOTHING BUT the module. A
+  // `mod tests` sitting in bare prose is still not a reply we splice; see
+  // bareCodeBlock for why the fence alone stopped being the test.
+  const block = extractFirstCodeBlock(reply) ?? bareCodeBlock(reply, "rust");
   if (block === undefined) {
     return undefined;
   }
@@ -295,7 +617,20 @@ const TEST_FUNCTION_SHAPES: Record<string, RegExp> = {
   javascript: /\b(?:it|test)\s*(?:\.\w+)?\s*\(/g,
   javascriptreact: /\b(?:it|test)\s*(?:\.\w+)?\s*\(/g,
   python: /^[ \t]*def\s+test\w*\s*\(/gm,
-  csharp: /\[\s*(?:TestMethod|Fact|Theory|Test)\s*[\]\(]/g,
+  // The ROW attributes are in the set as well as the METHOD attributes, and
+  // they have to be. Session-v68's table shape asks NUnit for `[TestCase(...)]`
+  // rows with NO `[Test]` beside them and MSTest for `[DataTestMethod]` plus
+  // `[DataRow(...)]`, and the old set matched neither: it needs `]` or `(`
+  // immediately after the name, so `[TestCase(` fails on the `C` and
+  // `[DataTestMethod]` fails because the alternation must match at the `D`.
+  // Two of the three C# frameworks refused the exact reply the prompt had just
+  // demanded. `[TestCaseSource(` still does not match, because `Source` sits
+  // where the delimiter must be.
+  //
+  // On a table reply this counts ROWS rather than methods. Only zero-vs-non-zero
+  // is load-bearing (it is the reply guard); the number itself reaches one log
+  // line and nothing else.
+  csharp: /\[\s*(?:DataTestMethod|TestMethod|TestCase|InlineData|DataRow|Theory|Fact|Test)\s*[\]\(]/g,
 };
 
 /**
@@ -315,7 +650,7 @@ export function extractTestFunctions(reply: string, languageId: string): TestMod
   if (pattern === undefined) {
     return undefined;
   }
-  const block = extractFirstCodeBlock(reply);
+  const block = extractFirstCodeBlock(reply) ?? bareCodeBlock(reply, languageId);
   if (block === undefined) {
     return undefined;
   }
@@ -445,7 +780,7 @@ export function fileImportBindings(source: string): Set<string> {
  *  path, and a false name over-strips a genuine external `use`; consuming the
  *  char literal whole closes it. A `'` that is not a char literal is a lifetime
  *  and passes through as ordinary code. */
-function neutralizeCommentsAndStrings(source: string): string {
+export function neutralizeCommentsAndStrings(source: string): string {
   const out: string[] = [];
   const n = source.length;
   // A neutral region emits a space for every consumed char except a newline,
@@ -714,7 +1049,7 @@ export function tsFileLocalDefinitions(source: string): Set<string> {
 // string literals ('/"/'''/""" with escapes) blank to spaces, newlines
 // preserved so column-0 detection still aligns. An f/r/b prefix falls through
 // as code and the quote after it opens the string, which is all the scan needs.
-function neutralizePythonCommentsAndStrings(source: string): string {
+export function neutralizePythonCommentsAndStrings(source: string): string {
   const out: string[] = [];
   const blank = (ch: string) => out.push(ch === "\n" ? "\n" : " ");
   const n = source.length;

@@ -104,6 +104,10 @@ export interface FnGenRequest {
 export interface TestGenRequest {
   signature: string;
   docComment?: string;
+  /** ADDED session-v68 phase 4. The user's ordered context blocks, already
+   *  resolved and already filtered by the command (a block overlapping the
+   *  target's own span is dropped up there, where the resolved span lives). */
+  contextBlocks?: ContextBlock[];
   calleeSurface?: string;
   languageId?: string;
   /** ADDED phase 6. The RESOLVED framework's assertion idiom, so the model
@@ -114,6 +118,20 @@ export interface TestGenRequest {
    *  whose shape is not its language's default (python/unittest). Absent falls
    *  back to the languageId default. */
   replyShape?: string;
+  /** ADDED session-v68 phase 1. The RESOLVED framework's TABLE idiom, for a
+   *  framework whose table idiom is not its language's default (python/unittest
+   *  and all three C# frameworks). Absent falls back to the languageId default. */
+  tableShape?: string;
+  /** ADDED session-v68 phase 1. True where the framework's rows take
+   *  compile-time constants only, which suppresses the constructed-column
+   *  clause. */
+  rowsAreConstantsOnly?: boolean;
+  /** ADDED session-v68 phase 5. The project's async test shape, when the target
+   *  is async. Absent keeps the prompt byte-identical. */
+  asyncTestShape?: string;
+  /** ADDED session-v68 phase 6. The enclosing type, when the target is a method
+   *  whose receiver the gesture proved constructible. */
+  receiverTypeName?: string;
   /** ADDED phase 6. The language's human name for the instruction's first line. */
   languageName?: string;
   /** Evidence only. */
@@ -313,28 +331,41 @@ export class FnGenService {
    * function reply is. Blind by construction: the request cannot carry an impl.
    */
   async generateTests(request: TestGenRequest, signal?: AbortSignal): Promise<FnGenResult | undefined> {
+    const blocks = request.contextBlocks ?? [];
     const prompt = assembleTestGenPrompt({
       signature: request.signature,
       docComment: request.docComment,
+      contextBlocks: blocks,
       calleeSurface: request.calleeSurface,
       languageId: request.languageId,
       assertionInstruction: request.assertionInstruction,
       replyShape: request.replyShape,
+      tableShape: request.tableShape,
+      rowsAreConstantsOnly: request.rowsAreConstantsOnly,
+      asyncTestShape: request.asyncTestShape,
+      receiverTypeName: request.receiverTypeName,
       languageName: request.languageName,
     });
     // Test-gen is one of the four ways into the model, and until now only one of
     // the four was guarded. Its ceiling is `testMaxTokens`, not `maxTokens` - a
     // test module is several times a function - so the window it has to fit is
     // measured against that, not against the generation's.
-    this.refuseUnfittablePrompt(prompt, "", this.config.testMaxTokens ?? this.config.maxTokens);
+    // The REAL prefix, not "". The window check prices what is actually sent, so
+    // handing it an empty prefix while the prompt carries blocks would let an
+    // unfittable prompt through to the model.
+    const cachePrefix = renderContextPrefix(blocks);
+    this.refuseUnfittablePrompt(prompt, cachePrefix, this.config.testMaxTokens ?? this.config.maxTokens);
     return this.run(prompt, {
       docComment: request.docComment,
       signature: request.signature,
       span: request.span,
       onChunk: request.onChunk,
-      blocksLabel: "-",
+      // The real COUNT, not a dash. The channel said "blocks=-" while blocks
+      // were staged, which is a line that lies about what was sent.
+      blocksLabel: String(blocks.length),
       shape: "test-module",
       languageId: request.languageId,
+      cachePrefix,
     }, signal);
   }
 
