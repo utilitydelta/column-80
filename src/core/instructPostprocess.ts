@@ -328,12 +328,18 @@ const BARE_LANG_RULES: Record<string, BareLangRules> = {
     // A DOTTED runner head opens a reply too. `Deno.test(`, `QUnit.test(` and
     // `t.test(` are how three real runners spell their entry point, and a reply
     // that begins with one was refused here before the counter ever saw it -
-    // the other half of S70-10, which P8 amendment 5 closed in the counter
-    // only. Admitting the LINE is not admitting the reply: the call-shape rule
-    // still refuses `RE.test(s)`, so an implementation that happens to start
-    // with a regex call opens the block and is then counted at zero.
+    // the other half of S70-10, which P8 amendment 5 closed in the counter only.
+    //
+    // The dotted alternative demands a QUOTE as the first argument, and the
+    // undotted ones do not. That asymmetry is measured, not tidy: `Deno.test()
+    // is the runner used below.` and `QUnit.test(name, fn) takes a title and a
+    // callback.` are English sentences, they open with a dotted call, and
+    // without the quote they opened a bare reply whose spliced text began with
+    // prose. Rule 7 says prose is refused. An undotted `it(` opening a sentence
+    // is the same shape and is admitted, as it was at 3.5.0 and 3.5.1; that is
+    // rule 9's tail-only residual (S70-15) and this phase did not widen it.
     opener:
-      /^(import\s|export\s|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*[:=]|function\s|class\s|async\s|@[A-Za-z_$]|(?:[A-Za-z_$][\w$]*\s*\.\s*)?(?:describe|it|test)\s*[.(]|suite\s*\(|beforeEach\s*\(|afterEach\s*\(|\/\/|\/\*)/,
+      /^(import\s|export\s|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*[:=]|function\s|class\s|async\s|@[A-Za-z_$]|[A-Za-z_$][\w$]*\s*\.\s*(?:describe|it|test)\s*(?:\.\s*\w+\s*)?\(\s*["'`]|(?:describe|it|test)\s*[.(]|suite\s*\(|beforeEach\s*\(|afterEach\s*\(|\/\/|\/\*)/,
   },
   python: {
     // Python closes its last statement with a NEWLINE, not a delimiter, so the
@@ -1026,7 +1032,9 @@ export function extractTestModule(reply: string): TestModuleExtraction | undefin
  *  a blanked string is indistinguishable from whitespace, and "was there a
  *  literal here" has to be asked of the raw character. The two buffers are
  *  index-aligned by construction - every lens branch blanks one character per
- *  character - and `alignedRaw` refuses to use the raw text if they ever are not.
+ *  character, the item-C rewind included. If they ever are not, `raw` falls back
+ *  to `neutral`, every title check fails and the reply is REFUSED. That is the
+ *  right direction for a lens that has lost track of its own input.
  *
  *  Declared limits, both in the refusing direction and both cheap:
  *  `it(name, () => {})` with the title in a variable is not counted, and
@@ -1140,20 +1148,20 @@ function tsTestCallAt(
     }
     const close = closers.get(i);
     if (close === undefined) {
-      // The lens could not find this call's end, so the argument shape cannot be
-      // read at all. That is not the model's doing: it happens where the lens
-      // MIS-LEXED something and blanked the closing paren with it - an
-      // apostrophe in JSX text (`render(<p>it\u0027s here</p>)`) opens a string
-      // that runs to the line end, and a `//` inside a declined regex opens a
-      // comment that does the same.
+      // The lens could not find this call's end, so the SECOND argument cannot
+      // be read. That is not the model's doing: it happens where the lens
+      // MIS-LEXED something and blanked the closing paren with it. An apostrophe
+      // in JSX text opens a string that runs to the line end; a regex declined
+      // by the shared rule leaves its own `(` as code, and that paren then eats
+      // the real one.
       //
-      // Counting a call by its NAME is what the pattern this rule replaced did,
-      // and it was robust to exactly this. So the fallback is that pattern minus
-      // its one defect: count an UNDOTTED head, refuse a dotted one. `it(` and
-      // `test(` are recovered; `RE.test(`, which is the false admit rule 11
-      // exists to close, is not. A dotted RUNNER pays for it only on text the
-      // lens already mis-read, which is the cheap direction.
-      return !dotted;
+      // The TITLE is still readable, and it is what separates a test from an
+      // implementation. So the fallback is the title check alone, plus the one
+      // thing the old name pattern got wrong: an UNDOTTED head passes, a dotted
+      // one does not. `it("renders", …)` with a swallowed paren is recovered;
+      // `RE.test(s)` is not, and neither is `test(\n  /^\\(/\n)`, a validator
+      // whose local predicate happens to be called `test`.
+      return !dotted && tsTakesTitle(neutral, raw, i, neutral.length) !== -1;
     }
     if (tsCallTakesTitleAndFunction(neutral, raw, closers, i, close)) {
       return true;
@@ -1163,11 +1171,76 @@ function tsTestCallAt(
   return false;
 }
 
-/** `( <string or template literal> , <function> …)`.
+/** The index just past the call's TITLE argument, or -1 when the first argument
+ *  is not one.
  *
- *  The title is asked of the RAW text (the lens blanked its quotes) and the
- *  function of the neutralised one (its body is gone, which is what makes the
- *  walk cheap and what keeps a `=>` inside a string from answering). */
+ *  A title is a string or template literal, optionally concatenated:
+ *  `it("returns " + n + " rows", …)` is a title and a model writes it whenever
+ *  the case index belongs in the name.
+ *
+ *  Asked of the RAW text, because the counting lens blanks a literal's
+ *  delimiters along with its body and a blanked string is indistinguishable from
+ *  whitespace. The two buffers are index-aligned by construction. */
+function tsTakesTitle(neutral: string, raw: string, open: number, limit: number): number {
+  // The leading whitespace is skipped on the RAW text, not the neutralised one.
+  // A blanked literal IS whitespace to `tsSkipSpace`, so skipping on `neutral`
+  // steps straight over the title and lands on the comma, and every real test
+  // reads as having no title at all.
+  let i = open + 1;
+  while (i < limit && /\s/.test(raw[i])) {
+    i++;
+  }
+  if (i >= limit) {
+    return -1;
+  }
+  const q = raw[i];
+  if ((q !== '"' && q !== "'" && q !== "`") || /\S/.test(neutral[i])) {
+    // Not a literal, or not one the lens blanked: an identifier title, a number,
+    // an object, or `RE.test(s)`'s argument.
+    return -1;
+  }
+  // The literal is a run of blanks, so one whitespace skip steps over the whole
+  // of it and any real space after it.
+  i = tsSkipSpace(neutral, i);
+  // `"a" + n + "b"`. Each turn of the loop steps past at least the `+`, so it
+  // terminates; a blanked literal operand is whitespace and the skip eats it.
+  while (i < limit && neutral[i] === "+") {
+    i = tsSkipSpace(neutral, tsIdentEnd(neutral, tsSkipSpace(neutral, i + 1)));
+  }
+  return i;
+}
+
+/** The matching closer for the bracket at `i`, counted on the neutralised text
+ *  with depth, or -1. Used for `{` and `<`, which `tsParenPairs` does not carry:
+ *  a `<` is a comparison as often as a bracket, so pairing every one of them up
+ *  front would be wrong, and asking here is bounded by the call. */
+function tsMatchBracket(neutral: string, i: number, open: string, close: string, limit: number): number {
+  let depth = 0;
+  for (let k = i; k < limit; k++) {
+    const c = neutral[k];
+    if (c === open) {
+      depth++;
+    } else if (c === close) {
+      depth--;
+      if (depth === 0) {
+        return k;
+      }
+    }
+  }
+  return -1;
+}
+
+/** How far a typed arrow's RETURN TYPE may run before the walk gives up.
+ *  Measured: 158 characters is a real return type a model wrote, 197 was
+ *  refused by the first bound of 200. A type this long is not real, and the
+ *  bound is what stops a malformed reply turning the walk into a file scan. */
+const TS_RETURN_TYPE_BUDGET = 2000;
+
+/** `( <title> , [<options object> ,] <function> …)`.
+ *
+ *  The title is asked of the RAW text and the function of the neutralised one:
+ *  its body is gone, which is what makes the walk cheap and what keeps a `=>`
+ *  inside a string from answering. */
 function tsCallTakesTitleAndFunction(
   neutral: string,
   raw: string,
@@ -1175,35 +1248,39 @@ function tsCallTakesTitleAndFunction(
   open: number,
   close: number,
 ): boolean {
-  // The leading whitespace is skipped on the RAW text, not the neutralised one.
-  // A blanked literal IS whitespace to `tsSkipSpace`, so skipping on `neutral`
-  // steps straight over the title and lands on the comma, and every real test
-  // reads as having no title at all.
-  let i = open + 1;
-  while (i < close && /\s/.test(raw[i])) {
-    i++;
-  }
-  if (i >= close) {
-    return false;
-  }
-  const q = raw[i];
-  if ((q !== '"' && q !== "'" && q !== "`") || /\S/.test(neutral[i])) {
-    // Not a literal, or not one the lens blanked - an identifier title, a
-    // number, an object, or `RE.test(s)`'s argument.
-    return false;
-  }
-  // The literal is a run of blanks, so one whitespace skip steps over the whole
-  // of it and any real space after it, and lands on the comma.
-  i = tsSkipSpace(neutral, i);
-  if (neutral[i] !== ",") {
+  let i = tsTakesTitle(neutral, raw, open, close);
+  if (i === -1 || neutral[i] !== ",") {
     return false;
   }
   i = tsSkipSpace(neutral, i + 1);
+  // `test(name, options, fn)` is the documented three-argument form of node:test
+  // - the runner this repo's own suite uses - and of vitest. The options object
+  // sits between the title and the callback and is skipped whole.
+  if (neutral[i] === "{") {
+    const optionsClose = tsMatchBracket(neutral, i, "{", "}", close);
+    if (optionsClose === -1) {
+      return false;
+    }
+    i = tsSkipSpace(neutral, optionsClose + 1);
+    if (neutral[i] !== ",") {
+      return false;
+    }
+    i = tsSkipSpace(neutral, i + 1);
+  }
   if (neutral.startsWith("async", i) && !/[A-Za-z0-9_$]/.test(neutral[i + 5] ?? "")) {
     i = tsSkipSpace(neutral, i + 5);
   }
   if (neutral.startsWith("function", i) && !/[A-Za-z0-9_$]/.test(neutral[i + 8] ?? "")) {
     return true;
+  }
+  // A GENERIC arrow callback, `<T>(x: T) => …`. Legal in `.ts`, and a model
+  // writing a helper-typed callback reaches for it.
+  if (neutral[i] === "<") {
+    const paramsEnd = tsMatchBracket(neutral, i, "<", ">", close);
+    if (paramsEnd === -1) {
+      return false;
+    }
+    i = tsSkipSpace(neutral, paramsEnd + 1);
   }
   if (neutral[i] === "(") {
     const paramsClose = closers.get(i);
@@ -1213,8 +1290,8 @@ function tsCallTakesTitleAndFunction(
     i = tsSkipSpace(neutral, paramsClose + 1);
     if (neutral[i] === ":") {
       // A typed arrow: `async (): Promise<void> => {…}`. Walk the return type
-      // with bracket depth to the `=>`, bounded, and give up on anything that
-      // is not one.
+      // with bracket depth to the `=>`, bounded, and give up on anything that is
+      // not one.
       i = tsArrowAfterReturnType(neutral, i, close);
       if (i === -1) {
         return false;
@@ -1234,7 +1311,7 @@ function tsCallTakesTitleAndFunction(
  *  and bounded so a malformed reply cannot turn this into a scan of the file. */
 function tsArrowAfterReturnType(neutral: string, colon: number, close: number): number {
   let depth = 0;
-  const limit = Math.min(close, colon + 200);
+  const limit = Math.min(close, colon + TS_RETURN_TYPE_BUDGET);
   for (let i = colon + 1; i < limit; i++) {
     const c = neutral[i];
     if (c === "<" || c === "(" || c === "[" || c === "{") {
@@ -1638,14 +1715,26 @@ export function fileLocalDefinitions(source: string): Set<string> {
 // a blanked literal is told apart from the whitespace it looks like. Comments
 // do not set it, exactly as in `scanBare` - a comment is not a value, and the
 // token before it is what decides the `/`.
-/** How many times one lex may rewind a template literal that never closed.
- *
- *  Each rewind re-lexes the tail, so an unbounded one is quadratic on the shape
- *  a repetition-loop model actually emits - thousands of backticks, each opening
- *  a template that runs to the end. The v70 review found the same quadratic on
- *  the C# `$` run. Sixteen is far past any real reply: a genuine truncated
- *  template opens ONE. */
-const MAX_TEMPLATE_REWINDS = 16;
+/** How far past a DECLINED `/` the would-be regex is allowed to run. A regex
+ *  literal closes on its own line and is short; the bound is what stops a line
+ *  full of slashes from making the scan quadratic. */
+const TS_DECLINED_REGEX_REACH = 500;
+
+/** Where a would-be regex starting at the DECLINED slash `at` would have closed:
+ *  the next `/` on the same line, or -1. Bounded, and it never crosses a
+ *  newline, which is the same rule `matchRegexLiteral` itself holds to. */
+function declinedRegexClose(source: string, at: number): number {
+  const limit = Math.min(source.length, at + TS_DECLINED_REGEX_REACH);
+  for (let k = at + 1; k < limit; k++) {
+    if (source[k] === "\n") {
+      return -1;
+    }
+    if (source[k] === "/") {
+      return k;
+    }
+  }
+  return -1;
+}
 
 function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?: boolean }): string {
   const out: string[] = [];
@@ -1654,7 +1743,9 @@ function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?:
   /** Length of `out` when the most recent literal finished. Only read when
    *  `regexLiterals` is on. */
   let literalEnd = 0;
-  let rewinds = 0;
+  /** End of the region the shared regex rule DECLINED to lex, or -1. A backtick
+   *  inside it is not a delimiter; see the backtick branch below. */
+  let declinedRegexEnd = -1;
   let i = 0;
   while (i < n) {
     const c = source[i];
@@ -1697,13 +1788,36 @@ function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?:
         literalEnd = out.length;
         continue;
       }
+      // DECLINED. The slash goes out as code, and everything up to the next
+      // slash on this line is text the rule chose not to lex. Remember where
+      // that ends: a backtick in there is regex syntax, not a delimiter.
+      declinedRegexEnd = Math.max(declinedRegexEnd, declinedRegexClose(source, i));
+    }
+    // A backtick INSIDE a region the regex rule declined is regex syntax, not a
+    // template delimiter. There are four positions where the shared rule
+    // declines the slash - after the `)` of an `if` head, after a block `}`,
+    // alone on its line, after `<` - and at each of them a backtick in the regex
+    // opened a template that swallowed every test after it, so a good reply was
+    // refused (S70-19). 3.5.0 counted these right by accident, reading
+    // TypeScript through Rust's rules, which do not know backticks.
+    //
+    // Keying on the declined REGION rather than on "the template never closed"
+    // is what makes this right for an even number of stray backticks: two
+    // declined regexes pair their backticks into a template that DOES close and
+    // swallows the tests between them, and no unclosed-template rule can see it.
+    // It also refuses the case the unclosed rule got wrong: a reply cut
+    // mid-template carries no declined regex, so its content is not counted.
+    //
+    // Regex mode only. The prompt path's definition finder reads this same
+    // function with the rule off and must not move.
+    if (c === "`" && opts?.regexLiterals === true && i < declinedRegexEnd) {
+      out.push(c);
+      i++;
+      continue;
     }
     if (c === '"' || c === "'" || c === "`") {
-      const openedAt = i;
-      const outBefore = out.length;
       blank(c);
       i++;
-      let closed = false;
       while (i < n) {
         if (source[i] === "\\") {
           blank(source[i]);
@@ -1719,36 +1833,10 @@ function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?:
         if (source[i] === c) {
           blank(source[i]);
           i++;
-          closed = true;
           break;
         }
         blank(source[i]);
         i++;
-      }
-      // A TEMPLATE that opens and never closes is evidence the backtick was not
-      // a delimiter. There are four positions where the shared regex rule
-      // declines the slash - after the `)` of an `if` head, after a block `}`,
-      // alone on its line, after `<` - and at each of them a backtick INSIDE the
-      // regex opened a template that ran to the end of the reply, so every test
-      // after it stopped being counted and a good reply was refused. 3.5.0
-      // counted these right by accident, reading TypeScript through Rust's
-      // rules, which do not know backticks (S70-19).
-      //
-      // So rewind: put the output back to the backtick, emit it as an inert
-      // character, and carry on lexing from the next one. Bounded, because each
-      // rewind re-lexes the tail.
-      //
-      // The cost is named and is the admitting direction: a fenced reply
-      // genuinely cut mid-template now counts the tests AFTER the cut instead of
-      // refusing. That reply does not compile, and the compile check is the next
-      // gate it meets. Regex mode only - the prompt path's definition finder
-      // reads this same function with the rule off and must not move.
-      if (!closed && c === "`" && opts?.regexLiterals === true && rewinds < MAX_TEMPLATE_REWINDS) {
-        rewinds++;
-        out.length = outBefore;
-        out.push("`");
-        i = openedAt + 1;
-        continue;
       }
       literalEnd = out.length;
       continue;
