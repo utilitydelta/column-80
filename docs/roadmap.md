@@ -60,28 +60,6 @@ ratification, S70-5), are in `docs/supersessions.md`. Eighteen scraps and a ruli
 and name their scrap, so nothing is red by design. Item 82 below is half met by this branch: the
 suite is green, the release workflow still skips `test:unit`.
 
-Session-v71 (2026-09-12) turned session-v70's leftover rulings list into measured fixes, on branch
-`session-v71`. NOT released. Two supersessions, **S37** (a `mut` binding and a comment inside a list
-are both part of the table) and **S38** (a TypeScript test call is known by its arguments, and an
-unclosed template is not a template), both awaiting ratification. Seven pinned KNOWN LIMIT rows
-flipped: S70-8, S70-10, S70-11, S70-14, S70-19. S70-17 closed a different way - the pre-v31 tree does
-not exist in the rewritten history at all, so the two v31 freeze rows are re-pinned to `4c43c9c`
-(1.3.0, the root) and now FAIL rather than skip when their baseline is unreachable.
-
-Three measurement documents came out of it and none is a build instruction:
-
-- `session-v71/rebaseline.md`. S35 moved the fenced count, and the question was which arm numbers
-  move. **None.** 231 distinct recorded replies on this box, zero moves on three surfaces, and not
-  one of them is a test reply - every arm recorded here is fn-gen or injection.
-- `session-v71/heuristics.md`. The eight lexing heuristics named, and the price of replacing the
-  TypeScript ones with a real scanner: `typescript` costs +1,028,133 bytes compressed and does not
-  tree-shake; `acorn` costs +34,205, fails on exactly two constructs (decorators, JSX), and gets
-  every question the heuristics guess at right. Neither construct appears once in any population
-  measured. **This one is the founder's call and is deliberately not built.**
-- `session-v71/harvest-counter.json`, 3537 distinct replies the unit suite hands the counter, with
-  `build-harvest.cjs` beside it. S35's "152 harvested fenced fixtures" were never committed; this is
-  the replacement and every S38 move is named against it.
-
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
@@ -1045,6 +1023,31 @@ project serves three source projects. Widening the search widens that too.
 
 ## 2. Decisions waiting on the human
 
+### 89. Buy a real TypeScript lexer for 34KB, or keep guessing
+
+The counting lens guesses at TypeScript with five hand-written textual rules: is a slash a division
+or a regex, is a regex alone on its line prose, does a doubled sign leave a value in hand, is a `}`
+or a `<` a value, does a regex close on its own line. Each was measured when it went in and each is
+still a guess. Four of the seven defects sessions v70 and v71 spent their loops on came from one of
+them.
+
+`acorn`'s tokenizer answers all five correctly, including every case v71 fixed and the division
+trap. **+34,205 bytes compressed** on a 256,054-byte extension. It cannot read two constructs:
+decorators and JSX. Neither appears once in 420 generated TypeScript replies, 150 of the product's
+own `src/**/*.ts`, or 36 recorded replies, and there is not one `.tsx` file in `src/`. `acorn-jsx`
+would close the JSX half and was not priced.
+
+Microsoft's own `typescript` is the other candidate and is not worth it: `lib/typescript.js` is one
+CJS module, so asking for `createScanner` pulls the compiler. **+1,028,133 bytes compressed**, 5x the
+shipped bundle.
+
+Rust, Go, C# and Python get nothing. No cheap in-process tokenizer exists for any of them, and they
+already have a real parser after the splice: the compile check runs at 22ms (Go) to 1983ms (C#).
+
+The full table, the per-construct probe and how to reproduce both numbers are in
+`session-v71/heuristics.md`. RECOMMENDATION: buy it for TypeScript, spend nothing on the other four.
+
+
 Every pending ruling, in one place. The one-line index comes first; the standing decisions that carry
 real bodies follow it. Nothing here has been ratified.
 
@@ -1747,6 +1750,21 @@ every one of them at once.
 ## 4. Deferred fixes - small, do on next touch of the named file
 
 Each entry waits for its trigger, the next touch of the named file, not for a slice of its own.
+
+- **A comment one character OUTSIDE a case list still loses the whole table (S71-2, PROVEN).**
+  v71 closed a comment INSIDE the list on all five legs. Three finders reach their list by walking
+  characters and still drop it for a note just before the bracket: `findEachTable`
+  (`it.each(/* c */ [ … ])`), `findGoStructTable` (`[]struct{…} /* c */ { … }`) and
+  `findAssignedTupleTable` (`let cases = /* c */ vec![ … ]`), all in `src/core/tddTable.ts`. The
+  first two take the forward `skipCommentAt` primitive; the third needs a BACKWARDS comment test,
+  which costs a `commentOwns` re-lex per candidate. Refusing direction, pre-existing before v71, and
+  pinned red-on-fix by `[REV71-P1 21]`.
+- **The four backtick positions are still refused on the BARE path (S71-1, PROVEN).** v71 closed
+  them on the fenced path. `scanBare` in `src/core/instructPostprocess.ts` refuses any unterminated
+  literal outright, which is P8's rule that an unterminated literal is its own answer, and the
+  counting lens's declined-region rule never reaches it. Giving `scanBare` the same rule weakens the
+  guard that keeps a half-written reply out of the file, so it is a real trade rather than a
+  one-liner. `session-v71/spike-item-c.cjs` prints the bare table.
 
 - **Escape in the gap between the trigger leaving and the provider being invoked (S66-11,
   REASONED).** `armAndTrigger` in `src/vscode/dictation.ts` checks the gesture after the hide and

@@ -1924,7 +1924,9 @@ annotated-table.test.cjs`, `test/review-v70-p4.test.cjs` (17), `test/review-v70-
 
 ## S37. A `mut` binding and a comment inside a list are both part of the table
 
-**Ruled 2026-09-12, session-v71 item A. P9 amendment 4 and its addendum.**
+**Ruled 2026-09-12, session-v71 item A. P9 amendment 4 and its addendum. The founder read both
+entries and ruled them technical detail rather than a design reversal, so neither waits on a
+ratification: they are here as the record of what moved and why, and they are the rule.**
 
 **What changed.** `let mut cases: T = …` finds its table, in every annotation form rule 2 lists and
 in the plain type-NAME form S36 brought in. A comment inside a case list no longer loses the table,
@@ -1957,7 +1959,7 @@ and is dropped.
 ## S38. A TypeScript test call is known by its ARGUMENTS, and an unclosed template is not a template
 
 **Ruled 2026-09-12, session-v71 items B and C. P8 amendment 5. S35's baseline `1fb757f` stands;
-`a81e986` is added beside it.**
+`a81e986` is added beside it. Technical detail, not a design reversal; see S37's header.**
 
 **What changed.** Two things in the TypeScript counting lens.
 
