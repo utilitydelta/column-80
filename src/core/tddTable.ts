@@ -183,21 +183,64 @@ export function topLevelElements(
     }
     i++;
   }
-  if (text.slice(elemStart, close).trim().length > 0) {
+  const tail = trimSpan(text, { start: elemStart, end: close }, profile);
+  if (tail.end > tail.start) {
     raw.push({ start: elemStart, end: close });
   }
-  return { elements: raw.map((s) => trimSpan(text, s)), close };
+  return { elements: raw.map((s) => trimSpan(text, s, profile)), close };
 }
 
-function trimSpan(text: string, span: TableSpan): TableSpan {
-  let s = span.start;
-  let e = span.end;
-  while (s < e && /\s/.test(text[s])) {
-    s++;
+/** An element's span, with whitespace AND comments taken off both ends.
+ *
+ *  P9 rule 13's other half. Stepping over a comment at the head of a LIST bought
+ *  the table back; the span of a COLUMN is a separate question and it was the
+ *  dangerous one. `(1, 2, // the answer\n)` leaves an element after the last
+ *  comma that is nothing but a note, and it was returned as the expected column:
+ *  the hole landed on the comment, the model's guessed `2` shipped unblanked,
+ *  and the third floor counted the hole and let the gesture through. Same for a
+ *  comment in front of a value (`(1, /* pick *\/ 2)`), which in a KEYED row
+ *  swallowed the field name and emitted `{in: 1, ${1}}`.
+ *
+ *  So the trim is comment-aware, once, here, rather than at each of the three
+ *  column readers. A comment-only element trims to a ZERO-LENGTH span, which the
+ *  row readers refuse - that shape is not valid source in any of the five
+ *  languages, and refusing is the cheap direction. The one exception is a
+ *  comment-only TAIL after the last comma, which is a trailing comma with a note
+ *  on it and is dropped exactly as a bare trailing comma already was.
+ *
+ *  A STRING is not a comment and is never trimmed: it is a legitimate column. */
+function trimSpan(text: string, span: TableSpan, profile?: LiteralProfile): TableSpan {
+  let firstCode = -1;
+  let lastCode = -1;
+  let i = span.start;
+  while (i < span.end) {
+    const past = skipCommentAt(text, i, profile);
+    if (past > i) {
+      i = past;
+      continue;
+    }
+    const literal = skipLiteralOrComment(text, i, profile);
+    if (literal > i) {
+      if (firstCode === -1) {
+        firstCode = i;
+      }
+      lastCode = Math.min(literal, span.end) - 1;
+      i = literal;
+      continue;
+    }
+    if (!/\s/.test(text[i])) {
+      if (firstCode === -1) {
+        firstCode = i;
+      }
+      lastCode = i;
+    }
+    i++;
   }
-  while (e > s && /\s/.test(text[e - 1])) {
-    e--;
+  if (firstCode === -1) {
+    return { start: span.start, end: span.start };
   }
+  const s = firstCode;
+  const e = lastCode + 1;
   return { start: s, end: e };
 }
 
@@ -231,6 +274,25 @@ function skipSpace(text: string, i: number): number {
     j++;
   }
   return j;
+}
+
+/** The index just past the COMMENT starting at `i`, or `i` when none does.
+ *
+ *  P9 rule 13's primitive. `skipLiteralOrComment` cannot be used for this: it
+ *  steps over a STRING too, and a string is a legitimate table column, so
+ *  stepping over one would move a span onto the wrong value - the inversion
+ *  direction. Block comments are handed to the shared scanner so nesting follows
+ *  the profile; a line comment is read here because its terminator is the
+ *  newline and the profile decides whether that is `//` or `#`. */
+function skipCommentAt(text: string, i: number, profile: LiteralProfile | undefined): number {
+  if (isLineCommentOpener(text, i, profile)) {
+    const nl = text.indexOf("\n", i);
+    return nl === -1 ? text.length : nl;
+  }
+  if (profile?.hashComments !== true && text[i] === "/" && text[i + 1] === "*") {
+    return skipLiteralOrComment(text, i, profile);
+  }
+  return i;
 }
 
 /** Is `i` the start of a whole word (not mid-identifier)? */
@@ -289,8 +351,12 @@ function rowsFromList(
   }
   const expected: TableSpan[] = [];
   for (const el of parsed.elements) {
-    const head = text[el.start];
-    if (!openers.includes(head)) {
+    // `topLevelElements` has already taken the comments off both ends, so the
+    // element's first character IS its first token (rule 13). A ZERO-LENGTH
+    // element is one that was nothing but a comment, which only a mid-list
+    // `, /* x */ ,` produces and which is not valid source anywhere: refused,
+    // the cheap direction. A comment-only TAIL never reaches here.
+    if (el.start >= el.end || !openers.includes(text[el.start])) {
       return undefined;
     }
     const last = lastColumnOf(text, el.start, profile);
@@ -299,7 +365,7 @@ function rowsFromList(
     }
     expected.push(last);
   }
-  return { expected, close: parsed.close };
+  return expected.length === 0 ? undefined : { expected, close: parsed.close };
 }
 
 /** The last top-level column of the bracketed row opening at `rowOpen`, when the
@@ -449,12 +515,67 @@ const ANNOTATION_BUDGET = 512;
  *  two item forms a generated test module can legally hang a case table off. */
 const BINDING_KEYWORD = /^(let|const|static)$/;
 
+/** What may bind the name when `mut` sits between the keyword and the name.
+ *  `let mut` and `static mut` are the two Rust spells; `const mut` is not a
+ *  thing, so it is not here. */
+const MUT_BINDING_KEYWORD = /^(let|static)$/;
+
+/** Is the identifier ending at `end` (exclusive) a binding keyword for the name
+ *  that follows it, `mut` allowed in between?
+ *
+ *  P9 rule 12. `mut` is part of the binding and not a barrier, and reading it as
+ *  the binding keyword lost EVERY annotated table the moment a model wrote
+ *  `let mut cases: … = …`, which is what a model writes whenever the runner
+ *  needs the table by value and then mutates it, and what it writes by habit
+ *  otherwise. The unannotated `let mut` form was always found, because the walk
+ *  back from the `=` lands on the name and never asks this question, so the
+ *  annotation was the whole difference.
+ *
+ *  Only `mut`, and only as a WHOLE token. `identBefore` cannot return a prefix,
+ *  so `let mutable_cases: T = …` reads its keyword as `let` and its name as
+ *  `mutable_cases`, which is what it is. Admitting an arbitrary identifier here
+ *  would let `foo bar cases: T = …` name a table.
+ *
+ *  And the keyword has to be CODE, which is the same question `commentOwns` is
+ *  already asked about the colon. The backwards walk skips whitespace including
+ *  newlines, so a line comment ending in the word `let` supplies the keyword for
+ *  the line below it:
+ *
+ *      // this used to be a let
+ *      mut cases: Vec<(i32, i32)> = vec![ (1, 2), (3, 4) ];
+ *
+ *  `mut cases: T = …` with no keyword is not a binding in any Rust, and that
+ *  shape was admitted with the model's guessed values blanked out of a list
+ *  nothing declares. The `mut` hop made it reachable; the same lens closes both
+ *  hops at once. */
+function bindsName(text: string, end: number, profile: LiteralProfile | undefined): boolean {
+  const word = identBefore(text, end);
+  if (word.length === 0) {
+    return false;
+  }
+  if (commentOwns(text, end - word.length, profile)) {
+    return false;
+  }
+  if (word !== "mut") {
+    return BINDING_KEYWORD.test(word);
+  }
+  let b = end - word.length - 1;
+  while (b >= 0 && /\s/.test(text[b])) {
+    b--;
+  }
+  const keyword = identBefore(text, b + 1);
+  return MUT_BINDING_KEYWORD.test(keyword) && !commentOwns(text, b + 1 - keyword.length, profile);
+}
+
 // ===========================================================================
 // The per-language finders
 // ===========================================================================
 
 
-/** Does a COMMENT, or a string, own the `:` at `at`?
+/** Does a COMMENT, or a string, own the character at `at`?
+ *
+ *  Two callers: the annotation walk's `:`, and the BINDING KEYWORD in front
+ *  of the name. Both are tokens a backwards walk can pick up out of prose.
  *
  *  The backwards walk reads raw characters, so `/// let cases:` on the line
  *  above a list hands it a colon, an identifier and a binding keyword that are
@@ -487,7 +608,7 @@ const BINDING_KEYWORD = /^(let|const|static)$/;
  *  Bounded like the walk it guards. No line boundary inside the budget is
  *  answered "owned", which refuses the table: losing one costs a gesture,
  *  naming the wrong list blanks a column the human wrote. */
-function commentOwnsColon(text: string, at: number, profile: LiteralProfile | undefined): boolean {
+function commentOwns(text: string, at: number, profile: LiteralProfile | undefined): boolean {
   const floor = Math.max(0, at - ANNOTATION_BUDGET);
   let lineStart = floor;
   while (lineStart > 0 && lineStart < at && text[lineStart - 1] !== "\n") {
@@ -551,7 +672,7 @@ function nameBeforeAnnotation(text: string, end: number, profile: LiteralProfile
           n--;
         }
         const candidate = identBefore(text, n + 1);
-        if (candidate.length === 0 || commentOwnsColon(text, k, profile)) {
+        if (candidate.length === 0 || commentOwns(text, k, profile)) {
           return undefined;
         }
         if (!annotationRunsTo(text, k + 1, end, profile)) {
@@ -567,7 +688,7 @@ function nameBeforeAnnotation(text: string, end: number, profile: LiteralProfile
         while (b >= 0 && /\s/.test(text[b])) {
           b--;
         }
-        return BINDING_KEYWORD.test(identBefore(text, b + 1)) ? candidate : undefined;
+        return bindsName(text, b + 1, profile) ? candidate : undefined;
       }
     }
     k--;

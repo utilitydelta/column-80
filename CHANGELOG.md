@@ -1,5 +1,45 @@
 # Changelog
 
+## 3.6.0
+
+**A case table bound with `let mut` is a case table.**
+
+Ask for tests, get back `let mut cases: Vec<(u32, u64)> = vec![ (1, 2), (3, 4) ]` with a loop under
+it, and the gesture refused. It found no table, so it punched no holes, so the third floor tripped
+and it wrote nothing. `mut` was the whole reason: the walk that reads a type annotation stopped on
+it. Every annotation spelling was lost the moment the binding was `let mut`, which is the binding a
+model reaches for by habit. It walks through `mut` now, for `let` and for `static`.
+
+**A comment inside a case list no longer costs you the table.**
+
+Rust, Go, `it.each`, `parametrize` and Python's unittest leg, all five. A note anywhere in the list,
+including the one gofmt and black put after a trailing comma, dropped the whole table silently. The
+reader steps over comments now, at both ends of every row, so the yellow boxes land on the values
+and never on your note or on a field name.
+
+**A test call is recognised by its arguments, not by its name.**
+
+`Deno.test`, `QUnit.test` and `t.test` are how three real runners spell their entry point, and a
+reply using any of them was accepted with a code fence and refused without one. Meanwhile a plain
+implementation whose only test-shaped token was `RE.test(s)` was accepted as a test file and written
+into your test file. Both came from matching the name `test` and nothing else.
+
+A test call takes a title, then a comma, then a function. `RE.test(s)` takes an identifier and
+`function test(value: string)` takes a parameter list, so both are refused, on the fenced path and
+the bare one. That also brings in `test(name, options, fn)` (node:test and vitest), a concatenated
+title, and a generic arrow callback.
+
+**A backtick inside a regex is not the start of a template.**
+
+`expect(s).toMatch(/^`{3}/)` and three rarer positions opened a template literal that ran to the end
+of the reply. Every test after it stopped counting and a good reply was refused. Where the lexer
+declines to read a slash as a regex, the text up to the next slash on that line is not code, and a
+backtick in there is not a delimiter.
+
+**Under the hood.** Counting a call rather than a name needed the matching parentheses, and scanning
+for them per candidate was quadratic: a reply with 20,000 `it(` heads and no closers cost 544ms on
+the request thread. They are computed once now, and the same reply costs 33ms.
+
 ## 3.5.1
 
 **The `ci` job is green again, and the eight rows it failed on are closed, not deleted.**

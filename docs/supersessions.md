@@ -1921,3 +1921,117 @@ colon-to-line-start cliff refuses silently (S70-13).
 
 **Pinned by.** `test/blind-v70-p4-annotated-table.test.cjs` (104, blind), `test/impl-v70-p4-
 annotated-table.test.cjs`, `test/review-v70-p4.test.cjs` (17), `test/review-v70-p4b.test.cjs` (9).
+
+## S37. A `mut` binding and a comment inside a list are both part of the table
+
+**Ruled 2026-09-12, session-v71 item A. P9 amendment 4 and its addendum. The founder read both
+entries and ruled them technical detail rather than a design reversal, so neither waits on a
+ratification: they are here as the record of what moved and why, and they are the rule.**
+
+**What changed.** `let mut cases: T = …` finds its table, in every annotation form rule 2 lists and
+in the plain type-NAME form S36 brought in. A comment inside a case list no longer loses the table,
+and no span carries comment text on any of the five legs.
+
+**Why the old behaviour was wrong.** The annotation walk stopped on `mut`, so a model writing
+`let mut` lost every hole in its table and the gesture refused with the guessed expected values
+already filled in. `topLevelElements` trimmed whitespace off each element and not comments, so a
+list opening `[ // the interesting ones` handed the row reader an element starting at the `/`.
+
+**The dangerous half was the second implementation, not the first.** Stepping over a comment at the
+LIST head and nowhere else made a comment become the expected-value SPAN: `(1,\n 2, // the answer\n)`
+gave `["// the answer","// the answer"]`, the model's `2` shipped unblanked, and `holes: 2,
+unresolved: 0` walked past the third floor. In a keyed row the span covered the FIELD NAME and
+blanking emitted `{in: 1, ${1}}`, which does not compile. Both `gofmt` and `black` emit the
+trailing-comma shape. The trim is now the ELEMENT's, on both ends, once.
+
+**Measured.** Blind oracle 121 rows, review 24. The C# attribute leg over 364 comment-insertion
+points and a sweep inserting a comment at every index of six fixtures across five languages, 1708
+points: every move is a span LOSING comment text, or a table a comment was hiding being found.
+`@pytest.mark.parametrize` with a `#` note in front of its list is one of the latter.
+
+**Named limits.** A comment one character OUTSIDE the list still loses the table on three finders
+(S71-2). A comment-only element mid-list refuses the table; a comment-only tail is a trailing comma
+and is dropped.
+
+**Pinned by.** `test/blind-v71-p1-mut-binding.test.cjs` (121, blind), `test/review-v71-p1.test.cjs`
+(24), `test/review-v70-p4.test.cjs` rows 4 and 5, `test/review-v70-p4b.test.cjs` row 6.
+
+## S38. A TypeScript test call is known by its ARGUMENTS, and an unclosed template is not a template
+
+**Ruled 2026-09-12, session-v71 items B and C. P8 amendment 5. S35's baseline `1fb757f` stands;
+`a81e986` is added beside it. Technical detail, not a design reversal; see S37's header.**
+
+**What changed.** Two things in the TypeScript counting lens.
+
+1. The name pattern `\b(?:it|test)\s*(?:\.\w+)?\s*\(` is replaced by a CALL shape: a string or
+   template title, a comma, then a function. `BARE_TEST_FUNCTION_SHAPES` and its `(?<![.$])`
+   lookbehind are deleted, so one rule serves both paths. `bareCodeBlock`'s TypeScript opener gained
+   an optional dotted prefix, because a bare reply may begin with `Deno.test(`.
+2. A backtick inside a region the shared regex rule DECLINED to lex is inert, not a template
+   delimiter. The declined region runs from the slash to the next slash on that line, bounded at 500
+   characters.
+
+**Why the old behaviour was wrong.** `\b` holds after a dot, so `RE.test(s)` read as a test and a
+plain implementation was admitted as a test file on the fenced path. The bare path's lookbehind
+closed that and refused `Deno.test`, `QUnit.test` and `t.test` with it, so one reply answered
+differently bare and fenced (S70-10), and `function test(value: string)` walked through both
+(S70-11). Separately, at four positions the shared regex rule declines the slash, and a backtick
+inside the regex opened a template that ran to the end of the reply, so a good reply counted one
+short or was refused (S70-19). 3.5.0 counted those right by accident, reading TypeScript through
+Rust's rules.
+
+**Every move named.** Against `a81e986`, over 3537 distinct replies harvested from the unit suite
+(`session-v71/harvest-counter.json`), **41 move** and every one classifies:
+
+| cause | replies |
+|---|---|
+| a `.test(` that is a regex or predicate call stops counting | 29 |
+| a backtick inside a declined regex no longer eats the tail (S70-19) | 5 |
+| a `test(` whose first argument is not a title stops counting | 4 |
+| a dotted runner is admitted bare (S70-10) | 2 |
+| a `function test(` declaration is refused (S70-11) | 1 |
+
+The 1050 generated clean fenced replies and the 1050 hiding replies move **0** against `a81e986`.
+Against `1fb757f` the hiding corpus still moves 345, which is S35 and is meant to. One reply in
+`blind-v70-p3`'s 40-reply clean corpus moves against `1fb757f` and is allowed by an ENUMERATED entry
+naming that exact reply, not by a predicate.
+
+**Two costs, both measured, both paid on purpose.**
+
+- Counting CALLS is not free where the lens MIS-LEXES. An apostrophe in JSX text and a `//` inside a
+  declined regex each blank a closing paren, and the call then cannot be matched. The fallback is
+  the old pattern minus its one defect: an unmatched head counts if it is UNDOTTED and is refused if
+  it is dotted, so `it(` is recovered and `RE.test(` is not.
+- The declined-region rule reads a backtick as inert wherever a `/` was declined earlier on the same
+  line and another `/` closes the would-be regex after it. `a / b + \`x\` / c` is that shape and is
+  not a real one; a template on a line that merely contains a division is not, because the rule looks
+  backwards from the backtick.
+
+The rewind this replaced is worth recording, because it was the goal's own proposal and it was
+wrong twice. It keyed on "the template never closed", which is only true for an ODD number of stray
+backticks: two declined regexes pair theirs into a template that DOES close and swallows every test
+between them. Over k = 1 to 8 declined backtick regexes it moved k = 1 and nothing else. And it was
+too wide the other way, counting a reply cut mid-template as carrying the tests inside its own
+emitted source. The region is the evidence; the closure never was.
+
+**Cost.** A matching-paren scan per candidate was quadratic: 20,000 `it(` heads with no closers cost
+544ms against 1.7ms, on the request thread. Every paren pair is computed once in a linear pass; the
+same shape is 33ms, and 300,000 heads is also 33ms. 1MB of real tests is 95ms. The paren map costs
+about 15MB of heap on a 2.1MB reply.
+
+**What the review changed.** Eight red rows, six of them the rule under-written. `test(name,
+options, fn)` - the documented three-argument form of node:test, the runner this repo's own suite
+uses - was refused, and so were a concatenated title and a generic arrow callback; all three counted
+at 3.5.0 and 3.5.1, so each was a regression. The return-type bound refused a 197-character type,
+which is real. The fallback counted any undotted head and admitted a validator whose local predicate
+is named `test`; it asks for a title now. And the widened opener admitted `Deno.test() is the runner
+used below.` as code, so its dotted branch demands a quote.
+
+**Named limits.** `it(name, () => {})` with the title in a variable is not counted, and Deno's
+object form `Deno.test({ name, fn })` is not counted; both refuse. Rule 11 carries no namespace
+allowlist, so `harness.test("x", () => {})` is admitted - the arguments decide, and there is no
+reading under which `t.test(` is admitted and that is not.
+
+**Pinned by.** `test/blind-v71-p2-call-shape.test.cjs` (88, blind), `test/review-v71-p23.test.cjs`,
+`test/review-v70-p2.test.cjs` rows 1, 2, 5, `test/review-v70-p3b.test.cjs` rows 3 to 6,
+`test/blind-v70-p3-counting-lens.test.cjs`'s enumerated rule-1 allowance.

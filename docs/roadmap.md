@@ -1023,6 +1023,31 @@ project serves three source projects. Widening the search widens that too.
 
 ## 2. Decisions waiting on the human
 
+### 89. Buy a real TypeScript lexer for 34KB, or keep guessing
+
+The counting lens guesses at TypeScript with five hand-written textual rules: is a slash a division
+or a regex, is a regex alone on its line prose, does a doubled sign leave a value in hand, is a `}`
+or a `<` a value, does a regex close on its own line. Each was measured when it went in and each is
+still a guess. Four of the seven defects sessions v70 and v71 spent their loops on came from one of
+them.
+
+`acorn`'s tokenizer answers all five correctly, including every case v71 fixed and the division
+trap. **+34,205 bytes compressed** on a 256,054-byte extension. It cannot read two constructs:
+decorators and JSX. Neither appears once in 420 generated TypeScript replies, 150 of the product's
+own `src/**/*.ts`, or 36 recorded replies, and there is not one `.tsx` file in `src/`. `acorn-jsx`
+would close the JSX half and was not priced.
+
+Microsoft's own `typescript` is the other candidate and is not worth it: `lib/typescript.js` is one
+CJS module, so asking for `createScanner` pulls the compiler. **+1,028,133 bytes compressed**, 5x the
+shipped bundle.
+
+Rust, Go, C# and Python get nothing. No cheap in-process tokenizer exists for any of them, and they
+already have a real parser after the splice: the compile check runs at 22ms (Go) to 1983ms (C#).
+
+The full table, the per-construct probe and how to reproduce both numbers are in
+`session-v71/heuristics.md`. RECOMMENDATION: buy it for TypeScript, spend nothing on the other four.
+
+
 Every pending ruling, in one place. The one-line index comes first; the standing decisions that carry
 real bodies follow it. Nothing here has been ratified.
 
@@ -1725,6 +1750,21 @@ every one of them at once.
 ## 4. Deferred fixes - small, do on next touch of the named file
 
 Each entry waits for its trigger, the next touch of the named file, not for a slice of its own.
+
+- **A comment one character OUTSIDE a case list still loses the whole table (S71-2, PROVEN).**
+  v71 closed a comment INSIDE the list on all five legs. Three finders reach their list by walking
+  characters and still drop it for a note just before the bracket: `findEachTable`
+  (`it.each(/* c */ [ … ])`), `findGoStructTable` (`[]struct{…} /* c */ { … }`) and
+  `findAssignedTupleTable` (`let cases = /* c */ vec![ … ]`), all in `src/core/tddTable.ts`. The
+  first two take the forward `skipCommentAt` primitive; the third needs a BACKWARDS comment test,
+  which costs a `commentOwns` re-lex per candidate. Refusing direction, pre-existing before v71, and
+  pinned red-on-fix by `[REV71-P1 21]`.
+- **The four backtick positions are still refused on the BARE path (S71-1, PROVEN).** v71 closed
+  them on the fenced path. `scanBare` in `src/core/instructPostprocess.ts` refuses any unterminated
+  literal outright, which is P8's rule that an unterminated literal is its own answer, and the
+  counting lens's declined-region rule never reaches it. Giving `scanBare` the same rule weakens the
+  guard that keeps a half-written reply out of the file, so it is a real trade rather than a
+  one-liner. `session-v71/spike-item-c.cjs` prints the bare table.
 
 - **Escape in the gap between the trigger leaving and the provider being invoked (S66-11,
   REASONED).** `armAndTrigger` in `src/vscode/dictation.ts` checks the gesture after the hide and

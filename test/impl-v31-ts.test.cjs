@@ -1068,24 +1068,53 @@ const RUST_CASES = [
   "assert_eq!(a / b, 2);",
 ];
 
-// The last commit before session-v31 opened. The Rust blanker is compared
-// against THAT implementation rather than against HEAD, so the row keeps meaning
-// something once this session is committed.
-const PRE_V31 = "45b4778";
-const preV31Exists = (() => {
+// THE FREEZE BASELINE, re-pinned 2026-09-12 (session-v71 item F).
+//
+// This was `45b4778`, "the last commit before session-v31 opened", behind a
+// `cat-file -e` guard that SKIPPED when it could not be found. Main's history
+// was rewritten on 2026-08-21 to scrub a client name, and `45b4778` went with
+// it, so from that day the row read green and proved nothing. Checked: the hash
+// resolves in no branch, no tag and no reflog here, and not in the archive repo
+// either. The pre-v31 TREE is gone; there is no same-tree-new-hash to re-derive.
+//
+// What is still provable is the property the row was written for: the Rust
+// blanker has not drifted. `4c43c9c` ("column-80 1.3.0", 2026-08-10) is the ROOT
+// of the rewritten history, the oldest `src/core/testAssembly.ts` that exists.
+// Measured before pinning it: 0 drift over the corpus below crossed with 4
+// return types plus the 4000-token fuzz, and the same 0 at `f40177a` (2.0.0),
+// `9a0227a` (2.1.0) and `a81e986` (3.5.1). So the differential is real, it just
+// reaches back to 1.3.0 instead of to v31.
+//
+// And the guard no longer SKIPS. ci.yml sets `fetch-depth: 0` precisely so these
+// objects are present, and its own comment says a row that skips itself "reads
+// green and proves nothing". An unreachable baseline is now a failure that says
+// so.
+const FROZEN_AT = "4c43c9c";
+const frozenReachable = (() => {
   try {
-    execFileSync("git", ["cat-file", "-e", `${PRE_V31}:src/core/testAssembly.ts`], { cwd: REPO });
+    execFileSync("git", ["cat-file", "-e", `${FROZEN_AT}:src/core/testAssembly.ts`], { cwd: REPO });
     return true;
   } catch {
     return false;
   }
 })();
 
-test("freeze: blankTestModule is byte-identical to the pre-v31 implementation, adversarial corpus plus 4000 fuzz", { skip: preV31Exists ? false : `${PRE_V31} is not reachable from this checkout` }, () => {
-  const dir = path.join(scratch, "prev31");
+function requireFrozenBaseline() {
+  assert.ok(
+    frozenReachable,
+    `${FROZEN_AT}:src/core/testAssembly.ts is not reachable from this checkout, so this freeze row ` +
+      `cannot run. It must FAIL rather than skip: a skipped freeze row reads green and proves ` +
+      `nothing, which is how the previous baseline went stale unnoticed for three weeks. Fetch full ` +
+      `history (ci.yml already sets fetch-depth: 0).`
+  );
+}
+
+test("freeze: blankTestModule is byte-identical to the 1.3.0 implementation, adversarial corpus plus 4000 fuzz", () => {
+  requireFrozenBaseline();
+  const dir = path.join(scratch, "frozen");
   fs.mkdirSync(dir, { recursive: true });
   for (const f of ["testAssembly.ts", "tabstop.ts"]) {
-    fs.writeFileSync(path.join(dir, f), execFileSync("git", ["show", `${PRE_V31}:src/core/${f}`], { cwd: REPO, maxBuffer: 1 << 26 }));
+    fs.writeFileSync(path.join(dir, f), execFileSync("git", ["show", `${FROZEN_AT}:src/core/${f}`], { cwd: REPO, maxBuffer: 1 << 26 }));
   }
   fs.writeFileSync(path.join(dir, "entry.ts"), `export { blankTestModule } from "./testAssembly";\n`);
   const outfile = path.join(dir, "bundle.cjs");

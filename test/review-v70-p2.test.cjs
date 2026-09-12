@@ -105,11 +105,12 @@ rtest("[REV70-P2 0] the bundle builds and both extractors are exported", () => {
 // regression and a rule 5 break.
 // ===========================================================================
 
-rtest("[REV70-P2 1] KNOWN LIMIT S70-10: a Deno test reply is refused bare and admitted fenced", () => {
-  // PINNED, not fixed. Main admitted this bare; the lookbehind that kills `RE.test(s)` cannot tell
-  // a namespace from a receiver. Unreachable today (tddTs detects jest and vitest only) and every
-  // fix widens the admit side. S70-10.
-  narrowerBare(
+rtest("[REV70-P2 1] CLOSED S70-10: a Deno test reply answers the same bare and fenced", () => {
+  // FLIPPED 2026-09-12, session-v71 item B. The lookbehind is gone. A test call is known by its
+  // ARGUMENTS - a string or template title, a comma, then a function - so `Deno.test("adds", …)`
+  // is a test and `RE.test(s)` is not, on BOTH paths, and the bare-only gate had nothing left to
+  // do. P8 amendment 5. Rule 5 holds again for this reply.
+  sameBothWays(
     "typescript",
     `import { assertEquals } from "./deps.ts";
 
@@ -120,9 +121,9 @@ Deno.test("adds", () => {
   );
 });
 
-rtest("[REV70-P2 2] KNOWN LIMIT S70-10: a QUnit / node-tap test reply is refused bare and admitted fenced", () => {
-  // PINNED, not fixed: S70-10, same mechanism as row 1.
-  narrowerBare(
+rtest("[REV70-P2 2] CLOSED S70-10: a QUnit / node-tap test reply answers the same bare and fenced", () => {
+  // FLIPPED 2026-09-12, session-v71 item B: S70-10, same mechanism as row 1.
+  sameBothWays(
     "typescript",
     `import QUnit from "qunit";
 
@@ -131,7 +132,7 @@ QUnit.test("adds", (assert) => {
 });`,
     "QUnit.test is a dotted head, so the gate finds nothing."
   );
-  narrowerBare(
+  sameBothWays(
     "typescript",
     `import t from "tap";
 
@@ -172,12 +173,11 @@ rtest("[REV70-P2 4] an implementation is admitted because a TEMPLATE LITERAL hol
   );
 });
 
-rtest("[REV70-P2 5] KNOWN LIMIT S70-11: an implementation FUNCTION named test satisfies the gate", () => {
-  // PINNED, not fixed. Main admits this at the same count, so phase 2 did not open it; the gate
-  // forbids a dot before the name and a declaration site walks through. Needs a discriminator of
-  // its own, with admit-side risk. S70-11. If this is refused, S70-11 is closed and this row
-  // should call `refused`.
-  admitted(
+rtest("[REV70-P2 5] CLOSED S70-11: an implementation FUNCTION named test is refused", () => {
+  // FLIPPED 2026-09-12, session-v71 item B. The discriminator arrived with the call-shape rule and
+  // needed no admit-side risk of its own: `function test(value: string)` takes a PARAMETER LIST,
+  // not a string title followed by a function, so it is not a test call. P8 amendment 5 rule 11.
+  refused(
     "typescript",
     `export function test(value: string): boolean {
   const RE = /^[a-z]+$/;

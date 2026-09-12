@@ -256,7 +256,7 @@ rtest("[REV70-P4B 5] KNOWN LIMIT S70-13: a colon 513 characters into its line re
 // A line comment that starts AFTER the colon
 // ===========================================================================
 
-rtest("[REV70-P4B 6] KNOWN LIMIT S70-14: a trailing `// note:` on the binding's line loses the table", () => {
+rtest("[REV70-P4B 6] CLOSED S70-14: a trailing `// note:` on the binding's line keeps the table", () => {
   const withComment = wrap(`        let cases: Cases = [ // note:
             (1, 2),
             (3, 4),
@@ -276,16 +276,14 @@ rtest("[REV70-P4B 6] KNOWN LIMIT S70-14: a trailing `// note:` on the binding's 
     ["2", "4"],
     "the control must find the table before the comment arm means anything"
   );
-  // PINNED, not fixed. P9 rule 1 says a trailing comment on the opening line changes nothing, and
-  // today it loses the table. Not phase 4's doing: main, e164ab7 and this branch all answer [],
-  // and the UNANNOTATED `let cases = [ // note` loses it on all three too. The colon is reached and
-  // admitted; the loss is downstream in the list reader. Deferred as S70-14 in
-  // session-v70/scraps.md; this row pins the loss so a fix is a deliberate flip.
+  // FLIPPED 2026-09-12, session-v71 item A. S70-14 is closed: P9 amendment 4 rule 13 makes the
+  // list reader step over a comment in front of a row, which is where the loss always was - the
+  // colon was reached and admitted, and `topLevelElements` then handed the row reader an element
+  // that started at the `/`.
   assert.deepStrictEqual(
     spansOf("rust", "libtest", withComment),
-    [],
-    "S70-14: a trailing line comment on the opening line loses the table today. If this answers " +
-      "the control, S70-14 is closed and this row should assert [\"2\",\"4\"]"
+    ["2", "4"],
+    "S70-14 CLOSED: a trailing line comment on the opening line must answer what the control answers"
   );
 });
 
