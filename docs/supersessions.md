@@ -1895,7 +1895,7 @@ lens.test.cjs` (40 rows, including the two generated corpora), `test/review-v70-
 
 ## S36. A Rust table annotated with a plain type NAME is located, reversing P9 amendment 2
 
-**Proposed 2026-09-12, session-v70 phase 4. NOT yet ratified: S70-5 in `session-v70/scraps.md`.**
+**Ruled 2026-09-12, session-v70 phase 4. Shipped in 3.5.1. The human's ruling on S70-5 was that amendment 2's fear was answered by measurement (Python leg byte-identical to 3.5.0, fix keyed on the colon, Rust-only), so there was nothing left to decide.**
 
 **What changed.** `let cases: Cases = [ … ]`, walked by the test body, is a table. P9 amendment 2
 had ruled that spelling out of scope.
