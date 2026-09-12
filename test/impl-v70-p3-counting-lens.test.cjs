@@ -50,13 +50,20 @@ try {
 // main's copy of the same module, read-only via `git archive`. Nothing here
 // touches the index or the working tree.
 const REPO = path.join(__dirname, "..");
+// The pre-phase-3 baseline is a COMMIT, not the `main` ref: 1fb757f is main at the 3.5.0 release,
+// the last commit before session-v70. A pull-request checkout on the CI runner has `origin/main`
+// but no local `main`, so `git archive main` died there with "not a valid object name" while it
+// passed on every dev box (run 34670454201). And once this branch merges, `main` IS this code, so a
+// differential against the ref would compare the new lens with itself and prove nothing. The hash
+// stays meaningful forever; ci.yml fetches full history so it is always present.
+const PRE_V70_BASELINE = "1fb757f415b7dd1f9f956d0b761dfbcd78750ebb";
 let mainMod = {};
 let mainCleanup = () => {};
 let mainError;
 let mainDir;
 try {
   mainDir = fs.mkdtempSync(path.join(os.tmpdir(), "c80-v70p3-impl-main-"));
-  const tar = execFileSync("git", ["-C", REPO, "archive", "main", "src"], {
+  const tar = execFileSync("git", ["-C", REPO, "archive", PRE_V70_BASELINE, "src"], {
     maxBuffer: 256 * 1024 * 1024,
   });
   execFileSync("tar", ["-x", "-C", mainDir], { input: tar });
