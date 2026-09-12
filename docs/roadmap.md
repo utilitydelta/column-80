@@ -51,6 +51,15 @@ Session-v67 (2026-09-03) shipped 3.4.0: dictate into a comment, and the pid guar
 `session-v67/scraps.md`, and none of them are ratified. One known limit rather than an item
 yet: inside a block comment the sentence lands and Tighten Doc Comment refuses (S67-4).
 
+Session-v70 (2026-09-12) closed the eight `ci` rows 3.5.0 shipped red with, on branch `v70-ci-red`,
+not merged and not released: the bare-reply scanner lexes each language's literals, the test count
+runs through each language's own lens (C# gets one), a Rust table annotated with a plain type name is
+found, and `CLEAN E1` is green on the hosted runner. Two supersessions, S35 (ruled) and S36 (awaiting
+ratification, S70-5), are in `docs/supersessions.md`. Eighteen scraps and a rulings list are in
+`session-v70/scraps.md`; the review rows for every deferred limit are rewritten to pin today's answer
+and name their scrap, so nothing is red by design. Item 82 below is half met by this branch: the
+suite is green, the release workflow still skips `test:unit`.
+
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
