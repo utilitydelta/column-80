@@ -305,3 +305,160 @@ itest("[v70 D3 bounded] rust: an unbalanced prefix in front of the colon is refu
   assert.ok(took < 2000, `the locator took ${took}ms on 40k unclosed generic opens`);
   assert.deepStrictEqual(spans, [], "an annotation that opens brackets it never closes is not an annotation");
 });
+
+// ===========================================================================
+// A `:` a LINE COMMENT owns is not a binding colon [session-v70 phase 4 loop 2,
+// review rows REV70-P4 1, 2 and 3]
+// ===========================================================================
+//
+// The backwards walk reads raw characters, so it cannot see that the `:` it
+// stopped on is the last character of a comment. `annotationRunsTo` guards only
+// the region AFTER the colon, which in these shapes is a bare identifier and
+// passes, and the binding-keyword anchor then reads `let` out of the comment's
+// own prose. Every row below is a FALSE ADMIT: the locator names a list no
+// runner walks and the human gets holes punched into the test's inputs.
+
+itest("[v70 D3 comment] rust: a line comment ending in `let cases:` does not name the list below it", () => {
+  const text = wrapRust(`        /// let cases:
+        rows = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    [],
+    "P9 rule 4: nothing walks `rows`, and `cases` is not declared here at all. The only reason the " +
+      "walk reaches a name is that it read `let cases:` out of a doc comment"
+  );
+});
+
+itest("[v70 D3 comment] rust: a commented colon beside a real table blanks only the real table", () => {
+  const text = wrapRust(`        let expected = [(7, 7), (8, 8)];
+        // let expected:
+        inputs = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in expected {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    ["7", "8"],
+    "`expected` is the walked table and `inputs` is ordinary setup. Renaming `inputs` out of the " +
+      "comment blanks both lists, which is the correct table plus a column the human wrote as input"
+  );
+});
+
+itest("[v70 D3 comment] rust: the name is inside the comment too when the `=` is on the next line", () => {
+  const text = wrapRust(`        // let cases: rows
+        = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    [],
+    "the colon and the identifier after it sit on ONE line, so a gate that only refused a newline " +
+      "between the two would still admit this one"
+  );
+});
+
+itest("[v70 D3 comment] rust: a trailing line comment on a real statement cannot name the next list", () => {
+  const text = wrapRust(`        let n = 1; // let cases:
+        rows = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(spansOf("rust", "libtest", text), [], "the line holds real code before the `//`");
+});
+
+itest("[v70 D3 comment] rust: a block comment's colon stays refused", () => {
+  const text = wrapRust(`        /* setup, let cases: */
+        rows = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    [],
+    "the forward verification sees the `*/` between the colon and the `=` and refuses. The line " +
+      "gate must not be the only thing holding this shape"
+  );
+});
+
+itest("[v70 D3 comment] rust: a comment above a REAL annotated table changes nothing", () => {
+  const text = wrapRust(`        /// let cases:
+        let cases: Cases = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    ["2", "4"],
+    "the gate asks who owns the colon the walk STOPPED on, not whether a comment is nearby. This " +
+      "colon is the binding's, on a line of its own code"
+  );
+});
+
+itest("[v70 D3 comment] rust: a `:` inside a string on the line above does not name the list", () => {
+  const inString = wrapRust(`        let msg = "let cases:";
+        let cases: Cases = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", inString),
+    ["2", "4"],
+    "the string's colon is not the one the walk stops on: the `;` ends the walk first, and the real " +
+      "annotation below still answers"
+  );
+  const unterminated = wrapRust(`        let msg = "let cases:
+        rows = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", unterminated),
+    [],
+    "an unterminated string swallows the list, so the locator never reaches a `[` at all"
+  );
+});
+
+itest("[v70 D3 comment] rust: an annotation split across two lines is still an annotation", () => {
+  const text = wrapRust(`        let cases:
+            Cases = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    ["2", "4"],
+    "refusing a newline between the `:` and the `=` would have been the smaller gate and would have " +
+      "cost this table. The gate asks about the colon's own line instead"
+  );
+});

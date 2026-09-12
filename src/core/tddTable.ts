@@ -454,6 +454,57 @@ const BINDING_KEYWORD = /^(let|const|static)$/;
 // ===========================================================================
 
 
+/** Does a COMMENT, or a string, own the `:` at `at`?
+ *
+ *  The backwards walk reads raw characters, so `/// let cases:` on the line
+ *  above a list hands it a colon, an identifier and a binding keyword that are
+ *  all comment PROSE. `annotationRunsTo` cannot catch it: it guards the region
+ *  after the colon, and in that shape the region is a bare identifier that
+ *  verifies cleanly. A block comment is caught, because its closer lands inside
+ *  the verified region; a line comment's terminator is the newline, which is
+ *  behind the colon, not in front of it.
+ *
+ *  So the question is asked backwards, from the start of the colon's own line,
+ *  with the same literal/comment lens the rest of this file uses: re-lex the
+ *  line and see whether a skipped region covers the colon. That reads `//`
+ *  inside a string as ordinary text for free, which a scan for the characters
+ *  would not.
+ *
+ *  Two narrower gates were on the table. Refusing a NEWLINE between the colon
+ *  and the `=` is smaller, but it admits `// let cases: rows` with the `=` on
+ *  the next line, where colon and name share the comment's line, and it loses a
+ *  real annotation written across two lines. Scanning back for a literal `//`
+ *  is the same size as this and cannot tell one inside a string from a real
+ *  one. This gate is keyed on the thing that is actually wrong: the colon is
+ *  not code.
+ *
+ *  Bounded like the walk it guards. A line longer than the budget is answered
+ *  "owned", which refuses the table: losing one costs a gesture, naming the
+ *  wrong list blanks a column the human wrote. */
+function commentOwnsColon(text: string, at: number, profile: LiteralProfile | undefined): boolean {
+  const floor = Math.max(0, at - ANNOTATION_BUDGET);
+  let lineStart = at;
+  while (lineStart > floor && text[lineStart - 1] !== "\n") {
+    lineStart--;
+  }
+  if (lineStart > 0 && text[lineStart - 1] !== "\n") {
+    return true;
+  }
+  let i = lineStart;
+  while (i < at) {
+    const skipped = skipLiteralOrComment(text, i, profile);
+    if (skipped > i) {
+      if (skipped > at) {
+        return true;
+      }
+      i = skipped;
+      continue;
+    }
+    i++;
+  }
+  return false;
+}
+
 /** The bound name in front of a TYPE ANNOTATION, or undefined when what sits
  *  between the name and the `=` is not one.
  *
@@ -494,7 +545,10 @@ function nameBeforeAnnotation(text: string, end: number, profile: LiteralProfile
           n--;
         }
         const candidate = identBefore(text, n + 1);
-        if (candidate.length === 0 || !annotationRunsTo(text, k + 1, end, profile)) {
+        if (candidate.length === 0 || commentOwnsColon(text, k, profile)) {
+          return undefined;
+        }
+        if (!annotationRunsTo(text, k + 1, end, profile)) {
           return undefined;
         }
         // And the name must be BOUND, right here. The flag above keeps this walk
