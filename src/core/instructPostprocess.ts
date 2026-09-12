@@ -1376,13 +1376,32 @@ export function fileLocalDefinitions(source: string): Set<string> {
 // with backslash escapes. Single/double-quote strings terminate at an unescaped
 // newline (JS strings cannot span lines bare); a backtick template runs on
 // across lines, so a column-0 keyword inside one is blanked, never scanned.
-// Template interpolation and regex literals are not modeled - a nested backtick
-// inside `${...}`, or a quote/`/*` inside a regex literal (`/`/g`, `/[/*]x/`),
-// can flip parity - the accepted residuals for this scan-only consumer.
-function neutralizeTsCommentsAndStrings(source: string): string {
+// Template interpolation is not modeled - a nested backtick inside `${...}` can
+// flip parity - the accepted residual for this scan-only consumer.
+//
+// Regex literals are OPT-IN, `regexLiterals` off by default, and the default is
+// what `tsFileLocalDefinitions` on the prompt path reads. Left unmodelled, a
+// delimiter inside a regex is lexed as itself: a backtick in `` /`{3}/ `` opens
+// a template that runs to the end of the file, so a fence-handling module's
+// tests counted zero and its reply was refused. Turning the rule on for the
+// COUNTING lens fixes that; turning it on for the definition finder would move
+// the prompt's definition set, which is a different phase with its own rows.
+//
+// The rule itself is not restated here. The `/` is handed to the SAME
+// `matchRegexLiteral` and `endsInValue` the bare scanner uses, so the division
+// trap, the `.tsx` closing-tag reading and the alone-on-its-line guard exist in
+// one place and cannot drift between the two call sites. `literalEnd` is the
+// bookkeeping those two need: it marks where the most recent LITERAL ended, so
+// a blanked literal is told apart from the whitespace it looks like. Comments
+// do not set it, exactly as in `scanBare` - a comment is not a value, and the
+// token before it is what decides the `/`.
+function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?: boolean }): string {
   const out: string[] = [];
   const blank = (ch: string) => out.push(ch === "\n" ? "\n" : " ");
   const n = source.length;
+  /** Length of `out` when the most recent literal finished. Only read when
+   *  `regexLiterals` is on. */
+  let literalEnd = 0;
   let i = 0;
   while (i < n) {
     const c = source[i];
@@ -1410,6 +1429,22 @@ function neutralizeTsCommentsAndStrings(source: string): string {
       }
       continue;
     }
+    // Comments are taken above, so a `/` reaching here is a division or a
+    // regex, and only `matchRegexLiteral` can tell them apart. Asking at the
+    // `/` and nowhere else is deliberate: `endsInValue` walks back over the
+    // trailing whitespace run in the output, and asking at every character
+    // makes the scan quadratic on a comment-heavy file.
+    if (opts?.regexLiterals === true && c === "/") {
+      const regexLen = matchRegexLiteral(source, i, endsInValue(out, literalEnd));
+      if (regexLen !== undefined) {
+        for (let k = 0; k < regexLen; k++) {
+          blank(source[i + k]);
+        }
+        i += regexLen;
+        literalEnd = out.length;
+        continue;
+      }
+    }
     if (c === '"' || c === "'" || c === "`") {
       blank(c);
       i++;
@@ -1433,6 +1468,7 @@ function neutralizeTsCommentsAndStrings(source: string): string {
         blank(source[i]);
         i++;
       }
+      literalEnd = out.length;
       continue;
     }
     out.push(c);
@@ -1636,6 +1672,11 @@ function neutralizeGoCommentsAndStrings(source: string): string {
 //     it costs is that a test shape written INSIDE a hole is invisible, which
 //     runs in the refusing direction and is the same residual the TS lens
 //     already carries for `${...}`.
+//   - the C# 11 raw string (`"""`) is its own literal, not `""` followed by a
+//     one-line string. Read the second way every line of the body is code, so a
+//     scaffold helper whose raw string holds a `[Fact]` was admitted as a test
+//     file and a real test file's count went up by whatever its raw strings
+//     quoted.
 // `//`, a plain `"..."` (backslash escapes, terminated by the line like the
 // compiler's own rule) and a `'c'` char literal match Rust's reading and are
 // lexed the same way here.
@@ -1699,6 +1740,56 @@ function neutralizeCSharpCommentsAndStrings(source: string): string {
       }
       continue;
     }
+    // A C# 11 raw string: a run of three or more `"`, optionally prefixed by a
+    // run of `$` (`"""`, `$"""`, `$$"""`). The body runs to the next run of at
+    // least as many quotes and blanks whole, across lines. There is no escape
+    // character to model, which is the point of the form: a shorter quote run
+    // inside the body is content, not a close.
+    //
+    // Tried BEFORE the `$"` and `"` branches below. Read by those, `"""` is an
+    // empty string plus a third quote that dies at the end of its line, and
+    // every line of the body is then lexed as code.
+    //
+    // A raw string with no closing run blanks to the end of the reply, and the
+    // tests after it stop being counted. That is the refusing direction, which
+    // is the one to be wrong in: a literal left open is what a truncated reply
+    // looks like, and the alternative is reading its body as code.
+    if (c === '"' || c === "$") {
+      let dollars = 0;
+      while (source[i + dollars] === "$") {
+        dollars++;
+      }
+      let openQuotes = 0;
+      while (source[i + dollars + openQuotes] === '"') {
+        openQuotes++;
+      }
+      if (openQuotes >= 3) {
+        const open = dollars + openQuotes;
+        for (let k = 0; k < open; k++) {
+          blank(source[i + k]);
+        }
+        i += open;
+        while (i < n) {
+          if (source[i] !== '"') {
+            blank(source[i]);
+            i++;
+            continue;
+          }
+          let run = 0;
+          while (source[i + run] === '"') {
+            run++;
+          }
+          for (let k = 0; k < run; k++) {
+            blank(source[i + k]);
+          }
+          i += run;
+          if (run >= openQuotes) {
+            break;
+          }
+        }
+        continue;
+      }
+    }
     // A plain or `$`-interpolated string. Backslash escapes, and it cannot
     // span a line: a reply cut mid-literal must not blank every test after it.
     if (c === '"' || (c === "$" && c2 === '"')) {
@@ -1760,12 +1851,20 @@ function neutralizeCSharpCommentsAndStrings(source: string): string {
  *  Two lenses there is what let an implementation whose string holds `it(`
  *  satisfy the gate that exists to refuse it.
  *
+ *  TypeScript is counted with the regex rule ON. The prompt path's
+ *  `tsFileLocalDefinitions` reads the same lens with it off, because a regex
+ *  rule changes the definition set it hands the model and that is not this
+ *  phase's move. The counter needs it: a backtick or a quote inside a regex
+ *  literal opened a string that ran past every later test.
+ *
  *  An unregistered languageId never reaches here: `extractTestFunctions`
- *  answers undefined on the shape table first. The Rust fallback is for
- *  `extractTestModule`, which is Rust's own entry point. */
+ *  answers undefined on the shape table first. The Rust fallback is therefore
+ *  unreachable today, since every key in `TEST_FUNCTION_SHAPES` has a branch
+ *  above it. It stays as the answer for an id added to that table before it is
+ *  given a lens of its own. */
 function countingLensFor(languageId: string): (source: string) => string {
   if (TS_LANGUAGE_IDS.has(languageId)) {
-    return neutralizeTsCommentsAndStrings;
+    return (source) => neutralizeTsCommentsAndStrings(source, { regexLiterals: true });
   }
   if (languageId === "python") {
     return neutralizePythonCommentsAndStrings;

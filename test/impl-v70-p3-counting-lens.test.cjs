@@ -14,12 +14,19 @@
 //     including the three forms whose C-escape reading under-counts today
 //   - the routing itself: the form each of the other four languages owns and
 //     Rust's lens does not know
+//   - the C# 11 raw string and the TypeScript regex literal, both added in
+//     phase 3 LOOP 2 off the adversarial review's two HIGH findings
 //   - Rust, which must not move: it is the language the old lens was written
 //     for and every Rust answer stays where it is
-//   - the measured differential against `git archive main src`, two corpora:
-//     one with no test shape in any literal or comment, which must not move at
-//     all, and one where every reply hides a shape, where every move must run
-//     in the direction the goal authorises
+//   - the measured differential against a facade of the pre-v70 commit below,
+//     two corpora: one with no test shape in any literal or comment, which must
+//     not move at all, and one where every reply hides a shape, where every
+//     move must run in the direction the goal authorises
+//
+// A row whose comment says NON-MOVE GUARD was green before the change it sits
+// under and is green after. It is written down because the new branch is what
+// could break it, and a guard that was never red is worth having only when it
+// says so.
 //
 // Counts are compared against a BASELINE fixture rather than written down: the
 // same body with the payload replaced by ordinary text. A hard-coded "2" would
@@ -41,7 +48,7 @@ let bundleError;
 try {
   ({ mod, cleanup } = bundleCore(
     "impl-v70-p3-counting-lens",
-    `export { extractTestModule, extractTestFunctions } from "../src/core/instructPostprocess";\n`
+    `export { extractTestModule, extractTestFunctions, tsFileLocalDefinitions } from "../src/core/instructPostprocess";\n`
   ));
 } catch (e) {
   bundleError = e;
@@ -70,7 +77,7 @@ try {
   const entry = path.join(mainDir, "src", "core", "instructPostprocess");
   ({ mod: mainMod, cleanup: mainCleanup } = bundleCore(
     "impl-v70-p3-counting-lens-main",
-    `export { extractTestModule, extractTestFunctions } from ${JSON.stringify(entry)};\n`
+    `export { extractTestModule, extractTestFunctions, tsFileLocalDefinitions } from ${JSON.stringify(entry)};\n`
   ));
 } catch (e) {
   mainError = e;
@@ -361,6 +368,114 @@ itest("[v70 P3 C# 12] an unterminated regular string ends at the line, so the CO
   );
 });
 
+// ---------------------------------------------------------------------------
+// The C# 11 raw string (`"""`), added in phase 3 loop 2. Lexed as `""` plus a
+// one-line string, every line of the body reads as CODE: a scaffold helper
+// whose raw string quoted a `[Fact]` was admitted as a test file, and a real
+// test file's count rose by whatever its raw strings quoted.
+// ---------------------------------------------------------------------------
+
+itest('[v70 P3 C# 13] a """ raw string spans lines and its body is not code', () => {
+  pinsCount(
+    "csharp",
+    L('    var example = """', "[Fact]", "public void Ghost() { }", '    """;'),
+    baselineOf("csharp"),
+    'a raw string is one literal; read as `""` plus a one-line string its body is lexed as code'
+  );
+});
+
+itest('[v70 P3 C# 14] the $ prefixes are raw too: $""" and $$"""', () => {
+  for (const prefix of ["$", "$$", "$$$"]) {
+    pinsCount(
+      "csharp",
+      L(`    var example = ${prefix}"""`, "[Fact]", "public void Ghost() { }", '    """;'),
+      baselineOf("csharp"),
+      `${prefix}""" is an interpolated raw string; the hole count changes nothing here`
+    );
+  }
+});
+
+// A run of four or more quotes is where the counting lens and the bare
+// completeness scanner part company. `BARE_LANG_RULES.csharp` has a raw entry
+// for the VERBATIM form only, so a four-quote run reads to it as two empty
+// strings, the scan ends inside a literal and the reply is refused. That
+// refusal costs a re-run, which is the direction P8 amendment 3 already
+// licenses the bare path to be wrong in, and the bare scanner is phase 2's
+// rather than this lens's. The two rows below therefore state the fenced count
+// and PIN the bare refusal, so the day the bare rules learn the form the row
+// fails and gets rewritten rather than quietly widening.
+const pinsFencedCountBareRefused = (id, ex, want, why) => {
+  const lang = LANG[id];
+  const body = lang.base(ex);
+  const f = lang.run(fenced(lang.fence, body));
+  assert.ok(f, `${id} FENCED refused outright.\n${why}\n--- body ---\n${body}`);
+  assert.strictEqual(f.testCount, want, `${id} FENCED count.\n${why}\n--- body ---\n${body}`);
+  assert.strictEqual(
+    lang.run(body),
+    undefined,
+    `${id} BARE answered. The bare scanner has no rule for a quote run of four, so it still refuses\n` +
+      `this reply; if it now admits it, this row is the place to say so.\n--- body ---\n${body}`
+  );
+};
+
+itest("[v70 P3 C# 15] a quote run SHORTER than the opener is content, not a close", () => {
+  // The rule that makes the form useful: a four-quote opener quotes a body
+  // that itself contains a three-quote run. Closing on the first run of three
+  // would end the literal early and lex the rest of the body as code.
+  pinsFencedCountBareRefused(
+    "csharp",
+    L('    var example = """"', 'the """ opener', "[Fact]", "public void Ghost() { }", '    """";'),
+    baselineOf("csharp"),
+    "the closing run must be at least as long as the opening one"
+  );
+});
+
+itest("[v70 P3 C# 16] a longer closing run still closes, and the code after it is live", () => {
+  // Both halves in one fixture: the attribute INSIDE the body does not count
+  // and the attribute AFTER the close does. A lens that blanks to the end of
+  // the reply passes the first half and fails the second.
+  pinsFencedCountBareRefused(
+    "csharp",
+    L('    var example = """', "[Fact] public void Ghost() { }", '    """";', "    [Fact] public void Extra() { }"),
+    baselineOf("csharp") + 1,
+    "a run of at least the opening length closes; what follows is code and counts"
+  );
+});
+
+itest('[v70 P3 C# 17] a raw string with NO closing run blanks to the end of the reply', () => {
+  // The refusing direction, and the one to be wrong in: a literal left open is
+  // what a truncated reply looks like, and the alternative is reading its body
+  // as code. Stated on the fenced path, like C# 12: the bare path has its own
+  // answer to an unclosed literal under P8 rule 3.
+  const body = CS_BASE(L('    var example = """', "[Fact]", "public void Ghost() { }"));
+  const res = extractTestFunctions(fenced("csharp", body), "csharp");
+  assert.ok(res, "FENCED: the cut raw string lost the test ABOVE it too, which is a lens defect");
+  assert.strictEqual(
+    res.testCount,
+    baselineOf("csharp") - 1,
+    `everything after an unclosed raw string blanks, so the [Fact] below it stops counting\n${body}`
+  );
+});
+
+itest('[v70 P3 C# 18] two quotes are still an empty string and one is still a string', () => {
+  // A NON-MOVE guard: green before the raw branch existed and green after, by
+  // construction. It is here because the raw branch is the thing that could
+  // break it. An empty string is ordinary C#, and reading a two-quote run as a
+  // raw opener would blank the rest of the file.
+  pinsCount(
+    "csharp",
+    L('    var empty = "";', '    var example = "[Fact] public void Ghost() { }";'),
+    baselineOf("csharp"),
+    'a run of two quotes is an empty string, not a raw opener'
+  );
+  pinsCount(
+    "csharp",
+    L('    var empty = $"";', '    var example = "[Fact] public void Ghost() { }";'),
+    baselineOf("csharp"),
+    'the $ prefix does not lower the three-quote threshold'
+  );
+});
+
 // ===========================================================================
 // The routing. One form per language that the Rust lens does not know, so a
 // green row here is the lens actually being selected by languageId.
@@ -461,6 +576,186 @@ itest("[v70 P3 route] an unregistered languageId is undefined before any lens is
   }
 });
 
+// ===========================================================================
+// The TypeScript regex literal, added in phase 3 loop 2, and OPT-IN.
+//
+// `neutralizeTsCommentsAndStrings` serves two consumers: the counter here and
+// `tsFileLocalDefinitions` on the prompt path. Unmodelled, a delimiter inside a
+// regex is lexed as itself, and a backtick is the expensive one: it opens a
+// template that runs to the end of the file, so a fence-handling module's tests
+// counted zero and the reply was REFUSED. The rule is switched on for the
+// counting lens only; the last row here is the one that says the prompt path
+// did not move.
+//
+// The rule itself belongs to `matchRegexLiteral`/`endsInValue`, which phase 2
+// wrote and the bare scanner already calls. These rows check that the lens
+// reaches that rule and keeps the bookkeeping it needs, not that the rule is
+// right: phase 2's own rows own that.
+// ===========================================================================
+
+itest("[v70 P3 ts-regex 1] a BACKTICK inside a regex does not open a template that eats the rest of the reply", () => {
+  // The costly direction and the review's finding: the tests below the regex
+  // were blanked, the count reached zero and the reply was refused outright.
+  pinsCount(
+    "typescript",
+    "  const re = /" + BT + "{3}/;",
+    baselineOf("typescript"),
+    "a backtick inside a regex is regex syntax; lexed as a template delimiter it runs past every later test"
+  );
+});
+
+itest("[v70 P3 ts-regex 2] a quote inside a regex does not open a string, single or double", () => {
+  // The admitting direction: the `it(` written inside the regex is not a test.
+  pinsCount(
+    "typescript",
+    "  const re = /it('g')/;",
+    baselineOf("typescript"),
+    "an apostrophe inside a regex is regex syntax"
+  );
+  pinsCount(
+    "typescript",
+    '  const re = /it("g")/;',
+    baselineOf("typescript"),
+    "a double quote inside a regex is regex syntax"
+  );
+});
+
+itest("[v70 P3 ts-regex 3] a / inside a CHARACTER CLASS does not close the regex", () => {
+  // Discriminating against a matcher with no class rule: closing on the inner
+  // slash leaves `]it(x)/;` behind as code, and the `it(` in it counts.
+  pinsCount(
+    "typescript",
+    "  const re = /[/]it(x)/;",
+    baselineOf("typescript"),
+    "the class brackets suspend the closing delimiter"
+  );
+});
+
+itest("[v70 P3 ts-regex 4] a DIVISION is not a regex: a / after a value divides", () => {
+  // A NON-MOVE guard: with no regex rule at all this already passed. It is here
+  // because the new rule is what could break it. The trap the opt-in rule buys into. Reading `/ test(0) /` as a regex blanks
+  // a real call, which is the admitting direction: it hides whatever the
+  // operand held. The `test(` here is the visible proof that the operand
+  // survived.
+  pinsCount(
+    "typescript",
+    "  const q = width / test(0) / 2;",
+    baselineOf("typescript") + 1,
+    "an identifier before the slash is a value in hand, so the slash divides it"
+  );
+});
+
+itest("[v70 P3 ts-regex 5] a postfix ++ leaves a value in hand, so the / after it divides", () => {
+  // A NON-MOVE guard, like the row above.
+  pinsCount(
+    "typescript",
+    "  const q = counter++ / test(0) / 2;",
+    baselineOf("typescript") + 1,
+    "`x++ / 2` is a division; reading the doubled + as an operator opens a phantom regex"
+  );
+});
+
+itest("[v70 P3 ts-regex 6] a regex FIRST on its line is still a regex when code follows it", () => {
+  // The token before it is the `{` that opened the enclosing arrow body, which
+  // is not a value, so the slash opens a regex. Only the trailing `.test(`
+  // survives, and it counts because the fenced pattern matches after a dot.
+  pinsCount(
+    "typescript",
+    '  /it("ghost")/.test(name);',
+    baselineOf("typescript") + 1,
+    "a regex may begin a line; what it must not do is fill one"
+  );
+});
+
+itest("[v70 P3 ts-regex 7] a regex ALONE on its line is left as text", () => {
+  // A NON-MOVE guard: a lens with no regex rule leaves the line as text too, so
+  // the answer is the same on both sides. What it pins is that the new rule
+  // does NOT fire here. Phase 2's rule, reached through the same matcher. A regex filling a line by
+  // itself is an expression statement that does nothing, and the shape is far
+  // more often prose with slashes at both ends. Left as text, the `it(` inside
+  // it counts, which is the admitting direction and the cost of the rule.
+  pinsCount(
+    "typescript",
+    '  /it("ghost", () => {});/',
+    baselineOf("typescript") + 1,
+    "`aloneOnItsLine` refuses the lex; the line stays code and its `it(` is counted"
+  );
+});
+
+itest("[v70 P3 ts-regex 8] all four TS-family ids get the regex-aware lens", () => {
+  const body = TS_BASE("  const re = /" + BT + "{3}/;");
+  const ids = ["typescript", "typescriptreact", "javascript", "javascriptreact"];
+  for (const id of ids) {
+    const f = extractTestFunctions(fenced("typescript", body), id);
+    assert.ok(f, `${id} FENCED refused a reply whose only backtick is inside a regex literal`);
+    assert.strictEqual(
+      f.testCount,
+      baselineOf("typescript"),
+      `${id} FENCED counted differently from the plain baseline; the alias ids must share one lens`
+    );
+    const b = extractTestFunctions(body, id);
+    assert.ok(b, `${id} BARE refused the same reply`);
+    assert.strictEqual(b.testCount, baselineOf("typescript"), `${id} BARE count`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The prompt path does not move. `tsFileLocalDefinitions` is the ONLY caller of
+// the lens with the regex rule off, so its answer over a real corpus is the
+// whole exposed surface of the default. The baseline facade is the same
+// pre-v70 commit the differential rows use, where both that function and the
+// lens it reads are byte-identical to the working tree's, regex branch aside.
+// ---------------------------------------------------------------------------
+
+const tsSourcesUnder = (dir) => {
+  const out = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name.startsWith(".")) continue;
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === "out" || e.name === "dist") continue;
+        walk(full);
+      } else if (e.name.endsWith(".ts") || e.name.endsWith(".tsx")) {
+        out.push(full);
+      }
+    }
+  };
+  walk(dir);
+  return out;
+};
+
+// A NON-MOVE guard by definition: the baseline it compares against is what the
+// default must still produce.
+test("[v70 P3 ts-regex 9] with the regex rule OFF the definition finder answers identically to the pre-v70 baseline, over the whole repo", (ctx) => {
+  if (bundleError || mainError) return ctx.skip("a facade failed to build");
+  const files = [...tsSourcesUnder(path.join(REPO, "src")), ...tsSourcesUnder(path.join(REPO, "test"))];
+  assert.ok(files.length > 100, `only ${files.length} TypeScript sources found; the corpus is not the repo`);
+
+  const diffs = [];
+  let withDefinitions = 0;
+  for (const f of files) {
+    const src = fs.readFileSync(f, "utf8");
+    const now = [...mod.tsFileLocalDefinitions(src)].sort();
+    const before = [...mainMod.tsFileLocalDefinitions(src)].sort();
+    if (now.length > 0) withDefinitions++;
+    if (JSON.stringify(now) !== JSON.stringify(before)) {
+      diffs.push(`${path.relative(REPO, f)}\n  baseline: ${before.join(", ")}\n  now:      ${now.join(", ")}`);
+    }
+  }
+  assert.strictEqual(
+    diffs.length,
+    0,
+    `${diffs.length} of ${files.length} files changed their definition set. The regex rule is opt-in precisely so the\n` +
+      `prompt path cannot move; a diff here means the default was flipped or the shared lens was edited.\n\n${diffs.slice(0, 5).join("\n\n")}`
+  );
+
+  // A corpus that answers nothing proves nothing.
+  assert.ok(
+    withDefinitions > 50,
+    `only ${withDefinitions} of ${files.length} files produced any definitions, so the comparison is close to empty`
+  );
+});
 // ===========================================================================
 // Rust does not move. It is the language the old lens was written for, and
 // routing must leave it where it is: nesting block comments, raw strings,
