@@ -722,7 +722,7 @@ rtest("[REV71-P1 16] HOLDING: the comment skip is LINEAR, not quadratic, on path
 // RED. Rule 13 is implemented at the element head of the LIST and nowhere else.
 // ===========================================================================
 
-dtest("[REV71-P1 17] RED HIGH: a trailing comma plus a note makes the COMMENT the expected value", () => {
+dtest("[REV71-P1 17] CLOSED HIGH: a trailing comma plus a note does not make the COMMENT the expected value", () => {
   // rustfmt writes a trailing comma on every multi-line tuple, and a note on the
   // expected column is the commonest annotation a model writes. Together they
   // leave an element after the last comma that is NOTHING but a comment, and
@@ -759,7 +759,7 @@ dtest("[REV71-P1 17] RED HIGH: a trailing comma plus a note makes the COMMENT th
   );
 });
 
-dtest("[REV71-P1 18] RED HIGH: the same comment-as-column reaches Go, TypeScript and both Python legs", () => {
+dtest("[REV71-P1 18] CLOSED HIGH: no comment-as-column on Go, TypeScript or either Python leg", () => {
   const legs = [
     ["go", "gotest", go("\n\t\t{1, 2, // the answer\n\t\t},\n\t\t{3, 4},\n\t"), ["2", "4"]],
     ["typescript", "vitest", ts("\n  [1, 2, // the answer\n  ],\n  [3, 4],\n"), ["2", "4"]],
@@ -792,7 +792,7 @@ dtest("[REV71-P1 18] RED HIGH: the same comment-as-column reaches Go, TypeScript
   );
 });
 
-dtest("[REV71-P1 19] RED MED: a span STARTS inside a comment, and in a keyed row it swallows the KEY", () => {
+dtest("[REV71-P1 19] CLOSED MED: no span starts inside a comment, and a keyed row keeps its KEY", () => {
   const positional = rust(`        let cases = [ (1, /* pick */ 2), (3, 4) ];\n${RUST_RUN}`);
   assert.deepStrictEqual(
     now("rust", "libtest", positional),
@@ -817,7 +817,7 @@ dtest("[REV71-P1 19] RED MED: a span STARTS inside a comment, and in a keyed row
   );
 });
 
-dtest("[REV71-P1 20] RED MED: the change turns a SAFE refusal into a comment-bearing span", () => {
+dtest("[REV71-P1 20] CLOSED MED: the table is found and the span carries no comment", () => {
   // Row 19's shapes are equally wrong at d53b71d, so the fair charge against
   // this phase is reachability. Put a note on the opening line as well and
   // d53b71d refuses the whole table — no spans, no holes, the third floor
@@ -899,7 +899,7 @@ dtest("[REV71-P1 21] KNOWN LIMIT S71-2: a comment between the OPENER and the lis
   );
 });
 
-dtest("[REV71-P1 22] RED LOW: the binding KEYWORD may be comment prose, and `mut` adds a second hop", () => {
+dtest("[REV71-P1 22] CLOSED LOW: the binding KEYWORD may not be comment prose, on either hop", () => {
   // `commentOwnsColon` guards the `:`. Nothing guards the token in front of the
   // name, so a line comment ending in `let` or `static` supplies the keyword for
   // the code on the line below it. The no-`mut` half is d53b71d's and this phase

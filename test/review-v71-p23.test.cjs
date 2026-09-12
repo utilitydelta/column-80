@@ -185,7 +185,7 @@ const PROSE_QUNIT = L(
   "});"
 );
 
-rtest("[REV71-P23 1] the widened opener splices a leading PROSE sentence into the test file", () => {
+rtest("[REV71-P23 1] CLOSED: the widened opener no longer splices a leading PROSE sentence", () => {
   const admitted = [];
   for (const reply of [PROSE_DENO, PROSE_QUNIT]) {
     const w = work.extractTestFunctions(reply, "typescript");
@@ -232,7 +232,7 @@ rtest("[REV71-P23 2] HOLDING: the same two replies WITHOUT the leading sentence 
 const FENCE_MOD = L("const OPEN = new RegExp(", `  /^${BT}{3}/`, ");");
 const T = (n) => `it("t${n}", () => { expect(${n}).toBe(${n}); });`;
 
-rtest("[REV71-P23 3] two backtick-bearing declined regexes still refuse the whole module", () => {
+rtest("[REV71-P23 3] CLOSED: two backtick-bearing declined regexes no longer refuse the module", () => {
   const body = L(FENCE_MOD, T(1), T(2), T(3), FENCE_MOD);
   const r = three(body);
   assert.strictEqual(
@@ -248,7 +248,7 @@ rtest("[REV71-P23 3] two backtick-bearing declined regexes still refuse the whol
   );
 });
 
-rtest("[REV71-P23 4] the rewind's reach is one backtick, measured over k=1..8", () => {
+rtest("[REV71-P23 4] CLOSED: every k of 1..8 declined backtick regexes answers the hand count", () => {
   const ALONE = (n) =>
     L(`it("m${n}", () => {`, "  expect(s).toMatch(", `    /^${BT}{3}/`, "  );", "});");
   const rows = [];
@@ -286,7 +286,7 @@ rtest("[REV71-P23 4] the rewind's reach is one backtick, measured over k=1..8", 
 // moving to refusal.
 // ===========================================================================
 
-rtest("[REV71-P23 5] node:test / vitest `test(name, options, fn)` is refused", () => {
+rtest("[REV71-P23 5] CLOSED: node:test / vitest `test(name, options, fn)` counts", () => {
   const bodies = [
     'test("adds", { timeout: 100 }, () => { assert.strictEqual(add(1, 2), 3); });',
     'test("adds", { skip: true }, (t) => { t.assert.ok(add(1, 2)); });',
@@ -325,7 +325,7 @@ rtest("[REV71-P23 5] node:test / vitest `test(name, options, fn)` is refused", (
 // ran to 2,809 output tokens.
 // ===========================================================================
 
-rtest("[REV71-P23 6] the rewind counts a truncated template's CONTENT as tests", () => {
+rtest("[REV71-P23 6] CLOSED: a truncated template's CONTENT is not counted as tests", () => {
   const cases = {
     "a scaffolder cut mid-template": L(
       "export function scaffold(name: string): string {",
@@ -378,7 +378,7 @@ const FALLBACK_IMPL = L(
   "}"
 );
 
-rtest("[REV71-P23 7] the `!dotted` fallback counts an implementation with no test in it", () => {
+rtest("[REV71-P23 7] CLOSED: the fallback asks for a title, so an implementation is refused", () => {
   const r = three(FALLBACK_IMPL);
   assert.strictEqual(
     r.work,
@@ -398,7 +398,7 @@ rtest("[REV71-P23 7] the `!dotted` fallback counts an implementation with no tes
 // long typed return annotation refuses a real test. Measured threshold below.
 // ===========================================================================
 
-rtest("[REV71-P23 8] a return type longer than 200 characters refuses a real test", () => {
+rtest("[REV71-P23 8] CLOSED: a 197-character return type counts", () => {
   const mk = (len) => {
     let t = "Promise<{ ";
     let i = 0;
@@ -431,7 +431,7 @@ rtest("[REV71-P23 8] a return type longer than 200 characters refuses a real tes
 // family and is not named, and the generic arrow is not named at all.
 // ===========================================================================
 
-rtest("[REV71-P23 9] a generic arrow callback and a concatenated title are refused", () => {
+rtest("[REV71-P23 9] CLOSED: a generic arrow callback and a concatenated title count", () => {
   const cases = {
     "generic arrow callback": 'it("a", <T>(x: T) => { expect(x).toBeDefined(); });',
     "concatenated title": 'it("returns " + n + " rows", () => { expect(rows).toHaveLength(n); });',
