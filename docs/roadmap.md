@@ -60,6 +60,28 @@ ratification, S70-5), are in `docs/supersessions.md`. Eighteen scraps and a ruli
 and name their scrap, so nothing is red by design. Item 82 below is half met by this branch: the
 suite is green, the release workflow still skips `test:unit`.
 
+Session-v71 (2026-09-12) turned session-v70's leftover rulings list into measured fixes, on branch
+`session-v71`. NOT released. Two supersessions, **S37** (a `mut` binding and a comment inside a list
+are both part of the table) and **S38** (a TypeScript test call is known by its arguments, and an
+unclosed template is not a template), both awaiting ratification. Seven pinned KNOWN LIMIT rows
+flipped: S70-8, S70-10, S70-11, S70-14, S70-19. S70-17 closed a different way - the pre-v31 tree does
+not exist in the rewritten history at all, so the two v31 freeze rows are re-pinned to `4c43c9c`
+(1.3.0, the root) and now FAIL rather than skip when their baseline is unreachable.
+
+Three measurement documents came out of it and none is a build instruction:
+
+- `session-v71/rebaseline.md`. S35 moved the fenced count, and the question was which arm numbers
+  move. **None.** 231 distinct recorded replies on this box, zero moves on three surfaces, and not
+  one of them is a test reply - every arm recorded here is fn-gen or injection.
+- `session-v71/heuristics.md`. The eight lexing heuristics named, and the price of replacing the
+  TypeScript ones with a real scanner: `typescript` costs +1,028,133 bytes compressed and does not
+  tree-shake; `acorn` costs +34,205, fails on exactly two constructs (decorators, JSX), and gets
+  every question the heuristics guess at right. Neither construct appears once in any population
+  measured. **This one is the founder's call and is deliberately not built.**
+- `session-v71/harvest-counter.json`, 3537 distinct replies the unit suite hands the counter, with
+  `build-harvest.cjs` beside it. S35's "152 harvested fenced fixtures" were never committed; this is
+  the replacement and every S38 move is named against it.
+
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
