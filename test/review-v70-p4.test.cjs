@@ -128,7 +128,7 @@ rtest("[REV70-P4 3] a real table plus a commented colon blanks BOTH lists", () =
 // Pre-existing (main answers the same), and this commit did not close it while
 // standing on the same anchor.
 
-rtest("[REV70-P4 4] KNOWN LIMIT S70-8: `let mut cases: [(u32, u64); 2] = [ … ]` loses the table (rule 2, form 1)", () => {
+rtest("[REV70-P4 4] CLOSED S70-8: `let mut cases: [(u32, u64); 2] = [ … ]` finds the table (rule 2, form 1)", () => {
   const mk = (bind) => wrap(`        ${bind} = [
             (1, 2),
             (3, 4),
@@ -138,20 +138,18 @@ rtest("[REV70-P4 4] KNOWN LIMIT S70-8: `let mut cases: [(u32, u64); 2] = [ … ]
         }`);
   const control = spansOf("rust", "libtest", mk("let mut cases"));
   assert.deepStrictEqual(control, ["2", "4"], "the UNANNOTATED `let mut` control must find the table first");
-  // PINNED, not fixed. P9 rule 1 says the annotation changes nothing, and here it does: `mut` is
-  // not in BINDING_KEYWORD and it is the token the walk lands on, so every rule-2 annotation form
-  // is lost the moment the binding is `let mut`. Main answers the same, so phase 4 neither opened
-  // nor widened it, and closing it widens the anchor in the false-admit direction. Deferred as
-  // S70-8 in session-v70/scraps.md; this row pins today's loss so a fix is a deliberate flip.
+  // FLIPPED 2026-09-12, session-v71 item A. S70-8 is closed: P9 amendment 4 rule 12 makes `mut`
+  // part of the binding, so the annotation walk keeps walking instead of stopping on it. The row
+  // asserts the CONTROL rather than a literal, which is the same differential it always was.
   assert.deepStrictEqual(
     spansOf("rust", "libtest", mk("let mut cases: [(u32, u64); 2]")),
-    [],
-    "S70-8: the annotated `let mut` table is lost today. If this answers the control, S70-8 is " +
-      "closed and this row should be rewritten to assert `control`"
+    control,
+    "S70-8 CLOSED: the annotated `let mut` table must answer exactly what the unannotated `let " +
+      "mut` control answers"
   );
 });
 
-rtest("[REV70-P4 5] KNOWN LIMIT S70-8: `let mut cases: Vec<(u32, u64)> = vec![ … ]` loses the table (rule 2, form 3)", () => {
+rtest("[REV70-P4 5] CLOSED S70-8: `let mut cases: Vec<(u32, u64)> = vec![ … ]` finds the table (rule 2, form 3)", () => {
   const mk = (bind) => wrap(`        ${bind} = vec![
             (1, 2),
             (3, 4),
@@ -161,13 +159,14 @@ rtest("[REV70-P4 5] KNOWN LIMIT S70-8: `let mut cases: Vec<(u32, u64)> = vec![ �
         }`);
   const control = spansOf("rust", "libtest", mk("let mut cases"));
   assert.deepStrictEqual(control, ["2", "4"], "the UNANNOTATED `let mut` control must find the table first");
-  // PINNED, not fixed: S70-8, same mechanism as row 4. A `Vec` case table is the one a model is
-  // most likely to bind with `let mut`, and it is the spelling P9 rule 2 names third.
+  // FLIPPED 2026-09-12, session-v71 item A: S70-8, same mechanism as row 4. A `Vec` case table is
+  // the one a model is most likely to bind with `let mut`, and it is the spelling P9 rule 2 names
+  // third.
   assert.deepStrictEqual(
     spansOf("rust", "libtest", mk("let mut cases: Vec<(u32, u64)>")),
-    [],
-    "S70-8: the annotated `let mut` Vec table is lost today. If this answers the control, S70-8 " +
-      "is closed and this row should assert `control`"
+    control,
+    "S70-8 CLOSED: the annotated `let mut` Vec table must answer exactly what the unannotated " +
+      "`let mut` control answers"
   );
 });
 
