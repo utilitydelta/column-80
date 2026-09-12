@@ -759,6 +759,36 @@ itest("[v70 P2 typescript] a trailing PROSE line with slashes in it is refused",
   );
 });
 
+itest("[v70 P2 typescript] loop 3: a slash-wrapped prose line in the MIDDLE hiding a `(` is refused", () => {
+  refuses(
+    "typescript",
+    `it("adds", () => {
+  expect(add(1, 2)).toBe(3);
+});
+/ see helper( for the rest /
+it("subs", () => {
+  expect(sub(3, 1)).toBe(2);
+});`,
+    "P8 rule 3. Lexed as a regex the line blanks whole and the `(` is never counted, so a reply " +
+      "that does not parse is admitted. A regex alone on its line is an expression statement that " +
+      "does nothing and no test writes one, so the line stays text and the paren refuses it, which " +
+      "is what main answered before the scanner knew regexes."
+  );
+});
+
+itest("[v70 P2 typescript] loop 3: a regex at the START of a line followed by code is still a regex", () => {
+  admits(
+    "typescript",
+    `it("matches", () => {
+  const ok =
+    /^[a-z]+(?:-[a-z]+)*$/.test(slug);
+  expect(ok).toBe(true);
+});`,
+    "the whole-line rule must not fire here: the line does not END at the regex, so the `(` inside " +
+      "it is still blanked and the reply balances."
+  );
+});
+
 itest("[v70 P2 typescript] a long blanked comment run scans in linear time", () => {
   const note = "  // note\n";
   const lines = Math.ceil(80000 / note.length);

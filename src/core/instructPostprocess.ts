@@ -681,11 +681,33 @@ function matchRegexLiteral(text: string, i: number, prevIsValue: boolean): numbe
       while (k < text.length && /[a-z]/.test(text[k])) {
         k++;
       }
-      return k - i;
+      return aloneOnItsLine(text, i, k) ? undefined : k - i;
     }
     k++;
   }
   return undefined;
+}
+
+/** Is the span `[i, end)` the only thing on its line? A regex literal that
+ *  fills a line by itself is an expression statement that does nothing, and no
+ *  test writes one. A prose line that starts and ends with a slash is exactly
+ *  that shape: `/ see helper( for the rest /` lexed as a regex, its `(` was
+ *  blanked before the delimiter count saw it, and a reply that does not parse
+ *  was admitted. Left as text, the paren is counted and the reply is refused,
+ *  which is what main did before the scanner knew regexes at all. */
+function aloneOnItsLine(text: string, i: number, end: number): boolean {
+  let b = i - 1;
+  while (b >= 0 && (text[b] === " " || text[b] === "\t")) {
+    b--;
+  }
+  if (b >= 0 && text[b] !== "\n") {
+    return false;
+  }
+  let a = end;
+  while (a < text.length && (text[a] === " " || text[a] === "\t" || text[a] === "\r")) {
+    a++;
+  }
+  return a >= text.length || text[a] === "\n";
 }
 
 /**
