@@ -240,11 +240,13 @@ export function extractRequestedFunction(
 /** Per-language lexing for the bare path's completeness scan, and the shape a
  *  bare reply's FIRST line may take.
  *
- *  The counting lens above deliberately stays as it is (the Rust lexer, over
- *  every language) because changing it would move the FENCED path, which is the
- *  measurement baseline for every language arm in the roadmap. This table is
- *  only ever consulted for a reply that arrived with no fence at all, so it can
- *  be right per language without moving anything that already shipped. */
+ *  This table is SEPARATE from the counting lens (`countingLensFor`) and stays
+ *  separate. It is consulted only for a reply that arrived with no fence at
+ *  all, and it answers a different question: whether the reply CLOSES, not what
+ *  is inside it. Session-v70 phase 3 gave the counting lens its own per-language
+ *  routing and measured the fenced move that came with it; the two lenses still
+ *  disagree in the refusing direction, which amendment 3 of the P8 contract
+ *  already settles. */
 /** A literal whose body takes NO backslash escape at all. What ends it is the
  *  close delimiter and nothing else.
  *
@@ -1027,8 +1029,11 @@ BARE_TEST_FUNCTION_SHAPES.javascriptreact = BARE_TEST_FUNCTION_SHAPES.typescript
  * Sibling of extractTestModule, and deliberately NOT a widening of it: Rust's
  * guard requires a `mod` wrapper and counts `#[test]`, which is the shape that
  * rejects the bare-function reply — exactly the shape the other four languages
- * must ACCEPT. Same fence requirement, same comment/string neutralization before
- * counting, so a `def test_x` inside a docstring never inflates the count.
+ * must ACCEPT. Same fence requirement, and the same neutralize-then-count
+ * discipline, but through the lens of the reply's OWN language: a `def test_x`
+ * inside a `'''` block, an `it(` inside a template literal and a
+ * `func TestX(` inside a Go raw string are literal text and never inflate the
+ * count.
  *
  * An unregistered languageId answers undefined rather than guessing a shape.
  */
@@ -1044,7 +1049,10 @@ export function extractTestFunctions(reply: string, languageId: string): TestMod
   if (block === undefined) {
     return undefined;
   }
-  const neutral = neutralizeCommentsAndStrings(block);
+  // The reply's OWN language's lens, not Rust's. Both the count below and the
+  // bare gate beside it read this one buffer, so the gate can no longer be
+  // satisfied by a shape the counter does not count.
+  const neutral = countingLensFor(languageId)(block);
   const gate = fenced === undefined ? BARE_TEST_FUNCTION_SHAPES[languageId] : undefined;
   if (gate !== undefined && (neutral.match(gate) ?? []).length === 0) {
     return undefined;
@@ -1589,6 +1597,164 @@ function neutralizeGoCommentsAndStrings(source: string): string {
     i++;
   }
   return out.join("");
+}
+
+// C#'s neutralizer, new in session-v70 phase 3. There was none before, so a
+// C# reply was lexed by Rust's rules, and the three places the two grammars
+// disagree all cost a real count:
+//   - `@"..."` is VERBATIM: the only escape is a doubled quote, and a
+//     backslash is a byte. Under the C escape rule a path ending `\"` eats its
+//     own closing quote, the rest of the file reads as one string, and every
+//     later `[Fact]` stops being counted. That is the under-count direction,
+//     and it loses real tests rather than inventing fake ones.
+//   - a block comment does NOT nest. Rust's does, so `/* a /* b */` leaves
+//     Rust's lens still inside a comment while C# is back in code.
+//   - `$"..."` interpolation holes and `{{`/`}}` escapes are not parsed. The
+//     whole literal blanks either way, so a hole cannot change a count; what
+//     it costs is that a test shape written INSIDE a hole is invisible, which
+//     runs in the refusing direction and is the same residual the TS lens
+//     already carries for `${...}`.
+// `//`, a plain `"..."` (backslash escapes, terminated by the line like the
+// compiler's own rule) and a `'c'` char literal match Rust's reading and are
+// lexed the same way here.
+function neutralizeCSharpCommentsAndStrings(source: string): string {
+  const out: string[] = [];
+  const blank = (ch: string) => out.push(ch === "\n" ? "\n" : " ");
+  const n = source.length;
+  let i = 0;
+  while (i < n) {
+    const c = source[i];
+    const c2 = source[i + 1];
+    if (c === "/" && c2 === "/") {
+      while (i < n && source[i] !== "\n") {
+        blank(source[i]);
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && c2 === "*") {
+      blank(c);
+      blank(c2);
+      i += 2;
+      while (i < n) {
+        if (source[i] === "*" && source[i + 1] === "/") {
+          blank(source[i]);
+          blank(source[i + 1]);
+          i += 2;
+          break; // the FIRST close ends it: C# block comments do not nest
+        }
+        blank(source[i]);
+        i++;
+      }
+      continue;
+    }
+    // Verbatim: `@"`, `$@"`, `@$"`. Spans lines, no backslash escape, and the
+    // only escape is `""`. A bare `@` (the `@class` identifier prefix) falls
+    // through to code.
+    const verbatim =
+      (c === "@" && c2 === '"' && 2) ||
+      (c === "@" && c2 === "$" && source[i + 2] === '"' && 3) ||
+      (c === "$" && c2 === "@" && source[i + 2] === '"' && 3);
+    if (verbatim) {
+      for (let k = 0; k < verbatim; k++) {
+        blank(source[i + k]);
+      }
+      i += verbatim;
+      while (i < n) {
+        if (source[i] === '"' && source[i + 1] === '"') {
+          blank(source[i]);
+          blank(source[i + 1]);
+          i += 2;
+          continue;
+        }
+        if (source[i] === '"') {
+          blank(source[i]);
+          i++;
+          break;
+        }
+        blank(source[i]);
+        i++;
+      }
+      continue;
+    }
+    // A plain or `$`-interpolated string. Backslash escapes, and it cannot
+    // span a line: a reply cut mid-literal must not blank every test after it.
+    if (c === '"' || (c === "$" && c2 === '"')) {
+      const open = c === "$" ? 2 : 1;
+      for (let k = 0; k < open; k++) {
+        blank(source[i + k]);
+      }
+      i += open;
+      while (i < n) {
+        if (source[i] === "\\") {
+          blank(source[i]);
+          if (i + 1 < n) {
+            blank(source[i + 1]);
+          }
+          i += 2;
+          continue;
+        }
+        if (source[i] === "\n") {
+          break;
+        }
+        if (source[i] === '"') {
+          blank(source[i]);
+          i++;
+          break;
+        }
+        blank(source[i]);
+        i++;
+      }
+      continue;
+    }
+    // Char literal, consumed whole so a quote or a brace it holds never flips
+    // parity: `'x'`, `'\n'`, `'\''`, `'"'`, `'\\'`, `'A'`, `'\x41'`.
+    if (c === "'") {
+      const lit = /^'(?:\\(?:u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{1,4}|['"\\0abfnrtv])|[^'\\\n])'/.exec(
+        source.slice(i),
+      );
+      if (lit) {
+        for (let k = 0; k < lit[0].length; k++) {
+          blank(lit[0][k]);
+        }
+        i += lit[0].length;
+        continue;
+      }
+    }
+    out.push(c);
+    i++;
+  }
+  return out.join("");
+}
+
+/** The comment/string lens a reply is COUNTED through, chosen by the reply's
+ *  languageId. Before session-v70 phase 3 every language was counted through
+ *  the Rust lens, so a TypeScript single-quoted string, a Go raw string, a
+ *  Python triple-quoted block and every C# verbatim form were not literals to
+ *  the counter: a test shape hiding in one was counted as a test, and a
+ *  mis-lexed C# verbatim string swallowed real ones.
+ *
+ *  The same choice serves the count and the bare admission gate beside it.
+ *  Two lenses there is what let an implementation whose string holds `it(`
+ *  satisfy the gate that exists to refuse it.
+ *
+ *  An unregistered languageId never reaches here: `extractTestFunctions`
+ *  answers undefined on the shape table first. The Rust fallback is for
+ *  `extractTestModule`, which is Rust's own entry point. */
+function countingLensFor(languageId: string): (source: string) => string {
+  if (TS_LANGUAGE_IDS.has(languageId)) {
+    return neutralizeTsCommentsAndStrings;
+  }
+  if (languageId === "python") {
+    return neutralizePythonCommentsAndStrings;
+  }
+  if (languageId === "go") {
+    return neutralizeGoCommentsAndStrings;
+  }
+  if (languageId === "csharp") {
+    return neutralizeCSharpCommentsAndStrings;
+  }
+  return neutralizeCommentsAndStrings;
 }
 
 /** Every name DEFINED at the top level of a Go source file: column-0 `func
