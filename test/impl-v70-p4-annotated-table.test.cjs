@@ -335,6 +335,53 @@ itest("[v70 D3 comment] rust: a line comment ending in `let cases:` does not nam
   );
 });
 
+itest("[v70 D3 comment] rust: a block comment opened on an EARLIER line still owns the colon", () => {
+  const text = wrapRust(`        /* draft
+        let cases: rows
+        */ = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    [],
+    "From the colon's own line the `*/` is plain text. The lens has to start early enough to see the " +
+      "comment open, or the gate admits the same prose it was written to refuse"
+  );
+});
+
+itest("[v70 D3 comment] rust: a block comment closing on the colon's line still owns the colon", () => {
+  const text = wrapRust(`        /* draft
+        let cases: */ rows = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(spansOf("rust", "libtest", text), [], "same shape, closer on the colon's line");
+});
+
+itest("[v70 D3 comment] rust: a string that closes on the binding's line does not hide a real table", () => {
+  const text = wrapRust(`        let msg = "note
+        ok"; let cases: [(u32, u64); 2] = [
+            (1, 2),
+            (3, 4),
+        ];
+        for (a, want) in cases {
+            assert_eq!(f(a), want);
+        }`);
+  assert.deepStrictEqual(
+    spansOf("rust", "libtest", text),
+    ["2", "4"],
+    "Lexing from the colon's line starts inside the string, reads its closing quote as an opening " +
+      "one, and refuses a P9 rule 2 table main found. Lexing from the budget floor sees the string open"
+  );
+});
+
 itest("[v70 D3 comment] rust: a commented colon beside a real table blanks only the real table", () => {
   const text = wrapRust(`        let expected = [(7, 7), (8, 8)];
         // let expected:

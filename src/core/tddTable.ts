@@ -464,11 +464,17 @@ const BINDING_KEYWORD = /^(let|const|static)$/;
  *  the verified region; a line comment's terminator is the newline, which is
  *  behind the colon, not in front of it.
  *
- *  So the question is asked backwards, from the start of the colon's own line,
- *  with the same literal/comment lens the rest of this file uses: re-lex the
- *  line and see whether a skipped region covers the colon. That reads `//`
+ *  So the question is asked backwards, with the same literal/comment lens the
+ *  rest of this file uses: re-lex forward from the first line start inside the
+ *  budget and see whether a skipped region covers the colon. That reads `//`
  *  inside a string as ordinary text for free, which a scan for the characters
- *  would not.
+ *  would not. The lex starts at the budget floor and not at the colon's own
+ *  line because a block comment or a string can OPEN on an earlier line: from
+ *  the colon's line the comment's closer is plain text and a string's closing
+ *  quote reads as an opening one. That admitted a `let cases: rows` sitting in
+ *  a block comment whose closer lands on the next line, and refused a real
+ *  table behind a string closed on the binding's line. Reading from the floor
+ *  sees both open, and the budget already pays for that distance.
  *
  *  Two narrower gates were on the table. Refusing a NEWLINE between the colon
  *  and the `=` is smaller, but it admits `// let cases: rows` with the `=` on
@@ -478,16 +484,16 @@ const BINDING_KEYWORD = /^(let|const|static)$/;
  *  one. This gate is keyed on the thing that is actually wrong: the colon is
  *  not code.
  *
- *  Bounded like the walk it guards. A line longer than the budget is answered
- *  "owned", which refuses the table: losing one costs a gesture, naming the
- *  wrong list blanks a column the human wrote. */
+ *  Bounded like the walk it guards. No line boundary inside the budget is
+ *  answered "owned", which refuses the table: losing one costs a gesture,
+ *  naming the wrong list blanks a column the human wrote. */
 function commentOwnsColon(text: string, at: number, profile: LiteralProfile | undefined): boolean {
   const floor = Math.max(0, at - ANNOTATION_BUDGET);
-  let lineStart = at;
-  while (lineStart > floor && text[lineStart - 1] !== "\n") {
-    lineStart--;
+  let lineStart = floor;
+  while (lineStart > 0 && lineStart < at && text[lineStart - 1] !== "\n") {
+    lineStart++;
   }
-  if (lineStart > 0 && text[lineStart - 1] !== "\n") {
+  if (lineStart >= at) {
     return true;
   }
   let i = lineStart;
