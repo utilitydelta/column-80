@@ -1965,8 +1965,9 @@ and is dropped.
    template title, a comma, then a function. `BARE_TEST_FUNCTION_SHAPES` and its `(?<![.$])`
    lookbehind are deleted, so one rule serves both paths. `bareCodeBlock`'s TypeScript opener gained
    an optional dotted prefix, because a bare reply may begin with `Deno.test(`.
-2. A backtick template that opens and never closes is evidence the backtick was not a delimiter: the
-   lens rewinds to it, emits it as an inert character and carries on. Bounded at 16 rewinds.
+2. A backtick inside a region the shared regex rule DECLINED to lex is inert, not a template
+   delimiter. The declined region runs from the slash to the next slash on that line, bounded at 500
+   characters.
 
 **Why the old behaviour was wrong.** `\b` holds after a dot, so `RE.test(s)` read as a test and a
 plain implementation was admitted as a test file on the fenced path. The bare path's lookbehind
@@ -1999,13 +2000,30 @@ naming that exact reply, not by a predicate.
   declined regex each blank a closing paren, and the call then cannot be matched. The fallback is
   the old pattern minus its one defect: an unmatched head counts if it is UNDOTTED and is refused if
   it is dotted, so `it(` is recovered and `RE.test(` is not.
-- The rewind means a fenced reply genuinely cut mid-template counts the tests AFTER the cut instead
-  of refusing. That reply does not compile, and the compile check is the next gate it meets.
+- The declined-region rule reads a backtick as inert wherever a `/` was declined earlier on the same
+  line and another `/` closes the would-be regex after it. `a / b + \`x\` / c` is that shape and is
+  not a real one; a template on a line that merely contains a division is not, because the rule looks
+  backwards from the backtick.
+
+The rewind this replaced is worth recording, because it was the goal's own proposal and it was
+wrong twice. It keyed on "the template never closed", which is only true for an ODD number of stray
+backticks: two declined regexes pair theirs into a template that DOES close and swallows every test
+between them. Over k = 1 to 8 declined backtick regexes it moved k = 1 and nothing else. And it was
+too wide the other way, counting a reply cut mid-template as carrying the tests inside its own
+emitted source. The region is the evidence; the closure never was.
 
 **Cost.** A matching-paren scan per candidate was quadratic: 20,000 `it(` heads with no closers cost
 544ms against 1.7ms, on the request thread. Every paren pair is computed once in a linear pass; the
-same shape is 2.9ms. The rewind is flat: 64 unclosed backticks over a 761KB body, 17.2ms against
-17.9ms at 3.5.1.
+same shape is 33ms, and 300,000 heads is also 33ms. 1MB of real tests is 95ms. The paren map costs
+about 15MB of heap on a 2.1MB reply.
+
+**What the review changed.** Eight red rows, six of them the rule under-written. `test(name,
+options, fn)` - the documented three-argument form of node:test, the runner this repo's own suite
+uses - was refused, and so were a concatenated title and a generic arrow callback; all three counted
+at 3.5.0 and 3.5.1, so each was a regression. The return-type bound refused a 197-character type,
+which is real. The fallback counted any undotted head and admitted a validator whose local predicate
+is named `test`; it asks for a title now. And the widened opener admitted `Deno.test() is the runner
+used below.` as code, so its dotted branch demands a quote.
 
 **Named limits.** `it(name, () => {})` with the title in a variable is not counted, and Deno's
 object form `Deno.test({ name, fn })` is not counted; both refuse. Rule 11 carries no namespace
