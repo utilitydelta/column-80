@@ -1,8 +1,6 @@
 # Changelog
 
-## Unreleased
-
-Not released. 3.5.0 is out; whether this ships as 3.5.1 is a call made after the session.
+## 3.5.1
 
 **The `ci` job is green again, and the eight rows it failed on are closed, not deleted.**
 
