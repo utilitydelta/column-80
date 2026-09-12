@@ -633,23 +633,30 @@ itest("[v70 P3 ts-regex 3] a / inside a CHARACTER CLASS does not close the regex
 
 itest("[v70 P3 ts-regex 4] a DIVISION is not a regex: a / after a value divides", () => {
   // A NON-MOVE guard: with no regex rule at all this already passed. It is here
-  // because the new rule is what could break it. The trap the opt-in rule buys into. Reading `/ test(0) /` as a regex blanks
-  // a real call, which is the admitting direction: it hides whatever the
-  // operand held. The `test(` here is the visible proof that the operand
-  // survived.
+  // because the new rule is what could break it. The trap the opt-in rule buys
+  // into. Reading `/ … /` as a regex blanks a real call, which is the admitting
+  // direction: it hides whatever the operand held.
+  //
+  // THE PROBE CHANGED, session-v71 item B. It was `test(0)`, whose count proved
+  // the operand survived; the call-shape rule does not count that, because
+  // `test(0)` takes a number and is not a test (P8 amendment 5 rule 11). So the
+  // probe is a REAL test call in the same position, which is a stronger probe
+  // for the same property: if the slash opened a regex, the probe is blanked and
+  // the count drops back to the baseline.
   pinsCount(
     "typescript",
-    "  const q = width / test(0) / 2;",
+    '  const q = width / test("probe", () => {}) / 2;',
     baselineOf("typescript") + 1,
     "an identifier before the slash is a value in hand, so the slash divides it"
   );
 });
 
 itest("[v70 P3 ts-regex 5] a postfix ++ leaves a value in hand, so the / after it divides", () => {
-  // A NON-MOVE guard, like the row above.
+  // A NON-MOVE guard, like the row above, and the same probe swap for the same
+  // reason (session-v71 item B).
   pinsCount(
     "typescript",
-    "  const q = counter++ / test(0) / 2;",
+    '  const q = counter++ / test("probe", () => {}) / 2;',
     baselineOf("typescript") + 1,
     "`x++ / 2` is a division; reading the doubled + as an operator opens a phantom regex"
   );
@@ -657,11 +664,17 @@ itest("[v70 P3 ts-regex 5] a postfix ++ leaves a value in hand, so the / after i
 
 itest("[v70 P3 ts-regex 6] a regex FIRST on its line is still a regex when code follows it", () => {
   // The token before it is the `{` that opened the enclosing arrow body, which
-  // is not a value, so the slash opens a regex. Only the trailing `.test(`
-  // survives, and it counts because the fenced pattern matches after a dot.
+  // is not a value, so the slash opens a regex.
+  //
+  // THE PROBE CHANGED, session-v71 item B. The survivor used to be the trailing
+  // `.test(`, which counted because the old NAME pattern matched after a dot.
+  // The call-shape rule refuses `.test(name)` - it takes an identifier - so the
+  // survivor is a real test call after it on the same line. Both halves are
+  // still pinned: the `it("ghost")` INSIDE the regex is blanked (or the count
+  // would be baseline + 2), and the code after the regex is not.
   pinsCount(
     "typescript",
-    '  /it("ghost")/.test(name);',
+    '  /it("ghost")/.test(name); test("survivor", () => {});',
     baselineOf("typescript") + 1,
     "a regex may begin a line; what it must not do is fill one"
   );

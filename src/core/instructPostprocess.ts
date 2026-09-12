@@ -325,8 +325,15 @@ const BARE_LANG_RULES: Record<string, BareLangRules> = {
     // and a bare `@` used to accept a unified diff's `@@ -1,4 +1,9 @@` hunk
     // header. A declaration keyword has to be followed by something being
     // declared, and a decorator by an identifier.
+    // A DOTTED runner head opens a reply too. `Deno.test(`, `QUnit.test(` and
+    // `t.test(` are how three real runners spell their entry point, and a reply
+    // that begins with one was refused here before the counter ever saw it -
+    // the other half of S70-10, which P8 amendment 5 closed in the counter
+    // only. Admitting the LINE is not admitting the reply: the call-shape rule
+    // still refuses `RE.test(s)`, so an implementation that happens to start
+    // with a regex call opens the block and is then counted at zero.
     opener:
-      /^(import\s|export\s|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*[:=]|function\s|class\s|async\s|@[A-Za-z_$]|describe\s*[.(]|it\s*[.(]|test\s*[.(]|suite\s*\(|beforeEach\s*\(|afterEach\s*\(|\/\/|\/\*)/,
+      /^(import\s|export\s|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*[:=]|function\s|class\s|async\s|@[A-Za-z_$]|(?:[A-Za-z_$][\w$]*\s*\.\s*)?(?:describe|it|test)\s*[.(]|suite\s*\(|beforeEach\s*\(|afterEach\s*\(|\/\/|\/\*)/,
   },
   python: {
     // Python closes its last statement with a NEWLINE, not a delimiter, so the
@@ -992,6 +999,264 @@ export function extractTestModule(reply: string): TestModuleExtraction | undefin
  *  The guard is still a guard: a reply with no test function in it is prose, a
  *  bare implementation, or an apology, and splicing it would put non-test code
  *  in a test file under a message saying tests were generated. */
+/** A TypeScript test call, told apart from `RE.test(s)` by the shape of the
+ *  CALL rather than the shape of the name.
+ *
+ *  The old rule was a name pattern, `\b(?:it|test)\s*(?:\.\w+)?\s*\(`, and it
+ *  could not tell a namespace from a receiver. Two defects, one cause:
+ *
+ *    - `RE.test(s)` matched, because `\b` holds after a dot, so a plain
+ *      implementation whose only test-shaped token is a regex call read as a
+ *      test file on the FENCED path. String-handling code is full of `.test(`.
+ *    - The bare path patched that with a `(?<![.$])` lookbehind, which refuses
+ *      `RE.test` and refuses `Deno.test`, `QUnit.test` and `t.test` with it -
+ *      every runner that spells its entry point on a namespace. A Deno reply was
+ *      admitted fenced and refused bare (S70-10), which also broke rule 5's
+ *      "a bare and a fenced copy of one reply return the same testCount".
+ *
+ *  One rule replaces both. A test call takes a STRING or TEMPLATE literal, then
+ *  a comma, then a function; `RE.test(s)` takes an identifier and `function
+ *  test(value: string)` takes a parameter list. That reads `it(`, `test(`,
+ *  `it.only(`, `it.each(...)(`, ``test.each`table`(``, `Deno.test(`,
+ *  `QUnit.test(` and `t.test(`, and refuses the regex call and the declaration
+ *  on BOTH paths, so the bare-only gate goes away rather than being widened.
+ *
+ *  Read on the NEUTRALISED text, with the raw block beside it for one question
+ *  only: the counting lens blanks a literal's delimiters along with its body, so
+ *  a blanked string is indistinguishable from whitespace, and "was there a
+ *  literal here" has to be asked of the raw character. The two buffers are
+ *  index-aligned by construction - every lens branch blanks one character per
+ *  character - and `alignedRaw` refuses to use the raw text if they ever are not.
+ *
+ *  Declared limits, both in the refusing direction and both cheap:
+ *  `it(name, () => {})` with the title in a variable is not counted, and
+ *  Deno's object form `Deno.test({ name, fn })` is not counted. */
+function countTsTestCalls(neutral: string, block: string): number {
+  const raw = neutral.length === block.length ? block : neutral;
+  const closers = tsParenPairs(neutral);
+  let count = 0;
+  // No lookbehind on `.`: `Deno.test` HAS to be reached, and the argument shape
+  // is what refuses `RE.test`. The boundary is the identifier class, `$`
+  // included, because `\b` cannot border a `$`.
+  const name = /(?<![A-Za-z0-9_$])(?:it|test)(?![A-Za-z0-9_$])/g;
+  let m: RegExpExecArray | null;
+  while ((m = name.exec(neutral)) !== null) {
+    if (tsTestCallAt(neutral, raw, closers, m.index + m[0].length, dottedHead(neutral, m.index))) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** Does a `.` sit immediately in front of the name starting at `at`?
+ *
+ *  Only the FALLBACK reads this. The rule proper does not care whether the head
+ *  is dotted - that is the whole point, and it is what lets `Deno.test(` be
+ *  found while `RE.test(s)` is refused. */
+function dottedHead(neutral: string, at: number): boolean {
+  let p = at - 1;
+  while (p >= 0 && /\s/.test(neutral[p])) {
+    p--;
+  }
+  return p >= 0 && neutral[p] === ".";
+}
+
+/** The next index at or after `i` that is not whitespace. A blanked literal is
+ *  whitespace to this, which is exactly what makes the tagged-template form
+ *  (``test.each`table`(``) fall out for free. */
+function tsSkipSpace(text: string, i: number): number {
+  let j = i;
+  while (j < text.length && /\s/.test(text[j])) {
+    j++;
+  }
+  return j;
+}
+
+/** The index just past the identifier starting at `i`, or `i` when none does. */
+function tsIdentEnd(text: string, i: number): number {
+  let j = i;
+  while (j < text.length && /[A-Za-z0-9_$]/.test(text[j])) {
+    j++;
+  }
+  return j;
+}
+
+/** Every `(` in the text mapped to its matching `)`, in ONE linear pass.
+ *
+ *  Computed once and looked up, rather than scanned per candidate. Measured:
+ *  a per-candidate scan is quadratic on the shape a repetition-loop model
+ *  actually emits - 20,000 `it(` heads with no closing paren cost 544ms against
+ *  1.7ms for the old name pattern, on the request thread. That is the same
+ *  quadratic the v70 review found on the C# `$` run, and it is cheaper to close
+ *  it here than to bound the scan.
+ *
+ *  Read on the neutralised text, so a paren inside a string, a comment or a
+ *  regex is already gone. An unmatched `(` is simply absent from the map. */
+function tsParenPairs(text: string): Map<number, number> {
+  const pairs = new Map<number, number>();
+  const open: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "(") {
+      open.push(i);
+    } else if (c === ")") {
+      const at = open.pop();
+      if (at !== undefined) {
+        pairs.set(at, i);
+      }
+    }
+  }
+  return pairs;
+}
+
+/** Does a test call start at the name that ends at `after`?
+ *
+ *  Walks the member/call chain forward - `.each`, a tagged template, a
+ *  parenthesised group - and asks the argument-shape question of every group it
+ *  finds. `it.each([[1, 2]])("adds %i", (a, b) => …)` answers on the SECOND
+ *  group, which is why every group is asked and not only the first. */
+function tsTestCallAt(
+  neutral: string,
+  raw: string,
+  closers: Map<number, number>,
+  after: number,
+  dotted: boolean,
+): boolean {
+  let i = after;
+  // A chain is short. The bound is here because this runs on a reply, and a
+  // reply can be a repetition loop.
+  for (let step = 0; step < 32; step++) {
+    i = tsSkipSpace(neutral, i);
+    if (neutral[i] === ".") {
+      const end = tsIdentEnd(neutral, tsSkipSpace(neutral, i + 1));
+      if (end === i + 1) {
+        return false;
+      }
+      i = end;
+      continue;
+    }
+    if (neutral[i] !== "(") {
+      return false;
+    }
+    const close = closers.get(i);
+    if (close === undefined) {
+      // The lens could not find this call's end, so the argument shape cannot be
+      // read at all. That is not the model's doing: it happens where the lens
+      // MIS-LEXED something and blanked the closing paren with it - an
+      // apostrophe in JSX text (`render(<p>it\u0027s here</p>)`) opens a string
+      // that runs to the line end, and a `//` inside a declined regex opens a
+      // comment that does the same.
+      //
+      // Counting a call by its NAME is what the pattern this rule replaced did,
+      // and it was robust to exactly this. So the fallback is that pattern minus
+      // its one defect: count an UNDOTTED head, refuse a dotted one. `it(` and
+      // `test(` are recovered; `RE.test(`, which is the false admit rule 11
+      // exists to close, is not. A dotted RUNNER pays for it only on text the
+      // lens already mis-read, which is the cheap direction.
+      return !dotted;
+    }
+    if (tsCallTakesTitleAndFunction(neutral, raw, closers, i, close)) {
+      return true;
+    }
+    i = close + 1;
+  }
+  return false;
+}
+
+/** `( <string or template literal> , <function> …)`.
+ *
+ *  The title is asked of the RAW text (the lens blanked its quotes) and the
+ *  function of the neutralised one (its body is gone, which is what makes the
+ *  walk cheap and what keeps a `=>` inside a string from answering). */
+function tsCallTakesTitleAndFunction(
+  neutral: string,
+  raw: string,
+  closers: Map<number, number>,
+  open: number,
+  close: number,
+): boolean {
+  // The leading whitespace is skipped on the RAW text, not the neutralised one.
+  // A blanked literal IS whitespace to `tsSkipSpace`, so skipping on `neutral`
+  // steps straight over the title and lands on the comma, and every real test
+  // reads as having no title at all.
+  let i = open + 1;
+  while (i < close && /\s/.test(raw[i])) {
+    i++;
+  }
+  if (i >= close) {
+    return false;
+  }
+  const q = raw[i];
+  if ((q !== '"' && q !== "'" && q !== "`") || /\S/.test(neutral[i])) {
+    // Not a literal, or not one the lens blanked - an identifier title, a
+    // number, an object, or `RE.test(s)`'s argument.
+    return false;
+  }
+  // The literal is a run of blanks, so one whitespace skip steps over the whole
+  // of it and any real space after it, and lands on the comma.
+  i = tsSkipSpace(neutral, i);
+  if (neutral[i] !== ",") {
+    return false;
+  }
+  i = tsSkipSpace(neutral, i + 1);
+  if (neutral.startsWith("async", i) && !/[A-Za-z0-9_$]/.test(neutral[i + 5] ?? "")) {
+    i = tsSkipSpace(neutral, i + 5);
+  }
+  if (neutral.startsWith("function", i) && !/[A-Za-z0-9_$]/.test(neutral[i + 8] ?? "")) {
+    return true;
+  }
+  if (neutral[i] === "(") {
+    const paramsClose = closers.get(i);
+    if (paramsClose === undefined || paramsClose > close) {
+      return false;
+    }
+    i = tsSkipSpace(neutral, paramsClose + 1);
+    if (neutral[i] === ":") {
+      // A typed arrow: `async (): Promise<void> => {…}`. Walk the return type
+      // with bracket depth to the `=>`, bounded, and give up on anything that
+      // is not one.
+      i = tsArrowAfterReturnType(neutral, i, close);
+      if (i === -1) {
+        return false;
+      }
+    }
+    return neutral.startsWith("=>", i);
+  }
+  const identEnd = tsIdentEnd(neutral, i);
+  if (identEnd === i) {
+    return false;
+  }
+  return neutral.startsWith("=>", tsSkipSpace(neutral, identEnd));
+}
+
+/** From the `:` of an arrow's return type to its `=>`, or -1. Depth-counted over
+ *  `<`, `(`, `[` and `{` so a generic return type does not end the walk early,
+ *  and bounded so a malformed reply cannot turn this into a scan of the file. */
+function tsArrowAfterReturnType(neutral: string, colon: number, close: number): number {
+  let depth = 0;
+  const limit = Math.min(close, colon + 200);
+  for (let i = colon + 1; i < limit; i++) {
+    const c = neutral[i];
+    if (c === "<" || c === "(" || c === "[" || c === "{") {
+      depth++;
+    } else if (c === ">" || c === ")" || c === "]" || c === "}") {
+      if (c === ">" && depth === 0 && neutral[i - 1] === "=") {
+        continue;
+      }
+      depth--;
+      if (depth < 0) {
+        return -1;
+      }
+    } else if (depth === 0 && (c === "," || c === ";")) {
+      return -1;
+    }
+    if (depth === 0 && neutral.startsWith("=>", i)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 const TEST_FUNCTION_SHAPES: Record<string, RegExp> = {
   go: /\bfunc\s+Test[A-Z_]\w*\s*\(/g,
   typescript: /\b(?:it|test)\s*(?:\.\w+)?\s*\(/g,
@@ -1015,39 +1280,6 @@ const TEST_FUNCTION_SHAPES: Record<string, RegExp> = {
   csharp: /\[\s*(?:DataTestMethod|TestMethod|TestCase|InlineData|DataRow|Theory|Fact|Test)\s*[\]\(]/g,
 };
 
-/** An extra ADMISSION gate for the bare path, where the fenced path's pattern
- *  is too loose to be the whole guard.
- *
- *  Rust refuses a plain implementation on the bare path with its `mod` wrapper
- *  (contract rule 6). The other four languages have no wrapper, so the shape
- *  pattern is the entire guard, and the TypeScript one takes `RE.test(s)` as a
- *  test because `\b` holds after a dot. An implementation function that calls
- *  `.test()` on a regex therefore reads as a test file, and string-handling code
- *  is full of `.test(`.
- *
- *  This was unreachable on the bare path while the lexer refused any reply
- *  carrying a regex literal, for the wrong reason. Teaching it regexes removed
- *  that accident and left the loose pattern holding a door open, so the door is
- *  closed here rather than left to the accident.
- *
- *  A GATE and not a counter, which matters. Rule 5 says a bare and a fenced copy
- *  of one reply return the same `testCount`, so the number keeps coming from the
- *  pattern above in both paths; this only decides whether the bare reply is
- *  admitted at all. `it("x", () => expect(/^\{/.test(s)))` counts 2 either way
- *  and is admitted, because the gate found the real `it(`. The implementation
- *  with nothing but `RE.test(s)` in it finds none and is refused.
- *
- *  BARE ONLY, deliberately. Rule 1 makes the fenced numbers the measurement
- *  baseline for every language arm, and amendment 3 already settles that the
- *  bare lens may be narrower than the fenced one in the REFUSING direction.
- *  Being narrower costs a re-run; being wider writes the human's own
- *  implementation into their test file. */
-const BARE_TEST_FUNCTION_SHAPES: Record<string, RegExp> = {
-  typescript: /(?<![.$])\b(?:it|test)\s*(?:\.\w+)?\s*\(/g,
-};
-BARE_TEST_FUNCTION_SHAPES.typescriptreact = BARE_TEST_FUNCTION_SHAPES.typescript;
-BARE_TEST_FUNCTION_SHAPES.javascript = BARE_TEST_FUNCTION_SHAPES.typescript;
-BARE_TEST_FUNCTION_SHAPES.javascriptreact = BARE_TEST_FUNCTION_SHAPES.typescript;
 
 /**
  * Cut a non-Rust instruct reply to its fenced block of TEST FUNCTIONS, or
@@ -1070,21 +1302,27 @@ export function extractTestFunctions(reply: string, languageId: string): TestMod
     return undefined;
   }
   // A complete fence, `""` included, is the fenced path; only a reply with no
-  // fence at all falls through to the bare one and picks up the extra gate.
-  const fenced = extractFirstCodeBlock(reply);
-  const block = fenced ?? bareCodeBlock(reply, languageId);
+  // fence at all falls through to the bare one.
+  //
+  // There is no longer an extra gate on the bare path. It existed because the
+  // fenced pattern took `RE.test(s)` as a test, and it closed that with a
+  // lookbehind that also refused `Deno.test`, `QUnit.test` and `t.test` - so a
+  // Deno reply was admitted fenced and refused bare, and rule 5 was broken by
+  // the guard rather than by the count. The call-shape rule refuses the regex
+  // call on BOTH paths (P8 amendment 5), which is what let the gate go.
+  const block = extractFirstCodeBlock(reply) ?? bareCodeBlock(reply, languageId);
   if (block === undefined) {
     return undefined;
   }
-  // The reply's OWN language's lens, not Rust's. Both the count below and the
-  // bare gate beside it read this one buffer, so the gate can no longer be
-  // satisfied by a shape the counter does not count.
+  // The reply's OWN language's lens, not Rust's.
   const neutral = countingLensFor(languageId)(block);
-  const gate = fenced === undefined ? BARE_TEST_FUNCTION_SHAPES[languageId] : undefined;
-  if (gate !== undefined && (neutral.match(gate) ?? []).length === 0) {
-    return undefined;
-  }
-  const testCount = (neutral.match(pattern) ?? []).length;
+  // TypeScript counts CALLS, not names (P8 amendment 5). The other four keep
+  // their name pattern, because none of them has a name that is also an
+  // ordinary method: `func TestX(`, `def test_x(` and `[Fact]` cannot be
+  // written by accident, and Rust never reaches here.
+  const testCount = TS_LANGUAGE_IDS.has(languageId)
+    ? countTsTestCalls(neutral, block)
+    : (neutral.match(pattern) ?? []).length;
   return testCount === 0 ? undefined : { text: block, testCount };
 }
 
@@ -1400,6 +1638,15 @@ export function fileLocalDefinitions(source: string): Set<string> {
 // a blanked literal is told apart from the whitespace it looks like. Comments
 // do not set it, exactly as in `scanBare` - a comment is not a value, and the
 // token before it is what decides the `/`.
+/** How many times one lex may rewind a template literal that never closed.
+ *
+ *  Each rewind re-lexes the tail, so an unbounded one is quadratic on the shape
+ *  a repetition-loop model actually emits - thousands of backticks, each opening
+ *  a template that runs to the end. The v70 review found the same quadratic on
+ *  the C# `$` run. Sixteen is far past any real reply: a genuine truncated
+ *  template opens ONE. */
+const MAX_TEMPLATE_REWINDS = 16;
+
 function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?: boolean }): string {
   const out: string[] = [];
   const blank = (ch: string) => out.push(ch === "\n" ? "\n" : " ");
@@ -1407,6 +1654,7 @@ function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?:
   /** Length of `out` when the most recent literal finished. Only read when
    *  `regexLiterals` is on. */
   let literalEnd = 0;
+  let rewinds = 0;
   let i = 0;
   while (i < n) {
     const c = source[i];
@@ -1451,8 +1699,11 @@ function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?:
       }
     }
     if (c === '"' || c === "'" || c === "`") {
+      const openedAt = i;
+      const outBefore = out.length;
       blank(c);
       i++;
+      let closed = false;
       while (i < n) {
         if (source[i] === "\\") {
           blank(source[i]);
@@ -1468,10 +1719,36 @@ function neutralizeTsCommentsAndStrings(source: string, opts?: { regexLiterals?:
         if (source[i] === c) {
           blank(source[i]);
           i++;
+          closed = true;
           break;
         }
         blank(source[i]);
         i++;
+      }
+      // A TEMPLATE that opens and never closes is evidence the backtick was not
+      // a delimiter. There are four positions where the shared regex rule
+      // declines the slash - after the `)` of an `if` head, after a block `}`,
+      // alone on its line, after `<` - and at each of them a backtick INSIDE the
+      // regex opened a template that ran to the end of the reply, so every test
+      // after it stopped being counted and a good reply was refused. 3.5.0
+      // counted these right by accident, reading TypeScript through Rust's
+      // rules, which do not know backticks (S70-19).
+      //
+      // So rewind: put the output back to the backtick, emit it as an inert
+      // character, and carry on lexing from the next one. Bounded, because each
+      // rewind re-lexes the tail.
+      //
+      // The cost is named and is the admitting direction: a fenced reply
+      // genuinely cut mid-template now counts the tests AFTER the cut instead of
+      // refusing. That reply does not compile, and the compile check is the next
+      // gate it meets. Regex mode only - the prompt path's definition finder
+      // reads this same function with the rule off and must not move.
+      if (!closed && c === "`" && opts?.regexLiterals === true && rewinds < MAX_TEMPLATE_REWINDS) {
+        rewinds++;
+        out.length = outBefore;
+        out.push("`");
+        i = openedAt + 1;
+        continue;
       }
       literalEnd = out.length;
       continue;

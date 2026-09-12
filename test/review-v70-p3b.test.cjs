@@ -194,28 +194,26 @@ const backtickRows = [
 ];
 
 for (const [id, what, body, truth] of backtickRows) {
-  rtest(`[REV70-P3B ${id}] KNOWN LIMIT S70-19: ${what} still opens a template to EOF`, () => {
-    // PINNED, not fixed. The shared regex rule declines the slash at these positions (`)`, `}`
-    // and `<` read as values; a regex alone on its line is the bare scanner's prose defence), so
-    // the backtick opens a template that runs to EOF and the count is one short. The 3.5.0 lens
-    // counted these right by accident, reading TypeScript through Rust's rules. Refusing
-    // direction. `)` and `}` need a parser; the alone-on-its-line candidate was measured and it
-    // moves a pinned counting row (`[v70 P3 ts-regex 7]`), so it is the human's call. S70-19.
+  rtest(`[REV70-P3B ${id}] CLOSED S70-19: ${what} counts the tests after it`, () => {
+    // FLIPPED 2026-09-12, session-v71 item C. The shared regex rule still declines the slash at
+    // these four positions - `)`, `}` and `<` read as values, and a regex alone on its line is the
+    // bare scanner's prose defence - so the backtick still opens a template. What changed is what
+    // happens when that template never CLOSES: the lens rewinds to the backtick, emits it as an
+    // inert character and carries on, because a template that runs to the end of the reply is
+    // evidence the backtick was not a delimiter. Bounded at 16 rewinds, measured flat.
+    //
+    // The named cost is the admitting direction and is real: a fenced reply genuinely cut
+    // mid-template now counts the tests after the cut. That reply does not compile, and the
+    // compile check is the next gate it meets. Differential: 0 moves against 3.5.1 on the 1050
+    // clean and the 1050 hiding replies.
     const reply = fenced("typescript", body);
     const a = now(reply, "typescript");
     const b = old(reply, "typescript");
     assert.strictEqual(n(b), truth, "the 3.5.0 baseline counts this right, by accident; the pin is about `now`");
     assert.strictEqual(
       n(a),
-      truth - 1,
-      report(
-        `S70-19: the counting lens answers one short here today. If this answers the hand count, ` +
-          `S70-19 is closed and this row should assert \`truth\`.`,
-        reply,
-        a,
-        b,
-        truth - 1
-      )
+      truth,
+      report(`S70-19 CLOSED: the counting lens must answer the hand count here.`, reply, a, b, truth)
     );
   });
 }

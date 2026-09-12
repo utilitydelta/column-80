@@ -1336,6 +1336,44 @@ clean("csharp", "csharp", L(
 const callOn = (impl, extractId, reply) =>
   extractId === "rust" ? impl.extractTestModule(reply) : impl.extractTestFunctions(reply, extractId);
 
+// P8 amendment 5 authorises ONE move on this corpus, and it is enumerated here
+// rather than allowed by a predicate. Session-v71 item B replaced the
+// TypeScript name pattern `\b(?:it|test)\s*(?:\.\w+)?\s*\(` with a CALL
+// shape: a string or template title, a comma, then a function. `re.test("x")`
+// has a string first argument and no function after it, so it stops counting -
+// which is the hand count, and the whole point of the rule. Nothing else on
+// this corpus moves.
+//
+// An enumerated allowance and not a rule: a second reply moving here is a
+// finding, and it should be, even if its cause looks like this one's.
+const RULE_1_AUTHORISED_MOVES = [
+  {
+    why: "session-v71 item B: `re.test(\"alpha-1\")` is a regex call, not a test (P8 amendment 5 rule 11)",
+    body: L(
+      'it("matches the id pattern", () => {',
+      "  const re = /^[a-z]+-\\d+$/;",
+      '  expect(re.test("alpha-1")).toBe(true);',
+      "});"
+    ),
+    before: 2,
+    now: 1,
+  },
+];
+
+/** Is this an enumerated, authorised move rather than a finding? */
+const authorisedMove = (body, before, now) =>
+  RULE_1_AUTHORISED_MOVES.some(
+    (m) =>
+      m.body === body &&
+      before !== undefined &&
+      now !== undefined &&
+      before.testCount === m.before &&
+      now.testCount === m.now &&
+      before.text === now.text
+  );
+
+
+
 test("bundle: main's copy of instructPostprocess builds, so the rule 1 differential can run", () => {
   assert.strictEqual(
     mainError,
@@ -1359,13 +1397,24 @@ test("[P8 §1 lens differential] a clean FENCED corpus answers exactly what main
       (now === undefined && before === undefined) ||
       (now !== undefined && before !== undefined && now.text === before.text && now.testCount === before.testCount);
 
-    if (!same) {
+    if (!same && !authorisedMove(body, before, now)) {
       moved.push(
         `---- ${extractId} ----\n${reply}\n  main: ${before === undefined ? "undefined" : JSON.stringify(before)}\n  now:  ${now === undefined ? "undefined" : JSON.stringify(now)}`
       );
     }
   }
 
+  // The allowance must be LIVE. An enumerated move that no longer happens is a
+  // hole in the guard, not a pass.
+  for (const m of RULE_1_AUTHORISED_MOVES) {
+    const row = CLEAN_CORPUS.find((r) => r.body === m.body);
+    assert.ok(row, `the authorised move's body is not in the corpus any more: ${m.why}`);
+    const reply = fencedOf(row.fence, row.body);
+    assert.ok(
+      authorisedMove(row.body, callOn(mainMod, row.extractId, reply), callOn(mod, row.extractId, reply)),
+      `the authorised move no longer fires, so the allowance is dead text and should be deleted: ${m.why}`
+    );
+  }
   assert.strictEqual(
     moved.length,
     0,
@@ -1384,6 +1433,9 @@ for (const fenceLang of ["rust", "go", "typescript", "python", "csharp"]) {
       const reply = fencedOf(fence, body);
       const now = callOn(mod, extractId, reply);
       const before = callOn(mainMod, extractId, reply);
+      if (authorisedMove(body, before, now)) {
+        continue;
+      }
       assert.deepStrictEqual(
         now === undefined ? null : { text: now.text, testCount: now.testCount },
         before === undefined ? null : { text: before.text, testCount: before.testCount },
