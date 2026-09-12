@@ -512,8 +512,13 @@ const BARE_WORD_CHAR = /[A-Za-z0-9_$]/;
 
 /** Keywords after which a `/` opens a regex rather than dividing, because what
  *  follows each of them is an expression and not an operand. */
+// `of` is NOT in the list. It is a legal identifier, and `of / 2` read as a
+// regex opener blanked everything to the next slash on the line, a real `it(`
+// included. The only text the entry could ever matter for is the two-token
+// sequence `of /` in a for-of head, which no test writes; `in` stays, because
+// it is reserved and can never be the identifier half of that defect.
 const REGEX_AFTER_KEYWORD =
-  /\b(?:return|typeof|instanceof|in|of|new|delete|void|case|do|else|yield|await|throw)$/;
+  /\b(?:return|typeof|instanceof|in|new|delete|void|case|do|else|yield|await|throw)$/;
 
 /**
  * A char or rune literal at `i`, or undefined when what sits there is not one.
@@ -1787,6 +1792,18 @@ function neutralizeCSharpCommentsAndStrings(source: string): string {
             break;
           }
         }
+        continue;
+      }
+      // The run declined. Only the LAST `$` can open anything (`$"`, `$@"`),
+      // so the rest of the run is code and goes out in one step. Pushing one
+      // `$` and re-counting the whole run from the next one was quadratic:
+      // 32,000 dollars cost 386ms, and a small model in a repetition loop
+      // emits exactly that.
+      if (dollars > 1) {
+        for (let k = 0; k < dollars - 1; k++) {
+          out.push(source[i + k]);
+        }
+        i += dollars - 1;
         continue;
       }
     }

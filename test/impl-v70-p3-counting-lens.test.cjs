@@ -1058,3 +1058,31 @@ test("[v70 P3 differential C] every move on a hiding corpus runs in the directio
   );
   assert.ok(moves > 0, "the hiding corpus produced no moves at all, so it is not exercising the fix");
 });
+
+// ===========================================================================
+// Loop 3. Two measured one-hunk fixes from the loop-2 review.
+// ===========================================================================
+
+itest("[v70 P3 loop3 1] C#: a run of `$` at code position is lexed once, not once per dollar", () => {
+  // Before the fix the raw-string branch counted the WHOLE remaining `$` run at every `$` and
+  // pushed one character, so 32,000 dollars cost 386ms. A small model in a repetition loop emits
+  // exactly that run, on the request thread.
+  const run = "$".repeat(32000);
+  const body = `[Fact]\npublic void A() { var s = ${run}; }`;
+  const t0 = process.hrtime.bigint();
+  const res = mod.extractTestFunctions(fenced("csharp", body), "csharp");
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  assert.ok(res && res.testCount === 1, "the [Fact] before the run is still counted");
+  assert.ok(ms < 50, `32,000 dollars took ${ms.toFixed(1)}ms; the run must be linear`);
+});
+
+itest("[v70 P3 loop3 2] TS: `of` as an identifier before a division does not open a regex", () => {
+  // `of` is a legal identifier and sat in REGEX_AFTER_KEYWORD, so `of / 2` opened a phantom regex
+  // that closed on the next slash on the line and blanked a real `it(` between them.
+  pinsCount(
+    "typescript",
+    '  const half = of / 2; it("ghost", () => {}); const q = 1 / 2;',
+    baselineOf("typescript") + 1,
+    "the `it(` between the two slashes is a real test and must be counted"
+  );
+});
