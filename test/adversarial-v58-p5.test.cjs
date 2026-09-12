@@ -1427,6 +1427,60 @@ export { FnGenService } from "../src/core/fnGenService";
   oErr = e;
 }
 
+/** Run the product's own Rust command once, before the clock starts, so a cold
+ *  toolchain is not charged to the round's budget. Answers whether cargo can run
+ *  at all; the diagnostics on a failure are the witness's job. */
+function warmCargo(crate) {
+  const { spawnSync } = require("node:child_process");
+  const version = spawnSync("cargo", ["--version"], { encoding: "utf8", timeout: 120000 });
+  if (version.error !== undefined || version.status !== 0) {
+    return { ok: false, why: version.error ? version.error.code || version.error.message : `cargo --version exited ${version.status}` };
+  }
+  const warm = spawnSync("cargo", ["check", "--all-targets", "--keep-going", "--message-format=json"], {
+    cwd: crate,
+    encoding: "utf8",
+    timeout: 120000,
+  });
+  // A non-zero exit is EXPECTED: repairbench carries the broken function the
+  // oracle exists to repair. Only a cargo that could not run at all is a skip.
+  if (warm.error !== undefined) {
+    return { ok: false, why: warm.error.code || warm.error.message };
+  }
+  return { ok: true };
+}
+
+/** Session-v70 phase 1, INSTRUMENTATION ONLY. The row below is green on a
+ *  developer box and red on a hosted runner, and the channel it prints says
+ *  only that the check started. This runs the product's own Rust command
+ *  against the same crate and puts the answer in the failure message, so the
+ *  next CI run says WHY rather than leaving it to be guessed. It is never
+ *  reached on a passing row and it changes no assertion. */
+function toolchainWitness(crate) {
+  const { spawnSync } = require("node:child_process");
+  const run = (label, cmd, args, opts) => {
+    const t0 = Date.now();
+    const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 120000, ...opts });
+    const ms = Date.now() - t0;
+    const tail = (x) => String(x ?? "").split("\n").slice(0, 6).join("\n").slice(0, 900);
+    return (
+      `  ${label}: status=${r.status} signal=${r.signal} err=${r.error ? r.error.code || r.error.message : "none"} ` +
+      `${ms}ms\n    stdout: ${tail(r.stdout)}\n    stderr: ${tail(r.stderr)}`
+    );
+  };
+  return (
+    "---- TOOLCHAIN WITNESS (session-v70 phase 1) ----\n" +
+    `  PATH=${process.env.PATH}\n  HOME=${process.env.HOME} CARGO_HOME=${process.env.CARGO_HOME}\n` +
+    run("cargo --version", "cargo", ["--version"]) +
+    "\n" +
+    run(
+      "the product's command",
+      "cargo",
+      ["check", "--all-targets", "--keep-going", "--message-format=json"],
+      { cwd: crate },
+    )
+  );
+}
+
 const REPAIRBENCH = path.join(__dirname, "fixtures", "repairbench");
 /** How long the refine round gets to reach the fake transport. See the note at
  *  the wait: the measured cost is ~60ms, cargo check included. */
@@ -1477,7 +1531,7 @@ test(
   // Comfortably above the 15s internal budget and nowhere near the old 300s:
   // a row that hangs should fail as one row, not read as a hung suite.
   { timeout: 60000 },
-  async () => {
+  async (ctx) => {
     // What the source pin above cannot say. Everything here is real except the
     // transport and the status-bar item: a real cargo check, the real session
     // loop, the real registry, the real render.
@@ -1485,6 +1539,24 @@ test(
     const crate = fs.mkdtempSync(path.join(os.tmpdir(), "c80-adv58p5-oracle-"));
     scratch.push(crate);
     fs.cpSync(REPAIRBENCH, crate, { recursive: true });
+
+    // SESSION-V70. The clock below is a HANG detector, and the toolchain's cold
+    // cost is not what it was ever measuring. On run 34591437622 this row spent
+    // its whole 15s budget before the check came back and read as a product
+    // defect; on run 34592832743, same code, the row took 1160ms. A hosted
+    // runner is about 8x slower here than this box and a first cargo invocation
+    // on a cold one can stall for seconds. So cargo is warmed OUTSIDE the timed
+    // region, against the same crate and with the product's own command, and the
+    // budget goes back to covering only the work the row is about.
+    //
+    // A box with no usable cargo skips LOUD rather than timing out: a row that
+    // cannot run the checker is saying something about the box, not about the
+    // cancel affordance.
+    const warm = warmCargo(crate);
+    if (!warm.ok) {
+      return ctx.skip(`SKIP (LOUD) CLEAN E1: cargo cannot run here -> ${warm.why}`);
+    }
+
     const file = path.join(crate, "src", "task1.rs");
     const t = fs.readFileSync(file, "utf8");
     const start = t.indexOf("pub fn parse_duration");
@@ -1553,10 +1625,13 @@ test(
     // So the budget is 250x the observed cost and still small enough that a
     // genuinely hung row fails as one test instead of reading like a hung
     // suite. The old 280s was longer than the entire gate.
+    const waitStarted = Date.now();
     const arrived = await within(reached, REFINE_BUDGET_MS);
     assert.ok(
       !arrived.timedOut,
-      `the refine round did not reach the transport within ${REFINE_BUDGET_MS}ms. Channel: ${JSON.stringify(channel)}`,
+      `the refine round did not reach the transport within ${REFINE_BUDGET_MS}ms ` +
+        `(waited ${Date.now() - waitStarted}ms). Channel: ${JSON.stringify(channel)}\n` +
+        toolchainWitness(crate),
     );
     assert.ok(await waitFor(() => registry.count() > 0, 200), "the round must have taken a claim");
 

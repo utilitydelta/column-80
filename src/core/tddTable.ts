@@ -210,6 +210,20 @@ function identBefore(text: string, i: number): string {
   return text.slice(s, i);
 }
 
+/** Does a `:` sit in front of the identifier starting at `start`? The gate on
+ *  the annotation walk when the annotation is itself identifier-shaped, and no
+ *  more than a gate: the second `:` of a path separator answers true here on
+ *  purpose, because `let cases: crate::fixtures::Cases = …` has to reach the
+ *  same walk. Telling a binding `:` from a path `::` is the walk's job, not
+ *  this one's. */
+function colonBefore(text: string, start: number): boolean {
+  let p = start - 1;
+  while (p >= 0 && /\s/.test(text[p])) {
+    p--;
+  }
+  return p >= 0 && text[p] === ":";
+}
+
 /** The next non-space index at or after `i`. */
 function skipSpace(text: string, i: number): number {
   let j = i;
@@ -440,6 +454,63 @@ const BINDING_KEYWORD = /^(let|const|static)$/;
 // ===========================================================================
 
 
+/** Does a COMMENT, or a string, own the `:` at `at`?
+ *
+ *  The backwards walk reads raw characters, so `/// let cases:` on the line
+ *  above a list hands it a colon, an identifier and a binding keyword that are
+ *  all comment PROSE. `annotationRunsTo` cannot catch it: it guards the region
+ *  after the colon, and in that shape the region is a bare identifier that
+ *  verifies cleanly. A block comment is caught, because its closer lands inside
+ *  the verified region; a line comment's terminator is the newline, which is
+ *  behind the colon, not in front of it.
+ *
+ *  So the question is asked backwards, with the same literal/comment lens the
+ *  rest of this file uses: re-lex forward from the first line start inside the
+ *  budget and see whether a skipped region covers the colon. That reads `//`
+ *  inside a string as ordinary text for free, which a scan for the characters
+ *  would not. The lex starts at the budget floor and not at the colon's own
+ *  line because a block comment or a string can OPEN on an earlier line: from
+ *  the colon's line the comment's closer is plain text and a string's closing
+ *  quote reads as an opening one. That admitted a `let cases: rows` sitting in
+ *  a block comment whose closer lands on the next line, and refused a real
+ *  table behind a string closed on the binding's line. Reading from the floor
+ *  sees both open, and the budget already pays for that distance.
+ *
+ *  Two narrower gates were on the table. Refusing a NEWLINE between the colon
+ *  and the `=` is smaller, but it admits `// let cases: rows` with the `=` on
+ *  the next line, where colon and name share the comment's line, and it loses a
+ *  real annotation written across two lines. Scanning back for a literal `//`
+ *  is the same size as this and cannot tell one inside a string from a real
+ *  one. This gate is keyed on the thing that is actually wrong: the colon is
+ *  not code.
+ *
+ *  Bounded like the walk it guards. No line boundary inside the budget is
+ *  answered "owned", which refuses the table: losing one costs a gesture,
+ *  naming the wrong list blanks a column the human wrote. */
+function commentOwnsColon(text: string, at: number, profile: LiteralProfile | undefined): boolean {
+  const floor = Math.max(0, at - ANNOTATION_BUDGET);
+  let lineStart = floor;
+  while (lineStart > 0 && lineStart < at && text[lineStart - 1] !== "\n") {
+    lineStart++;
+  }
+  if (lineStart >= at) {
+    return true;
+  }
+  let i = lineStart;
+  while (i < at) {
+    const skipped = skipLiteralOrComment(text, i, profile);
+    if (skipped > i) {
+      if (skipped > at) {
+        return true;
+      }
+      i = skipped;
+      continue;
+    }
+    i++;
+  }
+  return false;
+}
+
 /** The bound name in front of a TYPE ANNOTATION, or undefined when what sits
  *  between the name and the `=` is not one.
  *
@@ -480,7 +551,10 @@ function nameBeforeAnnotation(text: string, end: number, profile: LiteralProfile
           n--;
         }
         const candidate = identBefore(text, n + 1);
-        if (candidate.length === 0 || !annotationRunsTo(text, k + 1, end, profile)) {
+        if (candidate.length === 0 || commentOwnsColon(text, k, profile)) {
+          return undefined;
+        }
+        if (!annotationRunsTo(text, k + 1, end, profile)) {
           return undefined;
         }
         // And the name must be BOUND, right here. The flag above keeps this walk
@@ -624,6 +698,33 @@ function findAssignedTupleTable(
         continue;
       }
       name = annotated;
+    } else if (annotations && colonBefore(text, j + 1 - name.length)) {
+      // The identifier that walk just found may be the TYPE, not the bound
+      // name: `let cases: Cases = [ … ];`. A plain type name is the one
+      // annotation spelling that ENDS in an identifier, so unlike every form
+      // above it the walk back from the `=` lands on something and the branch
+      // above is never entered. The finder then hunts for a runner that loops
+      // over `Cases`, finds none, and drops the table with every hole in it,
+      // which ships the model's guessed expected values as if a human had
+      // checked them.
+      //
+      // The `:` is only the question. The same character sits in front of the
+      // identifier in `let cases: crate::fixtures::Cases = [ … ]`, where it is
+      // the tail of a path separator, and that spelling has to reach the same
+      // answer as the plain one. So `nameBeforeAnnotation` is what decides:
+      // it carries the `::` rule, the forward verification and the binding
+      // keyword that keep a struct-literal field, a match arm and an ascription
+      // from turning into a table name, and it is bounded, which this walk on
+      // the fn-gen path has to stay.
+      //
+      // When it refuses, the identifier stands as the name and this finder
+      // answers exactly what it answered before the question was asked. Losing
+      // a table costs a gesture; naming the wrong list blanks a column the human
+      // never wrote, so an ambiguous shape is answered with no table.
+      const annotated = nameBeforeAnnotation(text, j, profile);
+      if (annotated !== undefined) {
+        name = annotated;
+      }
     }
     const rows = rowsFromList(text, i, "(", profile, lastPositionalColumn);
     if (rows === undefined) {

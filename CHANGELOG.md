@@ -1,5 +1,58 @@
 # Changelog
 
+## 3.5.1
+
+**The `ci` job is green again, and the eight rows it failed on are closed, not deleted.**
+
+3.5.0 shipped with `ci` red on main. Seven of the rows were defect claims carried from session-v68's
+adversarial review, each a runnable case written to fail until the defect behind it closed; the
+eighth was a hosted-runner flake. All eight are green on the branch, and none was removed.
+
+**A Claude Code test reply is no longer refused for an ordinary literal.**
+
+That backend strips the outer fence, so its reply is bare test code and the product has to decide
+whether it IS the tests before splicing it. That check lexed all five languages with one C-style
+string model. A Rust char literal holding a quote, a C# verbatim path ending in a backslash, a Go
+raw string doing the same and a TypeScript regex with an apostrophe in it each opened a string that
+never closed, and you were told the reply contained no usable tests. Each language is now lexed by
+its own rules there, and Python's bare path now admits a test that asserts a string value, which it
+refused before. Widening what is admitted is the expensive direction, so three review loops attacked
+the admit side: a regex can no longer hide an unbalanced paren or swallow a trailing prose line,
+`x++ / 2` divides, and a reply that is an implementation calling `RE.test(s)` is refused rather than
+written into your test file.
+
+**The test count is taken through the reply's own language.**
+
+`testCount` was counted on text neutralised by the Rust lens in every language, so an `it(` inside a
+TypeScript string counted as a test, a `def test_` inside a Python triple-quoted block did too, and a
+plain implementation whose comment mentioned its tests was admitted as a test file. A C# verbatim
+string ending in a backslash ran the other way and silently lost real tests. Every language now
+counts through its own lens, C# gets one for the first time (verbatim and raw strings, non-nesting
+comments, char literals), and TypeScript's counter understands regex literals so a backtick inside
+one no longer blanks every test after it. The fenced path is the measurement baseline for the
+roadmap, so the move was measured, not asserted: 152 real fenced fixtures, 2 move, both to the right
+answer; 1050 generated clean replies, 0 move. See `docs/supersessions.md` S35.
+
+**A Rust table annotated with a plain type name is a table.**
+
+`let cases: Cases = [ … ]` lost its table: the locator read `Cases` as the binding, found no loop
+over it, and the model's guessed expected values shipped as if you had checked them. It is found
+now. Two review loops then closed the two ways the fix could name the wrong list: a `let cases:` in
+a comment above an ordinary array no longer turns that array into a table, whether the comment is a
+line or a block, and a string closed on the binding's line no longer hides a real one. S36 in
+`docs/supersessions.md` records that this reverses an earlier contract ruling and waits on
+ratification.
+
+**The `CLEAN E1` row no longer times out on a cold runner.**
+
+The row drives a real `cargo check` and charged the toolchain's first cold invocation to a budget
+that exists to catch a hung round. The check is warmed once before the timed region, the budget is
+unchanged, and a box with no usable cargo skips loudly instead of timing out. Measured green on the
+hosted runner where it failed.
+
+**Test harness.** Differential rows compare against the 3.5.0 commit by hash, not the `main` ref,
+which a pull-request checkout does not have and which stops meaning "before" once a branch merges.
+
 ## 3.5.0
 
 **The compiler check now compiles the tests Column 80 wrote.**

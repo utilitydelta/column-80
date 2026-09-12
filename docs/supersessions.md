@@ -1854,3 +1854,70 @@ whole pass rather than land a partial rename.
 
 **Pinned by.** `test/blind-v69-p1-shadow-guard.test.cjs` (62 contract rows, written blind) and
 `test/impl-v69-p1-shadow-guard.test.cjs` (27 rows, including the dogfood reply and the regen leg).
+
+## S35. A test reply is counted through its own language's lens, and the fenced count moves where a test shape hid in a literal
+
+**Ruled 2026-09-12, session-v70 phase 3. The P8 contract's rule 4 said "counted on neutralised
+text" without saying whose; this settles it.**
+
+**What changed.** `extractTestFunctions` counted every language on text neutralised by the Rust
+lens. It now picks the lens by languageId: the TypeScript lens with regex literals modelled, the
+Python lens, the Go lens, a new C# lens, Rust unchanged. The bare admission gate reads the same
+buffer as the count.
+
+**Why the old behaviour was wrong.** A TypeScript single-quoted string, a template literal, a Python
+triple-quoted block, a Go raw string and every C# verbatim form were code to the Rust lens. A test
+shape inside one counted as a test, and a plain implementation whose comment or string mentioned its
+own tests was admitted as a test file. A C# verbatim path ending in a backslash ate its closing quote
+and every later `[Fact]` stopped being counted, silently, on the fenced path. A backtick inside a
+TypeScript regex opened a template that ran to the end of the file, and a fence-handling module's
+tests counted zero.
+
+**The fenced path is the measurement baseline, so the move is named.** Measured against a facade of
+the 3.5.0 commit: 152 real fenced fixtures in the test tree, 2 move, both TypeScript, both to the
+right count (a phantom `"` inside `'it"s'` was swallowing a real second test; the goal's own
+`'it("ghost", …)'` fixture). 1050 generated fenced replies with no shape in any literal: 0 move.
+1050 with a shape hidden in every literal form: 345 move, Rust 0, every non-Rust move a decrease,
+every C# verbatim move an increase, every C# raw-string move back to the real count. The plain-
+implementation refusal (P8 rule 6 crossed with rule 4) now holds on the FENCED path for go, python,
+typescript, typescriptreact, javascript and javascriptreact, which it did not before; Rust and C#
+already refused. Three fenced fixtures the phase 3 review authored move in the admitting direction
+and are right: a non-nesting C# block comment, and two files whose only phantom was a delimiter
+inside a regex.
+
+**Named limits.** `#if false` bodies are counted (S70-18). A C# raw string with no close blanks to
+the end of the reply, the refusing direction. The bare structural scanner still has no C# raw-
+string rule of its own (S70-6).
+
+**Pinned by.** `test/blind-v70-p3-counting-lens.test.cjs` (124 rows, blind, including a rule 1
+differential of 40 clean fenced replies against the 3.5.0 commit), `test/impl-v70-p3-counting-
+lens.test.cjs` (40 rows, including the two generated corpora), `test/review-v70-p3.test.cjs` (34).
+
+## S36. A Rust table annotated with a plain type NAME is located, reversing P9 amendment 2
+
+**Proposed 2026-09-12, session-v70 phase 4. NOT yet ratified: S70-5 in `session-v70/scraps.md`.**
+
+**What changed.** `let cases: Cases = [ … ]`, walked by the test body, is a table. P9 amendment 2
+had ruled that spelling out of scope.
+
+**Why the old ruling was made, and why it does not apply.** Amendment 2 feared that the fix would
+fall back to the annotation walk whenever the found identifier has no walker, which reopens the
+Python inversion rule 8 closed. The shipped fix keys on a binding `:` in front of the identifier,
+not on walker absence, and sits behind the Rust-only flag `rustTables` passes; the Python leg is
+byte-identical to 3.5.0 across the oracle's 22 Python rows and the review's differential.
+
+**Why the old behaviour was wrong.** With the table lost, the model's guessed expected values
+shipped as if the human had checked them, the silent-wrong direction the table exists to prevent.
+The v68 adversarial review wrote `[P9 R8 §1]` as a defect claim against exactly this spelling and
+it was red on main.
+
+**What the review loops closed on the way.** A line comment ending `let cases:` above an ordinary
+array, or a block comment opened on an earlier line holding the same words, no longer turns that
+array into a table; the gate re-lexes forward from the budget floor with the file's own lens and
+refuses a colon a comment or string owns. A string closed on the binding's line no longer hides a
+real table. Left as named limits: `let mut` loses every annotated table (S70-8, pre-existing), a
+trailing `// note:` on the opening line loses it (S70-14, pre-existing), and a 512-character
+colon-to-line-start cliff refuses silently (S70-13).
+
+**Pinned by.** `test/blind-v70-p4-annotated-table.test.cjs` (104, blind), `test/impl-v70-p4-
+annotated-table.test.cjs`, `test/review-v70-p4.test.cjs` (17), `test/review-v70-p4b.test.cjs` (9).
