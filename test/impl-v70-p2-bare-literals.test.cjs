@@ -673,3 +673,111 @@ itest("[v70 P2 python] a hash inside a string is not a comment", () => {
       "because the quote check has already consumed the string by the time the `#` is reached."
   );
 });
+
+// ===========================================================================
+// TypeScript, loop 2: the division trap after a postfix operator, the phantom
+// regex that eats the prose tail, and the cost of asking "is there a value in
+// hand" at every character.
+//
+// [session-v70/goal.md defect 1; P8 rules 3 and 9; review rows REV70-P2 6-10]
+// ===========================================================================
+
+itest("[v70 P2 typescript] a division after a postfix `++` is a division", () => {
+  admits(
+    "typescript",
+    tsFile(`  const r = x++ / f(2 / 3);
+  expect(r).toBe(1);`),
+    "`x++` leaves a value in hand, so the `/` after it divides. Read the `+` as an operator and a " +
+      "regex opens at the `/`, blanking `/ f(2 /` and hiding the open paren from the balance count: " +
+      "a reply that does not parse would be admitted, and one that does would be refused."
+  );
+});
+
+itest("[v70 P2 typescript] a division after a postfix `--` is a division", () => {
+  admits(
+    "typescript",
+    tsFile(`  expect(x-- / f(2 / 1).g).toBe(2);`),
+    "same rule, other operator. The fenced copy of this reply is admitted, so P8 rule 5 says the " +
+      "bare copy answers the same."
+  );
+});
+
+itest("[v70 P2 typescript] `++/` with no space between is still a division", () => {
+  admits(
+    "typescript",
+    tsFile(`  const r = x++/f(2/3);
+  expect(r).toBe(1);`),
+    "the postfix rule is about the two characters, not about the whitespace around them. Written " +
+      "tight, the wrong reading opens a regex at the first slash and closes it at the second, " +
+      "blanking `/f(2/` and leaving a `)` with nothing to close: a reply that parses is refused."
+  );
+});
+
+itest("[v70 P2 typescript] a single `+` before a slash still opens a regex", () => {
+  admits(
+    "typescript",
+    tsFile(`  const r = a + /x(y/.source;
+  expect(r).toBe("x(y");`),
+    "red-before-green against the wrong fix. Treat any `+` as leaving a value and this `/` divides, " +
+      "the unmatched `(` inside the regex becomes real, and a well-formed reply is refused. Only a " +
+      "`+` whose previous character is also `+` is a postfix operator."
+  );
+});
+
+itest("[v70 P2 typescript] a regex inside the LAST statement is still admitted", () => {
+  admits(
+    "typescript",
+    tsFile(`  expect(/x/.test(s)).toBe(true);`),
+    "the regex tail guard refuses a regex blanked AFTER the last closing delimiter. A regex that " +
+      "sits inside the last statement closes before that delimiter and must be untouched by it, or " +
+      "the guard costs every reply whose final assertion matches a pattern."
+  );
+});
+
+itest("[v70 P2 typescript] a trailing COMMENT after the last close is admitted", () => {
+  admits(
+    "typescript",
+    `it("adds", () => {
+  expect(add(1, 2)).toBe(3);
+});
+// covers add and the overflow path`,
+    "a comment is code the model is allowed to write, and the lens has already blanked it. The tail " +
+      "guard is scoped to regexes for exactly this reason: blanking is not evidence of prose."
+  );
+});
+
+itest("[v70 P2 typescript] a trailing PROSE line with slashes in it is refused", () => {
+  refuses(
+    "typescript",
+    `it("adds", () => {
+  expect(add(1, 2)).toBe(3);
+});
+/ covers add and the overflow path /`,
+    "P8 rule 9. The line opens at a `/` in non-value position, closes at the next one, and blanks " +
+      "whole, so the tail gate reads the `});` above it and the prose is spliced into the user's " +
+      "test file. A regex that finishes after the last closing delimiter is not part of the module."
+  );
+});
+
+itest("[v70 P2 typescript] a long blanked comment run scans in linear time", () => {
+  const note = "  // note\n";
+  const lines = Math.ceil(80000 / note.length);
+  const reply = `it("a", () => {\n` + note.repeat(lines) + `  expect(f(1)).toBe(1);\n});`;
+  assert.ok(
+    reply.length > 80000,
+    `the row needs an 80,000 character run to judge; it built ${reply.length}`
+  );
+  let best = Infinity;
+  for (let k = 0; k < 3; k++) {
+    const t0 = process.hrtime.bigint();
+    extractTestFunctions(reply, "typescript");
+    const d = Number(process.hrtime.bigint() - t0) / 1e6;
+    if (d < best) best = d;
+  }
+  assert.ok(
+    best < 100,
+    `${reply.length} characters, almost all of them blanked comment text, took ${best.toFixed(1)}ms. ` +
+      `"is there a value in hand" walks back over the trailing whitespace run in the output, so asking ` +
+      `it at every character makes the scan quadratic. It is only ever needed at a slash.`
+  );
+});

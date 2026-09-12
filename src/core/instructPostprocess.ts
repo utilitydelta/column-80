@@ -480,6 +480,18 @@ function closesAsCode(scanned: ScannedBare, rules: BareLangRules): boolean {
     // No delimiter ever opened, so there is no construct here to close.
     return false;
   }
+  if (scanned.lastRegexEnd !== undefined && scanned.lastRegexEnd > scanned.lastClose) {
+    // A regex is blanked WHOLE, delimiters included, so a trailing prose line
+    // that happens to start and end with a slash leaves a line of spaces behind
+    // and the gate below reads the `});` above it. The prose is then spliced
+    // into the user's test file, which is the failure rule 9 exists to stop.
+    //
+    // Scoped to regexes on purpose. A string keeps its delimiters, so it never
+    // looks blank, and a trailing COMMENT is code the model may write and is
+    // meant to be allowed. Only a regex finishing after the module's last
+    // closing delimiter is evidence that the lens invented a literal.
+    return false;
+  }
   // The last line must be nothing BUT the closing delimiters. "Nothing after the
   // outermost close" was the first attempt and prose defeats it: a markdown
   // bullet `- the overflow case (wrapping)` opens and closes a paren of its own,
@@ -578,6 +590,18 @@ function endsInValue(out: readonly string[], literalEnd: number): boolean {
   }
   const c = out[p];
   if (c === ")" || c === "]" || c === "}" || c === "<") {
+    return true;
+  }
+  if ((c === "+" || c === "-") && out[p - 1] === c) {
+    // `x++ / 2` and `x-- / 2` are divisions. A single `+` or `-` is an operator
+    // and a value is expected after it, so the `/` opens a regex; a doubled one
+    // is a postfix increment and there is already a value in hand. Reading it as
+    // an operator opened a phantom regex that swallowed `/ f(2 /`, which hid an
+    // unbalanced paren from the delimiter count in one direction and refused a
+    // reply that parses in the other.
+    //
+    // A PREFIX `++x / 2` cannot be told from `a ++ / 2` by looking at the text,
+    // and `a ++ / 2` is not valid anyway, so both read as a value.
     return true;
   }
   if (BARE_WORD_CHAR.test(c)) {
@@ -683,6 +707,10 @@ interface ScannedBare {
   /** Index just past the character at which the outermost delimiter last
    *  returned to depth 0, or undefined when nothing ever opened. */
   readonly lastClose: number | undefined;
+  /** Index just past the last REGEX literal blanked by the scan, or undefined
+   *  when none was. A regex is the one literal the lens erases whole, so it is
+   *  the one literal that can make a line of prose look like a blank line. */
+  readonly lastRegexEnd: number | undefined;
 }
 
 function scanBare(text: string, rules: BareLangRules): ScannedBare | undefined {
@@ -709,6 +737,7 @@ function scanBare(text: string, rules: BareLangRules): ScannedBare | undefined {
   let round = 0;
   let square = 0;
   let lastClose: number | undefined;
+  let lastRegexEnd: number | undefined;
   /** Length of `out` when the most recent literal finished, so the regex rule
    *  can tell a blanked literal from the whitespace it looks like. */
   let literalEnd = 0;
@@ -764,12 +793,18 @@ function scanBare(text: string, rules: BareLangRules): ScannedBare | undefined {
         continue;
       }
     }
-    if (rules.regexLiteral === true) {
+    // The `/` test belongs at the CALL SITE, not inside the matcher. Asking
+    // `endsInValue` at every character of a TypeScript reply made the scan
+    // quadratic: it walks back over the trailing whitespace run in the output,
+    // and a run of comment lines is blanked to exactly that. A regex can only
+    // start at a `/`, so the question is only ever worth asking there.
+    if (rules.regexLiteral === true && text[i] === "/") {
       const regexLen = matchRegexLiteral(text, i, endsInValue(out, literalEnd));
       if (regexLen !== undefined) {
         blankRun(i, regexLen);
         i += regexLen;
         literalEnd = out.length;
+        lastRegexEnd = i;
         continue;
       }
     }
@@ -820,7 +855,9 @@ function scanBare(text: string, rules: BareLangRules): ScannedBare | undefined {
     out.push(c);
     i++;
   }
-  return curly === 0 && round === 0 && square === 0 ? { text: out.join(""), lastClose } : undefined;
+  return curly === 0 && round === 0 && square === 0
+    ? { text: out.join(""), lastClose, lastRegexEnd }
+    : undefined;
 }
 
 /**
