@@ -60,6 +60,17 @@ ratification, S70-5), are in `docs/supersessions.md`. Eighteen scraps and a ruli
 and name their scrap, so nothing is red by design. Item 82 below is half met by this branch: the
 suite is green, the release workflow still skips `test:unit`.
 
+- **84.** Known Limits says "NVIDIA only... Apple Silicon land on the FIM-only tier"; the tier
+  code handles Apple Silicon and the README says a 36GB MacBook runs the 30B. One is wrong.
+  Verify on a real Mac, fix the loser. REASONED from `hardware.ts`, not PROVEN.
+- **85.** The below-12GB message promises "FIM tab-completion still works" on CPU with no
+  measurement in the repo. Measure one CPU box or soften the sentence.
+- **86.** Model digest emitted alongside generated code (the tool-qualification input). Small,
+  deterministic, no new surface.
+- **87.** Benchmark table harness: 30-50 functions, local vs frontier, compile, pass, kill rate,
+  reported with raw counts (ISSTA 2026, arXiv:2607.22880, on mutation score in this setting).
+  Absorbs the measurement half of items 13 and 53.
+
 ## The list, at a glance
 
 **Features** - genuine builds, each wanting its own goal and scout.
