@@ -167,6 +167,12 @@ export interface RawGenerateOptions {
    *  not contain the requested function". `generate()` has always passed it. */
   bodyOnly?: boolean;
   onChunk?: (text: string) => void;
+  /** The target's language, for the head-anchored trim's visibility keywords.
+   *  Only meaningful alongside `signature`. Absent falls back to the union of
+   *  every language's, so a repair round on a Python target reads through
+   *  `export` - harmless, since every word in the union is a visibility
+   *  keyword, but wrong, and free to get right. */
+  languageId?: string;
   /** The blocks this pre-assembled prompt LEADS with, so a backend that caches
    *  a prefix reaches the same checkpoint a generation built. Repair, refine
    *  and TDD re-send the user's context by construction, so a repair after a
@@ -248,6 +254,12 @@ export class FnGenService {
       onChunk: request.onChunk,
       blocksLabel: String(blocks.length),
       bodyOnly: request.bodyOnly,
+      // WITHOUT THIS LINE the per-language qualifier table is dead code. It was
+      // written, tested and shipped while every function-shape round reached
+      // the trim with `languageId` undefined, so the widest union was what ran
+      // and Python read through `export`. Adversarial review found it; no unit
+      // row could, because every one of them called the trim directly.
+      languageId: request.languageId,
       onPrompt: request.onPrompt,
       cachePrefix: renderContextPrefix(blocks),
     }, signal);
@@ -441,6 +453,7 @@ export class FnGenService {
       signature: opts?.signature,
       span: opts?.span,
       bodyOnly: opts?.bodyOnly,
+      languageId: opts?.languageId,
       onChunk: opts?.onChunk,
       // No context blocks exist on this path; "-" keeps the gen line format
       // stable while staying honest about the count not applying.
@@ -463,11 +476,17 @@ export class FnGenService {
        *  single-function guard (extractRequestedFunction). "test-module" swaps
        *  in the `#[cfg(test)] mod tests` guard (extractTestModule). */
       shape?: "function" | "test-module";
-      /** ADDED phase 6. WHICH language's test shape, when shape is
-       *  "test-module". "rust" and absent keep the frozen `#[cfg(test)] mod
-       *  tests` guard; the other four hold the reply to bare test FUNCTIONS,
-       *  because their tests go in a separate file whose wrapper the scaffold
-       *  writes. */
+      /** The round's language. Two readers, and they do not interact.
+       *
+       *  On the test-module shape (ADDED phase 6) it picks WHICH test shape:
+       *  "rust" and absent keep the frozen `#[cfg(test)] mod tests` guard; the
+       *  other four hold the reply to bare test FUNCTIONS, because their tests
+       *  go in a separate file whose wrapper the scaffold writes.
+       *
+       *  On the function shape it picks the visibility keywords the
+       *  head-anchored trim reads through. Absent falls back to the union of
+       *  every language's, which is a tolerable default only because every word
+       *  in that union is a visibility keyword. */
       languageId?: string;
       /** The request asked for a BODY, so the reply carries no declaration head
        *  and the head-anchored trim cannot apply to it. */
@@ -690,7 +709,7 @@ export class FnGenService {
         // shape - a head-less reply to a full-definition request is still the
         // defect the trim exists to catch.
         if (request.signature !== undefined && text.length > 0 && !request.bodyOnly) {
-          const extraction = extractRequestedFunction(text, request.signature);
+          const extraction = extractRequestedFunction(text, request.signature, request.languageId);
           if (extraction === undefined) {
             // COUPLING: the vscode toast translation (fnGen.ts,
             // SERVICE_REJECT_TOASTS) matches this reject on the substring

@@ -848,6 +848,10 @@ async function executeSession(
         docComment: resolved.docComment,
         signature: resolved.signature,
         span: resolved.span,
+        // The trim's visibility keywords. Same spelling the payload above uses,
+        // so a resolve that left languageId unset cannot silently drop this
+        // round back to the cross-language union.
+        languageId: resolved.languageId ?? ctx.document.languageId,
         // The prompt asked for a BODY, so the service must not hold the reply to
         // a declaration head it was told not to write. Without this the trim
         // rejects every obedient reply and a Python docstring target can never
@@ -1960,6 +1964,7 @@ async function runTestLeg(
         docComment: resolved.docComment,
         signature: resolved.signature,
         span: resolved.span,
+        languageId: resolved.languageId ?? ctx.document.languageId,
         bodyOnly: resolved.bodyOnly,
         contextBlocks: repairBlocks,
       }, roundController.signal);
@@ -2424,6 +2429,7 @@ async function runRefine(
       docComment: resolved.docComment,
       signature: resolved.signature,
       span: resolved.span,
+      languageId: resolved.languageId ?? ctx.document.languageId,
       // As on the repair round: a body-only prompt gets a body-only reply, and
       // the head-anchored trim would refuse it.
       bodyOnly: resolved.bodyOnly,

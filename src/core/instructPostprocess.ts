@@ -167,6 +167,102 @@ export interface RequestedFunctionExtraction {
   trimmedAfter: number;
 }
 
+/** VISIBILITY qualifiers, per language, and nothing else.
+ *
+ *  These are the only words on a declaration head that carry no part of what
+ *  the body has to be. `async`, `const`, `unsafe`, `static`, `abstract`,
+ *  `declare`, `extern`, `partial` and the rest are SEMANTIC: they decide
+ *  whether the body compiles. This set was briefly all of them, and the cost
+ *  was measured. A model that writes `async fn fetch` because its body awaits
+ *  had the `async` stripped back off and the result spliced into the file:
+ *  E0728 in Rust, a SyntaxError in Python, CS4032 in C#. Every one of those was
+ *  an honest refusal before. A refusal is worse than a good answer and much
+ *  better than source that cannot compile.
+ *
+ *  Leaving the semantic words OUT is not a special case bolted on. They stay
+ *  inside the anchor, as part of the function's identity: `pub async fn foo`
+ *  against a signature `async fn foo` still matches, because only the `pub` is
+ *  stripped from either side. What no longer matches is a reply whose `async`
+ *  or `const` differs from the document's, which is exactly the reply that
+ *  should be refused.
+ *
+ *  A word that names what is being declared (`fn`, `func`, `def`, `class`,
+ *  `struct`) is NOT here and must never be: stripping it would let one
+ *  declaration anchor on another.
+ *
+ *  Go and Python are empty. Go capitalises a name to export it, which is part
+ *  of the identity; Python has no visibility keyword at all. */
+const HEAD_QUALIFIERS: Record<string, readonly string[]> = {
+  rust: ["pub"],
+  go: [],
+  python: [],
+  typescript: ["export", "public", "private", "protected"],
+  csharp: ["public", "private", "protected", "internal"],
+};
+
+/** The four TS/JS spellings share one set. */
+const HEAD_QUALIFIER_ALIASES: Record<string, string> = {
+  javascript: "typescript",
+  javascriptreact: "typescript",
+  typescriptreact: "typescript",
+};
+
+/** Every qualifier any language has. What an UNKNOWN or absent languageId
+ *  gets: the head-anchored trim is a guard against splicing the wrong item,
+ *  not a parser, and a language it has never heard of is better served by
+ *  reading through one extra keyword than by refusing a correct reply. The
+ *  check-before-strip loop in `extractRequestedFunction` is what makes the
+ *  wider set safe.
+ *
+ *  Every word in it is a visibility keyword, so a language reading through
+ *  another language's spelling costs at most a stripped `pub` or `export`. That
+ *  is the whole reason the union is tolerable: when the set held semantic
+ *  qualifiers, falling back to it was how Python came to read through `export`
+ *  and Go through `pub`. */
+const ALL_HEAD_QUALIFIERS: readonly string[] = [
+  ...new Set(Object.values(HEAD_QUALIFIERS).flat()),
+];
+
+function headQualifiersFor(languageId: string | undefined): readonly string[] {
+  if (languageId === undefined) {
+    return ALL_HEAD_QUALIFIERS;
+  }
+  const key = HEAD_QUALIFIER_ALIASES[languageId] ?? languageId;
+  return HEAD_QUALIFIERS[key] ?? ALL_HEAD_QUALIFIERS;
+}
+
+/** One qualifier off the front of an already-trimmed line, or undefined when
+ *  the line does not start with one.
+ *
+ *  A qualifier is a WHOLE word, and it is followed by whitespace: `pubfn foo(`
+ *  is not `pub fn foo(`. Rust's visibility carries an argument of its own and is
+ *  matched with it (`pub(crate)`, `pub(super)`, `pub(in ::a::b)`); the string
+ *  literal branch is kept for the same reason the check-before-strip loop is,
+ *  because a rule that is only correct for today's set is a trap for whoever
+ *  widens it.
+ */
+function stripOneHeadQualifier(line: string, quals: readonly string[]): string | undefined {
+  const m = /^([A-Za-z_][A-Za-z0-9_]*)(\([^()]*\)|\s+"[^"]*")?\s+/.exec(line);
+  if (m === null || !quals.includes(m[1])) {
+    return undefined;
+  }
+  return line.slice(m[0].length);
+}
+
+/** Every leading qualifier off the front. Used on the SIGNATURE's head only,
+ *  where greedy is right: the document wrote that head, so whatever qualifiers
+ *  sit on it are qualifiers. */
+function stripHeadQualifiers(head: string, quals: readonly string[]): string {
+  let rest = head;
+  for (;;) {
+    const next = stripOneHeadQualifier(rest, quals);
+    if (next === undefined) {
+      return rest;
+    }
+    rest = next;
+  }
+}
+
 /**
  * Cut an instruct reply down to the one requested function, or undefined
  * when the reply does not contain it at all.
@@ -184,15 +280,34 @@ export interface RequestedFunctionExtraction {
  * head line itself. When no closing line is found (indentation-body
  * languages, or output the model indented wholesale) the tail is kept
  * unjudged — degrading to today's behavior, never cutting mid-function.
+ *
+ * `languageId` picks the qualifier set the second pass reads through, and is
+ * optional: omitted, every language's qualifiers apply. The head the caller
+ * gets back always carries the SIGNATURE's qualifier run, never the reply's.
+ * A model must not be able to make a function public by guessing.
  */
 export function extractRequestedFunction(
   text: string,
   signature: string,
+  languageId?: string,
 ): RequestedFunctionExtraction | undefined {
   const sigLine = signature.split("\n")[0].trim();
-  const paren = sigLine.indexOf("(");
-  const head = paren === -1 ? sigLine : sigLine.slice(0, paren + 1);
-  if (head === "") {
+  // The qualifier run comes off FIRST, and the paren cut happens on what is
+  // left. Cutting the raw line at its first `(` reads `pub(crate) fn foo(a)`
+  // as the head `pub(`, which is not a head at all: it anchors on the
+  // visibility keyword and matches every `pub(crate)` and `pub(super)` item in
+  // the reply, whatever it is called. Rust's parenthesised visibility is the
+  // only spelling where a qualifier carries a paren of its own, and it is
+  // common enough in real code to matter.
+  const quals = headQualifiersFor(languageId);
+  const bareSig = stripHeadQualifiers(sigLine, quals);
+  /** The signature's own qualifier run, verbatim, to be written back onto a
+   *  matched line. The document wrote it; the model only guessed at it. */
+  const sigRun = sigLine.slice(0, sigLine.length - bareSig.length);
+  const paren = bareSig.indexOf("(");
+  const bare = paren === -1 ? bareSig : bareSig.slice(0, paren + 1);
+  const head = sigRun + bare;
+  if (bare === "") {
     return undefined;
   }
 
@@ -202,22 +317,82 @@ export function extractRequestedFunction(
   // CacheEntry` matching `pub struct Cache`). For the no-paren case require a
   // non-identifier boundary after the head (whitespace, `{`, `<`, `(`, `;`,
   // end of line) so the match is the whole name, not a prefix of a longer one.
-  const matchesHead =
+  const anchored =
     paren === -1
-      ? (l: string) => {
-          const t = l.trim();
-          if (!t.startsWith(head)) {
+      ? (t: string, anchor: string) => {
+          if (!t.startsWith(anchor)) {
             return false;
           }
-          const after = t.charAt(head.length);
+          const after = t.charAt(anchor.length);
           return after === "" || !/[A-Za-z0-9_]/.test(after);
         }
-      : (l: string) => l.trim().startsWith(head);
+      : (t: string, anchor: string) => t.startsWith(anchor);
 
   const lines = text.split("\n");
-  const headIdx = lines.findIndex(matchesHead);
+
+  // PASS 1: a line whose trimmed form is already anchored on the signature's
+  // own head. It runs FIRST and over the whole reply, so a reply that matched
+  // before the qualifier leg existed returns the same bytes, the same line and
+  // the same counts. The tolerant pass below can only ever rescue a reply this
+  // one refuses.
+  //
+  // ONE deliberate narrowing, and it is a fix rather than a cost. The head used
+  // to be the raw signature cut at its first `(`, which for `pub(crate) fn
+  // foo(a)` is the anchor `pub(` - so a reply opening `pub(crate) struct Other;`
+  // was taken as the head and spliced into the function's span. The head is now
+  // the qualifier run plus the cut of what is left, which for every signature
+  // without a parenthesised visibility reconstructs the old bytes exactly, and
+  // for those three Rust spellings is strictly longer. A longer anchor can only
+  // refuse what it used to accept.
+  let headIdx = lines.findIndex((l) => anchored(l.trim(), head));
+  let rewritten: string | undefined;
+
+  // PASS 2: the model prepended (or dropped) a VISIBILITY qualifier. A reply
+  // that writes `pub fn err_pool_timeout(` for a `fn err_pool_timeout(`
+  // signature is the requested function, written correctly, and refusing it
+  // shows the human a toast saying the reply does not contain the function it
+  // plainly contains (session-v74, measured on a real reply).
+  //
+  // Stripping happens on BOTH sides, so the drop direction is covered too: a
+  // `fn foo(` reply against a `pub fn foo(` signature is the same defect one
+  // way round.
+  if (headIdx === -1) {
+    for (let i = 0; i < lines.length && headIdx === -1; i++) {
+      const raw = lines[i];
+      // Both ends are put back on the rewritten line. The LEADING half is the
+      // indent; the TRAILING half is whatever the reply had after the last
+      // visible character, which on a CRLF reply is the `\r` that `split("\n")`
+      // leaves on every line. Dropping it produced a single LF line in the
+      // middle of a CRLF reply, on the pass-2 path only. The service normalises
+      // EOL before this runs, so the product never saw it; the harnesses that
+      // call this function directly do not normalise, and a measurement made on
+      // an artifact the product cannot produce is a fact about the harness.
+      const indent = raw.slice(0, raw.length - raw.trimStart().length);
+      const tail = raw.slice(raw.trimEnd().length);
+      // Check before stripping at every depth, so a method whose NAME is a
+      // visibility word in some other language keeps matching. `internal(x)` is
+      // anchored at depth 0 and never reaches the strip, and the rule holds for
+      // whatever a later widening puts in the set.
+      for (let rest = raw.trim(); ; ) {
+        if (anchored(rest, bare)) {
+          headIdx = i;
+          rewritten = indent + sigRun + rest + tail;
+          break;
+        }
+        const next = stripOneHeadQualifier(rest, quals);
+        if (next === undefined) {
+          break;
+        }
+        rest = next;
+      }
+    }
+  }
+
   if (headIdx === -1) {
     return undefined;
+  }
+  if (rewritten !== undefined) {
+    lines[headIdx] = rewritten;
   }
 
   // {…} opened and closed on the head line: a single-line body.

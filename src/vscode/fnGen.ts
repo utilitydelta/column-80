@@ -6125,6 +6125,7 @@ export function registerFnGen(
                   docComment: resolved.docComment,
                   signature: resolved.signature,
                   span: resolved.span,
+                  languageId: resolved.languageId ?? document.languageId,
                   bodyOnly: resolved.bodyOnly,
                   // The retry leads with the original prompt, which leads with
                   // these, so it forks from the same checkpoint instead of
