@@ -456,6 +456,13 @@ export function assembleTestGenPrompt(input: TestGenPromptInput): string {
     );
   }
 
+  // NO target label here, deliberately. The test-gen prompt has the same
+  // unlabelled-target shape as the generation path, and session-v74 measured
+  // the displacement on the GENERATION path only. Adding an unmeasured label
+  // here would also break the S31 rendering pin, which is a supersession, and a
+  // supersession bought with speculation is not one worth having. Carried in
+  // session-v74/scraps.md with the rig that could measure it.
+
   // The contract as the model reads it: doc comment then signature, fenced. Same
   // shape as assembleFnGenPrompt's target so the two passes render identically.
   let body = "";
@@ -557,6 +564,56 @@ interface PromptSection {
 }
 
 /**
+ * The sentence that sits directly above the target block, or undefined when the
+ * prompt carries no reference material and the question it answers never comes
+ * up.
+ *
+ * GATED ON THE INJECTED SURFACE, and that is not blast-radius management. The
+ * second sentence names the two headers the injected surface renders. With no
+ * surface there are no data shapes and no API surfaces above, the sentence
+ * would be false, and a prompt with nothing between the instruction and the
+ * target has no displacement to fix. Its bytes stay exactly as they were.
+ *
+ * Exported so a measurement rig can build both arms out of the shipping
+ * assembler instead of doing string surgery on a log.
+ *
+ * DECLARED LIMIT: a developer's own staged context blocks can be as large as an
+ * injected surface and sit just as far above the target, and that prompt is
+ * still unlabelled. Not measured, so not shipped.
+ */
+export function targetLabel(input: FnGenPromptInput): string | undefined {
+  if (!input.injectedSurface) {
+    return undefined;
+  }
+  // Body-only routes first, exactly as the instruction router above does: the
+  // header and docstring are already written, so what is below is a header to
+  // implement a body for rather than a function to write.
+  const isType = !input.bodyOnly && input.kind !== undefined && input.kind !== "function";
+  const what = input.bodyOnly
+    ? "The documented header to implement a body for"
+    : isType
+      ? `The ${input.kind} to complete`
+      : "The function to implement";
+  const write = input.bodyOnly ? "Write that one body." : isType ? `Complete that one ${input.kind}.` : "Write that one function.";
+  // TWO THINGS THIS SENTENCE DELIBERATELY DOES NOT DO, both from adversarial
+  // review, both cases where the earlier wording was simply false.
+  //
+  // It does not NAME the headers above it. The first draft said "the data
+  // shapes and API surfaces above", and Rust's example-fallback leg renders an
+  // injected surface whose only header is "Usage example for `X`" - neither
+  // named string is in the prompt, and a usage example is runnable code, which
+  // is exactly what a displaced model reaches for.
+  //
+  // It does not FORBID anything. "Do not implement anything from them" reads,
+  // on the motivating prompt itself, as a ban on implementing the target: the
+  // injected surface for the enclosing type lists the target's own signature.
+  // A pointer that contradicts itself on the one prompt it was built for is not
+  // a pointer. Saying which one to write says the same thing with nothing to
+  // contradict.
+  return `${what} is below, after the reference material above. ${write}`;
+}
+
+/**
  * The sections of the fn-gen prompt, in order, each tagged with whose bytes it
  * is. THE ONE SOURCE: `assembleFnGenPrompt` joins these and `fnGenPromptShare`
  * counts them, so the estimate the window arbitration runs on cannot drift from
@@ -624,6 +681,20 @@ function fnGenSections(input: FnGenPromptInput): PromptSection[] {
   // veto exactly what was added. Absent (or empty) keeps the v1 prompt bytes.
   if (input.injectedSurface) {
     sections.push({ text: input.injectedSurface, part: "injected" });
+  }
+
+  // The target block is the LAST section and, without this, the only unlabelled
+  // one. Everything above it announces itself ("Data shape of `X`", "API
+  // surface for `Y`"), so a bare fenced block at the end reads as one more
+  // reference block - and on a real 4,246-token prompt the model implemented a
+  // function it found in the reference material instead, 3 times out of 3
+  // (session-v74, arms in that session's goal.md). One label line fixed it 3 of
+  // 3 with the whole surface left in place. The anti-punt re-prompt has always
+  // prefixed its target with "Now implement it fully:"; this is the same move
+  // on the path that actually runs.
+  const label = targetLabel(input);
+  if (label !== undefined) {
+    sections.push({ text: label, part: "fixed" });
   }
 
   let body = "";

@@ -89,7 +89,7 @@ const ENTRY = path.join(__dirname, ".v46p0b-identity.entry.ts");
 const OUT = path.join(__dirname, ".v46p0b-identity.bundle.cjs");
 fs.writeFileSync(
   ENTRY,
-  `export { resolvePrefill } from "../src/vscode/fnGen";\nexport { assembleFnGenPrompt } from "../src/core/prompt";\n`,
+  `export { resolvePrefill } from "../src/vscode/fnGen";\nexport { assembleFnGenPrompt, targetLabel, SECTION_SEPARATOR } from "../src/core/prompt";\n`,
 );
 esbuild.buildSync({ entryPoints: [ENTRY], bundle: true, outfile: OUT, format: "cjs", platform: "node", alias: { vscode: STUB } });
 const M = require(OUT);
@@ -269,7 +269,33 @@ for (const [languageId, pin] of Object.entries(PINS)) {
     });
     assert.equal(Buffer.byteLength(surface ?? "", "utf8"), pin.surfaceBytes, "surface byte length");
     assert.equal(sha(surface), pin.surfaceSha, "surface sha256");
-    assert.equal(Buffer.byteLength(prompt, "utf8"), pin.promptBytes, "prompt byte length");
-    assert.equal(sha(prompt), pin.promptSha, "prompt sha256");
+
+    // SUPERSEDED by session-v74 (docs/supersessions.md, S39): the prompt now
+    // carries a one-line label above the target block whenever an injected
+    // surface is present, and this fixture has one. The pre-seam pins are KEPT
+    // rather than re-measured, and the label is cut back out before they are
+    // checked: the claim this row was built to make - that routing the tuning
+    // constants through the budget profile moves no prompt bytes - is still the
+    // claim, and overwriting the shas would have thrown that evidence away to
+    // record a change that has nothing to do with it.
+    const label = M.targetLabel({
+      signature,
+      docComment: F.doc,
+      contextBlocks: [],
+      languageId,
+      injectedSurface: surface,
+      noPunt: true,
+    });
+    assert.ok(label, "an injected surface means a label");
+    const occurrences = prompt.split(label).length - 1;
+    assert.equal(occurrences, 1, "the label appears exactly once");
+    // And it is the LAST thing before the target block, which is what makes it
+    // a label rather than one more paragraph of reference material.
+    const sections = prompt.split(M.SECTION_SEPARATOR);
+    assert.equal(sections[sections.length - 2], label, "the label sits directly above the target block");
+
+    const preLabel = prompt.replace(`${label}${M.SECTION_SEPARATOR}`, "");
+    assert.equal(Buffer.byteLength(preLabel, "utf8"), pin.promptBytes, "prompt byte length, label cut");
+    assert.equal(sha(preLabel), pin.promptSha, "prompt sha256, label cut");
   });
 }

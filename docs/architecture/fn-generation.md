@@ -28,9 +28,28 @@ The head normalization lives headless in `src/core/symbols.ts`: providers includ
 
 What is excluded is the point: no file prefix/suffix, no surrounding code, no imports, no repo content, no prior generations, no system message. Only what the input carries enters the prompt. Any change here is a change to the product identity and traces to L0.
 
+When an injected surface IS present, one more fixed section sits between it and the target block: a
+label saying where the target is and which one thing to write. It exists because the target block
+was the only unlabelled section in the prompt, so with enough reference material above it it read as
+one more reference block. Measured on a real 4,246-token prompt: the model implemented a function it
+found in the injected surface instead, three replies out of three. Over 20 real functions the
+control arm carries the requested function in 33 of 60 replies and the labelled arm in 60 of 60,
+with no row moving the wrong way (session-v74, supersession S39, `session-v74/measurement.md`).
+
+Most of that is POSITIONAL. A placebo sentence in the same slot, pointing at nothing, scores 55 of
+60. Whoever rewrites the label should keep something in that slot; which words it uses matters less.
+No injected surface means no label and the bytes above, unchanged.
+
 With `compilerDirectedInjection` on (the default), the input MAY carry one more thing: API surface the tool resolved from the user's rust-analyzer, as an optional `injectedSurface` at round 1 and a resolved surface block leading a repair prompt. This is the v2 prompt-identity revision, visible and labelled in the preview, off by one setting, and it degrades to the exact bytes above when rust-analyzer resolves nothing. The mechanism is the [surface-injection](surface-injection.md) subsystem; here it is just another deterministic input to the assembler.
 
 ## Instruct postprocess and the service
+
+`extractRequestedFunction` then holds the reply to the function that was asked for, anchored on the
+declaration head. It runs two passes: the exact head over the whole reply, and, only when that finds
+nothing, a qualifier-tolerant pass that reads through a leading visibility run on either side and
+writes the SIGNATURE's run back onto the matched line. A model that answers `pub fn foo(` to a
+`fn foo(` signature is answering correctly and used to be refused; it must not be able to change a
+function's visibility by guessing either.
 
 `postprocessInstructOutput`: think-tag seatbelt first (an unclosed `<think>` drops the whole reply; thought never lands in a document), then first-fenced-block extraction (backtick or tilde, a fence closes only on its own character), bare-reply fallback when no complete fence exists, then edge normalization. Pure and idempotent.
 

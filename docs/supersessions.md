@@ -2035,3 +2035,76 @@ reading under which `t.test(` is admitted and that is not.
 **Pinned by.** `test/blind-v71-p2-call-shape.test.cjs` (88, blind), `test/review-v71-p23.test.cjs`,
 `test/review-v70-p2.test.cjs` rows 1, 2, 5, `test/review-v70-p3b.test.cjs` rows 3 to 6,
 `test/blind-v70-p3-counting-lens.test.cjs`'s enumerated rule-1 allowance.
+
+## S39. The fn-gen target block carries a label when the prompt carries an injected surface
+
+**Built in session-v74. NOT YET RATIFIED by the human.**
+
+**What changed.** `assembleFnGenPrompt` pushes one extra section immediately above the final fenced
+target block whenever `injectedSurface` is non-empty:
+
+> The function to implement is below, after the reference material above. Write that one function.
+
+The noun follows the shape: a type kind says "The struct to complete is below, after the reference
+material above. Complete that one struct", and body-only says "The documented header to implement a
+body for is below". With no injected surface there is no label and the prompt's bytes are exactly
+what they were.
+
+The sentence names nothing above it and forbids nothing, and both of those are deliberate. An
+earlier draft said "The data shapes and API surfaces above are reference material about other code;
+do not implement anything from them", and adversarial review killed it twice over: Rust's
+example-fallback leg renders a surface whose only header is ``Usage example for `X` ``, so the named
+headers are not always there, and the injected surface for an enclosing type lists the TARGET's own
+signature, so "do not implement anything from them" bans the function being asked for on the very
+prompt this session came out of.
+
+**Why the old behaviour was wrong.** The target block was the last section of the prompt and the
+only unlabelled one. Everything above it announces itself ("Data shape of `X`", "API surface for
+`Y`"), so a bare fenced block at the end reads as one more reference block. On a real prompt from a
+production Rust workspace, 4,246 tokens of injected surface between the instruction and the target,
+`qwen3-coder:30b` implemented a function it found in the reference material instead: 3 replies out
+of 3 were `impl ClientError { pub fn from_error_response(...) }` rather than the function that was
+asked for. The product refused all three, correctly, and the human saw "generation does not contain
+the requested function".
+
+Adding the label fixed it 3 of 3 with the whole injected surface left in place. Stripping the
+injected surface instead also fixed it 3 of 3, which is what identifies the surface as the cause.
+Two other candidates were refuted in the same run: removing the `Call ONLY ...` paragraph left 2 of
+3 replies still wrong, and renaming the target out of its own receiver's API surface left 2 of 3
+still wrong. The arm table is in `session-v74/goal.md`.
+
+**What this supersedes.** `test/impl-v46-p0b-prompt-identity.test.cjs` pinned the sha256 and byte
+length of the assembled rust and csharp prompts against the pre-seam tree (commit 271b84a), on a
+fixture that HAS an injected surface. Those two rows now cut the label back out of the prompt
+before checking the pins, and assert separately that the label is present exactly once and sits
+directly above the target block. The pins themselves are unchanged, deliberately: that row exists
+to prove the budget-profile seam moves no bytes, and re-measuring the shas would have thrown that
+evidence away to record a change that has nothing to do with it.
+
+**Blast radius.** Two unit rows went red, both of them the byte-identity sha pins named below. A
+third red came from a change that was then withdrawn (the test-gen label, see below), so it is not
+part of this supersession. The rest of the suite is unaffected.
+
+**What did NOT ship, and why.** The test-gen prompt (`assembleTestGenPrompt`) has the same
+unlabelled-target shape and a labelled collaborator surface above it. A label there would have
+broken the S31 rendering pin, and session-v74 measured the displacement on the generation path
+only. An unmeasured supersession is not one worth buying; it is carried in `session-v74/scraps.md`
+with the rig that can measure it.
+
+**Measured, after it shipped.** `session-v74/measurement.md`: 20 real functions from the same
+workspace, 3 replies each, graded by the product's own extractor. Control 33/60, labelled 60/60.
+Nine rows moved from 0/3 to 3/3 and no row moved the other way; the twelve rows that already worked
+kept working, which is the question that mattered.
+
+A third arm says something the change did not set out to learn. A PLACEBO sentence in the same slot,
+of the same length, pointing at nothing, scores 55/60. Most of the effect is positional: a paragraph
+of prose between the last fenced reference block and the target stops the target reading as one more
+reference block, whatever it says. The label still wins, by one clean row and two singletons, which
+on 60 replies is suggestive rather than settled. Anyone rewriting this sentence should keep SOMETHING
+in that slot; that matters more than which words.
+
+The absolute rates are not product rates: all 20 targets ran against one shared injected surface, so
+the control arm is worse than the shipping product is. One language, one file, one local model.
+
+**Pinned by.** `test/impl-v46-p0b-prompt-identity.test.cjs` (both rows), and
+`test/impl-v74-p2-target-label.test.cjs`.
