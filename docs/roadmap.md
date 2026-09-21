@@ -103,6 +103,10 @@ suite is green, the release workflow still skips `test:unit`.
 - **33.** the spike harness spliced on stale offsets: a record and three standing rules
 - **80.** the C# check loses the source project's warnings once it builds the test project
 - **81.** a `src/` + `tests/` C# layout with no solution file resolves no test project
+- **90.** the tighten proposer answers with its own worked example, so the dictation gesture finds
+  5 of 40 type names on the default backend - PROVEN, one-line fix, one gate question first
+- **91.** the live conformance checklist: the eleven deterministic rubric rows, surfaced while the
+  developer writes, with no model on the path
 - **18.** the rest, unchanged in priority
 
 **Measurements pending** - a number from the harness is a hypothesis until the instrument that
@@ -1013,6 +1017,81 @@ have.
 The fix is a wider candidate set — a `tests/` or `test/` sibling of the source project's PARENT —
 and it must be measured against the one-to-many trap the corpus already carries, where one test
 project serves three source projects. Widening the search widens that too.
+
+### 90. The tighten proposer answers with its own worked example
+
+PROVEN 2026-09-21 on the default backend, `session-v73/dictation-defect.md`.
+
+`Tighten Doc Comment` asks a model to list the spans of dictated prose that read as type names. Run
+the SHIPPED prompt and the SHIPPED parser against `qwen3-coder:30b`, the default `fnGenModel`, over
+the 160-item v65 dictation corpus: **it finds 5 of the 40 type names**, and 105 of 160 replies are
+the literal word `NONE`.
+
+Of the replies that do name something, most name `ShardMemCache`. That string is not in the prose.
+It is the worked example inside the prompt:
+
+> "shard mem cache" is how a transcript spells `ShardMemCache`
+
+The model answers with the example instead of reading the data, on 49 of 160 items. The parser drops
+it, because a span not present verbatim in the prose is not a span, so the gesture goes QUIET rather
+than wrong. The guard works and it hides the failure, which is why this has never been reported.
+
+Session-v74's defect in a different gesture. There a model asked for `err_pool_timeout` implemented
+`from_error_response`, a function it was shown as reference material. Same shape: the reference is
+answered instead of the target.
+
+**Four arms, identity-checked, the product's own sampling settings** (`session-v73/rig/proposer-arms.cjs`
+refuses to spend a call unless the sentence under test is in the assembled prompt):
+
+| the prompt says | type found | fn left alone | field left alone | neg left alone | echoed the example |
+| --- | --- | --- | --- | --- | --- |
+| the shipped sentence | **5/40** | 40/40 | 39/40 | 40/40 | 49/160 |
+| example deleted | **28/40** | 20/40 | 7/40 | 40/40 | 0/160 |
+| example kept but unnamed | 27/40 | 17/40 | 7/40 | 39/40 | 0/160 |
+| example framed as other data | 14/40 | 38/40 | 28/40 | 40/40 | 0/160 |
+
+**The gate question, and it decides which arm ships.** Recall comes with noise: without the example
+the model also proposes function names on 20 of 40 rows and field names on 33 of 40. That is
+probably free, because the proposer decides nothing and phase 3's existence gate only accepts a span
+that resolves to a real TYPE. Verify that the existence gate really drops a field name before taking
+the recall. If it does, delete the example. If it does not, `example-as-data` is the conservative
+middle at 14 of 40 with no echo.
+
+Two riders. A frontier model on the SHIPPED prompt scores 27 of 40 and keeps the discrimination, so
+the example is a trap for a smaller model rather than a bad sentence. And every earlier comparison of
+this site that used Haiku as "the shipped path" is mislabelled: Haiku is not what a user runs.
+
+### 91. The live conformance checklist
+
+The human's idea, 2026-09-21. Criticize is a manual command today. Surface its rows LIVE while a
+function is being written, as a conformance checklist rather than a gesture the developer has to
+remember to run.
+
+**What makes it buildable now is that most of it needs no model.** From `session-v61/grading.md`,
+fifteen dimensions over 138 rows against the shipped detectors: **fourteen of fifteen have zero
+false positives**, and seven sit at 100% precision AND 100% recall - `adjacent-params`, `bool-param`,
+`unused-param`, `param-count`, `undocumented`, `nesting`, `section-comment`. Three more (`cqs`,
+`pass-through`, `unadmitted-failure`) hold near-perfect precision and simply stay quiet a lot.
+
+Zero false positives is exactly the property an UNSOLICITED surface needs. Low recall is cheap on a
+live surface: staying quiet costs nothing, and a wrong flag while someone is mid-thought costs
+trust.
+
+**The split to build on.** The eleven deterministic rows go live, on a debounce, with no network
+call and no latency budget. The four honesty rows (`clock`, `prng`, `env`, `world`) stay on the
+manual gesture: they are model-backed since 2026-08-29 and session-v73 measured them at 50-80%
+precision across five different backends, with an unsettled spec underneath (see the delegation
+question in `session-v73/measurement.md`).
+
+**The unknown that has to be measured first, and nothing on this box answers it.** Every number
+above grades COMPLETE functions. A live surface watches a function that is missing its closing brace
+for most of its life. Nobody has measured what the detectors do on a half-written function, and a
+detector that fires on every incomplete signature is worse than no surface at all. That measurement
+is the first slice of this item, not the last.
+
+Open design questions for the scout: which surface (a diagnostics provider, a status bar count, a
+ghost, a gutter), what the debounce is, and whether a row that fires and then clears as the
+developer keeps typing reads as helpful or as flicker.
 
 ### 18. The rest, unchanged in priority
 
@@ -2115,6 +2194,18 @@ OSS-corpus harness signal (cobra, gin, hugo, pinned clones), never dogfood typin
   staying available at a Future receiver.
 
 ### Rejected - do not reopen without new evidence
+
+- **A hosted typed-decision API (TypeSafe Jev) for Criticize's honesty rows.** REJECTED 2026-09-21,
+  human ruling, on a full measurement with a real key: `session-v73/measurement.md`. The POC works
+  and is on branch `session-v73`, unmerged, and nothing of it is on main. What killed it is that
+  `qwen2.5-coder:3b`, 1.9GB and already on this box, matches it CELL FOR CELL on the private corpora
+  (clock 100/100, world 75.0/85.7 core and 88.9/80.0 python) at a 681ms round against 360ms. The
+  hosted API's one uncopyable advantage is answering 200 questions in a single round trip, and no
+  gesture that could use it has a deadline that makes 300ms matter. The failure class the POC was
+  built to close - a reply that cannot be parsed - did not occur once in 126 rounds of the shipped
+  local prose round. Two findings survive the rejection and are filed separately: the tighten
+  proposer defect (item 90) and the live checklist (item 91). Reopen only with a judgement site where
+  the prose round measurably fails to parse, or one with a real deadline.
 
 - **Unforgeable channel frames (a nonce in the elision marker).** RULED 2026-08-24: the forgeability
   is accepted and recorded. Product-tag forgery is closed by the S21/S29 escapes; what remains only
