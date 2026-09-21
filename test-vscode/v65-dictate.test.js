@@ -328,11 +328,15 @@ suite('V65 dictate then FIM', function () {
     const settingsPath = path.join(workspace, '.vscode', 'settings.json');
     const settingsBefore = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath) : null;
     await vscode.workspace.getConfiguration('column80').update('enabled', false, vscode.ConfigurationTarget.Workspace);
+    // The mark is taken the moment the setting goes off, ahead of opening the
+    // document. Since session-v74 the provider says "column80.fim is disabled"
+    // ONCE per off rather than once per keystroke, so a mark taken after
+    // anything that can ask the provider would look for a line already spent.
+    const mark = logMark();
     try {
       process.env.C80_FAKE_WAV = path.join(FIXTURES, 'threat-level-3s.wav');
       const { doc } = await openAt(site.line, site.indent.length);
       const before = doc.getText();
-      const mark = logMark();
       await press();
       const live = await waitForLine(mark, ['[dictate] mic live', '[dictate] refused'], 10000);
       assert.strictEqual(live.hit, '[dictate] mic live', `mic live with FIM off: ${live.text}`);
@@ -342,7 +346,17 @@ suite('V65 dictate then FIM', function () {
       assert.strictEqual(served.hit, '[dictate] ghost accepted', `dictated ghost with FIM off: ${served.text.slice(-600)}`);
       assert.notStrictEqual(doc.getText(), before, 'the dictated ghost landed');
       const followUp = await waitForLine(mark, ['[fim] no ghost: column80.fim is disabled'], 5000);
-      assert.ok(followUp.hit, `the keystroke request on the fresh line is refused: ${followUp.text.slice(-300)}`);
+      assert.ok(followUp.hit, `a keystroke request with FIM off is refused on the record: ${followUp.text.slice(-300)}`);
+      // And it is said ONCE for this off, not once per keystroke. Two keystrokes
+      // on the fresh line; the channel must not grow a second copy.
+      const copiesBefore = (logSince(mark).match(/column80\.fim is disabled/g) || []).length;
+      await vscode.commands.executeCommand('type', { text: 'x' });
+      await sleep(250);
+      await vscode.commands.executeCommand('type', { text: 'y' });
+      await sleep(250);
+      const copiesAfter = (logSince(mark).match(/column80\.fim is disabled/g) || []).length;
+      assert.strictEqual(copiesAfter, copiesBefore, `the disabled line repeated: ${copiesBefore} -> ${copiesAfter}`);
+      assert.strictEqual(copiesBefore, 1, `the disabled line is said exactly once per off: ${copiesBefore}`);
     } finally {
       await vscode.workspace.getConfiguration('column80').update('enabled', true, vscode.ConfigurationTarget.Workspace);
       await sleep(300);

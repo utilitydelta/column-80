@@ -232,6 +232,14 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
   // The `column80.fimLanguages` value the set above was filled under. A change
   // empties it, so the answer is given again after the human moves the setting.
   private unservedEpoch = "";
+  // Whether the "FIM is off" answer has been given since the setting was last
+  // ON. FIM off is a STATE, not an event: the provider is asked on every
+  // keystroke in every open document whatever the setting says, so a line per
+  // refusal was a line per character for as long as the human left it off, and
+  // it buried every other event on the channel. Said once, and said again the
+  // next time the setting goes off, which is the same shape as the unserved
+  // language ledger above and the in-comment dark sites below.
+  private disabledReported = false;
 
   // The whole scope/sticky/window/revert decision, owned by the pure machine.
   // The provider translates editor types into its events and mirrors two of
@@ -466,8 +474,16 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     // FIM off is keystroke FIM off. A DICTATED request is the human asking, and it is served
     // with the setting off; the automatic request on the fresh line after it is refused here
     // like any other keystroke.
+    // Re-armed on the first invocation after the setting comes back, so
+    // turning FIM off a second time answers a second time. Keyed on the SETTING
+    // rather than on the gate below it: a dictated request served while the
+    // setting is off is the human asking, and it says nothing about whether the
+    // setting moved.
+    if (config.enabled) {
+      this.disabledReported = false;
+    }
     if (!config.enabled && !this.intentArmedFor(document.uri.toString(), position.line)) {
-      return this.noGhost("column80.fim is disabled");
+      return this.reportDisabled();
     }
 
     // FIM runs on code, and only on code. The provider registers on document
@@ -1349,6 +1365,21 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     if (firstSeen) {
       this.output.appendLine(`[fim] no ghost: the cursor is inside a ${kind} comment${note}`);
     }
+    return undefined;
+  }
+
+  // FIM is off, said once per off. The line says so, because a reader who finds
+  // one of these and then watches the channel stay quiet through a hundred
+  // keystrokes needs to know that the quiet is this rule and not a second
+  // defect.
+  private reportDisabled(): undefined {
+    if (this.disabledReported) {
+      return undefined;
+    }
+    this.disabledReported = true;
+    this.output.appendLine(
+      "[fim] no ghost: column80.fim is disabled; said once, and again if the setting is turned back on and off",
+    );
     return undefined;
   }
 
