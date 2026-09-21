@@ -174,7 +174,7 @@ This one is not an inline-completion site. It runs on the generate and repair ge
 
 ### The gates: what gets thrown away
 
-- **Member-name gate** (`fimMemberGate`, on): where the language server's member list is complete (TypeScript, C#, Python), a ghost naming a member that is not in the list is dropped before you see it, and an alternate promoted if one exists. An empty list never gates: absence of evidence is not evidence. Rust is exempt, because rust-analyzer serves keyword and postfix completions (`.await`) that make its list structurally incomplete.
+- **Member-name gate** (`fimMemberGate`, on): in all five languages, a ghost naming a member that is not among the receiver's resolved members is dropped before you see it, and an alternate promoted if one exists. An empty list never gates: absence of evidence is not evidence. Rust used to be exempt, because rust-analyzer serves keyword and postfix completions (`.await`, postfix `match`) at a `.` site by design, and gating on the rendered list ate `.await`. Since v59 it is in, on two lists rather than one: the prompt still carries callable signatures only, while the enforcement set carries the keyword and postfix surface too, so the legal list is complete. There is no second setting; `fimMemberGate` is the kill switch for all five.
 - **Enum-RHS value gate** (C#): a ghost that opens a string literal at a resolved enum comparison is refused. A C# enum can never equal a string, so there is no false-positive surface.
 
 Every suppression carries a reason on the channel and a session count. `[fim] dropped:` means you got nothing. `[fim] trimmed:` means you got something shorter. `[fim] refused:` means a candidate died but you were served anyway.

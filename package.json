@@ -601,7 +601,7 @@
         "column80.compilerDirectedInjection": {
           "type": "boolean",
           "default": true,
-          "description": "v2: resolve the real crate API surface from your running rust-analyzer and inject it into repair rounds when a generation hallucinates a method or type, and qualify missing imports in place. Visible in the preview and always overridable. Off returns v1 repair (diagnostics only)."
+          "description": "Resolve the real API surface of the types your code names, from whichever language server you are running, and inject it into generation and repair rounds so the model calls methods that exist instead of inventing them. Missing imports are qualified in place. Rust, C#, Python, Go and TypeScript. Visible in the preview and always overridable. Off returns diagnostics-only repair."
         },
         "column80.fimAlternatives": {
           "type": "number",
@@ -613,7 +613,7 @@
         "column80.fimMemberGate": {
           "type": "boolean",
           "default": true,
-          "description": "Suppress member-site ghost text whose identifier is not among the receiver's RESOLVED members (TypeScript only, and only when the member list is non-empty - untyped receivers and index-signature types are never gated). Turn off if it eats suggestions you wanted; the channel logs every drop."
+          "description": "Suppress member-site ghost text whose identifier is not among the receiver's RESOLVED members (Rust, C#, Python, Go and TypeScript, and only when the member list is non-empty - untyped receivers and index-signature types are never gated). Turn off if it eats suggestions you wanted; the channel logs every drop."
         },
         "column80.logPrompts": {
           "type": "boolean",
