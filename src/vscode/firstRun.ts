@@ -570,7 +570,8 @@ export async function offerRaSnippetFix(
 
 // rust-analyzer's hover truncates, and the `/* … */` in the injected block is
 // its ellipsis, not the product's. `renderDerivedDef` emits the hover signature
-// byte for byte, so the block carries whatever the user's rust-analyzer is
+// unchanged apart from the `/* private */` marker on a private tuple field, so
+// the block carries whatever the user's rust-analyzer is
 // configured to give: five fields, and five enum variants, both by default.
 //
 // Two keys, because one is half a fix. The dogfood capture that started this

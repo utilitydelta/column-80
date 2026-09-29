@@ -103,8 +103,6 @@ suite is green, the release workflow still skips `test:unit`.
 - **33.** the spike harness spliced on stale offsets: a record and three standing rules
 - **80.** the C# check loses the source project's warnings once it builds the test project
 - **81.** a `src/` + `tests/` C# layout with no solution file resolves no test project
-- **90.** the tighten proposer answers with its own worked example, so the dictation gesture finds
-  5 of 40 type names on the default backend - PROVEN, one-line fix, one gate question first
 - **91.** the live conformance checklist: the eleven deterministic rubric rows, surfaced while the
   developer writes, with no model on the path
 - **18.** the rest, unchanged in priority
@@ -606,6 +604,12 @@ Measured, per stratum (v22 scout):
 - **New face (v24):** a signature naming only `Option<u64>`/`u64` logs `injected=false` - no user
   type, nothing to key on. **UNVERIFIABLE** (C182): that capture is on no disk. A live fn-gen round on
   a signature naming only std types re-produces it in one gesture.
+- **New face (v76):** a FIM cursor on a new line inside a body whose signature names no user type
+  (a `#[test] fn`) matches none of FIM's three injecting legs, so the injected surface is `(none)`.
+  PROVEN live on the VS Code host (`session-v76/acceptance.md` row 5): after `let key = `, the 1.5b
+  model wrote `OrgId(1)`, the private-field construction v76 fixed everywhere else. The resolver
+  now has `OrgId::new`; nothing at that site asks for it. A leg keyed on the types the enclosing
+  body already names would reach it.
 - **New face (v25):** 10 of 30 Rust empty-body sites are not injectable, so they fall to the bare
   bound.
 
@@ -1017,49 +1021,6 @@ have.
 The fix is a wider candidate set — a `tests/` or `test/` sibling of the source project's PARENT —
 and it must be measured against the one-to-many trap the corpus already carries, where one test
 project serves three source projects. Widening the search widens that too.
-
-### 90. The tighten proposer answers with its own worked example
-
-PROVEN 2026-09-21 on the default backend, `session-v73/dictation-defect.md`.
-
-`Tighten Doc Comment` asks a model to list the spans of dictated prose that read as type names. Run
-the SHIPPED prompt and the SHIPPED parser against `qwen3-coder:30b`, the default `fnGenModel`, over
-the 160-item v65 dictation corpus: **it finds 5 of the 40 type names**, and 105 of 160 replies are
-the literal word `NONE`.
-
-Of the replies that do name something, most name `ShardMemCache`. That string is not in the prose.
-It is the worked example inside the prompt:
-
-> "shard mem cache" is how a transcript spells `ShardMemCache`
-
-The model answers with the example instead of reading the data, on 49 of 160 items. The parser drops
-it, because a span not present verbatim in the prose is not a span, so the gesture goes QUIET rather
-than wrong. The guard works and it hides the failure, which is why this has never been reported.
-
-Session-v74's defect in a different gesture. There a model asked for `err_pool_timeout` implemented
-`from_error_response`, a function it was shown as reference material. Same shape: the reference is
-answered instead of the target.
-
-**Four arms, identity-checked, the product's own sampling settings** (`session-v73/rig/proposer-arms.cjs`
-refuses to spend a call unless the sentence under test is in the assembled prompt):
-
-| the prompt says | type found | fn left alone | field left alone | neg left alone | echoed the example |
-| --- | --- | --- | --- | --- | --- |
-| the shipped sentence | **5/40** | 40/40 | 39/40 | 40/40 | 49/160 |
-| example deleted | **28/40** | 20/40 | 7/40 | 40/40 | 0/160 |
-| example kept but unnamed | 27/40 | 17/40 | 7/40 | 39/40 | 0/160 |
-| example framed as other data | 14/40 | 38/40 | 28/40 | 40/40 | 0/160 |
-
-**The gate question, and it decides which arm ships.** Recall comes with noise: without the example
-the model also proposes function names on 20 of 40 rows and field names on 33 of 40. That is
-probably free, because the proposer decides nothing and phase 3's existence gate only accepts a span
-that resolves to a real TYPE. Verify that the existence gate really drops a field name before taking
-the recall. If it does, delete the example. If it does not, `example-as-data` is the conservative
-middle at 14 of 40 with no echo.
-
-Two riders. A frontier model on the SHIPPED prompt scores 27 of 40 and keeps the discrimination, so
-the example is a trap for a smaller model rather than a bad sentence. And every earlier comparison of
-this site that used Haiku as "the shipped path" is mislabelled: Haiku is not what a user runs.
 
 ### 91. The live conformance checklist
 
@@ -1840,6 +1801,22 @@ every one of them at once.
 ## 4. Deferred fixes - small, do on next touch of the named file
 
 Each entry waits for its trigger, the next touch of the named file, not for a slice of its own.
+
+- **Outline-sourced Rust members drop `async` and `unsafe` (S76-1, PROVEN).** rust-analyzer's
+  documentSymbol detail prints `async fn settle` and `unsafe fn level_unchecked` both as plain
+  `fn(&self) -> u32`, so every hand-written Rust type's API surface hides the two qualifiers that
+  change how a caller writes the call. v76 fixed the completion side (`renderMemberSignature`,
+  `src/core/extraction.ts`); the outline side is untouched. Read the qualifier from the def source
+  line the walk already has open, or from hover. Witness: the todo row in
+  `test/blind-v76-p2-macro-members-live.test.cjs`.
+- **A hand-written struct inside a pass-through macro is called macro-generated (S76-7, PROVEN).**
+  The v76 gate in `src/core/macroMembers.ts` also fires on the `pin_project!` / `cfg_if!` shape: a
+  real struct wrapped in a macro call, its `impl` outside. The channel says members unknown and
+  renders nothing, while the same file's outline lists `impl Wrapped { make, x }`. Not a regression
+  (HEAD rendered nothing either). When the gated branch finds no members, read the outline's
+  `impl <Name>` children before the path fallback, reword the line to "sits inside a macro
+  invocation", and move the two contract rows asserting "is macro-generated". Witness: todo F4 in
+  `test/review-v76-p5.test.cjs`.
 
 - **A comment one character OUTSIDE a case list still loses the whole table (S71-2, PROVEN).**
   v71 closed a comment INSIDE the list on all five legs. Three finders reach their list by walking

@@ -3135,7 +3135,8 @@ async function resolveFieldShape(
   // (parseStructHoverFields + renderDerivedDef, crossFileShape.ts) so exactly one
   // struct-shape renderer exists across prepare and repair. hover (RA-indexed,
   // cross-file/crate) is the primary and folds byte-identically — renderDerivedDef
-  // returns the hover signature verbatim. membersOfType field members are the
+  // returns the hover signature, except that a private tuple field renders as
+  // `/* private */`. membersOfType field members are the
   // fallback (names-only; a field at an access site rarely enclosing a container).
   let derived: DerivedType | undefined;
   try {

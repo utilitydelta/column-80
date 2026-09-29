@@ -254,6 +254,71 @@ Census over the 237-row corpus, three points (before / after recovery+aliases / 
 types injecting nothing 53 -> 3 -> 2; example blocks 47 -> 7 -> 0, junk 38 -> 7 -> 0. Supersessions
 S13 and S14 record the two frozen rows this deliberately reversed.
 
+## Macro-generated types (v76)
+
+A `macro_rules!` newtype (`newtype_id!(OrgId)` expanding to `pub struct OrgId(U128)` plus an inherent
+`impl`) resolved with zero members. `membersOfType` reads documentSymbol, a syntax outline, and the
+outline holds the macro and its invocations and nothing else. Hover is semantic and still named the
+type, so the prompt showed `pub struct OrgId(U128<LittleEndian>)` and nothing to build one with, and
+the model wrote `OrgId(1)`: E0423.
+
+The fallback lives in the shared walk (`crossFileShape.ts`, helpers in `src/core/macroMembers.ts`),
+so fn-gen, repair and FIM's whole-block injection all gain it. Rust only:
+
+- **Gate.** The hover names a `struct`/`enum`/`union` of that name AND the definition cursor sits
+  inside a macro invocation's delimiters or a `macro_rules!` body (`isInsideMacroInvocation`, a
+  bracket lexer that skips comments and literals). A trait, an alias or a generic parameter fails
+  the hover half; a hand-written declaration fails the invocation half. Sysroot defs are skipped. A
+  gated type asks `membersOfType` once and skips the settle loop, which can never help an outline
+  that cannot see the type.
+- **Members.** `references()` for the type, the first reference immediately followed by `::` in its
+  file, then ONE `completeMembers(cursor, { once: true })` there. Completion runs over expanded code,
+  so it lists the macro's members. No buffer is ever edited: a synthetic `Type::` line dirties the
+  VS Code tab even after the text is restored (session-v76 probe), so a type nobody has written a
+  path to gets no members.
+- **Inherent only**, by the server's own label: a trait member arrives as `clone(as Clone)` or
+  `fmt(use std::fmt::Debug)`, which `parseMemberLabel` turns into `viaTrait`. The VS Code host puts
+  that suffix on the label object's `detail` rather than in the label string, and the product
+  transport now joins it back. Measured on the host tier over a real 72-item `OrgId::` list: every
+  trait item carried it, 35 of them at sortText tier 0, so the tier is no discriminator there.
+- **Remembered per server session.** The answer is kept per extractor, keyed on the def file and
+  the type name and checked against the def file's current text, so FIM's next keystroke costs zero
+  asks. On VS Code the server session is the extension host: `extractorFor("rust")` returns one
+  `RaCommandExtractor` per host, because a fresh one per keystroke would never hit the memo. Only a
+  real answer is kept: members found, or a genuine no-path. Every entry expires after 30s (a bound,
+  not a measurement): a `Type::` written later, the macro body or a hand-written `impl` elsewhere
+  can all change the answer, and no key can see them. FIM pays at most one `references()` and one
+  completion ask per type per 30s.
+- **Empty is not "no path".** `references()` includes the declaration, so a real answer is never
+  empty. Empty means cancelled or not ready: the note carries `unavailable`, nothing is remembered,
+  and the next walk asks again. No client deadline: rust-analyzer cancels the request itself on the
+  next edit, and a deadline would stop the memo from filling on a slow workspace.
+- **Said in words.** The shape carries `macroGenerated`, and the pre-fill and FIM whole-block each
+  write one line per type: the path used and how many members it listed, or that no `Type::` path
+  exists. For an unavailable answer fn-gen says the reference search came back empty so the members
+  are unknown this time; FIM prints nothing and keeps no dedupe key, so the true line prints once a
+  later keystroke gets a real answer.
+
+Cost, host tier, a new document version per sample, 3 rounds on the private corpus. The first ask
+on a type with a `T::` path takes p50 55ms (max 61ms), which is over FIM's 50ms deadline: `OrgId`'s
+first keystroke logged `injection skipped: resolver slower than 50ms`, and later keystrokes got the
+block from the memo. A type with no path takes p50 15.5ms, and a memo hit p50 11.6ms. HEAD took about
+138ms on every sample, spent in the 120ms settle allowance the gate now skips. A cold `AggregateKey`
+walk is 164ms against 205ms at HEAD, still over the deadline.
+
+With the memo, on a 514-file workspace and a typing edit before each call: 402ms cold, then 0ms per
+call. A request cancelled by an edit recovered on the next call 15 of 15 times warm; cold, 6 of 6
+came back unavailable and none was remembered.
+
+Two related Rust renders changed with it. A completion detail with qualifiers (`const fn`,
+`unsafe fn`, `async fn`) used to lose its signature, since the parse wanted `^fn`; `const` is now
+dropped and `async`/`unsafe` kept (`async settle(&self) -> u32`), because they change how the call
+is written. And a private tuple field renders as `/* private */` in the data shape
+(`markPrivateTupleFields`), so `pub struct OrgId(/* private */ U128)` no longer invites `OrgId(1)`.
+
+Open: documentSymbol's own detail strips `async`/`unsafe` (`fn(&self) -> u32` for an `async fn`), so
+an outline-sourced member still renders without them.
+
 ## The C# budget, and why the cap was the wrong knob (v45)
 
 C#'s binding stage is the AGGREGATE RENDER BUDGET, not the type cap - the opposite of Go's answer, and

@@ -287,7 +287,8 @@ test("the precedence is fixed: `async void` wins over everything, then io, then 
   assert.strictEqual(classifyCsTestability("private int F(Stream s)", DOC).reason, "io");
   assert.strictEqual(classifyCsTestability("private int F(int n)", DOC).reason, "needs-fixture");
   assert.strictEqual(classifyCsTestability("private static int F(int n)", DOC).reason, "not-exported");
-  assert.strictEqual(classifyCsTestability("public static int F(int n)", undefined).reason, "underspecified");
+  // S40 (2026-09-29): no doc comment is no longer a rung.
+  assert.strictEqual(classifyCsTestability("public static int F(int n)", undefined).testable, true);
   assert.strictEqual(classifyCsTestability("public static void F(int n)", DOC).reason, "underspecified");
   assert.strictEqual(classifyCsTestability("public static int F(int n)", DOC).testable, true);
 });

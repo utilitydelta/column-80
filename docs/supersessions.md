@@ -2108,3 +2108,47 @@ the control arm is worse than the shipping product is. One language, one file, o
 
 **Pinned by.** `test/impl-v46-p0b-prompt-identity.test.cjs` (both rows), and
 `test/impl-v74-p2-target-label.test.cjs`.
+
+## S40. Generate Tests attempts a function with no doc comment
+
+**Ruled by the human, 2026-09-29:** "generate TDD refuses if there is no doc comment; but often it's
+obvious by fn name and not required. don't make it a fail, just attempt the tdd gen".
+
+**What changed.** The testability classifier in all five legs (`classifyTestability` in
+`src/core/testability.ts`, and the Go, C#, Python and TypeScript legs) refused a function with no
+doc comment, no `///` or no docstring as `underspecified`, "no contract to author a blind test from".
+That rung is gone. Every other refusal stands: async without a runtime, IO, needs-fixture,
+not-exported, and above all "no return value to assert".
+
+The test-gen prompt follows. For an undocumented target the opening paragraph no longer says "You
+are given ONLY the contract: the doc comment and the signature". It says:
+
+> Write unit tests for the Rust function whose signature is given below. It has NO doc comment, so
+> there is no written contract: read the expected behaviour from the function's name, its parameter
+> names and its types, and treat those as the contract. ...
+
+Python says "docstring". The coverage sentence changes with it: "the contract's named edge and
+failure cases" becomes "the edge cases the name and types make plain". The target block is the
+signature alone, with no empty doc line above it. A documented target's prompt is byte-identical to
+before. The pass stays blind: the body is still never sent.
+
+"Documented" means a real doc line. Attribute or decorator trivia alone (`#[inline]`, `[Pure]`,
+`@cache`) gets the undocumented prompt. A Python docstring that Generate refuses to rewrite around
+(one on the header line, or an implicit concatenation) is still the contract for tests, because test
+authoring writes nothing into the function. A concatenation continued past the first literal's line
+is cut at that line.
+
+**Why the old behaviour was wrong.** A name like `clamp_to(n, lo, hi) -> i32` says what a test needs,
+and the refusal charged the human a toast for a function any reader could test. The rung was also
+the largest single cause of TypeScript's zero-survivor corpus result.
+
+**What this supersedes.** Rows that pinned the no-doc refusal, now asserting admission:
+`blind-v8-testability` (clause 4a), `blind-v31-seam`, `blind-v31-go`, `blind-v31-ts`,
+`blind-v31-py`, `blind-v31-cs`, `blind-v68-async-rung` (four `NON_ASYNC_ROWS` and the §11 async
+no-doc row), `blind-v68-receiver-rung` (five `PINNED` rows and the §2 member no-doc row),
+`impl-v31-go`, `impl-v31-py`, `impl-v31-ts`, `impl-v31-cs`. `review-v31-phase6`'s rendering pin now
+expects the new opening for its one undocumented input. `impl-v31-ts`'s corpus row no longer expects
+zero survivors: it asserts every survivor is undocumented, which is exactly what this rung admits.
+
+**Pinned by.** `test/impl-tdd-nodoc.test.cjs`, including the gesture driven end to end in all five
+languages with a capturing backend.

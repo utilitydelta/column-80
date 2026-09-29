@@ -1739,22 +1739,27 @@ ptest("classifyTestability csharp: `internal` is REACHABLE when ctx.internalsVis
   );
 });
 
-ptest("classifyTestability csharp: a `void` return or a MISSING `///` doc comment is 'underspecified' [contract-cs.md '**underspecified**: a `void` return, or no `///` doc comment']", () => {
+// SUPERSESSION S40 (2026-09-29). This row asserted a MISSING `///` doc comment
+// is 'underspecified'. The human reversed it: an undocumented method is attempted
+// from its name and signature. The `void` half stands.
+ptest("classifyTestability csharp: a `void` return is 'underspecified', and a MISSING `///` doc comment is admitted (S40)", () => {
   assert.strictEqual(
     csLang.classifyTestability("public static void Apply(int n)", DOC).reason,
     "underspecified",
     "a method returning nothing gives a blind test nothing to assert"
   );
   assert.strictEqual(
-    csLang.classifyTestability("public static int Widen(int n)", undefined).reason,
+    csLang.classifyTestability("public static void Apply(int n)", undefined).reason,
     "underspecified",
-    "with no contract there is nothing to write a blind test against"
+    "no doc comment does not rescue a void return"
   );
-  assert.strictEqual(
-    csLang.classifyTestability("public static int Widen(int n)", "").reason,
-    "underspecified",
-    "an empty doc comment is no doc comment"
-  );
+  for (const doc of [undefined, "", "   "]) {
+    assert.deepStrictEqual(
+      csLang.classifyTestability("public static int Widen(int n)", doc),
+      { testable: true },
+      `doc ${JSON.stringify(doc)}: an undocumented method is attempted, not refused`
+    );
+  }
 });
 
 // SUPERSESSION S32 (session-v68 phase 5). The first row asserted that

@@ -467,7 +467,7 @@ Only on the **command**. An automatic post-accept check that comes back green st
 
 ## TDD tests
 
-**Column 80: Generate Tests (TDD)** authors unit tests **blind of any implementation**. The model gets the signature, the doc comment and the resolved callee surface, never a reference body, so the red signal survives as the deliverable.
+**Column 80: Generate Tests (TDD)** authors unit tests **blind of any implementation**. The model gets the signature, the doc comment and the resolved callee surface, never a reference body, so the red signal survives as the deliverable. A function with no doc comment is still attempted: the prompt says there is none and the model works from the name and signature.
 
 Then it blanks every expected value. The model's guessed value is never inserted. You Tab through the holes and type each assertion yourself. That is the whole point: a test whose expected value the model wrote is a test that agrees with the code rather than with you.
 
@@ -505,9 +505,9 @@ Four no-run outcomes are reported as themselves rather than as a pass: the tests
 
 ### When it refuses
 
-Refusal is the feature. From the signature and doc comment alone, a function is classified and the reason surfaced: async, IO, needs-fixture, underspecified, not-exported, no return value to assert. You get the reason, not a hollow or mocked test.
+Refusal is the feature. From the signature alone, a function is classified and the reason surfaced: async, IO, needs-fixture, underspecified, not-exported, no return value to assert. You get the reason, not a hollow or mocked test.
 
-**Expect a lot of refusals, and know the numbers before you judge it.** Measured on real corpora: 7 of 89 Python functions survived; the TypeScript corpus refused every one of its 157 functions, mostly because it documents 7% of them; the C# corpus refused all 251, because the clearest test targets there are private and the solution has no `InternalsVisibleTo`. All four legs ship exactly as specified. Relaxing a leg to manufacture survivors is a human decision, not a tuning.
+**Expect a lot of refusals, and know the numbers before you judge it.** Measured on real corpora: 7 of 89 Python functions survived; the TypeScript corpus admits 5 of its 182 functions, most of the rest being class members or not exported; the C# corpus refused all 251, because the clearest test targets there are private and the solution has no `InternalsVisibleTo`. All four legs ship exactly as specified. Relaxing a leg to manufacture survivors is a human decision, not a tuning.
 
 Test-repair is banned everywhere. No gesture edits a test, ever, and a wrong test is a human re-type. Repairing the *function* from a red test is a different thing and it now ships, behind the manual gesture only: see [Repair from a failing test](#repair-from-a-failing-test).
 

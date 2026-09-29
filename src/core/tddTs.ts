@@ -367,7 +367,7 @@ const TS_EXPORTED = /^\s*export\b/;
  */
 export function classifyTsTestability(
   signature: string,
-  docComment?: string,
+  _docComment?: string,
   ctx?: TestabilityContext,
 ): TestabilityVerdict {
   const sig = signature ?? "";
@@ -443,9 +443,8 @@ export function classifyTsTestability(
       detail: "not exported — the sibling test file imports the unit, so add `export` or it stays untestable",
     };
   }
-  if (docComment === undefined || docComment.trim() === "") {
-    return { testable: false, reason: "underspecified", detail: "no doc comment — no contract to author a blind test from" };
-  }
+  // A missing doc comment is NOT a refusal: the name and signature often say
+  // enough, and the prompt tells the model it has only those to go on.
   if (returnType === undefined) {
     return { testable: false, reason: "underspecified", detail: "returns void or has no return annotation — nothing to assert" };
   }

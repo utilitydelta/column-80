@@ -16,6 +16,7 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { signalChild } from "./signalChild";
 import {
+  CompleteMembersOptions,
   CompletionMember,
   DefinitionLocation,
   HoverSurface,
@@ -260,14 +261,16 @@ export class RaLspExtractor implements SurfaceExtractor {
     }
   }
 
-  async completeMembers(cursor: SourceCursor): Promise<CompletionMember[]> {
+  async completeMembers(cursor: SourceCursor, opts?: CompleteMembersOptions): Promise<CompletionMember[]> {
     // A freshly-applied edit can lag the index by a few ms; retry a bounded
     // number of times on an empty result so indexing lag does not read as a
     // genuinely unresolved receiver. Product transport does not need this; the
-    // oracle client absorbs the mid-edit race the test drives.
-    for (let attempt = 0; attempt < 8; attempt++) {
+    // oracle client absorbs the mid-edit race the test drives. `once` skips it:
+    // measured at about a second per empty answer.
+    const attempts = opts?.once === true ? 1 : 8;
+    for (let attempt = 0; attempt < attempts; attempt++) {
       const members = this.mapCompletion(await this.completionRequest(cursor));
-      if (members.length > 0 || attempt === 7) {
+      if (members.length > 0 || attempt === attempts - 1) {
         return members;
       }
       await delay(150);

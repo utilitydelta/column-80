@@ -853,9 +853,11 @@ test("`not-exported` must NEVER fire for Go: the _test.go sibling sees unexporte
   assert.strictEqual(classifyGoTestability("func rpad(s string, padding int) string", DOC).testable, true, "unexported is a first-class target here");
 });
 
-test("no doc comment is underspecified; Go's name-first convention is NOT required", () => {
-  assert.strictEqual(classifyGoTestability("func F(n int) int", undefined).reason, "underspecified");
-  assert.strictEqual(classifyGoTestability("func F(n int) int", "   ").reason, "underspecified");
+// SUPERSESSION S40 (2026-09-29): no doc comment was 'underspecified'. The human
+// reversed it; an undocumented function is attempted from its name and signature.
+test("no doc comment is admitted (S40); Go's name-first convention is NOT required", () => {
+  assert.strictEqual(classifyGoTestability("func F(n int) int", undefined).testable, true);
+  assert.strictEqual(classifyGoTestability("func F(n int) int", "   ").testable, true);
   assert.strictEqual(
     classifyGoTestability("func F(n int) int", "// Returns the fan-out. Does not start with the name.").testable,
     true,

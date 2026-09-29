@@ -182,7 +182,9 @@ for (const { clause, sig, doc } of fixtureCases) {
 }
 
 // ---- P2 clause 4: underspecified ---------------------------------------------
-// (a) doc missing/empty/whitespace -> underspecified even with a meaningful sig.
+// (a) SUPERSESSION S40 (2026-09-29): a missing/empty/whitespace doc comment was
+// 'underspecified'. The human reversed it: the function is attempted from its
+// name and signature, so these rows are now testable.
 
 const kthSig = "fn kth_largest(xs: &[i32], k: usize) -> i32";
 const noDocCases = [
@@ -191,8 +193,8 @@ const noDocCases = [
   { clause: "clause 4a: doc whitespace-only", doc: "   \n\t  " },
 ];
 for (const { clause, doc } of noDocCases) {
-  test(`underspecified (no contract): ${kthSig} [P2 ${clause}]`, () =>
-    expectReason(kthSig, doc, "underspecified", clause));
+  test(`no doc comment is admitted (S40): ${kthSig} [P2 ${clause}]`, () =>
+    expectTestable(kthSig, doc, clause));
 }
 
 // (b) WITH a doc present, a unit return -> underspecified (nothing to assert).

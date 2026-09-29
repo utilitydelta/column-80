@@ -57,6 +57,7 @@ import {
 } from "./pyExtraction";
 import { GO_STD_TYPE_NAMES, goElideDef, goFieldTypeCursor, parseGoHoverFields } from "./goExtraction";
 import { isBareTraitHover, recoverElidedSurface, recoverTraitSurface } from "./rustHoverRecovery";
+import { hoverDeclaresDataType, isInsideMacroInvocation, macroMembersViaPath } from "./macroMembers";
 
 // The recovery lives in its own module (a character-level Rust scanner with its
 // own comment/attribute scrubber, and this file already carries the walk, four
@@ -201,6 +202,25 @@ export interface CrossFileShape {
    *  nothing new, so "the walk expanded everything it saw" and "the walk saw
    *  nothing" stay different answers. */
   frontier?: string[];
+  /** Types the walk found to be macro-generated (the outline saw no members and
+   *  the definition sits inside a macro invocation), with where completion was
+   *  asked for their members. Rust only. Absent when no such type was reached,
+   *  so a caller owes a channel line exactly when this is present. */
+  macroGenerated?: MacroGeneratedNote[];
+}
+
+/** One macro-generated type and what the path fallback found for it. */
+export interface MacroGeneratedNote {
+  type: string;
+  /** The existing `Type::` path completion was asked at; absent when none exists. */
+  pathAt?: SourceCursor;
+  /** Inherent members completion listed there. */
+  memberCount: number;
+  /** References read looking for the path. */
+  searched: number;
+  /** The reference search came back empty (cancelled or not ready), so neither
+   *  a path nor its absence is known. Not a "no path" answer. */
+  unavailable?: true;
 }
 
 /** The visibility pass as the resolver takes it: the language's rule and its
@@ -1186,6 +1206,7 @@ export async function resolveCrossFileShape(
   const frontierSet = new Set<string>(); // named by a field at D_MAX, never asked about
   const narrowed: CompletionMember[] = []; // root members the construction narrowing removed
   const hidden: Array<{ type: string; member: CompletionMember }> = []; // members the visibility pass removed
+  const macroGenerated: MacroGeneratedNote[] = []; // types the outline could not see, and what the path fallback found
 
   // A supplied root NAME and the root SITE are two answers to the same question:
   // the block is headed with the name, and its contents come from the site. Where
@@ -1213,6 +1234,9 @@ export async function resolveCrossFileShape(
     }
     if (visibility) {
       shape.hidden = hidden;
+    }
+    if (macroGenerated.length > 0) {
+      shape.macroGenerated = macroGenerated;
     }
     return shape;
   };
@@ -1330,7 +1354,33 @@ export async function resolveCrossFileShape(
     // in hand — resolving them twice would be a second chance to disagree.
     let resolvedMembers: readonly CompletionMember[] = [];
     if (defText !== undefined) {
-      const members = await membersWithSettle(extractor, defCursor, name, hover !== undefined, settleAllowance, signatureCap);
+      // A MACRO-GENERATED TYPE. The outline cannot see inside a macro invocation,
+      // so its member list is empty however long the settle waits, and the one
+      // source that can see the expansion is completion at an existing
+      // `Type::` path. Rust only (no hooks), and gated on evidence a hand-written
+      // declaration cannot produce: the definition sits inside an invocation and
+      // the hover names a struct, enum or union, which rules out a trait, an
+      // alias and a generic parameter. Std is skipped; the model knows it.
+      const macroGen =
+        hooks === undefined &&
+        hover !== undefined &&
+        !isRustSysrootDef(defLoc.uri) &&
+        hoverDeclaresDataType(hover.signature, name) &&
+        isInsideMacroInvocation(defText, defCursor);
+      let members = macroGen
+        ? ((await safe(extractor.membersOfType(defCursor))) ?? [])
+        : await membersWithSettle(extractor, defCursor, name, hover !== undefined, settleAllowance, signatureCap);
+      if (macroGen && members.length === 0) {
+        const found = await macroMembersViaPath(extractor, defCursor, name, openFile);
+        macroGenerated.push({
+          type: name,
+          ...(found.pathAt ? { pathAt: found.pathAt } : {}),
+          memberCount: found.members.length,
+          searched: found.searched,
+          ...(found.unavailable ? { unavailable: true as const } : {}),
+        });
+        members = found.members;
+      }
       // TWO PASSES, and they stay two. Visibility asks whether the target may
       // call the member at all and KEEPS when it cannot tell; role asks whether
       // the member belongs on THIS target's surface and drops a public instance
@@ -1839,6 +1889,85 @@ export function nestedConstructors(shape: CrossFileShape, rootType: string): str
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
+/** Mark each private field of a Rust tuple struct's hover with a leading
+ *  `private` block comment, so `pub struct TenantId(u128)` says its field
+ *  cannot be written from outside the module.
+ *
+ *  rust-analyzer's hover prints a private tuple field as a bare type, which
+ *  reads exactly like a public one, and a model shown `OrgId(U128)` writes
+ *  `OrgId(1)`: E0423, three times in one live repair. A field carrying any `pub`
+ *  (`pub`, `pub(crate)`) is left as written. Anything that is not a tuple struct
+ *  named `name` comes back unchanged. */
+export function markPrivateTupleFields(signature: string, name: string): string {
+  const head = new RegExp(`\\bstruct\\s+${name}\\b`).exec(signature);
+  if (!head) {
+    return signature;
+  }
+  let open = head.index + head[0].length;
+  while (/\s/.test(signature[open] ?? "")) {
+    open++;
+  }
+  if (signature[open] === "<") {
+    const generics = closeOf(signature, open, "<", ">");
+    if (generics < 0) {
+      return signature;
+    }
+    open = generics + 1;
+    while (/\s/.test(signature[open] ?? "")) {
+      open++;
+    }
+  }
+  if (signature[open] !== "(") {
+    return signature;
+  }
+  const close = closeOf(signature, open, "(", ")");
+  if (close < 0) {
+    return signature;
+  }
+  let out = "";
+  let segStart = open + 1;
+  let depth = 0;
+  for (let i = open + 1; i <= close; i++) {
+    const c = signature[i];
+    if (i === close || (c === "," && depth === 0)) {
+      out += markField(signature.slice(segStart, i)) + (i === close ? "" : ",");
+      segStart = i + 1;
+    } else if (c === "(" || c === "[" || c === "<") {
+      depth++;
+    } else if (c === ")" || c === "]" || (c === ">" && signature[i - 1] !== "-")) {
+      depth--;
+    }
+  }
+  return signature.slice(0, open + 1) + out + signature.slice(close);
+}
+
+// One tuple field's text, leading whitespace and attributes kept in place.
+function markField(field: string): string {
+  const lead = /^(\s*(?:#\[[^\]]*\]\s*)*)/.exec(field)?.[1] ?? "";
+  const rest = field.slice(lead.length);
+  // `/* … */` is rust-analyzer's own truncation of a long field list, not a field.
+  if (rest.trim().length === 0 || /^pub\b/.test(rest) || rest.trimStart().startsWith("/*")) {
+    return field;
+  }
+  return `${lead}/* private */ ${rest}`;
+}
+
+// The index of the delimiter closing the one at `open`, or -1.
+function closeOf(text: string, open: number, o: string, c: string): number {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === o) {
+      depth++;
+    } else if (text[i] === c && !(c === ">" && text[i - 1] === "-")) {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
 /** Render one derived type's `def` — the struct text the data-shape walk emits.
  *  Prefers the raw rust-analyzer hover signature (byte-identical to the
  *  prefill's data-shape half); falls back to a synthesized `struct T { fields }`
@@ -1847,7 +1976,7 @@ export function nestedConstructors(shape: CrossFileShape, rootType: string): str
  *  own API-surface block. */
 export function renderDerivedDef(t: DerivedType): string {
   if (t.signature.length > 0) {
-    return t.signature;
+    return t.defUri === undefined || t.defUri.endsWith(".rs") ? markPrivateTupleFields(t.signature, t.name) : t.signature;
   }
   const fields = t.fields
     .map((f) => (f.typeName.length > 0 ? `    ${f.name}: ${f.typeName},` : `    ${f.name},`))

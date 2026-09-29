@@ -1463,11 +1463,22 @@ test("prompt: the RUST branch's RENDERING is byte-identical to the pre-phase-6 a
   };
   for (const i of inputs) {
     const now = C.assembleTestGenPrompt(i);
-    assert.strictEqual(
-      instructionHead(now),
-      instructionHead(before(i)),
-      `the Rust blind directive or reply shape moved for input ${JSON.stringify(i)}`
-    );
+    if (i.docComment === undefined) {
+      // SUPERSESSION S40 (2026-09-29): an undocumented target used to get the
+      // documented opening verbatim, "the doc comment and the signature", with
+      // no doc comment in the prompt. It now says there is none. Only the
+      // opening paragraph moved; the reply shape after it did not.
+      const REPLY_SHAPE = "Reply with ONE fenced code block";
+      const shapeOf = (t) => instructionHead(t).slice(instructionHead(t).indexOf(REPLY_SHAPE));
+      assert.strictEqual(shapeOf(now), shapeOf(before(i)), `the Rust reply shape moved for input ${JSON.stringify(i)}`);
+      assert.match(instructionHead(now), /It has NO doc comment/, "S40: the undocumented opening says so");
+    } else {
+      assert.strictEqual(
+        instructionHead(now),
+        instructionHead(before(i)),
+        `the Rust blind directive or reply shape moved for input ${JSON.stringify(i)}`
+      );
+    }
     assert.strictEqual(
       renderedTail(now),
       renderedTail(before(i)),

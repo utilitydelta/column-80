@@ -28,6 +28,7 @@ import {
   extractExample,
   membersFromDocumentSymbols,
   isRaBlanketImpl,
+  isRaTraitLabelDetail,
   parseHover,
   parseMemberLabel,
   raEagerDetail,
@@ -138,14 +139,19 @@ function memberKind(kind: unknown): MemberKind | undefined {
 // isRaBlanketImpl, shared with the headless raLspClient mapping so the two
 // transports keep producing the same members (triage-p3 finding 4).
 
-// vscode CompletionItem.label is a string or a { label } object; RA puts the
-// member name in it and the signature in .detail.
+// vscode CompletionItem.label is a string or a { label, detail } object; RA puts
+// the member name in it and the signature in .detail. A trait member's
+// provenance rides the label object's own `detail` (`(as Clone)`), measured on
+// the host tier, and is joined back on so the shared label parse sees the same
+// `clone(as Clone)` the headless transport gets. Any other label detail (a
+// const's ` = TenantId(0)`) is not provenance and stays off the name.
 function labelText(label: unknown): string {
   if (typeof label === "string") {
     return label;
   }
   if (label && typeof label === "object" && typeof (label as { label?: unknown }).label === "string") {
-    return (label as { label: string }).label;
+    const { label: name, detail } = label as { label: string; detail?: unknown };
+    return isRaTraitLabelDetail(detail) ? `${name}${detail}` : name;
   }
   return "";
 }

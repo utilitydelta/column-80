@@ -2,8 +2,7 @@
  * The honest-failure classifier. Blind unit-test generation fits a MINORITY
  * of real functions; the feature must fail plainly on the rest rather than
  * emit a hollow or mocked test. This pure classifier decides, from the
- * signature + doc comment ALONE, whether a function is a valid BLIND-UNIT-TEST
- * target, and when not, which honest-failure category to surface.
+ * signature ALONE, whether a function is a valid BLIND-UNIT-TEST target, and when not, which honest-failure category to surface.
  *
  * It does NOT judge test-worthiness, and it does NOT detect "already a test" — the
  * detect-and-extend path (never clobber an existing test module) owns that.
@@ -50,13 +49,13 @@ export interface TestabilityContext {
    *  one?
    *
    *  It skips the fixture rung and NOTHING else, so the reason underneath is
-   *  reported truthfully: an async method still says `async`, a method with no
-   *  doc comment still says `underspecified`.
+   *  reported truthfully: an async method still says `async`, a method that
+   *  returns nothing still says `underspecified`.
    *
    *  The gate asks the classifier TWICE, and the order is the whole design.
    *  Resolving the enclosing type's surface costs a real pre-fill, so it must
    *  not be paid before the honest-failure gate: that would charge every refusal
-   *  for it, including the 68.4% of real functions with no doc comment. So the
+   *  for it, including every async, IO and side-effect-only method. So the
    *  gate classifies as normal, and only for a `needs-fixture` verdict asks
    *  again with this flag set. A refusal underneath means the fixture is not the
    *  only blocker and nothing is resolved. `testable` means the receiver is the
@@ -114,7 +113,7 @@ export const FUTURE_RETURN = /\bimpl\s+Future\b|\bPin\s*<\s*Box\s*<\s*dyn\s+Futu
  */
 export function classifyTestability(
   signature: string,
-  docComment?: string,
+  _docComment?: string,
   ctx?: TestabilityContext,
 ): TestabilityVerdict {
   const sig = signature ?? "";
@@ -154,16 +153,15 @@ export function classifyTestability(
   //    is the fixture problem the buildable half does not attempt, UNLESS the
   //    enclosing type's resolved surface carries something that produces one
   //    (session-v68 phase 6). The flag skips this rung and nothing else, so an
-  //    async method still reports async and an undocumented one still reports
-  //    underspecified.
+  //    async method still reports async and a side-effect-only one still
+  //    reports underspecified.
   if (RECEIVER.test(sig) && ctx?.receiverConstructible !== true) {
     return { testable: false, reason: "needs-fixture", detail: "method with a `self` receiver — needs a constructed fixture" };
   }
 
-  // 4. underspecified — no contract to author from, or nothing to assert.
-  if (docComment === undefined || docComment.trim() === "") {
-    return { testable: false, reason: "underspecified", detail: "no doc comment — no contract to author a blind test from" };
-  }
+  // 4. underspecified — nothing to assert. A missing doc comment is NOT a
+  //    refusal: the name and signature often say enough, and the prompt tells
+  //    the model it has only those to go on.
   // Unit return: no `->` at all, `-> ()`, or `-> Result<(), _>` (the value is `()`).
   const unitReturn =
     returnType === undefined ||

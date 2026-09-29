@@ -953,7 +953,10 @@ ttest("classifyTestability ts: a NON-EXPORTED function is 'not-exported', THE NE
   );
 });
 
-ttest("classifyTestability ts: PLAIN `void`, an ABSENT return type and an ABSENT doc comment are each 'underspecified' [contract-ts.md 'underspecified: plain `void`, an absent return type, or no doc comment. NOT `Promise<void>`, which async claims first']", () => {
+// SUPERSESSION S40 (2026-09-29). The last two assertions pinned "an ABSENT doc
+// comment is 'underspecified'". The human reversed it: an undocumented function
+// is attempted from its name and signature. The return rules stand.
+ttest("classifyTestability ts: PLAIN `void` and an ABSENT return type are each 'underspecified'; an ABSENT doc comment is admitted (S40)", () => {
   assert.strictEqual(
     tsLang.classifyTestability("export function log(n: number): void {", DOC).reason,
     "underspecified",
@@ -964,16 +967,13 @@ ttest("classifyTestability ts: PLAIN `void`, an ABSENT return type and an ABSENT
     "underspecified",
     "no return annotation means the gesture cannot say what to assert"
   );
-  assert.strictEqual(
-    tsLang.classifyTestability("export function widen(n: number): number {", undefined).reason,
-    "underspecified",
-    "with no contract there is nothing to write a blind test against"
-  );
-  assert.strictEqual(
-    tsLang.classifyTestability("export function widen(n: number): number {", "").reason,
-    "underspecified",
-    "an empty doc comment is no doc comment"
-  );
+  for (const doc of [undefined, ""]) {
+    assert.deepStrictEqual(
+      tsLang.classifyTestability("export function widen(n: number): number {", doc),
+      { testable: true },
+      `doc ${JSON.stringify(doc)}: an undocumented function is attempted, not refused`
+    );
+  }
 });
 
 // SUPERSESSION S32 (session-v68 phase 5). This row asserted `Promise<void>` is

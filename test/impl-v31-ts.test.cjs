@@ -197,7 +197,8 @@ test("classify: the precedence is fixed and first-match-wins, and it now starts 
   assert.equal(classifyTsTestability("  counterValue(name: string): number {", DOC).reason, "needs-fixture");
   assert.equal(classifyTsTestability("export function scale(this: Widget, n: number): number {", DOC).reason, "needs-fixture");
   assert.equal(classifyTsTestability("function escapeValue(value: string): string {", DOC).reason, "not-exported");
-  assert.equal(classifyTsTestability("export function widen(n: number): number {", undefined).reason, "underspecified");
+  // S40 (2026-09-29): no doc comment is no longer a rung.
+  assert.equal(classifyTsTestability("export function widen(n: number): number {", undefined).testable, true);
   assert.equal(classifyTsTestability("export function widen(n: number): void {", DOC).reason, "underspecified");
   assert.equal(classifyTsTestability("export function widen(n) {", DOC).reason, "underspecified");
   assert.deepEqual(classifyTsTestability("export function widen(n: number): number {", DOC), { testable: true });
@@ -1327,7 +1328,10 @@ function corpusFunctions(ts) {
   return out;
 }
 
-test("classify: the corpus survivor count is 0, and no class member is refused with a fix it cannot apply", { skip: corpusTs === undefined ? "react-mobx-mvvm not present" : false }, () => {
+// SUPERSESSION S40 (2026-09-29) moved the survivor count. It was 0, and every
+// survivor it now admits is an undocumented exported function the no-doc rung
+// used to refuse: measured 5 of 182 on this corpus.
+test("classify: the corpus survivors are exactly the undocumented functions S40 admits, and no class member is refused with a fix it cannot apply", { skip: corpusTs === undefined ? "react-mobx-mvvm not present" : false }, () => {
   const fns = corpusFunctions(corpusTs);
   assert.ok(fns.length > 150, `expected the corpus function population, found ${fns.length}`);
   const counts = {};
@@ -1339,8 +1343,22 @@ test("classify: the corpus survivor count is 0, and no class member is refused w
     if (key === "not-exported") notExported.push(f);
   }
   // The human ruled this leg ships refusing everything on this corpus
-  // (Amendment 1). The zero is the measured truth, not a bug to relax away.
-  assert.equal(counts.testable ?? 0, 0, `survivors: ${JSON.stringify(counts)}`);
+  // (Amendment 1), and S40 lifted exactly one rung. So a survivor WITH a doc
+  // comment would be a real change, and one without is the rung S40 removed.
+  const survivors = fns.filter((f) => classifyTsTestability(f.sig, f.doc).testable);
+  assert.deepEqual(
+    survivors.filter((f) => f.doc !== undefined && f.doc.trim() !== "").map((f) => `${f.file}:${f.name}`),
+    [],
+    `a documented function survived: ${JSON.stringify(counts)}`,
+  );
+  // Pinned exactly: 5 of 182, measured 2026-09-29. A sixth survivor, or one of
+  // these going missing, is a classifier change and has to be seen.
+  assert.deepEqual(
+    survivors.map((f) => f.name).sort(),
+    ["err", "ok", "resolve", "token", "useResolve"],
+    `survivors moved: ${JSON.stringify(counts)}`,
+  );
+  assert.equal(fns.length, 182, "the corpus population moved");
   // The visibility leg still fires, and it fires on real module-scope functions.
   assert.ok((counts["not-exported"] ?? 0) > 0, `not-exported never fired: ${JSON.stringify(counts)}`);
   // Amendment 5: no surviving not-exported verdict may be a class member, whose

@@ -319,14 +319,13 @@ gtest("[P6 §2 + §12] a member returning UNIT reports `underspecified` when the
   }
 });
 
-gtest("[P6 §2] a member with NO doc comment reports `underspecified` when the flag is set - `underspecified` still catches a missing doc comment underneath", () => {
+// SUPERSESSION S40 (2026-09-29). This row asserted the flag lands an
+// undocumented member on `underspecified`. The no-doc refusal is gone, so a
+// value-returning member with the flag set is admitted, doc or not.
+gtest("[P6 §2] a member with NO doc comment is admitted when the flag is set - there is no doc-comment rung underneath any more (S40)", () => {
   for (const [id, member] of MEMBERS.value) {
     const v = LANG(id).classifyTestability(member, undefined, ON);
-    assert.strictEqual(
-      v.reason,
-      "underspecified",
-      why(`${id} ${JSON.stringify(member)} nodoc`, v, "P6 rule 2: the flag skips the fixture rung and lands on the missing contract")
-    );
+    assertTestable(`${id} ${JSON.stringify(member)} nodoc`, v, "S40: no doc comment is not a refusal");
   }
 });
 
@@ -374,9 +373,11 @@ gtest("[P6 §2] granting the receiver never turns a REFUSAL into a different ref
 //    GREEN TODAY.
 // ===========================================================================
 
+// SUPERSESSION S40 (2026-09-29): the five undocumented rows pinned the
+// "no doc comment" refusal. The human reversed it, so they are admitted.
 const PINNED = [
   ["rust", "pub fn widen(n: i32) -> i64", DOC.rust, undefined, undefined],
-  ["rust", "pub fn widen(n: i32) -> i64", undefined, "underspecified", "no doc comment — no contract to author a blind test from"],
+  ["rust", "pub fn widen(n: i32) -> i64", undefined, undefined, undefined],
   ["rust", "pub fn parse(s: &str) -> Result<Shard, ParseError>", DOC.rust, undefined, undefined],
   ["rust", "pub fn read_all(p: &Path) -> io::Result<String>", DOC.rust, "io", "IO/network in the signature — integration territory, not a blind unit test"],
   ["rust", "fn helper(n: i32) -> i64", DOC.rust, undefined, undefined],
@@ -384,7 +385,7 @@ const PINNED = [
   ["rust", "pub async fn widen(n: u32) -> u64", DOC.rust, "async", "async fn, and no async test runtime found in Cargo.toml — looked for tokio, async-std and smol"],
   ["rust", "pub const fn widen(n: i32) -> i64", DOC.rust, undefined, undefined],
   ["go", "func Widen(n int) int", DOC.go, undefined, undefined],
-  ["go", "func Widen(n int) int", undefined, "underspecified", "no doc comment — no contract to author a blind test from"],
+  ["go", "func Widen(n int) int", undefined, undefined, undefined],
   ["go", "func ParseShard(s string) (int, error)", DOC.go, undefined, undefined],
   ["go", "func widen(n int) int", DOC.go, undefined, undefined],
   ["go", "func Dump(fh *os.File) int", DOC.go, "io", "IO/network in the signature (os, net, io, bufio, http) — integration territory, not a blind unit test"],
@@ -392,7 +393,7 @@ const PINNED = [
   ["go", "func Apply(n int)", DOC.go, "underspecified", "no return value to assert — side-effect only"],
   ["go", "func Widen(ctx context.Context, n int) int", DOC.go, undefined, undefined],
   ["typescript", "export function widen(n: number): number {", DOC.typescript, undefined, undefined],
-  ["typescript", "export function widen(n: number): number {", undefined, "underspecified", "no doc comment — no contract to author a blind test from"],
+  ["typescript", "export function widen(n: number): number {", undefined, undefined, undefined],
   ["typescript", "export const widen = (n: number): string =>", DOC.typescript, undefined, undefined],
   ["typescript", "function helper(n: number): number {", DOC.typescript, "not-exported", "not exported — the sibling test file imports the unit, so add `export` or it stays untestable"],
   ["typescript", "export function log(n: number): void {", DOC.typescript, "underspecified", "returns void or has no return annotation — nothing to assert"],
@@ -401,14 +402,14 @@ const PINNED = [
   ["typescript", "export function flush(n: number): Promise<void> {", DOC.typescript, "underspecified", "resolves to `void` — awaiting it gives nothing to assert"],
   ["typescript", 'export function dump(fh: import("node:fs").WriteStream): number {', DOC.typescript, "io", "IO/network in the signature (node:fs, fs, fetch, http, https) — integration territory, not a blind unit test"],
   ["python", "def widen(n: int) -> int:", DOC.python, undefined, undefined],
-  ["python", "def widen(n: int) -> int:", undefined, "underspecified", "no docstring: no contract to author a blind test from"],
+  ["python", "def widen(n: int) -> int:", undefined, undefined, undefined],
   ["python", "def _helper(n: int) -> int:", DOC.python, undefined, undefined],
   ["python", "def widen(n: int) -> None:", DOC.python, "underspecified", "no return annotation, or `-> None`: nothing to assert on"],
   ["python", "def widen(n):", DOC.python, "underspecified", "no return annotation, or `-> None`: nothing to assert on"],
   ["python", "async def widen(n: int) -> int:", DOC.python, "async", "async def, and this project's interpreter has neither pytest-asyncio nor anyio, so pytest would collect the test and skip it. This gesture never installs a package."],
   ["python", "def read_all(p: Path) -> str:", DOC.python, "io", "IO/network in the signature (open, Path, socket, requests): integration territory, not a blind unit test"],
   ["csharp", "public static int Widen(int n)", DOC.csharp, undefined, undefined],
-  ["csharp", "public static int Widen(int n)", undefined, "underspecified", "no `///` doc comment: no contract to author a blind test from"],
+  ["csharp", "public static int Widen(int n)", undefined, undefined, undefined],
   ["csharp", "private static int Widen(int n)", DOC.csharp, "not-exported", "the test project reaches this method through an assembly reference, and `private` is not visible outside its own type. Make it `public`."],
   ["csharp", "internal static int Widen(int n)", DOC.csharp, "not-exported", 'the test project reaches this method through an assembly reference, and `internal` is not visible across assemblies. Make it `public`, or add `[assembly: InternalsVisibleTo("<your test project>")]` to this project.'],
   ["csharp", "public static void Apply(int n)", DOC.csharp, "underspecified", "returns `void`: nothing to assert on"],

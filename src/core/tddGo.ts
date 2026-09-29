@@ -245,7 +245,7 @@ const GO_RECEIVER = /^\s*func\s*\(/;
  */
 export function classifyGoTestability(
   signature: string,
-  docComment?: string,
+  _docComment?: string,
   ctx?: TestabilityContext,
 ): TestabilityVerdict {
   const sig = signature ?? "";
@@ -271,11 +271,8 @@ export function classifyGoTestability(
       detail: "method with a receiver — needs a constructed fixture",
     };
   }
-  // Go's own convention is that a doc comment opens with the function name. It is
-  // NOT required here: a comment that does not is still a contract.
-  if (docComment === undefined || docComment.trim() === "") {
-    return { testable: false, reason: "underspecified", detail: "no doc comment — no contract to author a blind test from" };
-  }
+  // A missing doc comment is NOT a refusal: the name and signature often say
+  // enough, and the prompt tells the model it has only those to go on.
   const returnType = goReturnTypeOf(sig);
   const arity = returnArity(returnType);
   if (arity === 0) {

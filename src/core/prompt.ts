@@ -205,11 +205,101 @@ export const LAST_COLUMN_CLAUSE = "THE EXPECTED VALUE IS THE LAST COLUMN OF EVER
 // function, renaming it and rebuilding a fixture. What survives unchanged is the
 // half that keeps the blank-value invariant standing: every expected value is a
 // LITERAL, spelled out on its own line, never pulled from a name.
-const TEST_GEN_INSTRUCTION =
-  "Write unit tests for the Rust function whose contract is given below. You are given ONLY the " +
+// The instruction's OPENING, and the only paragraph that depends on whether the
+// target has a doc comment. Everything after it says "the contract", which reads
+// true either way: for an undocumented target the opening names the name and
+// signature as the contract.
+const DOCUMENTED_OPENING = (languageName: string): string =>
+  `Write unit tests for the ${languageName} function whose contract is given below. You are given ONLY the ` +
   "contract: the doc comment and the signature. Do NOT write, assume, or infer a reference " +
   "implementation - author the tests from the contract alone, so they check the promised behaviour " +
-  "and would catch a wrong implementation.\n\n" +
+  "and would catch a wrong implementation.";
+
+// A target with no doc comment is ATTEMPTED, not refused (supersession S40,
+// 2026-09-29): a name like `clamp` or `is_leap_year` often says all a test needs.
+// The prompt says plainly that there is no doc comment, so the model does not go
+// looking for one, and it stays blind: the signature is still all it gets.
+const UNDOCUMENTED_OPENING = (languageName: string, docNoun: string): string =>
+  `Write unit tests for the ${languageName} function whose signature is given below. It has NO ${docNoun}, ` +
+  "so there is no written contract: read the expected behaviour from the function's name, its parameter " +
+  "names and its types, and treat those as the contract. You are given ONLY the signature. Do NOT write, " +
+  "assume, or infer a reference implementation - author the tests from what the name and signature " +
+  "promise, so they check that behaviour and would catch a wrong implementation. Test only behaviour the " +
+  "name and types make plain; do not guess at edge cases they do not imply.";
+
+// What opens an attribute or decorator line, per language. The resolver hands
+// over everything between the symbol's range start and its head as the "doc",
+// and for an attributed member that is the attribute: `#[inline]`, `[Pure]`,
+// `@cached`. None of those is a contract. Python is absent on purpose: its doc
+// is the docstring, and the command layer decides whether one was found.
+const ATTRIBUTE_OPENER: Record<string, RegExp> = {
+  rust: /^#!?\[/,
+  csharp: /^\[/,
+  typescript: /^@/,
+  typescriptreact: /^@/,
+  javascript: /^@/,
+  javascriptreact: /^@/,
+};
+
+/**
+ * The doc comment a test prompt may call a contract: the text unchanged when a
+ * real doc line remains once attribute and decorator lines are set aside, and
+ * undefined when nothing but attributes (or whitespace) was there.
+ *
+ * Unchanged rather than cleaned, so a documented target's prompt stays
+ * byte-identical to what it was. An attribute spanning several lines is
+ * followed by bracket depth; a bracket inside a string literal can mis-count
+ * it, which errs toward "documented", the pre-S40 behaviour.
+ */
+export function contractDocComment(languageId: string | undefined, docComment: string | undefined): string | undefined {
+  if (docComment === undefined || docComment.trim() === "") {
+    return undefined;
+  }
+  const opener = ATTRIBUTE_OPENER[languageId ?? ""];
+  if (opener === undefined) {
+    return docComment;
+  }
+  let depth = 0;
+  for (const raw of docComment.split("\n")) {
+    const line = raw.trim();
+    if (depth === 0 && line !== "" && !opener.test(line)) {
+      return docComment;
+    }
+    for (const c of line) {
+      if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") depth = Math.max(0, depth - 1);
+    }
+  }
+  return undefined;
+}
+
+/** True when the target carries a doc comment worth calling a contract. */
+function hasDocComment(input: TestGenPromptInput): boolean {
+  return contractDocComment(input.languageId ?? "rust", input.docComment) !== undefined;
+}
+
+// The coverage sentence names "the contract's named edge and failure cases".
+// With no doc comment there are no named cases, and the undocumented opening
+// forbids guessing, so that one phrase is swapped too.
+const DOCUMENTED_COVERAGE = "the happy path plus the contract's named edge and failure cases";
+const UNDOCUMENTED_COVERAGE = "the happy path plus the edge cases the name and types make plain";
+
+/** An undocumented target's instruction: the opening and the coverage phrase
+ *  swapped, every other byte shared with the documented one. */
+function undocumentedVariant(instruction: string, input: TestGenPromptInput, languageName: string): string {
+  return instruction
+    .replace(DOCUMENTED_OPENING(languageName), testGenOpening(input, languageName))
+    .replace(DOCUMENTED_COVERAGE, UNDOCUMENTED_COVERAGE);
+}
+
+function testGenOpening(input: TestGenPromptInput, languageName: string): string {
+  return hasDocComment(input)
+    ? DOCUMENTED_OPENING(languageName)
+    : UNDOCUMENTED_OPENING(languageName, input.languageId === "python" ? "docstring" : "doc comment");
+}
+
+const TEST_GEN_INSTRUCTION =
+  `${DOCUMENTED_OPENING("Rust")}\n\n` +
   "Reply with ONE fenced code block containing a single `#[cfg(test)] mod tests { ... }` module and " +
   "nothing else: no prose, no other items, no code before or after the block.\n\n" +
   "Inside the module write a SINGLE `#[test]` fn holding a TABLE of cases: a `let cases = [ ... ];` " +
@@ -376,13 +466,10 @@ function testGenInstructionFor(input: TestGenPromptInput): string {
   const shape = input.replyShape ?? TEST_REPLY_SHAPE[input.languageId ?? ""] ?? TEST_REPLY_SHAPE_DEFAULT;
   const table = input.tableShape ?? TEST_TABLE_SHAPE[input.languageId ?? ""] ?? TEST_TABLE_SHAPE_DEFAULT;
   return (
-    `Write unit tests for the ${languageName} function whose contract is given below. You are given ONLY the ` +
-    "contract: the doc comment and the signature. Do NOT write, assume, or infer a reference " +
-    "implementation - author the tests from the contract alone, so they check the promised behaviour " +
-    "and would catch a wrong implementation.\n\n" +
+    `${testGenOpening(input, languageName)}\n\n` +
     `${shape}\n\n` +
-    `${table} Cover about five cases in all: the happy path plus the contract's named edge and failure ` +
-    `cases. ${input.assertionInstruction ?? ""}\n\n` +
+    `${table} Cover about five cases in all: ${hasDocComment(input) ? DOCUMENTED_COVERAGE : UNDOCUMENTED_COVERAGE}. ` +
+    `${input.assertionInstruction ?? ""}\n\n` +
     "Write each expected value out as a literal value in its own row - NEVER pull it from a shared " +
     "variable and NEVER from a named constant, because each expected value is reviewed and filled in on " +
     "its own line.\n\n" +
@@ -410,7 +497,9 @@ function testGenInstructionFor(input: TestGenPromptInput): string {
  *  non-async bytes are untouched: the clause is APPENDED rather than woven in,
  *  so a non-async Rust prompt stays exactly what the frozen constant says. */
 function rustTestGenInstruction(input: TestGenPromptInput): string {
-  let out = TEST_GEN_INSTRUCTION;
+  // The documented bytes stay exactly TEST_GEN_INSTRUCTION; an undocumented
+  // target swaps the opening paragraph and nothing else.
+  let out = hasDocComment(input) ? TEST_GEN_INSTRUCTION : undocumentedVariant(TEST_GEN_INSTRUCTION, input, "Rust");
   if (input.asyncTestShape !== undefined) {
     out +=
       `\n\nThe function under test is ASYNC, so the test must AWAIT it: mark the test fn ${input.asyncTestShape} ` +
@@ -465,8 +554,9 @@ export function assembleTestGenPrompt(input: TestGenPromptInput): string {
 
   // The contract as the model reads it: doc comment then signature, fenced. Same
   // shape as assembleFnGenPrompt's target so the two passes render identically.
+  // An undocumented target renders the signature alone: no empty doc line.
   let body = "";
-  if (input.docComment !== undefined) {
+  if (input.docComment !== undefined && hasDocComment(input)) {
     body += dedentDocComment(input.docComment, input.spanIndent).replace(/\n+$/, "") + "\n";
   }
   body += input.signature.endsWith("\n") ? input.signature : input.signature + "\n";

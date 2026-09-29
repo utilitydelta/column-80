@@ -231,9 +231,11 @@ test("classify: `not-exported` NEVER fires - Python has no privacy, and a surviv
   }
 });
 
-test("classify: no docstring is underspecified, and the docstring is the only contract source", () => {
-  assert.equal(classifyPyTestability("def f(a: int) -> int:", undefined).reason, "underspecified");
-  assert.equal(classifyPyTestability("def f(a: int) -> int:", "   ").reason, "underspecified");
+// SUPERSESSION S40 (2026-09-29): no docstring was 'underspecified'. The human
+// reversed it; an undocumented function is attempted from its name and signature.
+test("classify: no docstring is admitted (S40)", () => {
+  assert.equal(classifyPyTestability("def f(a: int) -> int:", undefined).testable, true);
+  assert.equal(classifyPyTestability("def f(a: int) -> int:", "   ").testable, true);
   assert.equal(classifyPyTestability("def f(a: int) -> int:", "x").testable, true);
 });
 

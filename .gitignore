@@ -1,6 +1,7 @@
 prior-art/spike-harness/__pycache__/
 prior-art/spike-harness/repairbench/target/
 test/fixtures/extraction/target/
+test/fixtures/extraction-macro-ids/target/
 node_modules/
 dist/
 test-vscode/.build/

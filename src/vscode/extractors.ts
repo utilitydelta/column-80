@@ -14,16 +14,26 @@ import { GoCommandExtractor, GoCommandRunner, GoSymbolRunner, GoTextReader } fro
  * oracleFor — a language with a checker but no resolver keeps the injection
  * gesture dark instead of pointing a foreign language server query at the
  * document. Extractors are cheap to build (they hold no process), so a
- * fresh instance per call is fine.
+ * fresh instance per call is fine for every language but Rust.
+ *
+ * Rust is the exception: the macro-member memo (core/macroMembers.ts) is keyed
+ * on the extractor object, so a fresh RaCommandExtractor per keystroke would
+ * never hit it and FIM would re-ask references() and completion on every
+ * keystroke. One instance per extension host is one rust-analyzer session. The
+ * extractor holds only its runner and text reader, both stateless closures
+ * over the vscode API, so sharing it carries nothing between calls but the memo.
  */
 
 // TS_LANGUAGE_IDS covers the four ids the TS server serves. Untyped-JS honesty
 // is NOT gated here: javascript/javascriptreact get the extractor, and an
 // inferred-any receiver legitimately resolves an empty surface (the
 // transport's darkness pin).
+let rustExtractor: RaCommandExtractor | undefined;
+
 export function extractorFor(languageId: string): SurfaceExtractor | undefined {
   if (languageId === "rust") {
-    return new RaCommandExtractor(createRaCommandRunner(), createRaTextReader());
+    rustExtractor ??= new RaCommandExtractor(createRaCommandRunner(), createRaTextReader());
+    return rustExtractor;
   }
   if (TS_LANGUAGE_IDS.has(languageId)) {
     return new TsCommandExtractor(createTsCommandRunner(), createTsTextReader(), createTsSymbolRunner());

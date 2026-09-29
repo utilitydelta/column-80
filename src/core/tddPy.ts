@@ -252,7 +252,7 @@ const PY_IO = /\bopen\s*\(|\bpathlib\b|\bPath\b|\bsocket\b|\brequests\b/;
  */
 export function classifyPyTestability(
   signature: string,
-  docComment?: string,
+  _docComment?: string,
   ctx?: TestabilityContext,
 ): TestabilityVerdict {
   const sig = signature ?? "";
@@ -291,9 +291,8 @@ export function classifyPyTestability(
       detail: `method taking \`${/^\w+/.exec(first)?.[0] ?? "self"}\`: needs a constructed fixture`,
     };
   }
-  if (docComment === undefined || docComment.trim() === "") {
-    return { testable: false, reason: "underspecified", detail: "no docstring: no contract to author a blind test from" };
-  }
+  // A missing docstring is NOT a refusal: the name and signature often say
+  // enough, and the prompt tells the model it has only those to go on.
   if (returnType === undefined) {
     return {
       testable: false,

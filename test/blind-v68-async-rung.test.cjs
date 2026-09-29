@@ -652,22 +652,24 @@ gtest("[P5 §7] Rust: the attribute is the DETECTED runtime and never a guess - 
 //    are GREEN NOW and a red here is a regression this phase caused.
 // ===========================================================================
 
+// SUPERSESSION S40 (2026-09-29): the four undocumented rows expected
+// "underspecified". The human reversed the no-doc refusal, so they are admitted.
 const NON_ASYNC_ROWS = [
   ["rust", "pub fn widen(n: i32) -> i64", DOC.rust, undefined],
-  ["rust", "pub fn widen(n: i32) -> i64", undefined, "underspecified"],
+  ["rust", "pub fn widen(n: i32) -> i64", undefined, undefined],
   ["rust", "pub fn read_all(p: &Path) -> io::Result<String>", DOC.rust, "io"],
   ["rust", "pub fn total(&self) -> u64", DOC.rust, "needs-fixture"],
   ["go", "func Widen(n int) int", DOC.go, undefined],
   ["go", "func ParseShard(s string) (int, error)", DOC.go, undefined],
-  ["go", "func Widen(n int) int", undefined, "underspecified"],
+  ["go", "func Widen(n int) int", undefined, undefined],
   ["go", "func Dump(fh *os.File) int", DOC.go, "io"],
   ["go", "func (s *Shard) Total(a int) int", DOC.go, "needs-fixture"],
   ["typescript", "export function widen(n: number): number {", DOC.typescript, undefined],
   ["typescript", "function helper(n: number): number {", DOC.typescript, "not-exported"],
   ["typescript", "export function log(n: number): void {", DOC.typescript, "underspecified"],
-  ["typescript", "export function widen(n: number): number {", undefined, "underspecified"],
+  ["typescript", "export function widen(n: number): number {", undefined, undefined],
   ["python", "def widen(n: int) -> int:", DOC.python, undefined],
-  ["python", "def widen(n: int) -> int:", undefined, "underspecified"],
+  ["python", "def widen(n: int) -> int:", undefined, undefined],
   ["python", "def widen(self, n: int) -> int:", DOC.python, "needs-fixture"],
   ["python", "def widen(n: int) -> None:", DOC.python, "underspecified"],
   ["csharp", "public static int Widen(int n)", DOC.csharp, undefined],
@@ -728,14 +730,17 @@ gtest("[P5 §11] the same precedence in C#: `async Task` with NO type argument i
   assert.strictEqual(v.reason, "underspecified", why("csharp async Task", v, "a bare Task returns nothing to assert on"));
 });
 
-gtest("[P5 §11] an async target with NO doc comment is 'underspecified' - admitting async does not admit a function with no contract", () => {
+// SUPERSESSION S40 (2026-09-29). This row asserted an undocumented async target
+// is 'underspecified'. The human reversed the no-doc refusal: it is attempted
+// from its name and signature, async or not.
+gtest("[P5 §11] an async target with NO doc comment is admitted like any other undocumented target (S40)", () => {
   const rows = [
     ["csharp", "public static async Task<int> WidenAsync(int n)"],
     ["typescript", "export async function widen(n: number): Promise<number> {"],
   ];
   for (const [id, sig] of rows) {
     const v = LANG(id).classifyTestability(sig, undefined, undefined);
-    assert.strictEqual(v.reason, "underspecified", why(`${id} ${sig}`, v, "no doc comment, nothing to write a blind test against"));
+    assert.strictEqual(v.reason, undefined, why(`${id} ${sig}`, v, "no doc comment is no longer a refusal"));
   }
 });
 

@@ -581,18 +581,18 @@ gtest("classifyTestability rust: a self receiver is refused with reason 'needs-f
   assert.strictEqual(v.reason, "needs-fixture", "a method needs an instance the blind test cannot construct");
 });
 
-gtest("classifyTestability rust: no doc comment is refused with reason 'underspecified' [goal.md 'No doc comment is underspecified']", () => {
+// SUPERSESSION S40 (2026-09-29). This row asserted "no doc comment is
+// 'underspecified'". The human reversed it: an undocumented function is
+// attempted from its name and signature.
+gtest("classifyTestability rust: no doc comment is ADMITTED - the name and signature are the contract (S40)", () => {
   const lang = rustLang();
-  assert.strictEqual(
-    lang.classifyTestability("pub fn add(a: i32, b: i32) -> i32", undefined).reason,
-    "underspecified",
-    "with no contract there is nothing to write a blind test against"
-  );
-  assert.strictEqual(
-    lang.classifyTestability("pub fn add(a: i32, b: i32) -> i32", "").reason,
-    "underspecified",
-    "an empty doc comment is no doc comment"
-  );
+  for (const doc of [undefined, ""]) {
+    assert.deepStrictEqual(
+      lang.classifyTestability("pub fn add(a: i32, b: i32) -> i32", doc),
+      { testable: true },
+      `doc ${JSON.stringify(doc)}: an undocumented function is attempted, not refused`
+    );
+  }
 });
 
 gtest("classifyTestability rust: a documented, pure, value-returning fn carries NO refusal reason [contract-seam.md 'Same verdict shape as the shipped Rust one']", () => {

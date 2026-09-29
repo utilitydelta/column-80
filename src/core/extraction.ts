@@ -331,6 +331,10 @@ export interface MemberSurfaceOptions {
   signatureCap?: number;
 }
 
+export interface CompleteMembersOptions {
+  once?: boolean;
+}
+
 /** The language-pluggable seam: six primitives every language implements.
  *  Rust rides rust-analyzer (raExtractor / raLspClient); TypeScript rides the
  *  TS language service (tsExtractor / tsLsExtractor), same interface. */
@@ -346,8 +350,12 @@ export interface SurfaceExtractor {
    *  A set made ENTIRELY of `text` members is the editor's own word-based
    *  fallback and means no server bound anything - distinct from empty, and the
    *  distinction is what tells "this file does not parse" from "this receiver
-   *  has no members". Read the surface through `semanticMembers`. */
-  completeMembers(cursor: SourceCursor): Promise<CompletionMember[]>;
+   *  has no members". Read the surface through `semanticMembers`.
+   *
+   *  `opts.once` asks for exactly one completion request. Only the headless
+   *  rust-analyzer transport retries an empty answer, and a caller asking at a
+   *  position that may truthfully be empty must not pay that loop. */
+  completeMembers(cursor: SourceCursor, opts?: CompleteMembersOptions): Promise<CompletionMember[]>;
   hoverSurface(cursor: SourceCursor): Promise<HoverSurface | undefined>;
   definition(cursor: SourceCursor): Promise<DefinitionLocation | undefined>;
   /** The canonical usage example for the type/crate at a `Type::`/`crate::`
@@ -535,13 +543,29 @@ export function raEagerDetail(item: { detail?: unknown; labelDetails?: unknown }
 }
 
 /** Split a completion label's trait provenance: "clone(as Clone)" -> name
- *  "clone", viaTrait "Clone". A bare label has no viaTrait. */
+ *  "clone", viaTrait "Clone". A trait method that needs an import arrives as
+ *  "fmt(use std::fmt::Debug)", and its trait is the path's last segment. A
+ *  bare label has no viaTrait. */
 export function parseMemberLabel(label: string): { name: string; viaTrait?: string } {
-  const match = /^(.*?)\s*\(as\s+(.+)\)\s*$/.exec(label);
+  const match = RA_TRAIT_SUFFIX.exec(label);
   if (match) {
-    return { name: stripCallParens(match[1].trim()), viaTrait: match[2].trim() };
+    const trait = match[3].trim();
+    return {
+      name: stripCallParens(match[1].trim()),
+      viaTrait: match[2] === "use" ? (trait.split("::").pop() ?? trait) : trait,
+    };
   }
   return { name: stripCallParens(label.trim()) };
+}
+
+const RA_TRAIT_SUFFIX = /^(.*?)\s*\((as|use)\s+(.+)\)\s*$/;
+
+/** Whether a label detail is rust-analyzer's trait provenance, `(as Clone)` or
+ *  `(use std::fmt::Debug)`. The VS Code host carries it on the label OBJECT's
+ *  `detail`, next to other text that is not provenance (` = TenantId(0)` on a
+ *  const), so a transport joining the two must join only this. */
+export function isRaTraitLabelDetail(detail: unknown): detail is string {
+  return typeof detail === "string" && RA_TRAIT_SUFFIX.test(`x${detail}`);
 }
 
 /** Drop the call parens rust-analyzer puts on a completion label.
@@ -601,11 +625,20 @@ export function semanticMembers(members: readonly CompletionMember[]): Completio
  *  splicing a name over a non-`fn` detail would state a call that does not
  *  exist. */
 export function renderMemberSignature(name: string, detail: string | undefined): string | undefined {
-  if (detail === undefined || !/^fn\b/.test(detail)) {
+  const head = detail === undefined ? null : RUST_FN_HEAD.exec(detail);
+  if (detail === undefined || head === null) {
     return undefined;
   }
-  return detail.replace(/^fn\b/, name);
+  // `async` and `unsafe` change how the call is written (`.await`, an unsafe
+  // block), so they stay; `const` changes nothing for a caller and goes.
+  const kept = head[1].split(/\s+/).filter((q) => q === "async" || q === "unsafe");
+  return `${kept.map((q) => `${q} `).join("")}${name}${detail.slice(head[0].length)}`;
 }
+
+// rust-analyzer prints the qualifiers ahead of `fn` in a completion detail:
+// `const fn(u128) -> OrgId`. Matching `^fn` alone dropped every `const fn`
+// member's signature, which is every method a newtype-ID macro generates.
+const RUST_FN_HEAD = /^((?:(?:const|async|unsafe)\s+)*)fn\b/;
 
 // The widest field type worth injecting. A real one is short
 // (`HashMap<String, Vec<(u64, Duration)>>` is 37); past this the text is prose

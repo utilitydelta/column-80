@@ -176,7 +176,7 @@ is not something you can write on one.
 
 **The gate asks the classifier TWICE and the order is the entire design.** Resolving the enclosing
 type's surface costs a real pre-fill, so paying it before the honest-failure gate would charge every
-refusal for it — including the 68.4% of real functions with no doc comment. A `needs-fixture` verdict
+refusal for it, including every async, IO and side-effect-only method. A `needs-fixture` verdict
 is re-asked with the flag set; a refusal underneath means the receiver is not the only blocker and
 nothing is resolved. Only a clean `testable` is worth paying for, and the surface that answers the
 question is the surface the prompt then gets.
@@ -266,10 +266,11 @@ stderr (vitest writes 0 bytes, jest 751 and 17943 in the measured runs).
 Types are unchecked on this path, so a type error runs and surfaces as a red that looks like a wrong
 expected value.
 
-Testability precedence `async`, `io`, `needs-fixture`, `not-exported`, `underspecified`. Over 157
-functions: needs-fixture 78, underspecified 38, not-exported 23, async 18, io 0 (a FALSE zero). 0 of
-157 survive, and forcing every return annotation present still yields 0. The cause is the
-doc-comment leg against a codebase documenting 7.0% of its functions; `not-exported` costs 3.
+Testability precedence `async`, `io`, `needs-fixture`, `not-exported`, `underspecified`. Over the
+182 functions the `impl-v31-ts` corpus row reads (2026-09-29): needs-fixture 158, not-exported 11,
+underspecified 8, testable 5 (`ok`, `err`, `token`, `resolve`, `useResolve`). io is 0, and that zero is
+FALSE: IO in a body is invisible to a signature-only classifier. The five survivors are all
+undocumented; before S40 removed the doc-comment leg, every function in the corpus was refused.
 
 The locator is the SOLE ARGUMENT OF THE MATCHER TERMINATING THE `expect` CHAIN: `toBe`, `toEqual`,
 `toStrictEqual`, `toBeCloseTo`, `toContain`, `toHaveLength`. Never a zero-arg matcher, never `not`.

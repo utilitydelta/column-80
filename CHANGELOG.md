@@ -1,5 +1,48 @@
 # Changelog
 
+## 3.7.0
+
+**A type a macro builds now has members in the prompt.**
+
+A Rust newtype ID made by `macro_rules!` (`OrgId`, from an `identifyer!` in a real workspace) reached
+every prompt as `pub struct OrgId(U128<LittleEndian>)` and nothing else. The model read a public
+tuple struct, wrote `OrgId(1)`, the compiler said E0423 three times, repair wrote `OrgId(1)` again and
+gave up. The method it needed, `OrgId::new`, was never shown.
+
+rust-analyzer's outline is syntax only, so it never sees a type or `impl` a macro expands to. Now,
+when a type resolves but its definition sits inside a macro call, the resolver finds a place the code
+already spells `OrgId::`, asks completion there, and keeps the inherent members. Nothing is edited to
+get them. A type nobody has called yet says so on the channel instead of going quiet. On the real
+file the repair that gave up now compiles in one round, and generation writes `OrgId::new(1)` first
+time. FIM's whole-block injection got faster doing it: about 138ms before on every sample, 12ms once
+a type is known.
+
+**A private tuple field says so.** `pub struct OrgId(/* private */ U128<LittleEndian>)`. The old
+line invited `OrgId(1)`.
+
+**`const fn`, `async fn` and `unsafe fn` keep their signatures.** Every `const fn` member was silently
+dropped from the surface, which is why FIM's member site showed `(none)` for `OrgId::` even with the
+right names in hand. `async` and `unsafe` stay visible, because they change how you write the call.
+
+**Generate tests no longer needs a doc comment.** An undocumented function used to be refused as
+having no contract. Most of the time the name says what it does, so the test is attempted from the
+name and signature, and the prompt says there is no doc comment rather than pretending there is one.
+A function with nothing to assert is still refused.
+
+**The function to implement is labelled.** The target was the last block of the prompt and the only
+one without a heading, so it read as one more piece of reference material, and a model implemented
+something it was shown instead. Over 20 real functions, three replies each: 33/60 before, 60/60 after.
+
+**A reply that writes `pub fn foo` is the requested `fn foo`.** Visibility qualifiers are read past on
+both sides. `async`, `const` and `unsafe` are not: a reply whose `async` differs from the document's
+is still refused, because splicing it in would not compile.
+
+**Tighten Doc Comment reads your prose, not its own example.** The proposer prompt taught with a
+worked example, and the default model answered with the example on 49 of 160 dictations. Type names
+found went from 5/40 to 28/40 with the example gone.
+
+**FIM off says so once**, not once per keystroke.
+
 ## 3.6.0
 
 **A case table bound with `let mut` is a case table.**

@@ -9,7 +9,7 @@ import { ContextBlockStore } from "../core/contextBlocks";
 import { ProbeCommandFn, ProbeHardwareOptions, probeCommandRunner } from "../core/hardware";
 import { FnGenService } from "../core/fnGenService";
 import { FunctionSpan, spliceSpan } from "../core/span";
-import { ContextBlock, FnGenPromptInput, GenKind } from "../core/prompt";
+import { ContextBlock, FnGenPromptInput, GenKind, contractDocComment } from "../core/prompt";
 import { isPromptWindowError } from "../core/promptBudget";
 import { makeBlockReader } from "./blockReader";
 import { fileLabel } from "./contextPanel";
@@ -54,6 +54,7 @@ import {
 import { assembleSurfacePayload, firmInstructionFor, ofTypes, typesFromUses, typesNamedIn } from "../core/compilerDirected";
 import { commentTypesIn, firstCodeOccurrence } from "../core/commentTypes";
 import { DisclosedType, memberNameOf } from "../core/repairGate";
+import { macroGeneratedLine } from "../core/macroMembers";
 import {
   csTypesFromQualifiedUsage,
   goTypesFromQualifiedUsage,
@@ -208,6 +209,11 @@ export interface ResolvedFunction {
    *  declines rather than silently overwriting or half-eating the human's words.
    *  Undefined for every preservable / non-docstring target. */
   docstringRefusal: string | undefined;
+  /** The docstring behind a `docstringRefusal`, as the model should read it.
+   *  Generate refuses because it cannot PRESERVE that docstring in place; test
+   *  authoring writes nothing into the function, so the refusal does not apply
+   *  to it and the docstring is still its contract. Undefined otherwise. */
+  refusedDocstring?: string;
 }
 
 // The function-like kinds. A cursor inside one of these resolves
@@ -557,6 +563,7 @@ function resolveFromSymbolTree(
   const headOffset = span.start;
   let bodyOnly = false;
   let docstringRefusal: string | undefined;
+  let refusedDocstring: string | undefined;
   let bodyIndent = "";
   if (document.languageId === "python") {
     if (symbol.kind === vscode.SymbolKind.Class) {
@@ -572,8 +579,14 @@ function resolveFromSymbolTree(
     const doc = pyLeadingDocstring(spanText);
     if (doc && doc.sameLineAsHeader) {
       docstringRefusal = `expand ${symbol.name} to multiple lines before generating — its docstring is on the header line and cannot be preserved in place.`;
+      refusedDocstring = stripPyDocstring(spanText.slice(doc.start, doc.end));
     } else if (doc && pyDocstringHasAdjacentLiteral(spanText, doc.end)) {
       docstringRefusal = `join ${symbol.name}'s docstring into one string literal before generating — an implicitly concatenated docstring cannot be preserved in place.`;
+      // The literals as written, quotes and all, through the end of the line the
+      // first one closes on. A concatenation continued onto later lines is cut
+      // there; the model still reads the part the first literal carries.
+      const lineEnd = spanText.indexOf("\n", doc.end);
+      refusedDocstring = spanText.slice(doc.start, lineEnd === -1 ? spanText.length : lineEnd).trim();
     } else if (doc) {
       docComment = stripPyDocstring(spanText.slice(doc.start, doc.end));
       // The body column is the docstring's own indentation (it is the first body
@@ -601,6 +614,7 @@ function resolveFromSymbolTree(
     bodyIndent,
     symbols,
     docstringRefusal,
+    refusedDocstring,
   };
 }
 
@@ -2911,6 +2925,7 @@ export async function resolvePrefill(
   // this loop resolves. See `SettleAllowance`: a walk's own allowance bounds one
   // walk, and this loop runs up to `budget.resolveCap` of them.
   const settleAllowance = freshSettleAllowance();
+  const macroReported = new Set<string>();
 
   for (const type of candidates) {
     if (admitted >= typeCap || resolveCount >= budget.resolveCap || looked >= budget.provenanceCap) {
@@ -3083,6 +3098,18 @@ export async function resolvePrefill(
     // never a candidate), so without this line a construction target ships a
     // shorter surface than the reader expects and nothing says so. Conditional,
     // because a target that narrowed nothing owes nothing.
+    // A macro-generated type is named in words whether or not its members were
+    // found: `no-block` alone cannot tell "nothing to say" from "the outline
+    // cannot see it". Once per gesture, because several walks reach one type;
+    // an unavailable answer keys apart so a later real one in the same gesture
+    // still prints.
+    for (const note of shape?.macroGenerated ?? []) {
+      const key = note.unavailable ? `${note.type}:unavailable` : note.type;
+      if (!macroReported.has(key)) {
+        macroReported.add(key);
+        log(`[fngen] pre-fill ${macroGeneratedLine(note)}`);
+      }
+    }
     const narrowed = shape?.narrowed ?? [];
     if (narrowed.length > 0) {
       log(
@@ -6583,7 +6610,7 @@ export function registerFnGen(
       //
       // THE ORDER IS THE DESIGN, because resolving that surface costs a real
       // pre-fill. Paying it before this gate would charge EVERY refusal for it,
-      // including the 68.4% of real functions that have no doc comment. So the
+      // including every async, IO and side-effect-only method. So the
       // classifier is asked a second time with the fixture rung skipped: a
       // refusal underneath means the receiver is not the only blocker and
       // nothing is resolved, and only a clean `testable` is worth paying for.
@@ -6694,6 +6721,18 @@ export function registerFnGen(
         );
       }
 
+      // The doc comment the test prompt may call a contract. Python's is the
+      // docstring alone: `bodyOnly` says one was found, and a docstring Generate
+      // refuses to preserve in place is still a contract here, because this
+      // pass writes nothing into the function. Without one, the resolver's
+      // trivia is decorators, not a doc. Elsewhere attribute-only trivia
+      // (`#[inline]`, `[Pure]`, `@cached`) is set aside the same way.
+      const testDocComment =
+        document.languageId === "python"
+          ? resolved.bodyOnly
+            ? resolved.docComment
+            : resolved.refusedDocstring
+          : contractDocComment(document.languageId, resolved.docComment);
       let result;
       try {
         result = await vscode.window.withProgress(
@@ -6707,7 +6746,7 @@ export function registerFnGen(
             return service.generateTests(
               {
                 signature: resolved.signature,
-                docComment: resolved.docComment,
+                docComment: testDocComment,
                 contextBlocks,
                 calleeSurface,
                 // The framework's four prompt fields and the language's name come

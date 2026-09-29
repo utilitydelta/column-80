@@ -4,6 +4,7 @@ import { CompletionService, INJECTION_DEADLINE_MS } from "../core/completionServ
 import { DICTATION_SURFACE_TOK } from "../core/budgetProfile";
 import { declarationGhost, freshLineAfter, type DeclarationGhost } from "../core/dictationDoc";
 import { trailingOverlapLength } from "../core/postprocess";
+import { macroGeneratedLine } from "../core/macroMembers";
 import {
   EnumRhsSite,
   FimInjection,
@@ -225,6 +226,10 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
   // session each, so "the comment rules are silently dead here" is a fact
   // someone can read rather than infer.
   private readonly commentDarkLanguages = new Set<string>();
+  // Macro-generated types already named on the channel, keyed on the type and
+  // what was found for it. The whole-block walk re-runs on every document
+  // version, so an unkeyed line would be a line per keystroke.
+  private readonly macroReported = new Set<string>();
   // Languages this session has already refused. One line per language, not one
   // per keystroke: a human writing a paragraph of markdown would otherwise get
   // a line per character, which buries everything else on the channel.
@@ -1665,6 +1670,18 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       }
       const root = shape.types.get(type);
       methodsByRoot.set(type, root ? root.methods : []);
+      for (const note of shape.macroGenerated ?? []) {
+        // An unavailable note says nothing on FIM and takes no dedupe key, so
+        // the true line prints once a later keystroke gets a real answer.
+        if (note.unavailable) {
+          continue;
+        }
+        const key = `${note.type}:${note.pathAt === undefined ? "none" : note.memberCount}`;
+        if (!this.macroReported.has(key)) {
+          this.macroReported.add(key);
+          this.output.appendLine(`[fim] whole-block: ${macroGeneratedLine(note)}`);
+        }
+      }
     }
 
     const resolveStruct = toResolveStruct(merged, hooks);

@@ -916,17 +916,17 @@ gtest("classifyTestability go: a method receiver is 'needs-fixture' - constructi
   }
 });
 
-gtest("classifyTestability go: no doc comment is 'underspecified', and so is three or more return values [contract-go.md 'no doc comment; or no return value; or three or more return values']", () => {
-  assert.strictEqual(
-    goLang.classifyTestability("func aggregateFanout(n int) int", undefined).reason,
-    "underspecified",
-    "with no contract there is nothing to write a blind test against"
-  );
-  assert.strictEqual(
-    goLang.classifyTestability("func aggregateFanout(n int) int", "").reason,
-    "underspecified",
-    "an empty doc comment is no doc comment"
-  );
+// SUPERSESSION S40 (2026-09-29). The first two assertions pinned "no doc comment
+// is 'underspecified'". The human reversed it: an undocumented function is
+// attempted from its name and signature. The return-value rules stand.
+gtest("classifyTestability go: no return value or three or more return values is 'underspecified'; no doc comment is admitted (S40)", () => {
+  for (const doc of [undefined, ""]) {
+    assert.deepStrictEqual(
+      goLang.classifyTestability("func aggregateFanout(n int) int", doc),
+      { testable: true },
+      `doc ${JSON.stringify(doc)}: an undocumented function is attempted, not refused`
+    );
+  }
   assert.strictEqual(
     goLang.classifyTestability("func aggregateFanout(n int)", DOC).reason,
     "underspecified",

@@ -1236,17 +1236,17 @@ ptest("classifyTestability python: `self` must be the FIRST parameter to count -
   }
 });
 
-ptest("classifyTestability python: no docstring, a MISSING return annotation, and `-> None` are each 'underspecified' [contract-py.md 'underspecified: no docstring, a missing `-> T` annotation, or `-> None`']", () => {
-  assert.strictEqual(
-    pyLang.classifyTestability("def widen(n: int) -> int:", undefined).reason,
-    "underspecified",
-    "with no contract there is nothing to write a blind test against"
-  );
-  assert.strictEqual(
-    pyLang.classifyTestability("def widen(n: int) -> int:", "").reason,
-    "underspecified",
-    "an empty docstring is no docstring"
-  );
+// SUPERSESSION S40 (2026-09-29). The first two assertions pinned "no docstring
+// is 'underspecified'". The human reversed it: an undocumented function is
+// attempted from its name and signature. The return rules stand.
+ptest("classifyTestability python: a MISSING return annotation and `-> None` are each 'underspecified'; no docstring is admitted (S40)", () => {
+  for (const doc of [undefined, ""]) {
+    assert.deepStrictEqual(
+      pyLang.classifyTestability("def widen(n: int) -> int:", doc),
+      { testable: true },
+      `doc ${JSON.stringify(doc)}: an undocumented function is attempted, not refused`
+    );
+  }
   assert.strictEqual(
     pyLang.classifyTestability("def widen(n: int):", DOC).reason,
     "underspecified",

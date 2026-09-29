@@ -1,0 +1,11 @@
+[package]
+name = "extraction-macro-ids"
+version = "0.1.0"
+edition = "2021"
+
+# session-v76: a macro_rules! newtype-ID crate. rust-analyzer's documentSymbol
+# outline cannot see a type or impl a macro expands to, so `membersOfType` at
+# the definition of TenantId, StreamId or GhostId returns nothing. Completion
+# at `TenantId::` runs over expanded code and lists the members. No
+# dependencies, so it resolves offline.
+[dependencies]
