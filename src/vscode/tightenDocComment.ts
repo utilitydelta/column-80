@@ -1398,7 +1398,10 @@ function defaultWindowed(): boolean {
 /** `vscode.executeWorkspaceSymbolProvider` into the ratifier's records. The
  *  kinds are VS Code's own numbering, which is what `kindScheme: "vscode"`
  *  declares: nothing here reads a raw LSP response. */
-async function defaultQuerySymbols(query: string): Promise<readonly TightenSymbolHit[]> {
+/** EXPORTED for the measurement rigs only. A harness that re-derives this
+ *  mapping is measuring its own copy of it, which is how a v29 arm result got
+ *  inverted; the gate rig runs the product's own provider adapter. */
+export async function defaultQuerySymbols(query: string): Promise<readonly TightenSymbolHit[]> {
   const answered = await vscode.commands.executeCommand<vscode.SymbolInformation[] | undefined>(
     "vscode.executeWorkspaceSymbolProvider",
     query,

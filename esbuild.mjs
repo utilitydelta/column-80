@@ -60,6 +60,14 @@ const productSurface = {
       // shapes are captured rather than computed.
       `export { reachQueries } from "./src/core/criticizeReach";`,
       `export { resolveReach } from "./src/vscode/criticizeReachResolver";`,
+      // session-v75: the tighten gates. The proposer's arms are measured
+      // offline, but what the DELTA gate and the EXISTENCE gate then do with a
+      // reply is decided by a live symbol provider, so the gate rig drives the
+      // real command function inside a host with a replay transport. A headless
+      // fake provider would be measuring the fake.
+      `export { tightenDocComment, defaultQuerySymbols, TIGHTEN_QUERY_BUDGET, TIGHTEN_SWEEP_CAP } from "./src/vscode/tightenDocComment";`,
+      `export { PROPOSER_SPAN_CAP, assembleProposerPrompt, parseProposerReply } from "./src/core/tightenProposer";`,
+      `export { prefillLangFor, resolveFunctionAtCursor as v75ResolveFunction } from "./src/vscode/fnGen";`,
     ].join("\n"),
     resolveDir: ".",
     loader: "ts",

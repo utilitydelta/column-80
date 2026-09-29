@@ -21,3 +21,10 @@ native/build/
 native/bin/
 native/build.log
 native/configure.log
+
+# `bundleCore` writes `test/.<tag>.entry.ts` and `test/.<tag>.bundle.cjs` while a
+# blind or rig module is loaded, and removes them in `cleanup()`. A run that is
+# killed, or a `git add -A` from a second agent while one is in flight, leaves
+# them staged. They are generated; nothing should ever commit them.
+test/.*.entry.ts
+test/.*.bundle.cjs

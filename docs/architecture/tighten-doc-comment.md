@@ -299,3 +299,71 @@ unexported name (1,427 rows, the largest family), a `_test.go` file or `_test` p
 CLAUSE, not the directory; Python's dotted path is rooted at a real sys.path entry (36.4% to 100%);
 and `kindScheme: "vscode" | "lsp"` rides on every hit, so a raw-LSP class is no longer refused and a
 raw-LSP enum no longer accepted by coincidence.
+
+## The proposer's own worked example, and what deleting it cost (session-v75)
+
+The prompt used to end its transcription sentence with `"shard mem cache" is how a transcript spells
+`ShardMemCache``. On `qwen3-coder:30b`, the default `column80.fnGenModel`, the model answered with
+the example instead of reading the data on 49 of 160 dictation items. `parseProposerReply` dropped
+every one of them, because a span not present verbatim in the prose is not a span, so the gesture
+went QUIET rather than wrong. That is why it survived four sessions: a gesture that proposes garbage
+gets a bug report, a gesture that says nothing looks like one that had nothing to say.
+
+Four arms, 160 items, the product's own prompt and parser, temperature 0. "Left alone" is the
+discrimination column: a function or field row the proposer correctly says nothing about.
+
+| the sentence says | type found | fn left alone | field left alone | echoed the example |
+| --- | --- | --- | --- | --- |
+| with the example, shipped until v75 | 5/40 | 40/40 | 39/40 | 49/160 |
+| no example, ships from v75 | 27/40 | 20/40 | 7/40 | 0/160 |
+| example kept but unnamed | 27/40 | 17/40 | 7/40 | 0/160 |
+| example framed as other data | 14/40 | 38/40 | 28/40 | 0/160 |
+
+Haiku 4.5 on the SHIPPED prompt scored 27/40 and kept its discrimination. The sentence was not a bad
+sentence; it was a trap for a smaller model, and the default model is a smaller model.
+
+### What the gates do with a talkative proposer, measured rather than argued
+
+`tightenProposer.ts` says in its own header that talkativeness is fine because two deterministic
+gates can reject everything the model said. Session-v75 drove the real `tightenDocComment` over all
+160 items inside a real extension host, against the private Rust corpus the dictation items were
+harvested from - so every function and field name a talkative proposer offers really exists there,
+at its real kind, beside 489 files of real neighbours. A workspace where those names do not exist
+cannot produce the case.
+
+| arm | name rows offered | of those, the row's own type | junk | symbol queries |
+| --- | --- | --- | --- | --- |
+| with the example | 1 | 1 | 0 | 12 |
+| no example | 11 | 8 | 3 | 249 |
+| example framed as other data | 4 | 3 | 1 | 71 |
+
+Three junk names over 160 invocations: `Request`, `CompressionType`, `Lease`. All three name a type
+that really exists in that workspace, with a derivable import path, because tier 2's refusal is
+literally "no type of that name in the workspace" and they could not have got past it otherwise. The
+claim holds.
+
+What the extra recall costs, beside what it buys: 249 symbol queries against the old prompt's 12,
+and 93 refusal notes in front of the developer against 5. On a population of seven-sentence comments
+the query budget bound on 7 of 20 invocations against the control's 2 of 20, and
+`PROPOSER_SPAN_CAP` was reached on 2 of 20 - in neither case dropping a type the reply had named. No
+eviction was observed in any arm, so the cost is round trips and reading rather than lost names. The
+sweep is where the round trips go, and its measured marginal recall is the 0 of 451 recorded above.
+
+The table was first taken by replaying the arm's replies, generated before the prompt changed. Run
+again against the shipped prompt's own 160 replies it reproduces: 11 rows offered, 8 the row's own
+type, the same three junk names, 262 symbol queries against 249.
+
+The delta gate is inside these figures too. Three candidates classified 2 and were dropped as
+already in the prompt, and two of them were the row's own wanted type: `ApiKeysConfig` and
+`CompressionMeta`. The rig's declaration names nothing, but `resolvePrefill` still renders a surface
+and the gate compares against THAT, not against the signature. The 8 of 40 above would be 10 with
+the delta gate out of the way, which is the gate doing its job rather than a hole in the rig.
+
+### Proposer recall is not the product's recall
+
+A fifth arm, not in the goal, named the wanted spelling instead of showing it. It scores 35/40 at
+the proposer, the best of any arm. Through the gates it is worth ONE extra row over the whole
+corpus, for 418 symbol queries against 249 and a budget that binds on 10 of 20 long comments against
+7. Across both populations it is 3 extra rows out of 15. Refused, and the stronger reason is not the
+cost: it scores 30/40 on the negative rows against 40/40 for every other arm, so it proposes a span
+on ten sentences that name no type at all.
