@@ -268,7 +268,7 @@ test("P5-F1/F3 (throwing tier flow): generateFunction with an unresolved tier ma
   );
   const warn = __state.messages.find((m) => m.kind === "warn");
   assert.ok(warn, "the command path gets an honest message, not silence");
-  assert.match(warn.message, /hardware tier could not be resolved/);
+  assert.match(warn.message, /could not detect your hardware/);
   assert.match(warn.message, /Select Hardware Tier/, "names the gesture that fixes it");
 });
 
@@ -313,80 +313,63 @@ test("P5-F1/F3 (disabled tier, command path): below-12gb surfaces the honest mes
   assert.deepStrictEqual(fnGenLines(out.lines), []);
   assert.ok(out.lines.some((l) => l.startsWith("[carve] fn-gen disabled: ")));
   const warn = __state.messages.find((m) => m.kind === "warn");
-  assert.match(warn.message, /no usable GPU detected/);
+  assert.match(warn.message, /no usable GPU was found/);
 });
 
-// ---- P5-F1/F3: disabled tier on the FIM-accept path - check-and-surface
-// runs, repair ends pre-generateRaw with a logged reason
+// ---- P5-F1/F3: a closed tier gate inside the oracle. Check-and-surface runs,
+// repair ends before any model call, and the reason is on the record. These
+// rows drove the FIM accept until session-v77 Amendment 1 removed it; the gate
+// is still live on Repair Function and the generate accept, so they now call
+// runPostAcceptOracle directly with the gate those callers pass.
 
-test("P5-F1/F3 (disabled-tier FIM accept): check-and-surface still runs, repair gate closes pre-generateRaw with reason on the record", async () => {
-  resetState();
-  __state.config = { repairEnabled: true, apiBase: "http://127.0.0.1:9" };
-  const crate = scratchCopy("fimgate");
-  try {
-    const file = breakParseDuration(crate);
-    const doc = fileDocument(file);
-    __state.textDocuments = [doc];
+for (const reason of ["tier-disabled", "tier-unresolved"]) {
+  test(`P5-F1/F3 (closed gate, ${reason}): check-and-surface still runs, repair ends before any model call with the reason logged`, async () => {
+    resetState();
+    __state.config = { repairEnabled: true };
+    const crate = scratchCopy(`gate-${reason}`);
+    try {
+      const file = breakParseDuration(crate);
+      const t = fs.readFileSync(file, "utf8");
+      const fnStart = t.indexOf("pub fn parse_duration");
+      const fnEnd = t.indexOf("\n}", fnStart) + 2;
+      const modelCalls = [];
+      const service = new FnGenService(
+        { apiBase: "http://fake:1", model: "scripted-30b", fallbackModel: "x", maxTokens: 512, temperature: 0.2 },
+        async (...args) => {
+          modelCalls.push(args);
+          return { text: "```rust\n" + t.slice(fnStart, fnEnd) + "\n```", ttftMs: 1, totalMs: 2, doneReason: "stop" };
+        },
+      );
+      const out = output();
+      await runPostAcceptOracle({
+        document: fileDocument(file),
+        landedSpan: { start: fnStart, end: fnEnd },
+        service,
+        output: out,
+        presenter: recordingPresenter(file),
+        resolveFunction: fnResolver("parse_duration"),
+        repairTierGate: { allowed: false, reason },
+      });
 
-    const out = output();
-    registerFnGen(fakeContext(), out, new ContextBlockStore(() => {}), { probeOpts: noGpuProbe() });
-    await waitFor(() => out.lines.some((l) => l.startsWith("[carve] tier=")), "tier resolution");
-
-    const t = fs.readFileSync(file, "utf8");
-    const spanStart = t.indexOf("pub fn parse_duration");
-    const spanEnd = t.indexOf("\n}", spanStart) + 2;
-    __state.commands["column80.fimAccepted"]("file://" + file, spanStart, spanEnd - spanStart);
-
-    await waitFor(() => out.lines.some((l) => l.startsWith("[repair] surface ")), "the session to surface");
-
-    assert.ok(
-      out.lines.some((l) => /^\[oracle\] check done ms=\d+ errors=1 warnings=0 success=false$/.test(l)),
-      `check-and-surface ran on the disabled tier, got ${JSON.stringify(out.lines)}`
-    );
-    assert.ok(
-      out.lines.includes("[repair] gate closed reason=tier-disabled"),
-      `the pre-generateRaw reason is logged, got ${JSON.stringify(out.lines)}`
-    );
-    assert.ok(out.lines.includes("[repair] surface why=disabled errors=1 warnings=0"));
-    assert.deepStrictEqual(
-      modelCallEvidence(out.lines),
-      [],
-      "zero repair decisions, zero rounds, zero [fngen] traffic on a disabled tier"
-    );
-  } finally {
-    fs.rmSync(crate, { recursive: true, force: true });
-  }
-});
-
-test("P5-F1/F3 (unresolved-tier FIM accept): repair gate closes with reason=tier-unresolved, check-and-surface still runs", async () => {
-  resetState();
-  __state.config = { repairEnabled: true, apiBase: "http://127.0.0.1:9" };
-  const crate = scratchCopy("fimunres");
-  try {
-    const file = breakParseDuration(crate);
-    const doc = fileDocument(file);
-    __state.textDocuments = [doc];
-
-    const out = output();
-    registerFnGen(fakeContext(), out, new ContextBlockStore(() => {}), {
-      buildService: async () => {
-        throw new Error("boom: tier flow exploded");
-      },
-    });
-    await waitFor(() => out.lines.some((l) => l.startsWith("[carve] tier flow failed")), "rebuild rejection");
-
-    const t = fs.readFileSync(file, "utf8");
-    const spanStart = t.indexOf("pub fn parse_duration");
-    __state.commands["column80.fimAccepted"]("file://" + file, spanStart, 40);
-
-    await waitFor(() => out.lines.some((l) => l.startsWith("[repair] surface ")), "the session to surface");
-    assert.ok(out.lines.includes("[repair] gate closed reason=tier-unresolved"), `got ${JSON.stringify(out.lines)}`);
-    assert.ok(out.lines.some((l) => l.startsWith("[repair] surface why=disabled")));
-    assert.deepStrictEqual(modelCallEvidence(out.lines), []);
-  } finally {
-    fs.rmSync(crate, { recursive: true, force: true });
-  }
-});
+      assert.ok(
+        out.lines.some((l) => /^\[oracle\] check done ms=\d+ errors=1 warnings=0 success=false$/.test(l)),
+        `[${reason}] check-and-surface ran, got ${JSON.stringify(out.lines)}`,
+      );
+      assert.ok(
+        out.lines.includes(`[repair] gate closed reason=${reason}`),
+        `[${reason}] the reason is logged, got ${JSON.stringify(out.lines)}`,
+      );
+      assert.ok(
+        out.lines.includes("[repair] surface why=disabled errors=1 warnings=0"),
+        `[${reason}] surfaces as disabled, got ${JSON.stringify(out.lines)}`,
+      );
+      assert.deepStrictEqual(modelCallEvidence(out.lines), [], `[${reason}] no repair decision, no round`);
+      assert.strictEqual(modelCalls.length, 0, `[${reason}] the model was never called`);
+    } finally {
+      fs.rmSync(crate, { recursive: true, force: true });
+    }
+  });
+}
 
 // ---- P5-F1/F3: enabled tier still repairs (the gate opens, not just closes)
 
@@ -409,7 +392,6 @@ test("P5-F1/F3 (enabled tier control): reference tier + open gate still executes
     await runPostAcceptOracle({
       document: fileDocument(file),
       landedSpan: { start: fnStart, end: fnEnd },
-      source: "fim",
       service,
       output: out,
       presenter: recordingPresenter(file),
@@ -447,7 +429,6 @@ test("P5-F2: repair round evidence names the service's actual model, pinned wher
     await runPostAcceptOracle({
       document: fileDocument(file),
       landedSpan: { start: fnStart, end: fnEnd },
-      source: "fim",
       service,
       output: out,
       presenter: recordingPresenter(file),
@@ -457,7 +438,7 @@ test("P5-F2: repair round evidence names the service's actual model, pinned wher
     const roundLine = out.lines.find((l) => l.startsWith("[repair] round 1/2 "));
     assert.strictEqual(
       roundLine,
-      "[repair] round 1/2 model=applied-14b:tier route=cross-model",
+      "[repair] round 1/2 model=applied-14b:tier route=self-repair",
       `evidence must name the model that served the round, got ${JSON.stringify(out.lines.filter((l) => l.startsWith("[repair]")))}`
     );
   } finally {

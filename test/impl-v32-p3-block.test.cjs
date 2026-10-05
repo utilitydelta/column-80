@@ -288,7 +288,7 @@ gtest("a cursor outside every symbol refuses by name and adds nothing", async ()
   const { blocks, warnings } = await runGesture(fixture, [[0, 5]], "column80.contextAddSymbol");
   assert.strictEqual(blocks.length, 0, "never falls back to the whole file");
   assert.strictEqual(warnings.length, 1);
-  assert.match(warnings[0], /nothing added to model context/);
+  assert.match(warnings[0], /nothing added to Model Context/);
 });
 
 gtest("two cursors in the same function collapse to one block", async () => {
@@ -548,7 +548,7 @@ gtest("the statement gesture refuses outside every symbol, chain or no chain", a
   const { blocks, warnings } = await runGesture(fixture, [[0, 8]], "column80.contextAddBlock", chains);
   assert.strictEqual(blocks.length, 0);
   assert.strictEqual(warnings.length, 1);
-  assert.match(warnings[0], /nothing added to model context/);
+  assert.match(warnings[0], /nothing added to Model Context/);
 });
 
 gtest("statement blocks are whole lines, so isStale stays quiet on a fresh add", async () => {

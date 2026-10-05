@@ -344,23 +344,20 @@ test("describeMissingRoot: no tsconfig anywhere names the file; tsconfig without
   assert.strictEqual(healthy.describeMissingRoot("/w/src/app.ts"), undefined, "a resolvable root has nothing to explain");
 });
 
-test("describeCheckFailure carries the exit code and the first-stderr-line evidence", () => {
+test("describeCheckFailure carries the first-stderr-line evidence, and no exit code", () => {
   const oracle = new TsOracle();
-  assert.strictEqual(
-    oracle.describeCheckFailure(1, "BOOM: it broke"),
-    "project tsc crashed (exit 1): BOOM: it broke",
-  );
-  assert.strictEqual(oracle.describeCheckFailure(2), "project tsc crashed (exit 2)");
+  assert.strictEqual(oracle.describeCheckFailure(1, "BOOM: it broke"), "tsc failed with no error to show: BOOM: it broke");
+  assert.strictEqual(oracle.describeCheckFailure(2), "tsc failed with no error to show; see the output channel");
 });
 
 test("describeCheckFailure: a spawn REJECTION (negative sentinel) says the spawn failed - no process exited, no invented exit code", () => {
   const oracle = new TsOracle();
   const rejection = oracle.describeCheckFailure(-1, "Error: spawn ENOENT");
   assert.ok(!rejection.includes("exit -1"), `no exit code ever existed; got: ${rejection}`);
-  assert.ok(!/crashed \(exit/.test(rejection), `a rejection is not a crash-with-code; got: ${rejection}`);
-  assert.match(rejection, /spawn/i, `the wording names the spawn failure; got: ${rejection}`);
+  assert.ok(!/\(exit/.test(rejection), `a rejection is not a failure-with-code; got: ${rejection}`);
+  assert.match(rejection, /^could not start tsc/, `the wording names the start failure; got: ${rejection}`);
   assert.ok(rejection.includes("Error: spawn ENOENT"), "the real evidence string survives");
-  assert.strictEqual(oracle.describeCheckFailure(-1), "project tsc could not be spawned", "evidence-less rejection stays clean");
+  assert.strictEqual(oracle.describeCheckFailure(-1), "could not start tsc", "evidence-less rejection stays clean");
 });
 
 // ---------------------------------------------------------------------------

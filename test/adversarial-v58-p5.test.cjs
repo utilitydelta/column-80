@@ -189,7 +189,7 @@ test("CLEAN A2: the palette label renders as the house style, and the entry carr
   // VS Code renders `category: title`. Amendment A2 fixed the rendered string.
   assert.strictEqual(
     `${entry.category}: ${entry.title}`,
-    "Column 80: Cancel Generation",
+    "Column 80: Cancel Running Task",
     `amendment A2 ruled the palette title stays clean; got ${JSON.stringify(entry)}`,
   );
   // And no `enablement`: eight sibling commands are language-gated, and a

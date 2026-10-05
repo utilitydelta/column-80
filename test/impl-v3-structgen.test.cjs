@@ -358,7 +358,7 @@ test("brace-less unit struct (struct Marker;) no-ops with an honest message, nev
   await __state.commands["column80.generateFunction"]();
   const warn = __state.messages.find((m) => m.kind === "warn");
   assert.ok(warn, "the human gets a message");
-  assert.match(warn.message, /nothing to generate/i);
+  assert.match(warn.message, /no body to generate/i);
   assert.match(warn.message, /unit or tuple struct/i);
   assert.ok(lines.some((l) => l.includes("nothing to generate")), "the no-op is on the evidence channel");
   assert.ok(!lines.some((l) => l.startsWith("[fngen] gen")), "no model call was made");
@@ -368,7 +368,7 @@ test("brace-less tuple struct (struct Id(pub u64);) no-ops the same way", async 
   const { lines } = driveBraceless(TUPLE_SRC, "Id");
   await __state.commands["column80.generateFunction"]();
   const warn = __state.messages.find((m) => m.kind === "warn");
-  assert.ok(warn && /nothing to generate/i.test(warn.message), "tuple struct is also no-op'd");
+  assert.ok(warn && /no body to generate/i.test(warn.message), "tuple struct is also no-op'd");
   assert.ok(!lines.some((l) => l.startsWith("[fngen] gen")), "no model call");
 });
 

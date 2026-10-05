@@ -1006,7 +1006,7 @@ const strings = (v, acc = []) => {
 };
 const promptOf = (r) => r.genRequests.map((q) => strings(q.body).join("\n")).join("\n=====\n");
 
-const refusals = (r) => r.texts.filter((t) => /not auto-testable|refus|cannot|can't|no contract/i.test(t));
+const refusals = (r) => r.texts.filter((t) => /no tests generated|refus|cannot|can't|no contract/i.test(t));
 const DOC_BLAME = /doc comment|docstring|`\/\/\/`|no contract/i;
 const show = (r) => `MESSAGES: ${JSON.stringify(r.texts)}\nCHANNEL: ${JSON.stringify(r.logs.filter((l) => /\[tdd\]/.test(l)).slice(-8))}\nMODEL CALLS: ${r.genRequests.length}`;
 

@@ -1234,30 +1234,30 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
           if (!separatorOk || spelledTwice) {
             this.output.appendLine(
               `[fim] dropped: item would land ${JSON.stringify(landedLine.slice(floor).slice(0, 40))}` +
-                ` - ${spelledTwice ? `${scope.name} spelled twice` : `a ${JSON.stringify(run)} separator run`}`,
+                `: ${spelledTwice ? `${scope.name} spelled twice` : `a ${JSON.stringify(run)} separator run`}`,
             );
             return undefined;
           }
         }
         const item = new vscode.InlineCompletionItem(text, range);
-        // Post-accept compiler oracle: VS Code runs an item's command exactly
-        // when the completion is accepted, which is the FIM trigger the
-        // surface contracts. The handler gates by language and never blocks
-        // the accept; the landed span is [start, start + text length] because
-        // any overlap characters are replaced by the completion's own bytes.
-        item.command = {
-          // A dictated ghost's accept runs through its own command, which
-          // forwards to the post-accept check and then tells the gesture.
-          command: intent === undefined ? "column80.fimAccepted" : "column80.dictationAccepted",
-          title: "Column 80: post-accept compiler check",
-          arguments: [
-            document.uri.toString(),
-            document.offsetAt(range.start),
-            text.length,
-            // Where the caret goes after a declaration lands: the body line, not the closer.
-            ...(caretOffsetInItem === undefined || text !== primary ? [] : [document.offsetAt(range.start) + caretOffsetInItem]),
-          ],
-        };
+        // A plain ghost's accept runs nothing: no compiler check, no repair. The
+        // human ruled that a Tab is a Tab and Repair Function is their trigger.
+        // A dictated ghost's accept tells the dictation gesture, which places
+        // the caret and ends the take. VS Code runs an item's command exactly
+        // when the completion is accepted.
+        if (intent !== undefined) {
+          item.command = {
+            command: "column80.dictationAccepted",
+            title: "Column 80: dictated ghost accepted",
+            arguments: [
+              document.uri.toString(),
+              document.offsetAt(range.start),
+              text.length,
+              // Where the caret goes after a declaration lands: the body line, not the closer.
+              ...(caretOffsetInItem === undefined || text !== primary ? [] : [document.offsetAt(range.start) + caretOffsetInItem]),
+            ],
+          };
+        }
         return item;
       };
       // A dictated ghost carries its own line break and the block's indent, so
@@ -1383,7 +1383,7 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
     }
     this.disabledReported = true;
     this.output.appendLine(
-      "[fim] no ghost: column80.fim is disabled; said once, and again if the setting is turned back on and off",
+      "[fim] no ghost: column80.enabled is off; said once, and again if the setting is turned back on and off",
     );
     return undefined;
   }
@@ -1873,7 +1873,7 @@ export class FimCompletionProvider implements vscode.InlineCompletionItemProvide
       if (derived !== undefined && readTypeSpelling(derived.signature, documentText) === undefined) {
         this.output.appendLine(
           `[fim] enum-rhs: this file's own \`${typeName}\` hovers as` +
-            ` ${JSON.stringify(derived.signature.trim())}, which declares no type - resolving by name instead`,
+            ` ${JSON.stringify(derived.signature.trim())}, which declares no type; resolving by name instead`,
         );
         derived = undefined;
       }

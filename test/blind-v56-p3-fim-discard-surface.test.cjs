@@ -52,6 +52,9 @@
 // warning today) and likely the fim channel-line row RED; the fngen toast row
 // GREEN; both outcome-log rows GREEN; harness/witness rows GREEN.
 //
+// SUPERSEDED IN PART (session-v77 Amendment 1, scrap S77-6): the FIM-sourced
+// rows are gone with the post-FIM-accept check. See the note above contract 2.
+//
 // Run: node --test test/blind-v56-p3-fim-discard-surface.test.cjs
 // (needs cargo on PATH: the repair session runs a real `cargo check`.)
 
@@ -420,13 +423,6 @@ const drive = (source, race) => {
 // ---- shared bindings -------------------------------------------------------
 
 const OUTCOME_DISCARDED = "[fngen] outcome=discarded";
-const isBareOutcome = (l) => /^\[fngen\] outcome=/.test(l.trim());
-// A line that records the discard AND carries a reason-shaped token (the
-// "why" binding reported in the header).
-const discardStoryLines = (r) =>
-  [...r.channel, ...r.svcLines, ...r.statusBar].filter(
-    (l) => /discard/i.test(l) && !isBareOutcome(l) && /version|edit|chang|typ|stale|race|moved|newer/i.test(l),
-  );
 
 const fmt = (r) =>
   `toasts=${JSON.stringify(r.toasts.map((t) => `${t.kind}: ${t.message}`))}\n` +
@@ -498,7 +494,7 @@ btest("G3 [guard]: a source-less present() driven straight to the version race s
     assert.deepStrictEqual(outcomes, ["discarded"], "the outcome log records the discard");
     assert.strictEqual(st.appliedEdits.length, 0, "a discarded proposal writes nothing");
     assert.ok(
-      st.messages.some((m) => m.kind === "warn" && /generation discarded/i.test(m.message)),
+      st.messages.some((m) => m.kind === "warn" && /generated code was ready/i.test(m.message)),
       `the explicit path's warning toast, today's wording. Toasts: ${JSON.stringify(st.messages)}`,
     );
   } finally {
@@ -506,47 +502,10 @@ btest("G3 [guard]: a source-less present() driven straight to the version race s
   }
 });
 
-// ===========================================================================
-// Contract 1: the FIM-sourced session's version-race discard is CHANNEL-ONLY.
-// ===========================================================================
-
-btest("C1a [fim x race]: NO toast of any severity for the background session's discard", async () => {
-  const r = await drive("fim", true);
-  assert.ok(
-    r.svcLines.includes(OUTCOME_DISCARDED),
-    `precondition: the rig must actually produce a version-race discard (contract 3's record proves it fired). ` +
-      `No discard happened, so this row proves nothing.\n${fmt(r)}`,
-  );
-  assert.deepStrictEqual(
-    r.toasts.map((t) => `${t.kind}: ${t.message}`),
-    [],
-    `contract 1: "A discard in a session whose source is 'fim' produces a CHANNEL line ... and NO toast." ` +
-      `The background session the user never invoked raised a toast.\n${fmt(r)}`,
-  );
-});
-
-btest("C1b [fim x race]: a channel line (or status-bar message) records WHAT was discarded and WHY", async () => {
-  const r = await drive("fim", true);
-  assert.ok(
-    r.svcLines.includes(OUTCOME_DISCARDED),
-    `precondition: no version-race discard fired, so this row proves nothing.\n${fmt(r)}`,
-  );
-  assert.ok(
-    discardStoryLines(r).length >= 1,
-    `contract 1: "The channel line still says what was discarded and why." No channel/status-bar line tells the ` +
-      `story - the bare "${OUTCOME_DISCARDED}" evidence token says neither what nor why, so it does not count.\n${fmt(r)}`,
-  );
-});
-
-btest("C3a [fim x race]: the discard outcome is still on the outcome log", async () => {
-  const r = await drive("fim", true);
-  assert.ok(
-    r.svcLines.includes(OUTCOME_DISCARDED),
-    `contract 3: "The discard outcome is still logged ... in both cases - this change is about the surface, ` +
-      `not the record."\n${fmt(r)}`,
-  );
-  assert.strictEqual(r.appliedCount, 0, `a discarded proposal must never reach workspace.applyEdit.\n${fmt(r)}`);
-});
+// Contract 1 and its outcome-log row (C1a, C1b, C3a) are SUPERSEDED by
+// session-v77 Amendment 1 (scrap S77-6): a FIM accept no longer starts a repair
+// session, so there is no FIM-sourced discard left to route. Contract 2 and its
+// outcome-log row still hold for every session that remains.
 
 // ===========================================================================
 // Contract 2: the explicit-gesture session keeps today's toast, unchanged.
@@ -564,7 +523,7 @@ btest("C2a [fngen x race]: the warning toast fires with today's wording", async 
     `contract 2: a session from an explicit gesture "still toasts exactly as today" - at WARNING weight.\n${fmt(r)}`,
   );
   assert.ok(
-    warns.some((t) => /generation discarded/i.test(t.message)),
+    warns.some((t) => /repair was ready/i.test(t.message)),
     `contract 2 pins the wording unchanged: the "generation discarded" shape. ` +
       `Warnings shown: ${JSON.stringify(warns.map((t) => t.message))}`,
   );

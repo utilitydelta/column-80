@@ -73,6 +73,7 @@ const ROOT = path.dirname(__dirname);
 
 /** session-v58 phase 6: the last commit before the status classes. */
 const BASE_REF = "5190b7a";
+const { v77 } = require("./v77-text.cjs");
 
 const T0 = Date.now();
 
@@ -410,7 +411,7 @@ function facets(err) {
 
 const GESTURE = "function generation";
 const toastNow = (err) => NOW.generationFailedToast(err, GESTURE);
-const toastBase = (err) => BASE.generationFailedToast(err, GESTURE);
+const toastBase = (err) => v77(BASE.generationFailedToast(err, GESTURE));
 /** What this exact message got with no typed identity on it. No sentence is
  *  ever written down in this file. */
 const catchAll = (message) => NOW.generationFailedToast(new Error(message), GESTURE);
@@ -673,7 +674,7 @@ btest("B5 [closed]: the unclassified set is exactly the statuses with no next ac
 
 btest("B6 [FINDING, deferred S58-16]: 429 offers one remedy for two causes", () => {
   const s = sentenceFor(429);
-  assert.ok(s.includes("wait"), `PRECONDITION: the 429 sentence says wait. Got ${show(s)}`);
+  assert.ok(/wait/i.test(s), `PRECONDITION: the 429 sentence says wait. Got ${show(s)}`);
   assert.ok(
     !/quota|credit|billing|plan/i.test(s),
     "B6: OpenAI-shape providers return 429 with `insufficient_quota` when the account is out of " +
@@ -946,18 +947,18 @@ btest("E1 [narrowing]: REGRESSION - nothing that is not an HttpStatusError chang
     // A ClaudeCodeError from the NOW bundle is not the BASE bundle's class, but
     // phase 6 identifies by `name`, which crosses bundles - so both trees see it.
     const a = NOW.translateServiceReject(err);
-    const b = BASE.translateServiceReject(err);
+    const b = v77(BASE.translateServiceReject(err));
     assert.strictEqual(a, b, `E1: translateServiceReject moved for ${show(err.message)}\n  now : ${show(a)}\n  ${BASE_REF}: ${show(b)}`);
     assert.strictEqual(
       NOW.generationFailedToast(err, GESTURE),
-      BASE.generationFailedToast(err, GESTURE),
+      v77(BASE.generationFailedToast(err, GESTURE)),
       `E1: generationFailedToast moved for ${show(err.message)}`,
     );
     if (a !== undefined) translated += 1;
   }
   for (const v of nonErrors) {
-    assert.strictEqual(NOW.translateServiceReject(v), BASE.translateServiceReject(v), `E1: non-Error ${show(String(v))} moved`);
-    assert.strictEqual(NOW.generationFailedToast(v, GESTURE), BASE.generationFailedToast(v, GESTURE), `E1: non-Error toast moved`);
+    assert.strictEqual(NOW.translateServiceReject(v), v77(BASE.translateServiceReject(v)), `E1: non-Error ${show(String(v))} moved`);
+    assert.strictEqual(NOW.generationFailedToast(v, GESTURE), v77(BASE.generationFailedToast(v, GESTURE)), `E1: non-Error toast moved`);
   }
   assert.ok(
     translated >= 10,
@@ -1013,8 +1014,8 @@ btest("F2 [CLOSED, was FINDING ruled A3]: the pull path renders the sentence its
 btest("F3 [CLOSED, was FINDING recorded S58-7]: the fourth model surface stops stating a false cause", () => {
   const tighten = fs.readFileSync(path.join(ROOT, "src/vscode/tightenDocComment.ts"), "utf8");
   assert.ok(
-    tighten.includes("the model could not be reached, so no type names were offered"),
-    "PRECONDITION: the unclassified branch keeps the gesture's own sentence - no class, no craft",
+    tighten.includes("Tighten Doc Comment could not ask the model"),
+    "PRECONDITION: the unclassified branch says the ask failed, claiming no cause - no class, no craft",
   );
   assert.ok(
     /translateServiceReject/.test(tighten),

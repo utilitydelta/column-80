@@ -227,7 +227,7 @@ export class TsOracle implements CompilerOracle {
 
   describeNotCovered(crateRoot: string, filePath: string, probedFallbacks: string[]): string {
     const probed = [path.join(crateRoot, "tsconfig.json"), ...probedFallbacks];
-    return `${filePath} is not an input of any probed project (${probed.join(", ")})`;
+    return `${filePath} is not included by any tsconfig Column 80 looked at (${probed.join(", ")}), so it was not checked`;
   }
 
   /** The one-line env reason detectCrateRoot resolved undefined, for the
@@ -238,7 +238,7 @@ export class TsOracle implements CompilerOracle {
     for (;;) {
       if (this.fileExists(path.join(dir, "tsconfig.json"))) {
         if (this.resolveTscPath(dir) === undefined) {
-          return `no typescript resolvable for the project at ${dir} (walked ${dir} and its ancestors for node_modules/typescript)`;
+          return `TypeScript is not installed for the project at ${dir} (no node_modules/typescript there or above). Install it, then try again`;
         }
         return undefined;
       }
@@ -259,9 +259,9 @@ export class TsOracle implements CompilerOracle {
     // process ever exited, so there is no exit code to report - rendering
     // one ("exit -1") would be invented evidence.
     if (exitCode < 0) {
-      return `project tsc could not be spawned${evidence ? `: ${evidence}` : ""}`;
+      return `could not start tsc${evidence ? `: ${evidence}` : ""}`;
     }
-    return `project tsc crashed (exit ${exitCode})${evidence ? `: ${evidence}` : ""}`;
+    return `tsc failed with no error to show${evidence ? `: ${evidence}` : "; see the output channel"}`;
   }
 
   fileCovered(stdout: string, crateRoot: string, filePath: string): boolean {

@@ -254,21 +254,21 @@ export function classifyGoTestability(
     return {
       testable: false,
       reason: "async",
-      detail: "a channel in the signature — a blind test cannot know who fills it, when, or how many times",
+      detail: "Its signature has a channel, and a generated test cannot know who sends on it or when.",
     };
   }
   if (GO_IO.test(sig)) {
     return {
       testable: false,
       reason: "io",
-      detail: "IO/network in the signature (os, net, io, bufio, http) — integration territory, not a blind unit test",
+      detail: "Its signature does IO or networking (os, net, io, bufio, http), which needs an integration test, not a generated unit test.",
     };
   }
   if (GO_RECEIVER.test(sig) && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
-      detail: "method with a receiver — needs a constructed fixture",
+      detail: "It is a method, and Column 80 found no way to construct its receiver.",
     };
   }
   // A missing doc comment is NOT a refusal: the name and signature often say
@@ -276,7 +276,7 @@ export function classifyGoTestability(
   const returnType = goReturnTypeOf(sig);
   const arity = returnArity(returnType);
   if (arity === 0) {
-    return { testable: false, reason: "underspecified", detail: "no return value to assert — side-effect only" };
+    return { testable: false, reason: "underspecified", detail: "It returns no value to check." };
   }
   // `(T, error)` stays testable: blank the T, assert the error separately. Three
   // or more results is where a single `want` stops expressing the contract; the
@@ -285,7 +285,7 @@ export function classifyGoTestability(
     return {
       testable: false,
       reason: "underspecified",
-      detail: `${arity} return values — too many for one blind expected value`,
+      detail: `It returns ${arity} values, too many to check with one expected value.`,
     };
   }
   return { testable: true };
@@ -1075,7 +1075,7 @@ const GO_TDD_LANG: TddLang = {
       const why = oracle.describeMissingRoot?.(filePath) ?? `no go.mod above ${filePath}`;
       return {
         ok: false,
-        refusal: { reason: "no-project-root", detail: `${why}; \`go test\` has no module to run in` },
+        refusal: { reason: "no-project-root", detail: `${why}; "go test" has no module to run in` },
       };
     }
     const dir = path.dirname(filePath);
@@ -1118,7 +1118,7 @@ const GO_TDD_LANG: TddLang = {
       const why = oracle.describeMissingRoot?.(testFilePath) ?? `no go.mod above ${testFilePath}`;
       return {
         ok: false,
-        refusal: { reason: "no-project-root", detail: `${why}; \`go test\` has no module to run ${path.basename(testFilePath)} in` },
+        refusal: { reason: "no-project-root", detail: `${why}; "go test" has no module to run ${path.basename(testFilePath)} in` },
       };
     }
     // No packageName and no importLine: nothing is written, so there is no

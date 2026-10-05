@@ -218,7 +218,7 @@ test("a slow edit that resolves false never reaches the tighten, and the refusal
     assert.equal(tightenCalls().length, 0, dictateLines(lines));
     const failed = lines.find((l) => l.startsWith("[dictate] comment insert failed: "));
     assert.ok(failed, dictateLines(lines));
-    assert.deepEqual(statusMessages, [`Column 80: dictation stopped: ${failed.slice("[dictate] comment insert failed: ".length)}`]);
+    assert.deepEqual(statusMessages, [`Column 80: dictation stopped: ${failed.slice("[dictate] comment insert failed: ".length)}.`]);
   } finally {
     d.dispose();
   }
@@ -288,10 +288,10 @@ test("the heard label is still up 1s after the hand-off and gone within HEARD_LI
     await sleep(60);
     assert.equal(editor.edits.length, 1, `CONTROL: ${dictateLines(lines)}`);
     assert.equal(tightenCalls().length, 1, "CONTROL: the hand-off happened");
-    assert.equal(item.text, "$(mic) heard", JSON.stringify(item.calls));
+    assert.equal(item.text, "$(mic) Column 80: heard", JSON.stringify(item.calls));
     const shown = item.calls.length;
     await sleep(1000);
-    assert.equal(item.text, "$(mic) heard", "the label went early");
+    assert.equal(item.text, "$(mic) Column 80: heard", "the label went early");
     assert.ok(!item.calls.slice(shown).includes("hide"), `hidden inside the linger: ${JSON.stringify(item.calls)}`);
     await sleep(HEARD_LINGER_MS - 1000 + 400);
     assert.ok(item.calls.slice(shown).includes("hide"), `still up after the linger: ${JSON.stringify(item.calls)}`);
@@ -309,7 +309,7 @@ test("the label also goes after a failed insert: the refusal shows and the heard
     await pressThenFinalise(d, editor, { visibleOnly: true });
     d.dispatch(transcript());
     await sleep(60);
-    assert.equal(item.text, "$(mic) heard", `CONTROL: ${JSON.stringify(item.calls)}\n${dictateLines(lines)}`);
+    assert.equal(item.text, "$(mic) Column 80: heard", `CONTROL: ${JSON.stringify(item.calls)}\n${dictateLines(lines)}`);
     assert.equal(statusMessages.length, 1, `CONTROL: the refusal showed: ${JSON.stringify(statusMessages)}`);
     const shown = item.calls.length;
     await sleep(HEARD_LINGER_MS + 400);
@@ -362,7 +362,7 @@ test("a site with nowhere to land: error line, insert-failed line, `failed` refu
         await sleep(60);
         assert.ok(lines.includes(`[dictate] error: ${row.reason}`), dictateLines(lines));
         assert.ok(lines.includes(`[dictate] comment insert failed: ${row.reason}`), dictateLines(lines));
-        assert.deepEqual(statusMessages, [`Column 80: dictation stopped: ${row.reason}`]);
+        assert.deepEqual(statusMessages, [`Column 80: dictation stopped: ${row.reason}.`]);
         assert.equal(editor.edits.length + other.edits.length, 0);
         assert.equal(tightenCalls().length, 0);
         assert.equal(d.phase, "idle");
@@ -421,7 +421,8 @@ test("a refused press (no comment row) does not move the column of the gesture t
   const { d, lines } = newRig();
   const editor = editorAt({ text: "// already", line: 0, col: 10 });
   try {
-    __state.activeTextEditor = editorAt({ text: "text", line: 0, col: 4, lang: "plaintext" });
+    // zig, not plaintext: plaintext is a prose site since session-v77 phase 7 and arms.
+    __state.activeTextEditor = editorAt({ text: "text", line: 0, col: 4, lang: "zig" });
     await d.press();
     assert.equal(d.phase, "idle", `CONTROL: the press refused: ${dictateLines(lines)}`);
     await pressThenFinalise(d, editor);

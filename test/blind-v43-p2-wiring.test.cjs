@@ -79,9 +79,7 @@ test("row 11: fnGenProvider enum and enumDescriptions are the same length and cl
   assert.match(copy, /Claude Code/i, "copy names the installed Claude Code CLI");
   assert.match(copy, /no API key|without an API key|API key is not needed|no key/i, "copy states no API key is needed");
   assert.match(copy, /leaves? (the|your) machine/i, "copy states the prompt leaves the machine");
-  assert.match(copy, /FIM|tab-completion/i, "copy states FIM tab-completion stays local regardless");
-  assert.match(copy, /2\.1\.224/, "the quota-weight figure carries 'measured on claude 2.1.224' beside it");
-  assert.match(copy, /\d[\dk,\s-]*(k|thousand)?\s*tokens/i, "copy states the rough per-call quota weight in tokens");
+  assert.match(copy, /FIM|tab[- ]completion/i, "copy states FIM tab-completion stays local regardless");
 });
 
 test("row 11 rider: cloudApiKey and cloudApiBase say they are ignored by claude-code", () => {
@@ -298,7 +296,7 @@ async function build({ storagePath, probe, deps } = {}) {
 const claudeStorage = (storagePath) => path.join(storagePath, "claude-cwd");
 
 const BINARY_MISSING_MESSAGE =
-  "Function generation is disabled: the Claude Code backend needs the `claude` CLI on PATH. FIM tab-completion still works.";
+  "Function generation is disabled: the Claude Code backend needs the \"claude\" CLI on PATH.";
 
 const CLAUDE_MODEL = "claude-sonnet-4-5";
 

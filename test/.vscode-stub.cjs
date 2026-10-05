@@ -164,6 +164,7 @@ module.exports = {
     showInformationMessage: async () => undefined,
     showWarningMessage: async (m) => { (globalThis.__C80_WARNINGS__ = globalThis.__C80_WARNINGS__ || []).push(m); return undefined; },
     showErrorMessage: async (m) => { (globalThis.__C80_ERRORS__ = globalThis.__C80_ERRORS__ || []).push(m); return undefined; },
+    setStatusBarMessage: (m) => { (globalThis.__C80_STATUS__ = globalThis.__C80_STATUS__ || []).push(m); return disposable(); },
     showTextDocument: async (d) => ({ document: d, selection: undefined, revealRange() {} }),
     get activeTextEditor() { return globalThis.__C80_ACTIVE__; },
     get visibleTextEditors() { return globalThis.__C80_VISIBLE__ || []; },

@@ -29,6 +29,7 @@ import { C80_TAG } from "./criticizeVoice";
 import { stripCriticism } from "./criticizePlan";
 import { escapeBreaks } from "./errorBound";
 import { lineCommentFor } from "./fimInject";
+import { unsupportedLanguageToast } from "./languageName";
 
 /** Everything this gesture writes to the output channel carries it. One prefix
  *  per gesture is the product's convention: `[tighten]`, `[walk]`, `[critique]`. */
@@ -70,7 +71,7 @@ export const CANCELLED_LINE = `${CRITIQUE_PREFIX} cancelled`;
 // ---------------------------------------------------------------------------
 
 /** Step 1. No editor, so there is no cursor and no function. */
-export const NO_EDITOR_TOAST = "Column 80: no active editor.";
+export const NO_EDITOR_TOAST = "Column 80: open a file first.";
 export const NO_EDITOR_REASON = "there is no active editor, so there is no function at a cursor";
 
 /**
@@ -83,7 +84,7 @@ export const NO_EDITOR_REASON = "there is no active editor, so there is no funct
  * surfaces, and the toast is the one that must stay one line.
  */
 export function unregisteredLanguageToast(languageId: string): string {
-  return `Column 80: Criticize does not know how to read ${languageId} yet.`;
+  return unsupportedLanguageToast("Criticize Function", languageId);
 }
 
 export function unregisteredLanguageReason(languageId: string): string {
@@ -97,8 +98,7 @@ export function unregisteredLanguageReason(languageId: string): string {
  * card would be fourteen dimensions answered about nothing in particular, and it
  * would be the "criticize file" gesture the one-gesture rule refuses.
  */
-export const NO_FUNCTION_TOAST =
-  "Column 80: put the cursor inside a function to criticize it.";
+export const NO_FUNCTION_TOAST = "Column 80: put the cursor inside a function first.";
 export const NO_FUNCTION_REASON =
   "no function was resolved at the cursor, and this pass scores a function rather than a file";
 
@@ -517,10 +517,9 @@ export function staleEvidenceLine(from: number, to: number): string {
 
 export function criticizeToast(name: string, summary: CardSummary): string {
   if (summary.elevated === 0) {
-    return `Column 80: on ${name}, this pass found nothing above the evidence bar. The full rubric is in the output channel.`;
+    return `Column 80: Criticize found nothing to flag in ${name}. The full report is in the output channel.`;
   }
-  const noun = summary.elevated === 1 ? "dimension is" : "dimensions are";
-  return `Column 80: ${summary.elevated} of ${RUBRIC_SIZE} ${noun} above the evidence bar on ${name}. The full rubric is in the output channel.`;
+  return `Column 80: Criticize flagged ${summary.elevated} of ${RUBRIC_SIZE} checks on ${name}. The full report is in the output channel.`;
 }
 
 /**
@@ -731,9 +730,10 @@ export function hasProposal(plan: { planted?: unknown; stripped?: unknown } | un
 
 /** The diff tab's name. It sits beside fn-gen's `<name>: generated body
  *  (preview)` and repair's, and a human with three tabs open has to be able to
- *  tell them apart by their titles alone. */
-export function proposalTitle(name: string): string {
-  return `${name}: rubric (preview)`;
+ *  tell them apart by their titles alone. A diff that plants nothing only strips
+ *  old comments, after a toast that said nothing was found, so it says that. */
+export function proposalTitle(name: string, planted?: number): string {
+  return planted === 0 ? `${name}: remove old Criticize comments (preview)` : `${name}: Criticize (preview)`;
 }
 
 /**
@@ -813,7 +813,7 @@ export function critiqueOutcomeLines(
     // not author, and `appendLine` renders a break as a row.
     const reason = [detail.discardedWhy, detail.discardedBecause]
       .filter((part): part is string => typeof part === "string" && part.trim() !== "")
-      .join(" — ");
+      .join("; ");
     return reason === ""
       ? [critiqueLine(`outcome=${outcome}`)]
       : [critiqueLine(`discarded: ${escapeBreaks(reason)}`), critiqueLine(`outcome=${outcome}`)];

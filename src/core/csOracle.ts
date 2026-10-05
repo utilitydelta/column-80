@@ -49,7 +49,7 @@ export interface CsOracleDeps {
  *  on: below MSBuild 17.8 / SDK 8 there is no probe, and fail-closed with no
  *  probe is no oracle — so a global.json pinning older is named
  *  inapplicability for the whole C# oracle (a deliberate scope decision). */
-const SDK_FLOOR_MAJOR = 8;
+export const SDK_FLOOR_MAJOR = 8;
 
 /** The filesystem reads the project-topology helpers need. Plain functions
  *  rather than a deps object shape, so both the oracle (which holds its own
@@ -716,28 +716,39 @@ export class CsOracle implements CompilerOracle {
     // review finding 3). The restore guard on the build target is an EXISTENCE
     // check, which a stale file passes, so this sentence is the backstop.
     if (evidence && /NETSDK100[45]/.test(evidence)) {
-      return `project is not restored, or its restore is stale — run \`dotnet restore\` first (the oracle never restores: offline invariant)`;
+      return `this project is not restored, or its restore is out of date. Run "dotnet restore", then try again`;
     }
     if (exitCode < 0) {
-      return `dotnet could not be spawned${evidence ? `: ${evidence}` : ""}`;
+      return `could not start dotnet${evidence ? `: ${evidence}` : ""}. Is the .NET SDK installed and on PATH?`;
     }
-    return `dotnet build crashed (exit ${exitCode})${evidence ? `: ${evidence}` : ""}`;
+    return `dotnet build failed with no error to show${evidence ? `: ${evidence}` : "; see the output channel"}`;
   }
 
   /** The one-line reason detectCrateRoot resolved undefined, for the
    *  explicit-gesture surface. undefined when a root actually resolves. */
   describeMissingRoot(filePath: string): string | undefined {
+    switch (this.missingRootCause(filePath)) {
+      case "no-csproj":
+        return `no .csproj above ${filePath}`;
+      case "sdk-floor":
+        return `a global.json above ${filePath} pins a .NET SDK older than ${SDK_FLOOR_MAJOR}, which Column 80 does not support, so the code was not checked`;
+      case undefined:
+        return undefined;
+    }
+  }
+
+  /** Why detectCrateRoot resolved undefined, as a cause callers can branch on.
+   *  A missing project wins over an old SDK: the SDK only matters once a
+   *  project exists. undefined when a root actually resolves. */
+  missingRootCause(filePath: string): "no-csproj" | "sdk-floor" | undefined {
     let dir = path.dirname(filePath);
     for (;;) {
       if (this.findCsproj(dir) !== undefined) {
-        if (this.sdkFloorBlocked(filePath)) {
-          return `a global.json above ${filePath} pins an SDK below ${SDK_FLOOR_MAJOR} (no coverage probe below MSBuild 17.8)`;
-        }
-        return undefined;
+        return this.sdkFloorBlocked(filePath) ? "sdk-floor" : undefined;
       }
       const parent = path.dirname(dir);
       if (parent === dir) {
-        return `no .csproj above ${filePath}`;
+        return "no-csproj";
       }
       dir = parent;
     }

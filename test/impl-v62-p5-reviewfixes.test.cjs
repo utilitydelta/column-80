@@ -549,17 +549,17 @@ ptest("F6 row 12: fn-gen's discard toast is byte-identical, because it is the de
   const got = await driveMovedDocument({});
   assert.equal(got.outcome, "discarded");
   assert.deepEqual(got.warns, [
-    "Column 80: generation discarded — the document changed during generation.",
+    "Column 80: the file changed before the generated code was ready, so it was not applied. Run the command again.",
   ]);
 });
 
 ptest("F6 row 13: a caller that generates nothing names its own noun", async () => {
   const got = await driveMovedDocument({ discardNoun: "proposal" });
   assert.deepEqual(got.warns, [
-    "Column 80: proposal discarded — the document changed during generation.",
+    "Column 80: the file changed before the proposal was ready, so it was not applied. Run the command again.",
   ]);
   assert.ok(
-    !got.warns.some((w) => /generation discarded/i.test(w)),
+    !got.warns.some((w) => /generated code|generation/i.test(w)),
     "the one gesture that generates nothing must not be told its generation was discarded",
   );
   // WHAT THIS ROW DOES NOT CLAIM. The five REASONS are still shared prose and

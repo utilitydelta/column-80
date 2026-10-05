@@ -33,6 +33,7 @@
 import { endOfLiteral, opensLineComment } from "./brackets";
 import { CommentSyntax, commentSyntaxFor } from "./fimComment";
 import { TS_LANGUAGE_IDS } from "./tsExtraction";
+import { languageName, notServedSentence } from "./languageName";
 
 /** The column the product is named for. */
 export const TIGHTEN_COLUMN = 80;
@@ -365,6 +366,10 @@ export function tightenVerbatimLine(line: string): boolean {
   const trimmed = tightenTrim(line);
   return trimmed !== "" && (INDENTED_CODE.test(line) || TABLE_ROW.test(trimmed) || LINK_REFERENCE.test(trimmed));
 }
+
+/** A target the command built from the open document cannot be malformed by
+ *  anything the user did, so the toast does not name the state. */
+const INTERNAL_ERROR = "Tighten Doc Comment hit an internal error and wrote nothing.";
 
 function refuse(refusal: string): TightenRegionResult {
   return { ok: false, refusal };
@@ -889,23 +894,21 @@ function pythonDocstringAt(scan: DocumentScan, cursor: number): DocRun | undefin
  */
 export function resolveTightenRegion(target: TightenTarget): TightenRegionResult {
   if (target === null || typeof target !== "object") {
-    return refuse("There is no tighten target to resolve.");
+    return refuse(INTERNAL_ERROR);
   }
   const { text, languageId, cursor } = target;
   if (typeof text !== "string" || typeof languageId !== "string" || typeof cursor !== "number") {
-    return refuse("The tighten target is malformed: it needs document text, a language id and a cursor offset.");
+    return refuse(INTERNAL_ERROR);
   }
   if (!Number.isInteger(cursor) || cursor < 0 || cursor > text.length) {
-    return refuse("The cursor offset sits outside the document text.");
+    return refuse(INTERNAL_ERROR);
   }
   if (!servesTighten(languageId)) {
-    return refuse(
-      `Column 80 tightens comments in Rust, the TypeScript family, C#, Python and Go, and this file is ${languageId}.`,
-    );
+    return refuse(notServedSentence("Tighten Doc Comment", languageId));
   }
   const syntax = commentSyntaxFor(languageId);
   if (syntax === undefined) {
-    return refuse(`No comment syntax is mapped for ${languageId}, so there is no opener to render with.`);
+    return refuse(`Tighten Doc Comment does not know ${languageName(languageId)}'s comment syntax.`);
   }
   const tabWidth = tightenTabWidth(target.tabWidth);
   const scan = scanDocument(text, syntax, languageId);
@@ -938,7 +941,7 @@ function docstringRegion(
   tabWidth: number,
 ): TightenRegionResult {
   if (!doc.closed) {
-    return refuse("The docstring at the cursor never closes, so its end cannot be found.");
+    return refuse("the docstring at the cursor never closes, so its end cannot be found.");
   }
   const quote = text.slice(doc.index, doc.index + 3);
   const start = lineStartAt(text, doc.index);
@@ -946,7 +949,7 @@ function docstringRegion(
   const end = lineEndAt(text, doc.end);
   const tail = text.slice(doc.end, end).replace(/\r?\n$/, "");
   if (tightenTrim(tail) !== "") {
-    return refuse("Code follows the docstring's closing delimiter on the same line, and this command moves whole lines.");
+    return refuse("code follows the docstring's closing delimiter on the same line, and this command moves whole lines.");
   }
   const interior = text.slice(doc.index + quote.length, doc.end - quote.length);
   // Line 0 sits after the opening delimiter and carries no indent of its own; every later
@@ -963,7 +966,7 @@ function docstringRegion(
     directives: false,
   });
   if (prose === "") {
-    return refuse("The docstring at the cursor has no prose in it.");
+    return refuse("the docstring at the cursor has no prose in it.");
   }
   return {
     ok: true,
@@ -1023,7 +1026,7 @@ function lineCommentRegion(
     { languageId, budget: budgetFor(led.indent, prefix, tabWidth), tabWidth, directives: true },
   );
   if (prose === "") {
-    return refuse("The comment block at the cursor has no prose in it.");
+    return refuse("the comment block at the cursor has no prose in it.");
   }
   return {
     ok: true,
@@ -1085,10 +1088,10 @@ function nakedProseRegion(
   const line = lineAt(text, start);
   const trimmed = tightenTrim(line);
   if (trimmed === "") {
-    return refuse("The cursor's line is blank, so there is no prose to tighten.");
+    return refuse("the cursor is on a blank line. Put it on a comment to tighten it.");
   }
   if (insideLiteral(scan, start)) {
-    return refuse("The cursor's line sits inside a string literal, and re-flowing it would change the string's value.");
+    return refuse("the cursor's line sits inside a string literal, and re-flowing it would change the string's value.");
   }
   const opensComment =
     syntax.line.some((opener) => trimmed.startsWith(opener)) ||
@@ -1096,40 +1099,40 @@ function nakedProseRegion(
     syntax.block.some((pair) => trimmed.startsWith(pair[0]));
   if (opensComment) {
     return refuse(
-      "The cursor's line opens a comment this command does not render: only line comments, Python docstrings and naked prose are handled.",
+      "Tighten Doc Comment handles line comments and Python docstrings, not this kind of comment.",
     );
   }
   if (/[;{}=]/.test(trimmed)) {
-    return refuse("The cursor's line carries code punctuation (a `;`, `{`, `}` or `=`), so it is not treated as prose.");
+    return refuse("the cursor's line looks like code (it has a ;, {, } or =). Put the cursor on a comment to tighten it.");
   }
   const firstWord = tightenWords(trimmed)[0] ?? "";
   if (DECLARATION_KEYWORDS.has(firstWord)) {
-    return refuse(`The cursor's line opens with \`${firstWord}\`, which starts a declaration rather than a sentence.`);
+    return refuse(`the cursor's line starts with ${firstWord}, so it reads as code. Put the cursor on a comment to tighten it.`);
   }
   if (/^(?:#\[|#!|@)/.test(trimmed)) {
-    return refuse("The cursor's line opens an attribute, a shebang or a decorator rather than a sentence.");
+    return refuse("the cursor's line is an attribute, a shebang or a decorator. Put the cursor on a comment to tighten it.");
   }
   if (trimmed.includes('"') || trimmed.replace(WORD_APOSTROPHE, "$1").includes("'")) {
-    return refuse("The cursor's line carries a quote character, so it is a literal rather than dictated prose.");
+    return refuse("the cursor's line has a quote in it, so it reads as code. Put the cursor on a comment to tighten it.");
   }
   if (GENERIC_ARGS.test(trimmed)) {
-    return refuse("The cursor's line carries a generic argument list, so it is code rather than dictated prose.");
+    return refuse("the cursor's line has a generic argument list, so it reads as code. Put the cursor on a comment to tighten it.");
   }
   if (/[(:,+]$|&&$|\|\|$/.test(trimmed) || /[[({<]$/.test(trimmed)) {
-    return refuse("The cursor's line ends with an operator or an unclosed bracket, which opens code rather than closing a sentence.");
+    return refuse("the cursor's line ends with an operator or an open bracket, so it reads as code. Put the cursor on a comment to tighten it.");
   }
   // A CLOSING bracket is only code when the line opened one like a call does. "shows truncated
   // hashes (a summary)" is ordinary English and 3.2% of real Rust doc sentences end in `)`; a
   // prose parenthetical has a space before its bracket and `foo(bar, baz)` does not.
   if (/[)\]>]$/.test(trimmed) && /[A-Za-z0-9_]\(/.test(trimmed)) {
-    return refuse("The cursor's line closes a call rather than a parenthetical, so it is code rather than dictated prose.");
+    return refuse("the cursor's line closes a call, so it reads as code. Put the cursor on a comment to tighten it.");
   }
   if (tightenWords(trimmed).length < 4) {
-    return refuse("The cursor's line carries fewer than four words, which is too short to read as dictated prose.");
+    return refuse("the cursor's line has fewer than four words, which is too short to tighten.");
   }
   const prefix = docPrefixFor(languageId);
   if (prefix === undefined) {
-    return refuse(`No doc comment prefix is defined for ${languageId}.`);
+    return refuse(`Tighten Doc Comment does not know ${languageName(languageId)}'s comment syntax.`);
   }
   const indent = /^[ \t]*/.exec(line)?.[0] ?? "";
   const end = lineEndAt(text, start);

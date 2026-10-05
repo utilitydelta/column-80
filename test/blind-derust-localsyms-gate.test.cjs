@@ -988,7 +988,7 @@ gtest("B5 fn-gen gate (zig): exactly ONE user-facing message, naming the languag
   const text = String(messages[0].message);
   assert.ok(/\bzig\b/i.test(text), `the message names the document's language ("zig"). MESSAGE: ${JSON.stringify(text)}`);
   assert.ok(
-    /not (yet )?(supported|wired)|supports/i.test(text),
+    /not (yet )?(supported|wired)|supports|does not work in/i.test(text),
     `the message says generation is not supported for this language. MESSAGE: ${JSON.stringify(text)}`
   );
 });
@@ -1060,7 +1060,7 @@ gtest("B7 repair gate (zig): exactly ONE user-facing message naming the language
   const text = String(messages[0].message);
   assert.ok(/\bzig\b/i.test(text), `the refusal names the document's language ("zig"). MESSAGE: ${JSON.stringify(text)}`);
   assert.ok(
-    /not (yet )?(supported|wired)|supports/i.test(text),
+    /not (yet )?(supported|wired)|supports|does not work in/i.test(text),
     `the refusal says repair is not supported for this language. MESSAGE: ${JSON.stringify(text)}`
   );
   assert.strictEqual(gen.length, 0, "a gated repair never reaches the model");

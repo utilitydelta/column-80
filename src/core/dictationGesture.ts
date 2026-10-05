@@ -7,11 +7,12 @@
  * the indicator goes live on the FIRST AUDIO BUFFER rather than on the press, each press is its
  * own comment, and a press over a living ghost dismisses it and re-records.
  *
- * Two site kinds share the mic. A line site ends in an intent and a FIM request; a comment
+ * Three site kinds share the mic. A line site ends in an intent and a FIM request; a comment
  * site (the caret inside a comment at the press) ends by inserting the sentence into the
- * comment and handing over to the tighten command. No intent, no ghost.
+ * comment and handing over to the tighten command; a prose site (a markdown or plain text
+ * file) ends by inserting the words as heard. No intent, no ghost on either of the last two.
  */
-import { cleanTranscript, type DictationRefusal } from "./dictation";
+import { cleanTranscript, proseTranscript, type DictationRefusal } from "./dictation";
 
 export type Phase = "idle" | "arming" | "recording" | "finalising" | "requesting" | "ghost";
 
@@ -32,13 +33,17 @@ export interface GestureState {
   /** The press caret was inside a comment. Set at the press, kept by every spread, so the
    *  transcript knows to insert rather than build an intent. */
   commentSite?: true;
+  /** The press was in a prose file: the transcript is inserted as heard, nothing else runs. */
+  proseSite?: true;
 }
 
 export const IDLE: GestureState = { phase: "idle" };
 
 /** The adapter's readiness at the press. The six booleans before `inComment` are refusal
- *  inputs; `inComment` marks the site kind (comment or line) and refuses nothing; `platform`
- *  is the detail string on a `binary-missing` refusal. */
+ *  inputs; `inComment` marks the site kind (comment or line) and lifts the `served` check,
+ *  since a comment site needs no tab completion; `prose` marks a prose file, which needs
+ *  neither comment syntax nor tab completion; `platform` is the detail string on a
+ *  `binary-missing` refusal. */
 export interface Readiness {
   remote: boolean;
   binaryPresent: boolean;
@@ -47,6 +52,7 @@ export interface Readiness {
   served: boolean;
   commentRow: boolean;
   inComment: boolean;
+  prose?: boolean;
   platform?: string;
 }
 
@@ -64,7 +70,9 @@ export type GestureEvent =
   | { type: "dismissed" }
   | { type: "edit"; site: Site }
   | { type: "cursor-moved"; site: Site }
-  | { type: "error"; message: string }
+  /** `refusal` names a refusal the user can act on; without one the error is shown as a
+   *  generic stop and `message` goes to the channel. */
+  | { type: "error"; message: string; refusal?: { kind: DictationRefusal; detail?: string } }
   /** Escape. `now` only feeds the elapsed figure on the record. */
   | { type: "cancel"; now: number }
   /** The adapter's landing watch: the auto-commit resolved and no edit arrived on the site
@@ -89,6 +97,8 @@ export type Action =
   /** Comment site: put the sentence at the press caret, then run the tighten there. */
   | { type: "insert-comment"; site: Site; sentence: string }
   | { type: "tighten"; site: Site }
+  /** Prose site: put the words at the press caret as typed text. Nothing follows it. */
+  | { type: "insert-text"; site: Site; text: string }
   | { type: "refuse"; kind: RefusalKind; detail?: string }
   | { type: "log"; line: string };
 
@@ -113,10 +123,23 @@ function ignored(state: GestureState, event: GestureEvent): Step {
   return { state, actions: [log(`[dictate] ignored ${event.type} in ${state.phase}`)] };
 }
 
-/** The first readiness check that fails, in the ruled order, or undefined when all pass. */
+/** The first readiness check that fails, in the ruled order, or undefined when all pass.
+ *  The language refusals come before the machine checks: a press dictation can never serve
+ *  must not offer the 148MB speech model first and refuse for the language after it lands. */
 function refusalFor(ready: Readiness, languageId: string): Extract<Action, { type: "refuse" }> | undefined {
   if (ready.remote) {
     return { type: "refuse", kind: "remote" };
+  }
+  if (!ready.prose) {
+    // No comment syntax before not-served: the not-served remedy (add it to
+    // column80.fimLanguages) cannot help a language dictation has no comment for.
+    if (!ready.commentRow) {
+      return { type: "refuse", kind: "no-comment-row", detail: languageId };
+    }
+    if (!ready.served && !ready.inComment) {
+      // A comment site inserts text and needs no tab completion, so fimLanguages does not gate it.
+      return { type: "refuse", kind: "not-served", detail: languageId };
+    }
   }
   if (!ready.binaryPresent) {
     return { type: "refuse", kind: "binary-missing", detail: typeof ready.platform === "string" && ready.platform !== "" ? ready.platform : "unknown" };
@@ -126,12 +149,6 @@ function refusalFor(ready: Readiness, languageId: string): Extract<Action, { typ
   }
   if (!ready.recogniserAlive) {
     return { type: "refuse", kind: "server-down" };
-  }
-  if (!ready.served) {
-    return { type: "refuse", kind: "not-served", detail: languageId };
-  }
-  if (!ready.commentRow) {
-    return { type: "refuse", kind: "no-comment-row", detail: languageId };
   }
   return undefined;
 }
@@ -149,7 +166,8 @@ function press(state: GestureState, event: Extract<GestureEvent, { type: "press"
           return { state, actions: [refusal, log(`[dictate] refused: ${refusal.kind}`)] };
         }
       }
-      const commentSite = Boolean(ready.inComment);
+      const proseSite = Boolean(ready.prose);
+      const commentSite = !proseSite && Boolean(ready.inComment);
       const actions: Action[] = [];
       if (state.phase === "requesting") {
         // The abandoned intent has no TTL; a comment-site take never builds a replacement,
@@ -160,7 +178,8 @@ function press(state: GestureState, event: Extract<GestureEvent, { type: "press"
         actions.push({ type: "hide-ghost" });
       }
       actions.push({ type: "mute" }, { type: "start-capture" }, indicator("armed"));
-      actions.push(log(`[dictate] press at ${event.site.uri}:${event.site.line}${commentSite ? " (comment)" : ""}${rerecord ? " (re-record)" : ""}`));
+      const kind = proseSite ? " (prose)" : commentSite ? " (comment)" : "";
+      actions.push(log(`[dictate] press at ${event.site.uri}:${event.site.line}${kind}${rerecord ? " (re-record)" : ""}`));
       const armed: GestureState = {
         phase: "arming",
         site: event.site,
@@ -168,7 +187,7 @@ function press(state: GestureState, event: Extract<GestureEvent, { type: "press"
         indentColumns: event.indentColumns,
         pressedAt: event.now,
       };
-      return { state: commentSite ? { ...armed, commentSite: true } : armed, actions };
+      return { state: proseSite ? { ...armed, proseSite: true } : commentSite ? { ...armed, commentSite: true } : armed, actions };
     }
     case "arming":
       return {
@@ -207,21 +226,40 @@ function stopped(state: GestureState, event: Extract<GestureEvent, { type: "stop
   return ignored(state, event);
 }
 
+function heardLog(sentence: string, stripped: string[], decodeMs: number): Action {
+  const tail = stripped.length > 0 ? `, stripped: ${stripped.join(", ")}` : "";
+  return log(`[dictate] heard: ${sentence} (decode=${ms(decodeMs)}${tail})`);
+}
+
 function transcript(state: GestureState, event: Extract<GestureEvent, { type: "transcript" }>): Step {
   if (state.phase !== "finalising") {
     return ignored(state, event);
   }
   // A comment site with no site to insert at is malformed by construction: ignored before
   // the text is even cleaned, so an empty take cannot turn it into a line-site refusal.
-  if (state.commentSite === true && state.site === undefined) {
+  if ((state.commentSite === true || state.proseSite === true) && state.site === undefined) {
     return ignored(state, event);
+  }
+  if (state.proseSite === true && state.site !== undefined) {
+    const heard = proseTranscript(event.text);
+    if (heard.sentence === "") {
+      return endWithRefusal("empty-transcript", `[dictate] heard nothing (decode=${ms(event.decodeMs)})`);
+    }
+    return {
+      state: IDLE,
+      actions: [
+        { type: "unmute" },
+        indicator("heard", heard.sentence),
+        heardLog(heard.sentence, heard.stripped, event.decodeMs),
+        { type: "insert-text", site: state.site, text: heard.sentence },
+      ],
+    };
   }
   const cleaned = cleanTranscript(event.text);
   if (cleaned.sentence === "") {
     return endWithRefusal("empty-transcript", `[dictate] heard nothing (decode=${ms(event.decodeMs)})`);
   }
-  const stripped = cleaned.stripped.length > 0 ? `, stripped: ${cleaned.stripped.join(", ")}` : "";
-  const heardLine = log(`[dictate] heard: ${cleaned.sentence} (decode=${ms(event.decodeMs)}${stripped})`);
+  const heardLine = heardLog(cleaned.sentence, cleaned.stripped, event.decodeMs);
   if (state.commentSite === true && state.site !== undefined) {
     // The gesture ends here: the adapter inserts, hands over to the tighten, and nothing waits
     // for an answer, so there is no requesting phase to hold the sentence in.
@@ -268,7 +306,14 @@ function error(state: GestureState, event: Extract<GestureEvent, { type: "error"
   if (CAPTURE_PHASES.has(state.phase)) {
     actions.push({ type: "abort-capture" });
   }
-  actions.push({ type: "unmute" }, indicator("off"), { type: "refuse", kind: "failed", detail: event.message }, line);
+  const refusal = event.refusal;
+  const refuse: Action =
+    refusal === undefined
+      ? { type: "refuse", kind: "failed", detail: event.message }
+      : refusal.detail === undefined
+        ? { type: "refuse", kind: refusal.kind }
+        : { type: "refuse", kind: refusal.kind, detail: refusal.detail };
+  actions.push({ type: "unmute" }, indicator("off"), refuse, line);
   return { state: IDLE, actions };
 }
 

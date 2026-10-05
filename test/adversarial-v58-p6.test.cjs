@@ -40,6 +40,7 @@ const ROOT = path.dirname(__dirname);
 /** The branch point: session-v58 phase 5, the last commit before the structural
  *  pass. Pinned, see the header. */
 const BASE_REF = "3831d3c";
+const { v77 } = require("./v77-text.cjs");
 
 // ---------------------------------------------------------------------------
 // The vscode stub: blind-v58-p6's stub, verbatim, for the reason that file
@@ -391,9 +392,10 @@ function nonErrorCorpus() {
 
 /** Both exported entry points, on both bundles, for one input. */
 function compare(label, value, failures) {
+  // The branch point renders the pre-v77 wording; it is compared rewritten.
   const call = (mod, fn) => {
     try {
-      return `ok:${JSON.stringify(fn(mod))}`;
+      return `ok:${JSON.stringify(mod === BASE ? v77(fn(mod)) : fn(mod))}`;
     } catch (e) {
       return `threw:${e instanceof Error ? e.message : String(e)}`;
     }
@@ -597,7 +599,7 @@ const SETTINGS = (() => {
 
 test("CLEAN [start/the binary sentence names no setting the product does not contribute]", () => {
   const sentence = toast(
-    new NOW.ClaudeCodeError("binary-missing", "Claude Code could not start: `claude` is not on PATH."),
+    new NOW.ClaudeCodeError("binary-missing", 'Claude Code could not start: "claude" is not on PATH.'),
   );
   const claimsASetting = /\bsetting\b/i.test(sentence);
   const exists = SETTINGS.some((k) => /binary|executable|cliPath|claudePath/i.test(k));
@@ -725,7 +727,7 @@ test("CLEAN [start/the cause the two exception sentences put on screen is produc
   const fromCli = fakeCli("", "", 0);
   assert.ok(fs.existsSync(fromCli), "harness");
   const sentence = toast(
-    new NOW.ClaudeCodeError("binary-missing", "Claude Code could not start: `claude` is not on PATH."),
+    new NOW.ClaudeCodeError("binary-missing", 'Claude Code could not start: "claude" is not on PATH.'),
   );
   for (const banned of ["Error:", "subtype=", "exited"]) {
     assert.ok(!sentence.includes(banned), `${banned} must never reach a notification. Got ${show(sentence)}`);

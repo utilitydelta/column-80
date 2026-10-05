@@ -127,7 +127,9 @@ test("fixture paths reach every capture phase on both site kinds", () => {
   assert.deepStrictEqual(IDLE, { phase: "idle" });
 });
 
-// ---- rule 1: inComment is no longer a refusal input; the other six stand
+// ---- rule 1: inComment is no longer a refusal input; the other six stand, except that a
+// comment site skips not-served (session-v77 Amendment 3 R8: inserting a comment needs no
+// tab completion, so column80.fimLanguages does not gate it)
 
 test("rule 1: inComment true with every other check passing does not refuse", () => {
   const out = reduce(IDLE, pressC());
@@ -138,16 +140,20 @@ test("rule 1: inComment true with every other check passing does not refuse", ()
 
 const REFUSALS = [
   { ready: { remote: true }, kind: "remote" },
+  // session-v77 phase 6 (review L1): no-comment-row before not-served, so a language with no
+  // comment syntax is not told to add itself to column80.fimLanguages, a remedy that cannot work.
+  // session-v77 phase 7 (Amendment 4, A2): both language refusals before the machine checks, so
+  // a press dictation can never serve does not offer the 148MB speech model first.
+  { ready: { commentRow: false }, kind: "no-comment-row", detail: "typescript" },
+  { ready: { served: false }, kind: "not-served", detail: "typescript" },
   { ready: { binaryPresent: false }, kind: "binary-missing" },
   { ready: { modelPresent: false }, kind: "model-missing" },
   { ready: { recogniserAlive: false }, kind: "server-down" },
-  { ready: { served: false }, kind: "not-served", detail: "typescript" },
-  { ready: { commentRow: false }, kind: "no-comment-row", detail: "typescript" },
 ];
 
 for (const r of REFUSALS) {
   test(`rule 1: ${r.kind} still refuses with the two-action shape, inComment either way`, () => {
-    for (const inComment of [false, true]) {
+    for (const inComment of r.kind === "not-served" ? [false] : [false, true]) {
       const out = reduce(IDLE, press({ ready: { ...r.ready, inComment } }));
       assert.deepStrictEqual(out.state, { phase: "idle" }, `inComment=${inComment}`);
       assert.strictEqual(out.actions.length, 2, `inComment=${inComment}`);
@@ -164,7 +170,8 @@ test("rule 1: the six refusals keep their order, and inComment does not join the
     for (let j = i + 1; j < REFUSALS.length; j++) {
       for (const inComment of [false, true]) {
         const out = reduce(IDLE, press({ ready: { ...REFUSALS[i].ready, ...REFUSALS[j].ready, inComment } }));
-        assert.strictEqual(out.actions[0].kind, REFUSALS[i].kind, `${REFUSALS[i].kind}+${REFUSALS[j].kind} inComment=${inComment}`);
+        const first = inComment && REFUSALS[i].kind === "not-served" ? REFUSALS[j].kind : REFUSALS[i].kind;
+        assert.strictEqual(out.actions[0].kind, first, `${REFUSALS[i].kind}+${REFUSALS[j].kind} inComment=${inComment}`);
         assert.strictEqual(out.state.phase, "idle");
       }
     }
@@ -182,7 +189,8 @@ test("rule 1: refuse never carries the retired in-comment kind", () => {
       if (a.type === "refuse") assert.notStrictEqual(a.kind, "in-comment", `mask ${mask}`);
       if (a.type === "log") assert.ok(!/in-comment/.test(a.line), `mask ${mask}: ${a.line}`);
     }
-    if (mask === 0) assert.strictEqual(out.state.phase, "arming", "nothing failing arms");
+    // served is bit 4; with inComment true it refuses nothing on its own.
+    if ((mask & ~(1 << 4)) === 0) assert.strictEqual(out.state.phase, "arming", "nothing but served failing arms");
     else assert.strictEqual(out.state.phase, "idle", `mask ${mask} refuses`);
   }
 });

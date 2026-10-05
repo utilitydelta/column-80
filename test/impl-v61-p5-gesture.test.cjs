@@ -35,7 +35,8 @@ export { sliceFunction } from "../src/core/criticizeSlice";
 export { scoreFunction, DEFAULT_ELEVATION, signatureLevel } from "../src/core/criticizeScore";
 export { renderScorecard } from "../src/core/criticizeRender";
 export { criticizeLangFor } from "../src/core/criticizeLang";
-export { docLines } from "../src/core/criticizeTypes";\n`,
+export { docLines } from "../src/core/criticizeTypes";
+export { languageName } from "../src/core/languageName";\n`,
 );
 test.after(cleanup);
 
@@ -48,7 +49,7 @@ const {
   EXPLAIN_ROW_CAP, RUBRIC_SIZE,
   blastRadius, countIsSupported, unsupportedNote,
   sliceFunction, scoreFunction, DEFAULT_ELEVATION, signatureLevel,
-  renderScorecard, criticizeLangFor, docLines,
+  renderScorecard, criticizeLangFor, docLines, languageName,
 } = mod;
 
 const RUST = criticizeLangFor("rust");
@@ -61,14 +62,15 @@ test("the unregistered-language refusal names the language, on both surfaces", (
   for (const id of ["ruby", "haskell", "plaintext", "jsonc"]) {
     assert.equal(criticizeLangFor(id), undefined, `${id} must not be registered`);
     const toast = unregisteredLanguageToast(id);
-    assert.ok(toast.includes(id), `the toast must name ${id}: ${toast}`);
+    // session-v77: the toast names the language as a person does ("plain text", not "plaintext").
+    assert.ok(toast.includes(`in ${languageName(id)} files`), `the toast must name ${id}: ${toast}`);
     assert.ok(toast.startsWith("Column 80: "), toast);
     assert.equal(toast.split("\n").length, 1, "the toast is one line");
     const reason = unregisteredLanguageReason(id);
     assert.ok(reason.includes(id), `the channel reason must name ${id}: ${reason}`);
-    // The falsifier: a refusal that names a DIFFERENT language would be worse
-    // than a generic one, so pin that only this language appears.
-    assert.ok(!toast.includes("rust"), toast);
+    // The falsifier: a refusal that names a DIFFERENT language as the refused
+    // one would be worse than a generic one.
+    assert.ok(!toast.includes("in Rust files"), toast);
   }
 });
 
@@ -323,7 +325,7 @@ test("the toast is one bounded line and never carries the card", () => {
 
 test("a card with nothing elevated toasts the ruled wording", () => {
   const toast = criticizeToast("f", { elevated: 0, blind: 0, held: 0 });
-  assert.ok(toast.includes("this pass found nothing above the evidence bar"), toast);
+  assert.ok(toast.includes("Criticize found nothing to flag in f"), toast);
   assert.ok(!/\bclean\b/.test(toast), "clean is a claim this pass has no instrument for");
   assert.ok(!/correct/.test(toast), toast);
 });

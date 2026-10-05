@@ -263,7 +263,7 @@ test("runDelta on a real Rust before/after: two fixed, one still red", () => {
   assert.strictEqual(worseThanBeforeMessage(delta, "create_ca"), undefined);
 });
 
-test("runDelta calls a repair that made things WORSE by that name", () => {
+test("runDelta names the tests a repair broke", () => {
   const before = rustResult([
     { name: "tests::a", outcome: "fail" },
     { name: "tests::b", outcome: "pass" },
@@ -277,9 +277,9 @@ test("runDelta calls a repair that made things WORSE by that name", () => {
   const delta = runDelta(before, after);
   assert.deepStrictEqual(delta.broken, ["tests::b", "tests::c"]);
   const message = worseThanBeforeMessage(delta, "create_ca");
-  assert.match(message, /made things WORSE/);
-  assert.match(message, /2 tests that passed before now fail/);
-  assert.match(message, /It did fix 1\./);
+  assert.match(message, /the repair of create_ca broke/);
+  assert.match(message, /broke 2 tests that passed before/);
+  assert.match(message, /It fixed 1\./);
 });
 
 test("runDelta on the C# casesComplete:false shape, where only failures are enumerated", () => {

@@ -399,8 +399,9 @@ btest("C9: the message and the channel line quote the SAME arithmetic", () => {
   const d = arb({ developerTok: AVAILABLE + 5, fixedTok: 0, injectedBlocks: 2, injectedTokFor: linear(100) });
   const msg = M.promptRefusalMessage(d);
   const line = M.promptRefusalChannelLine(d);
+  // Since session-v77 (M18) the toast carries no token figures; the channel line carries them all.
   for (const n of [d.totalTok, d.availableTok, d.developerTok]) {
-    assert.ok(msg.includes(String(n)), `the message must carry ${n}: ${msg}`);
+    assert.ok(!msg.includes(String(n)), `the message must not quote ${n}: ${msg}`);
     assert.ok(line.includes(String(n)), `the channel line must carry ${n}: ${line}`);
   }
   assert.ok(msg.startsWith("Column 80: "), "the product's refusal voice");

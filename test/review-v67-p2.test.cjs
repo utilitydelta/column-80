@@ -264,13 +264,13 @@ test("F4: a press inside the heard linger shows armed, and the old timer does no
     __state.visibleTextEditors = [editor];
     d.dispatch(transcript());
     await sleep(60);
-    assert.equal(item.text, "$(mic) heard", `CONTROL: ${dictateLines(lines)}`);
+    assert.equal(item.text, "$(mic) Column 80: heard", `CONTROL: ${dictateLines(lines)}`);
     await sleep(500);
     await pressOn(d, editor);
-    assert.equal(item.text, "$(record) opening mic…", JSON.stringify(item.calls));
+    assert.equal(item.text, "$(record) Column 80: opening mic…", JSON.stringify(item.calls));
     const shown = item.calls.length;
     await sleep(HEARD_LINGER_MS + 400);
-    assert.equal(item.text, "$(record) opening mic…", `the old linger changed the armed label: ${JSON.stringify(item.calls.slice(shown))}`);
+    assert.equal(item.text, "$(record) Column 80: opening mic…", `the old linger changed the armed label: ${JSON.stringify(item.calls.slice(shown))}`);
     assert.ok(!item.calls.slice(shown).includes("hide"), `the old linger hid the armed label: ${JSON.stringify(item.calls.slice(shown))}`);
   } finally {
     d.dispose();

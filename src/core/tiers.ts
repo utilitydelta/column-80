@@ -134,6 +134,13 @@ function selectionFromRow(row: TierRow, message?: string): TierSelection {
 
 const MIN_FNGEN_VRAM_MB = 12288;
 
+/** The way out of a hardware refusal: generation does not have to run on this
+ *  machine at all. */
+const PROVIDER_HINT = " Set column80.fnGenProvider to use a cloud model or Claude Code.";
+
+/** The VRAM floor as a user reads it on the box: whole gigabytes. */
+const MIN_FNGEN_VRAM_GB = MIN_FNGEN_VRAM_MB / 1024;
+
 /** Pure (VRAM, RAM) -> tier. Probe failure (vram undefined) lands on
  *  below-12gb with the no-GPU message - honesty, never optimism.
  *
@@ -161,18 +168,19 @@ export function computeTier(
       fnGenEnabled: false,
       provisional: false,
       message:
-        "Function generation is disabled: no usable GPU detected. It needs at least 12GB of VRAM. FIM tab-completion still works.",
+        `Function generation is disabled: no usable GPU was found, and it needs ${MIN_FNGEN_VRAM_GB}GB of VRAM.` +
+        PROVIDER_HINT,
     };
   }
   const ram = ramMB ?? 0;
   // The below-12gb row's zero bounds make the table total; find never misses.
   const row = TIER_TABLE.find((r) => r.minVramMB <= vramMB && r.minRamMB <= ram) as TierRow;
-  // One message, because the number in it is the machine's real capacity on both
-  // kinds of box. The unified-memory variant existed only while that figure was a
-  // remainder a human could not have recognised as their machine.
+  // One message for both kinds of box. It names the floor, not the machine's
+  // exact MB: that figure is on the [carve] channel line, where it is evidence.
   const message =
     row.fnGenModel === undefined
-      ? `Function generation is disabled: this GPU has ${Math.floor(vramMB)}MB of VRAM and function generation needs at least ${MIN_FNGEN_VRAM_MB}MB. FIM tab-completion still works.`
+      ? `Function generation is disabled: this GPU has under ${MIN_FNGEN_VRAM_GB}GB of VRAM.` +
+        PROVIDER_HINT
       : undefined;
   const selection = selectionFromRow(row, message);
   if (opts?.unifiedMemory !== true) {

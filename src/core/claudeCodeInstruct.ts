@@ -629,7 +629,7 @@ function spawnClaude(
       if (err.code === "ENOENT") {
         fail(
           "binary-missing",
-          `Claude Code could not start: \`${config.binary ?? "claude"}\` is not on PATH.`,
+          `Claude Code could not start: "${config.binary ?? "claude"}" is not on PATH.`,
         );
         return;
       }

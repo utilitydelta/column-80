@@ -388,7 +388,7 @@ async function drive({ command, thrower, cursor = IN_FUNCTION }) {
 /** The notifications a drive is held to: every user-facing message that tells
  *  the user something is disabled or unavailable. The repair gate's sentence
  *  leads with "repair is unavailable", so /disabled/i alone would miss it. */
-const refusalToasts = (r) => r.messages.filter((m) => /disabled|unavailable/i.test(m));
+const refusalToasts = (r) => r.messages.filter((m) => /disabled|unavailable|will only check/i.test(m));
 
 const show = (label, r) =>
   `\n[${label}] tier.fnGenEnabled=${r.tier.fnGenEnabled}` +
@@ -534,10 +534,12 @@ test("every gesture that renders a tier message renders it through the rule", ()
     2,
     "fnGen.ts renders a bare tier message at exactly two gates, carve and TDD",
   );
-  assert.ok(/tierDisabledToast\(/.test(tighten), "tightenDocComment.ts renders one");
+  // session-v77 R2: Tighten no longer refuses on a closed tier (it re-wraps without the
+  // proposer), so it renders no tier toast at all; the channel row below still binds it.
+  assert.ok(!/tierDisabledToast\(/.test(tighten), "tightenDocComment.ts renders no tier toast since v77 R2");
   assert.ok(
-    /repair is unavailable - \$\{firstLine\(why\)\}/.test(fnGen),
-    "the repair gate embeds the message mid-sentence, so it takes firstLine directly",
+    /oneLineWithPointer\(repairOff, tierToastEnd\(repairOff\)\)/.test(fnGen),
+    "the repair gate puts the tier message after its own sentence and cuts it with the shared rule",
   );
   // session-v58 phase 2: the condition was `firstLine(why) === why.trim()`,
   // which INFERRED "the cut dropped something" from trim()'s own line-break
@@ -546,8 +548,8 @@ test("every gesture that renders a tier message renders it through the rule", ()
   // rule and this site calls it. The clause this row pins is unchanged: the
   // pointer is still conditional and still earned.
   assert.ok(
-    /Errors are still checked and surfaced\.` \+\s*\(hasMoreThanOneLine\(why\)/.test(fnGen),
-    "and carries the same CONDITIONAL pointer, so it does not promise a channel it did not need",
+    !/hasMoreThanOneLine/.test(fnGen),
+    "and takes its CONDITIONAL pointer from that rule, not from an inline copy of it",
   );
 });
 
@@ -557,7 +559,7 @@ test("the channel keeps the message at every gate, not just the reason code", ()
   for (const [file, src, form] of [
     ["fnGen.ts", fnGen, "`[carve] fn-gen disabled: ${why}`"],
     ["fnGen.ts", fnGen, "`[tdd] tests skipped: tier ${gate.reason}: ${why}`"],
-    ["tightenDocComment.ts", tighten, "`[tighten] refused: tier ${gate.reason}: ${why}`"],
+    ["tightenDocComment.ts", tighten, "`[tighten] tier ${gate.reason}, re-wrapping without the proposer: ${why}`"],
   ]) {
     assert.ok(
       src.includes(form),

@@ -424,7 +424,7 @@ heavy("row 1 [the round stops]: the cancel command ends a round the server never
   assert.strictEqual(
     drive.settled,
     "settled",
-    "row 1: pressing Cancel Generation must stop a hung tighten round. The transport answers only when its " +
+    "row 1: pressing Cancel Running Task must stop a hung tighten round. The transport answers only when its " +
       "own signal aborts, so a round still pending 4s after the command means nothing called abort() - the " +
       "controller in runProposer is wired to no caller (scrap S58-11)",
   );

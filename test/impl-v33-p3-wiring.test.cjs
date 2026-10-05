@@ -101,6 +101,7 @@ module.exports = {
       throw new Error("cannot open " + key);
     },
     applyEdit: async () => true,
+    asRelativePath: (u) => String(u),
   },
   languages: {
     createDiagnosticCollection: (name) => ({ name, set() {}, delete() {}, clear() {}, dispose() {} }),
@@ -551,7 +552,7 @@ test("tooltip: a lost row whose reason has no sentence still gets the LOST toolt
   assert.strictEqual(item.iconPath.id, "error", "control: the row paints red");
   assert.match(
     String(item.tooltip),
-    /reaches no prompt/,
+    /the model no longer sees this block/,
     `a red row carried the healthy tooltip: ${item.tooltip}`,
   );
   assert.ok(

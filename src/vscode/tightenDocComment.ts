@@ -40,7 +40,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { withDocumentEol } from "./eol";
-import { firstLine, tierDisabledToast } from "./toastText";
+import { firstLine, hasMoreThanOneLine } from "./toastText";
 // The failure translator, a leaf beside `toastText.ts`. This file may not take
 // a runtime edge to `fnGen.ts`, which registers it, and that is exactly why the
 // table had to move out of there before this gesture could read it.
@@ -75,6 +75,7 @@ import {
   ratifyWorkspaceHits,
 } from "../core/tightenRatify";
 import { TightenRegion, renderRegion, servesTighten, tightenAtCursor } from "../core/tightenRender";
+import { notServedSentence } from "../core/languageName";
 import { readCloudConfig, readFnGenConfig } from "./config";
 import type { ProposalPresenter, ResolvedFunction, prefillLangFor, resolveFunctionAtCursor, resolvePrefill } from "./fnGen";
 
@@ -188,7 +189,17 @@ export interface TightenDeps {
   applyEdit?: (document: vscode.TextDocument, start: number, end: number, text: string) => Promise<boolean>;
   /** The refusal surface. */
   warn?: (message: string) => void;
+  /** Set when dictation hands its comment over rather than the user pressing the
+   *  command: a refusal before the review opens, and "nothing to tighten", go to
+   *  the channel only, because the user asked to dictate, not to tighten. */
+  quietRefusals?: boolean;
+  /** Set when the tier is closed. The re-wrap and the flags need no model, so
+   *  the command runs without the proposer and the review says what is missing. */
+  generationOff?: boolean;
 }
+
+/** The review note, and the closing clause of "nothing to tighten", on a closed tier. */
+export const GENERATION_OFF_NOTE = "type names need function generation, which is off";
 
 /** One line the developer can tick. A row is an EDIT; a note never is. */
 export interface TightenRow {
@@ -214,6 +225,9 @@ export interface TightenReview {
   notes: readonly string[];
   /** The whole buffer as it would read with exactly these rows applied. */
   renderWith: (accepted: readonly number[]) => string;
+  /** Whether the re-wrap alone changes the text Tighten read. Decided against
+   *  that snapshot, never the live document, which may have changed since. */
+  rewraps: boolean;
 }
 
 export type TightenOutcome =
@@ -230,7 +244,7 @@ export type TightenOutcome =
  *  1. the region at the cursor, or a refusal that edits nothing
  *  2. the render (whitespace only)
  *  3. ONE `resolvePrefill`, with `onLedger`
- *  4. the proposer, one model call
+ *  4. the proposer, one model call (skipped on a closed tier)
  *  5. the delta gate (classes 1 and 2 dropped silently, loudly on the channel)
  *  6. the existence gate (tier 1, tier 2, then strip and say so)
  *  7. the flags
@@ -256,8 +270,17 @@ export async function tightenDocComment(
     warn(`Column 80: ${reason}`);
     return { status: "refused", reason };
   };
+  // Before the review opens. Every refusal after it answers a review the user
+  // is looking at, so it warns whoever started the command.
+  const refuseBeforeReview = (reason: string): TightenOutcome => {
+    if (!deps.quietRefusals) {
+      return refuse(reason);
+    }
+    log(`[tighten] refused: ${reason}`);
+    return { status: "refused", reason };
+  };
   if (!servesTighten(languageId)) {
-    return refuse(`the tighten gesture does not serve ${languageId}.`);
+    return refuseBeforeReview(notServedSentence("Tighten Doc Comment", languageId));
   }
 
   // 1 + 2. The region and its render. A refusal has no span and no replacement,
@@ -266,7 +289,7 @@ export async function tightenDocComment(
   const tabWidth = tabWidthOf(document);
   const rendered = tightenAtCursor({ text, languageId, cursor: document.offsetAt(position), tabWidth });
   if (!rendered.ok) {
-    return refuse(rendered.refusal);
+    return refuseBeforeReview(rendered.refusal);
   }
   const region = rendered.region;
   const prose = region.prose;
@@ -299,7 +322,9 @@ export async function tightenDocComment(
 
   // 4. The proposer. One model call, and it POINTS: every span it returns is
   // sliced out of the prose at an offset `parseProposerReply` found.
-  const proposed = await runProposer(prose, languageId, log, wiring, deps);
+  const proposed = deps.generationOff
+    ? { spans: [] as ReturnType<typeof parseProposerReply>, failed: false, cancelled: false }
+    : await runProposer(prose, languageId, log, wiring, deps);
   const spans = proposed.spans;
   if (proposed.cancelled) {
     // The user stopped this. The gesture ends where they stopped it rather than
@@ -316,15 +341,16 @@ export async function tightenDocComment(
     // which is what the second clause says, and it is true whichever cause
     // fired, so it survives both branches.
     //
-    // The first clause is the translator's when the throw carried a class, and
-    // the old sentence otherwise. "Could not be reached" is the right sentence
-    // for a dead socket and a lie about a 401; S20's ruling is that no class
-    // means no crafted sentence, and here the unclassified answer is the one
-    // this surface already had.
+    // The first clause is the translator's when the throw carried a class.
+    // Without one the sentence claims no cause: "could not be reached" was a
+    // lie about a 404 "model not found", so it says the ask failed and shows
+    // the error's own first line.
     warn(
-      `${proposed.reject ?? "Column 80: the model could not be reached, so no type names were offered."}` +
-        " The re-wrap needs no model.",
+      `${proposed.reject} The re-wrap needs no model.` +
+        (proposed.morePastFirstLine ? " The full message is in the output channel." : ""),
     );
+  } else if (deps.generationOff) {
+    log("[tighten] the proposer was skipped: function generation is off");
   } else if (spans.length === 0) {
     log("[tighten] the proposer named no spans");
   }
@@ -339,9 +365,12 @@ export async function tightenDocComment(
   // backtick is shown to the developer with the tier that refused it, and a
   // strip that lives only on the channel is a silent removal from where they
   // are looking.
+  // `note` is what the review shows; `undefined` keeps a strip on the channel only.
   const strips: string[] = [];
-  const strip = (sentence: string) => {
-    strips.push(sentence);
+  const strip = (sentence: string, note: string | undefined) => {
+    if (note !== undefined) {
+      strips.push(note);
+    }
     log(`[tighten] strip: ${sentence}`);
   };
   const disclosed = disclosedNames(ledger);
@@ -416,8 +445,9 @@ export async function tightenDocComment(
     }
     if (match === undefined) {
       strip(
-        `${JSON.stringify(phrase)} - tier 2: no type of that name in the workspace ` +
+        `${JSON.stringify(phrase)}: tier 2: no type of that name in the workspace ` +
           `(${row.hits.length} hits from the symbol provider)`,
+        `${JSON.stringify(phrase)} not marked: no type of that name in this workspace`,
       );
       continue;
     }
@@ -450,7 +480,7 @@ export async function tightenDocComment(
     log(
       `[tighten] candidate ${f.candidate.identifier} (${JSON.stringify(f.candidate.phrase)}, match=${f.candidate.match})` +
         ` class=${klass}` +
-        (collided === undefined ? "" : ` - dropped, already in the prompt as ${collided}`),
+        (collided === undefined ? "" : `: dropped, already in the prompt as ${collided}`),
     );
   }
   const proposals = deltaProposals(
@@ -479,7 +509,7 @@ export async function tightenDocComment(
     if (klass === 1 || klass === 2) {
       continue; // already named above, with the name it collided with
     }
-    strip(`${identifier} - the delta gate refused it: ${gateReasonFor(identifier, languageId)}`);
+    strip(`${identifier}: the delta gate refused it: ${gateReasonFor(identifier, languageId)}`, gateNoteFor(identifier, languageId));
   }
   const hitsFor = new Map(found.map((f) => [f.candidate.identifier, f.hits]));
   const ledgerSourced = new Set(found.filter((f) => f.fromLedger).map((f) => f.candidate.identifier));
@@ -499,7 +529,7 @@ export async function tightenDocComment(
       ratified.push({ proposal, verdict });
       continue;
     }
-    strip(`${verdict.detail} (${verdict.reason})`);
+    strip(`${verdict.detail} (${verdict.reason})`, `${proposal.identifier} not marked: ${RATIFY_NOTE[verdict.reason]}`);
   }
 
   // 7. The flags. Neither is an edit the product may make on its own: a
@@ -530,15 +560,27 @@ export async function tightenDocComment(
   // which is the whole gesture failing to do the thing it is named for. The
   // rows are the optional half; the render is the baseline. On press two the
   // render is idempotent, so this is false and the no-op is preserved.
-  const rows = buildRows(ratified, restatements.pairs, ledger, ledger !== undefined);
+  const rows = buildRows(ratified, restatements.pairs);
+  for (const { proposal } of ratified) {
+    log(`[tighten] row ${proposal.identifier}: ${channelConsequenceOf(proposal, ledger, ledger !== undefined)}`);
+  }
   const rewraps = renderRegion(region, languageId, tabWidth) !== text.slice(region.start, region.end);
   if (rows.length === 0 && !rewraps) {
-    const reason = "nothing to tighten: the comment is already wrapped and no name survived both gates.";
+    // On a closed tier the type-name half never ran, so the sentence must not
+    // claim it checked.
+    const reason = deps.generationOff
+      ? `nothing to tighten. The comment is already wrapped, and ${GENERATION_OFF_NOTE}.`
+      : "nothing to tighten. The comment is already wrapped and names no type to mark.";
     log(`[tighten] ${reason}`);
-    warn(`Column 80: ${reason}`);
+    // After a proposer failure the type-name half never ran, and its warning
+    // already went up: a second one claiming "names no type to mark" would be
+    // a check that did not happen.
+    if (!deps.quietRefusals && !proposed.failed) {
+      warn(`Column 80: ${reason}`);
+    }
     return { status: "nothing", reason };
   }
-  const notes = buildNotes(ledger, deps, terms, restatements.pairs.length, rows, strips);
+  const notes = [...(deps.generationOff ? [GENERATION_OFF_NOTE] : []), ...buildNotes(terms, restatements.pairs.length, rows, strips)];
   const renderWith = (accepted: readonly number[]): string =>
     spliceSpan(text, region, renderRegion({ ...region, prose: applyRows(prose, rows, accepted) }, languageId, tabWidth));
   const review = deps.review ?? ((r: TightenReview) => defaultReview(document, r, wiring.presenter));
@@ -547,6 +589,7 @@ export async function tightenDocComment(
     rows,
     notes,
     renderWith,
+    rewraps,
   });
   if (accepted === undefined) {
     log("[tighten] cancelled: nothing was written");
@@ -560,7 +603,8 @@ export async function tightenDocComment(
   // and a filter here would be the silent subset.
   const bogus = accepted.filter((i) => !Number.isInteger(i) || i < 0 || i >= rows.length);
   if (bogus.length > 0) {
-    return refuse(`the review accepted a row that does not exist (${bogus.join(", ")}); nothing was written.`);
+    log(`[tighten] the review accepted a row that does not exist (${bogus.join(", ")})`);
+    return refuse("Tighten Doc Comment hit an internal error and wrote nothing. The full message is in the output channel.");
   }
   // THE RENDER IS THE BASELINE EDIT AND IT DOES NOT DEPEND ON A ROW. The
   // empty-accept guard used to return here, which put amendment 2's own failure
@@ -572,7 +616,6 @@ export async function tightenDocComment(
   if (effective.length === 0 && !rewraps) {
     const reason = "nothing was accepted and the comment is already wrapped, so nothing was written.";
     log(`[tighten] ${reason}`);
-    warn(`Column 80: ${reason}`);
     return { status: "nothing", reason };
   }
 
@@ -582,7 +625,8 @@ export async function tightenDocComment(
   const finalText = renderWith(effective);
   const breach = verbatimBreach(prose, region, finalText, languageId, tabWidth, rows, effective);
   if (breach !== undefined) {
-    return refuse(`the tightened comment is not word-for-word what you wrote (${breach}); nothing was changed.`);
+    log(`[tighten] the tightened comment is not word-for-word what you wrote: ${breach}`);
+    return refuse("the tightened comment would have changed your words, so nothing was written. The full message is in the output channel.");
   }
   if (document.version !== versionAtResolve) {
     return refuse("the document changed while the comment was being reviewed; nothing was written.");
@@ -611,7 +655,13 @@ async function runProposer(
   log: (line: string) => void,
   wiring: TightenWiring,
   deps: TightenDeps,
-): Promise<{ spans: ReturnType<typeof parseProposerReply>; failed: boolean; reject?: string; cancelled?: boolean }> {
+): Promise<{
+  spans: ReturnType<typeof parseProposerReply>;
+  failed: boolean;
+  reject?: string;
+  morePastFirstLine?: boolean;
+  cancelled?: boolean;
+}> {
   const config = (deps.config ?? readFnGenConfig)();
   const prompt = assembleProposerPrompt({ prose, languageId });
   const controller = new AbortController();
@@ -661,7 +711,18 @@ async function runProposer(
     // surface gives; the consequence is not. This gesture carries on past the
     // warn and writes the re-wrap, so the generation gestures'
     // "so nothing was written" arrived in the same notification as the write.
-    return { spans: [], failed: true, reject: translateServiceReject(err, TIGHTEN_VOICE) };
+    const translated = translateServiceReject(err, TIGHTEN_VOICE);
+    if (translated !== undefined) {
+      return { spans: [], failed: true, reject: translated };
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    const first = firstLine(message).replace(/\.$/, "");
+    return {
+      spans: [],
+      failed: true,
+      reject: `Column 80: Tighten Doc Comment could not ask the model${first === "" ? "" : ` (${first})`}, ${TIGHTEN_VOICE.consequence}.`,
+      morePastFirstLine: hasMoreThanOneLine(message),
+    };
   } finally {
     claim?.release();
   }
@@ -839,8 +900,6 @@ function anchorsInFile(
 function buildRows(
   ratified: readonly { proposal: Proposal; verdict: Extract<RatifyVerdict, { ok: true }> }[],
   pairs: readonly RestatementPair[],
-  ledger: PrefillLedgerView | undefined,
-  measured: boolean,
 ): TightenRow[] {
   const rows: TightenRow[] = [];
   for (const { proposal, verdict } of ratified) {
@@ -851,7 +910,7 @@ function buildRows(
     rows.push({
       kind: respell ? "respell" : "backtick",
       label: identifier,
-      detail: consequenceOf(proposal, verdict, ledger, measured),
+      detail: consequenceOf(verdict),
       // READ, never re-derived. A plural strip is a guess about English and
       // reaches the developer unticked, exactly as an abbreviation guess does.
       checked: proposal.autoApply,
@@ -867,7 +926,7 @@ function buildRows(
     rows.push({
       kind: "delete",
       label: clip(pair.b.text),
-      detail: `restates an earlier ${pair.grain} (containment ${pair.containment}); deleting is the only prose edit this command may make`,
+      detail: `repeats an earlier ${pair.grain}`,
       checked: false,
       start: pair.b.start,
       end: pair.b.end,
@@ -878,51 +937,35 @@ function buildRows(
 }
 
 /**
- * The consequence, not the punctuation.
- *
- * A running total against the window is a number the developer cannot act on.
- * Two facts they can: whether the type is in the prompt today (the class), and
- * what accepting costs (`displaces`).
- *
- * THE MEMBER COUNT THE CONTRACT ASKS FOR IS NOT DERIVABLE FOR THE TYPE BEING
- * PROPOSED, and this is the one place the contract asks for something the one
- * ledger cannot answer. A surviving proposal is class 3 or class 4, which means
- * by definition that `resolvePrefill` rendered no block for it - so its member
- * count and its token cost are exactly what the single call did not resolve.
- * What IS in the ledger is the DISPLACED type's block, so the token figure is
- * attached there: `displaces SegmentIndex (~60 tok)` is the same decision, read
- * off the same call, and honest about which side of the swap was measured.
+ * The consequence, in the review row: only what accepting does to the code, the
+ * import it needs. Whether the model sees the type, and what marking it pushes
+ * out, are prompt-budget facts; they stay on the channel (`channelConsequenceOf`).
  */
-function consequenceOf(
+function consequenceOf(verdict: Extract<RatifyVerdict, { ok: true }>): string {
+  if (verdict.tier !== 2) {
+    return "";
+  }
+  return verdict.sameScope === true
+    ? `defined in ${path.basename(verdict.path)}, already in scope`
+    : `defined in ${path.basename(verdict.path)}, needs ${verdict.importLine}${verdict.qualifier === undefined ? "" : ` and the "${verdict.qualifier}." qualifier`}`;
+}
+
+/** The same facts in the channel's terms: the ledger cause and the token figure. */
+function channelConsequenceOf(
   proposal: Proposal,
-  verdict: Extract<RatifyVerdict, { ok: true }>,
   ledger: PrefillLedgerView | undefined,
   measured: boolean,
 ): string {
-  const parts: string[] = [];
-  // NOT MEASURED IS NOT THE SAME AS NOT INJECTED (defect 6). With no pre-fill -
-  // no function under the comment, or injection switched off - every candidate
-  // classifies as class 4 by the classifier's documented degrade, and the row
-  // used to state "not currently injected" as a fact about a surface nobody
-  // built. Phase 4 draws the same distinction with `unmeasured`, for the same
-  // reason: a number nobody can act on beats a silence that reads as a verdict.
-  parts.push(
+  const parts: string[] = [
     !measured
-      ? "not measured: no pre-fill ran, so nothing is known about what is injected"
+      ? "not measured: no pre-fill ran"
       : proposal.klass === 4
         ? "not currently injected"
         : `reachable but dropped${causeOf(proposal.identifier, ledger)}`,
-  );
+  ];
   if (proposal.displaces !== undefined) {
     const block = blockTokFor(proposal.displaces, ledger);
     parts.push(`displaces ${proposal.displaces}${block === undefined ? "" : ` (~${block} tok)`}`);
-  }
-  if (verdict.tier === 2) {
-    parts.push(
-      verdict.sameScope === true
-        ? `defined in ${path.basename(verdict.path)}, already in scope`
-        : `defined in ${path.basename(verdict.path)}, needs ${verdict.importLine}${verdict.qualifier === undefined ? "" : ` and the \`${verdict.qualifier}.\` qualifier`}`,
-    );
   }
   return parts.join(", ");
 }
@@ -975,31 +1018,28 @@ function blockTokFor(type: string, ledger: PrefillLedgerView | undefined): numbe
 
 /** The notes: everything the review shows and nothing it can tick. */
 function buildNotes(
-  ledger: PrefillLedgerView | undefined,
-  deps: TightenDeps,
   terms: readonly UndefinedTerm[],
   restatements: number,
   rows: readonly TightenRow[],
   strips: readonly string[],
 ): string[] {
-  const notes: string[] = [budgetLine(ledger, deps).replace(/^\[tighten] /, "")];
+  // The token budget is on the channel (`budgetLine`); the review shows what the user can act on.
+  const notes: string[] = [];
   // THE REFUSED BACKTICKS, where the developer is looking (defect 7). Contract
   // p5: "A refused backtick is shown too, with the tier that refused it. Silent
   // removal is the one behaviour this must not have." A strip that reaches only
   // the output channel is silent from the review, which is the surface the
   // sentence is about.
-  for (const sentence of strips) {
-    notes.push(`refused: ${sentence}`);
-  }
+  notes.push(...strips);
   for (const term of terms) {
-    notes.push(`undefined term "${term.term}" - the comment instructs with it and never says what it is`);
+    notes.push(`"${term.term}" is used but never explained in the comment`);
   }
   if (restatements > 0) {
-    notes.push(`${restatements} restatement${restatements === 1 ? "" : "s"} found; deleting one is offered above and is never automatic`);
+    notes.push(`${restatements} sentence${restatements === 1 ? " repeats" : "s repeat"} an earlier one; delete ${restatements === 1 ? "it" : "them"} above if you want`);
   }
   const guesses = rows.filter((r) => r.kind !== "delete" && !r.checked).length;
   if (guesses > 0) {
-    notes.push(`${guesses} row${guesses === 1 ? " is a guess" : "s are guesses"}: the folded words do not equal the identifier, so they are unticked`);
+    notes.push(`${guesses} row${guesses === 1 ? " is a guess and starts" : "s are guesses and start"} unticked`);
   }
   return notes;
 }
@@ -1287,6 +1327,23 @@ function gateReasonFor(identifier: string, languageId: string): string {
   return "the gate dropped it and gave no reason, which is a defect report";
 }
 
+/** The review's note for a delta gate drop; a drop with no reason is a defect and stays on the channel. */
+function gateNoteFor(identifier: string, languageId: string): string | undefined {
+  if (stopNamesFor(languageId).has(identifier)) {
+    return `${identifier} not marked: it is a built-in name`;
+  }
+  if (isAllCapsConstant(identifier)) {
+    return `${identifier} not marked: it is a constant, not a type`;
+  }
+  return undefined;
+}
+
+const RATIFY_NOTE: Record<Extract<RatifyVerdict, { ok: false }>["reason"], string> = {
+  "not-in-workspace": "no type of that name in this workspace",
+  ambiguous: "more than one type has that name",
+  "no-import-path": "it cannot be imported from here",
+};
+
 /** The name a class 1 or class 2 drop collided with, so the channel can say
  *  which one rather than only that there was one. */
 function collidedWith(identifier: string, ledger: PrefillLedgerView | undefined): string | undefined {
@@ -1492,11 +1549,20 @@ async function defaultReview(
     return undefined;
   }
   const accepted = picked.map((p) => p.index);
+  // Nothing ticked over a comment that is already wrapped changes no byte. An
+  // empty diff whose Apply does nothing is a dead end; end as a cancel.
+  if (accepted.length === 0 && !review.rewraps) {
+    return undefined;
+  }
+  const preview = review.renderWith(accepted);
   const decision = await presenter.confirmDiff({
     document,
-    previewFullText: review.renderWith(accepted),
+    previewFullText: preview,
     title: review.title,
-    prompt: `Column 80: apply ${accepted.length} change${accepted.length === 1 ? "" : "s"} to this comment?`,
+    prompt:
+      accepted.length === 0
+        ? "Column 80: re-wrap this comment?"
+        : `Column 80: apply ${accepted.length} change${accepted.length === 1 ? "" : "s"} to this comment?`,
     acceptLabel: "Apply",
   });
   return decision === "accept" ? accepted : undefined;
@@ -1516,37 +1582,44 @@ export function registerTightenDocComment(
 ): void {
   const log = (line: string) => output.appendLine(line);
   context.subscriptions.push(
-    vscode.commands.registerCommand(TIGHTEN_COMMAND_ID, async () => {
+    // Dictation runs this after it writes a comment and passes `{ source:
+    // "dictation" }`. That user pressed dictate, not Tighten, so a refusal
+    // before the review goes to the channel only. A palette press passes nothing.
+    vscode.commands.registerCommand(TIGHTEN_COMMAND_ID, async (args?: { source?: string }) => {
+      const quiet = args?.source === "dictation";
       const editor = vscode.window.activeTextEditor;
       if (editor === undefined) {
-        void vscode.window.showWarningMessage("Column 80: no active editor.");
+        void vscode.window.showWarningMessage("Column 80: open a file first.");
         return;
       }
-      // Tier gate, fail closed, before any other work - the same consult
-      // generate/repair/TDD make. A disabled tier refuses with the tier's own
-      // recorded reason and the transport is never touched (item 58).
+      // Tier gate, fail closed for the MODEL, before any other work - the same
+      // consult generate/repair/TDD make. The re-wrap needs no model, so a
+      // disabled tier skips the proposer and the transport is never touched
+      // (item 58), but the comment still gets wrapped (S77-26 #2).
       const gate = await wiring.tierGate();
+      let generationOff = false;
       if (!gate.allowed) {
         if (gate.reason === "tier-unresolved") {
           // No tier means no tier MESSAGE. Appending the disabled-tier fallback
           // here would have the channel name a cause the toast on this same
           // branch correctly denies.
           log(`[tighten] refused: tier ${gate.reason}`);
-          void vscode.window.showWarningMessage(
-            'Column 80: the tighten gesture is unavailable - the hardware tier could not be resolved. Re-run "Column 80: Select Hardware Tier" (details in the output channel).',
-          );
+          if (!quiet) {
+            void vscode.window.showWarningMessage(
+              'Column 80: Tighten Doc Comment needs a model, and the hardware check did not finish. Run "Column 80: Select Hardware Tier", then try again.',
+            );
+          }
           return;
         }
+        // A tier message can interpolate a thrown error, so the channel keeps
+        // the whole of it; the review says only what the user lost.
         const why = wiring.tierMessage() ?? "the hardware tier disables function generation";
-        // The channel line carried the reason CODE and not the message. A tier
-        // message can interpolate a thrown error, so the channel is where the
-        // whole of it goes and the toast takes one line (roadmap item 63).
-        log(`[tighten] refused: tier ${gate.reason}: ${why}`);
-        void vscode.window.showWarningMessage(`Column 80: ${tierDisabledToast(why)}`);
-        return;
+        log(`[tighten] tier ${gate.reason}, re-wrapping without the proposer: ${why}`);
+        generationOff = true;
       }
+      const runDeps: TightenDeps = { ...deps, ...(quiet ? { quietRefusals: true } : {}), ...(generationOff ? { generationOff: true } : {}) };
       try {
-        await tightenDocComment(editor.document, editor.selection.active, log, wiring, deps);
+        await tightenDocComment(editor.document, editor.selection.active, log, wiring, runDeps);
       } catch (err) {
         // The same rule as the proposer's catch, at the outer edge: whatever
         // else this gesture grows a signal for later, a cancellation reaching
@@ -1562,7 +1635,7 @@ export function registerTightenDocComment(
         // The channel line above keeps the whole error; the toast is bounded
         // to one line (roadmap item 63).
         void vscode.window.showWarningMessage(
-          `Column 80: the tighten gesture failed (${firstLine(String(err))}); nothing was changed. The full message is in the output channel.`,
+          `Column 80: Tighten Doc Comment failed (${firstLine(err instanceof Error ? err.message : String(err))}). Nothing was changed; the full message is in the output channel.`,
         );
       }
     }),

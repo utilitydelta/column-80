@@ -108,11 +108,15 @@ test("reduce does not mutate the state it is given", () => {
 
 const REFUSALS = [
   { ready: { remote: true }, kind: "remote" },
+  // session-v77 phase 6 (review L1): no-comment-row before not-served, so a language with no
+  // comment syntax is not told to add itself to column80.fimLanguages, a remedy that cannot work.
+  // session-v77 phase 7 (Amendment 4, A2): both language refusals before the machine checks, so
+  // a press dictation can never serve does not offer the 148MB speech model first.
+  { ready: { commentRow: false }, kind: "no-comment-row", detail: "typescript" },
+  { ready: { served: false }, kind: "not-served", detail: "typescript" },
   { ready: { binaryPresent: false }, kind: "binary-missing" },
   { ready: { modelPresent: false }, kind: "model-missing" },
   { ready: { recogniserAlive: false }, kind: "server-down" },
-  { ready: { served: false }, kind: "not-served", detail: "typescript" },
-  { ready: { commentRow: false }, kind: "no-comment-row", detail: "typescript" },
   // AMENDED 2026-09-03 (session-v67, goal ruling 9): the in-comment refusal is retired; a press in a comment dictates into it.
 ];
 

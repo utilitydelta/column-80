@@ -589,7 +589,7 @@ export class PyOracle implements CompilerOracle {
     if (this.detectCrateRoot(filePath) !== undefined) {
       return undefined;
     }
-    return `no Python project marker (${ROOT_MARKERS.join(", ")}) and no workspace folder places ${filePath}`;
+    return `${filePath} is not inside a Python project (no ${ROOT_MARKERS.join(", ")} above it, and no workspace folder), so it was not checked`;
   }
 
   /** The evidence line for the explicit-gesture surface: the check ran and
@@ -598,9 +598,9 @@ export class PyOracle implements CompilerOracle {
    *  failed-with-no-diagnostics line. */
   describeCheckFailure(exitCode: number, evidence?: string): string {
     if (exitCode < 0) {
-      return `pyright could not be spawned${evidence ? `: ${evidence}` : ""}`;
+      return `could not start pyright${evidence ? `: ${evidence}` : ""}`;
     }
-    return `pyright crashed (exit ${exitCode})${evidence ? `: ${evidence}` : ""}`;
+    return `pyright failed with no error to show${evidence ? `: ${evidence}` : "; see the output channel"}`;
   }
 
   /** The installed-distributions catalog for steering an unresolved-import
@@ -750,9 +750,8 @@ export function describeEnvironment(baseline: BaselineCheck): string | undefined
 // baseline-only classifier and the PyOracle.describeEnvironment stdout method.
 function stormEnvironmentReason(missing: number): string {
   return (
-    `${missing} imports could not be resolved (a reportMissingImports storm): ` +
-    `the Python interpreter resolves none of this project's third-party packages — ` +
-    `select an interpreter or create a .venv beside the project root, then re-check`
+    `the selected Python interpreter cannot import this project's packages (${missing} imports did not resolve). ` +
+    `Select the project's interpreter, or create a .venv in the project root, then try again.`
   );
 }
 

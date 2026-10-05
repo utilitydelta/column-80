@@ -307,22 +307,22 @@ test("a `Task<T>` return is testable with or without the modifier, and a bare `T
     const v = classifyCsTestability(sig, DOC);
     assert.strictEqual(v.testable, false, sig);
     assert.strictEqual(v.reason, "underspecified", sig);
-    assert.match(v.detail, /nothing to assert/, sig);
+    assert.match(v.detail, /nothing to check/, sig);
   }
 });
 
 test("an implicit access modifier is PRIVATE, so it refuses as not-exported", () => {
   const v = classifyCsTestability("static int Widen(int n)", DOC);
   assert.strictEqual(v.reason, "not-exported");
-  assert.match(v.detail, /no access modifier is `private` by default/);
+  assert.match(v.detail, /no access modifier is "private" by default/);
 });
 
 test("every not-exported detail names a fix the human can PERFORM (Amendment 5)", () => {
   const cases = [
-    ["private static int F(int n)", /Make it `public`/],
-    ["internal static int F(int n)", /Make it `public`, or add .*InternalsVisibleTo/],
-    ["protected static int F(int n)", /only reachable from a subclass\. Make it `public`/],
-    ["static int F(int n)", /Make it `public`/],
+    ["private static int F(int n)", /Make it "public"/],
+    ["internal static int F(int n)", /Make it "public", or add .*InternalsVisibleTo/],
+    ["protected static int F(int n)", /only reachable from a subclass\. Make it "public"/],
+    ["static int F(int n)", /Make it "public"/],
   ];
   for (const [sig, re] of cases) {
     const v = classifyCsTestability(sig, DOC);
@@ -729,9 +729,8 @@ test("no test project: refuse and name what was looked for", () => {
   const r = cs().placementFor("/repo/Acme/Gaps/Analysis.cs", "Overlaps", d);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.refusal.reason, "no-test-project");
-  assert.match(r.refusal.detail, /IsTestProject/);
-  assert.match(r.refusal.detail, /Microsoft\.NET\.Test\.Sdk/);
-  assert.match(r.refusal.detail, /ProjectReference/);
+  assert.match(r.refusal.detail, /no test project references .*Create a test project named .*\.Tests that references it/);
+  // What it looked for moved to the [tdd] channel line in session-v77 (M21).
   assert.match(r.refusal.detail, /Acme\.Tests/, "names the project the human would create");
 });
 
@@ -832,8 +831,8 @@ test("a project with no test framework declared reaches frameworkFor, which name
   const fw = frameworkFor(cs(), r.placement.runRoot, d);
   assert.strictEqual(fw.ok, false);
   assert.deepStrictEqual(fw.lookedFor, ["MSTest (dotnet test)", "xUnit (dotnet test)", "NUnit (dotnet test)"]);
-  assert.match(fw.detail, /Acme\.Tests is a test project but declares no test framework/, "Amendment 8b");
-  assert.match(fw.detail, /never installs a package/);
+  assert.match(fw.detail, /Acme\.Tests is a test project but references no test framework/, "Amendment 8b");
+  assert.match(fw.detail, /Add MSTest, xUnit or NUnit as a package reference/);
   // And the four legs that shipped before Amendment 8b keep their EXACT failure
   // object: the key is absent, not present-and-undefined.
   const ts = frameworkFor(tddLangFor("typescript"), "/nowhere", deps([], {}, {}));
@@ -1262,7 +1261,7 @@ test(
       assert.ok(found[name] !== undefined, `${name} not found in the corpus`);
       assert.strictEqual(found[name].reason, reason, `${name}: ${found[name].detail ?? "TESTABLE"}`);
     }
-    assert.match(found.GapsOverlap.detail, /Make it `public`/, "and the fix is one the human can perform");
+    assert.match(found.GapsOverlap.detail, /Make it "public"/, "and the fix is one the human can perform");
   },
 );
 

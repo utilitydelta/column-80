@@ -1,7 +1,7 @@
 /**
  * The model-authored gesture, as a SECOND command.
  *
- * `Column 80: Review Function (model)` sits next to `Criticize Function` rather
+ * `Column 80: Review Function` sits next to `Criticize Function` rather
  * than replacing it. A developer presses both on the same function and compares
  * what lands. That is deliberate and it is the human's instruction of
  * 2026-08-29: the fourteen detectors are the only baseline that can say whether
@@ -45,9 +45,14 @@ import { criticizeLangFor } from "../core/criticizeLang";
 import { planAdviceInjection } from "../core/criticizePlan";
 import { sliceFunction } from "../core/criticizeSlice";
 import { isExplainCancellation } from "../core/criticizeExplain";
-import { readFnGenConfig } from "./config";
+import { readCloudConfig, readFnGenConfig } from "./config";
+import { SurfaceVoice, translateServiceReject } from "./failureToast";
+import { startOllamaTerminal } from "./firstRun";
+import { hasMoreThanOneLine, tierDisabledToast } from "./toastText";
+import { unsupportedLanguageToast } from "../core/languageName";
+import { isRemoteApiBase } from "../core/config";
 import { InstructGenerateFn } from "../core/ollama";
-import { ProposalOutcomeSink } from "./fnGen";
+import { ProposalOutcomeSink, isServerUnreachable } from "./fnGen";
 
 export const CRITICIZE_ADVISE_COMMAND_ID = "column80.reviewFunctionModel";
 
@@ -59,6 +64,9 @@ export const CRITICIZE_ADVISE_COMMAND_ID = "column80.reviewFunctionModel";
  *  is not a partial answer, it is an unreadable one, and the whole round is
  *  lost. CHOSEN, not measured, and recorded as chosen in docs/constants.md. */
 const ADVISE_MAX_TOKENS = 4096;
+
+/** How every disabled-tier message opens (`src/core/tiers.ts`). */
+const TIER_DISABLED_HEAD = "Function generation is disabled: ";
 
 /**
  * The diagnostics the developer's own tools already produced, for THIS function
@@ -131,7 +139,7 @@ export function registerCriticizeAdvise(
   context.subscriptions.push(
     vscode.commands.registerCommand(CRITICIZE_ADVISE_COMMAND_ID, async () => {
       try {
-        await runAdvise(log, wiring);
+        await runAdvise(output, wiring);
       } catch (err) {
         if (isExplainCancellation(err) || isCancellation(err)) {
           log(critiqueLine("cancelled"));
@@ -139,12 +147,46 @@ export function registerCriticizeAdvise(
         }
         log(critiqueLine(`model review failed: ${String(err)}`));
         void vscode.window.showWarningMessage(
-          `Column 80: the model review failed (${firstLine(String(err))}); nothing was changed. The full message is in the output channel.`,
+          `Column 80: Review Function failed (${firstLine(err instanceof Error ? err.message : String(err))}). Nothing was changed; the full message is in the output channel.`,
         );
       }
     }),
   );
 }
+
+const REVIEW_VOICE: SurfaceVoice = { consequence: "so nothing was changed", retry: "try again" };
+
+/** A round that never got an answer. The model was not reached, or it refused,
+ *  and the sentence says which: "no usable answer" for a dead server sent the
+ *  user looking at the model. A local Ollama that is down gets the same
+ *  "Start ollama serve" offer Generate Function Body makes; a cloud provider or
+ *  a remote host does not, since starting this machine's server fixes nothing. */
+async function warnModelNotAsked(err: unknown, output: vscode.OutputChannel): Promise<void> {
+  const local = readCloudConfig() === undefined && !isRemoteApiBase(readFnGenConfig().apiBase);
+  if (local && isServerUnreachable(err)) {
+    const choice = await vscode.window.showWarningMessage(
+      "Column 80: the Ollama server is not answering, so Review Function could not run.",
+      START_OLLAMA,
+    );
+    if (choice === START_OLLAMA) {
+      await startOllamaTerminal(output);
+    }
+    return;
+  }
+  const translated = translateServiceReject(err, REVIEW_VOICE);
+  if (translated !== undefined) {
+    void vscode.window.showWarningMessage(translated);
+    return;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  const first = firstLine(message).trim().replace(/\.$/, "");
+  void vscode.window.showWarningMessage(
+    `Column 80: Review Function could not ask the model${first === "" ? "" : ` (${first})`}, ${REVIEW_VOICE.consequence}.` +
+      (hasMoreThanOneLine(message) ? " The full message is in the output channel." : ""),
+  );
+}
+
+const START_OLLAMA = "Start ollama serve";
 
 function isCancellation(err: unknown): boolean {
   const name = (err as { name?: string } | undefined)?.name;
@@ -155,20 +197,18 @@ function firstLine(text: string): string {
   return String(text).split("\n")[0];
 }
 
-async function runAdvise(
-  log: (line: string) => void,
-  wiring: CriticizeWiring,
-): Promise<void> {
+async function runAdvise(output: vscode.OutputChannel, wiring: CriticizeWiring): Promise<void> {
+  const log = (line: string) => output.appendLine(line);
   const editor = vscode.window.activeTextEditor;
   if (editor === undefined) {
-    void vscode.window.showWarningMessage("Column 80: open a file and put the cursor in a function first.");
+    void vscode.window.showWarningMessage("Column 80: open a file first.");
     return;
   }
   const document = editor.document;
   const lang = criticizeLangFor(document.languageId);
   if (lang === undefined) {
     log(critiqueLine(`model review does not support ${document.languageId}`));
-    void vscode.window.showWarningMessage(`Column 80: the model review does not support ${document.languageId}.`);
+    void vscode.window.showWarningMessage(unsupportedLanguageToast("Review Function", document.languageId));
     return;
   }
 
@@ -195,15 +235,23 @@ async function runAdvise(
   );
   if (unit === undefined) {
     log(critiqueLine(`could not slice ${resolved.symbolName}`));
-    void vscode.window.showWarningMessage("Column 80: that function could not be read.");
+    void vscode.window.showWarningMessage(`Column 80: Review Function could not read ${resolved.symbolName}, so nothing was reviewed.`);
     return;
   }
 
   const gate = await wiring.tierGate();
   if (!gate.allowed) {
-    const why = wiring.tierMessage() ?? "the hardware tier disables model calls";
-    log(critiqueLine(`model review skipped: tier ${gate.reason}: ${why}`));
-    void vscode.window.showWarningMessage(`Column 80: the model review needs a model (${why}).`);
+    const message = wiring.tierMessage();
+    log(critiqueLine(`model review skipped: tier ${gate.reason}: ${message ?? "no tier message"}`));
+    void vscode.window.showWarningMessage(
+      gate.reason === "tier-unresolved" || message === undefined
+        ? 'Column 80: Review Function needs a model, and the hardware check did not finish. Run "Column 80: Select Hardware Tier", then try again.'
+        : message.startsWith(TIER_DISABLED_HEAD)
+          ? // The tier message already says generation is disabled; the lead
+            // clause must not say it twice. The message stays whole.
+            `Column 80: Review Function cannot run. ${tierDisabledToast(message)}`
+          : `Column 80: Review Function needs the generation model, which is off. ${tierDisabledToast(message)}`,
+    );
     return;
   }
 
@@ -245,12 +293,15 @@ async function runAdvise(
       throw err;
     }
     log(critiqueLine(`model review has no backend: ${firstLine(String(err))}`));
-    void vscode.window.showWarningMessage("Column 80: the model review could not reach a model.");
+    void vscode.window.showWarningMessage("Column 80: Review Function could not reach a model. The full message is in the output channel.");
     return;
   }
 
   const controller = new AbortController();
   const claim = wiring.inFlight?.()?.begin("Reviewing a function", controller);
+  // The round turns a throw into a detail string; the error itself is kept here
+  // so the toast can name what happened rather than guess from the string.
+  let transportError: unknown;
   const transport: AdviceTransport = async (prompt: string) => {
     const result = await generate({
       apiBase: config.apiBase,
@@ -279,6 +330,9 @@ async function runAdvise(
       think: false,
       signal: controller.signal,
       log,
+    }).catch((err: unknown) => {
+      transportError = err;
+      throw err;
     });
     return result.text;
   };
@@ -289,6 +343,12 @@ async function runAdvise(
   } finally {
     claim?.release();
   }
+  // A cancel aborts the transport, which the round reports as a failed call.
+  // The user stopped it; that is not "no usable answer".
+  if (controller.signal.aborted) {
+    log(critiqueLine("cancelled"));
+    return;
+  }
 
   // THREE OUTCOMES AND THEY MUST NOT READ ALIKE. A round that never reached a
   // model, a round that answered and found nothing, and a round that answered
@@ -297,7 +357,11 @@ async function runAdvise(
   // three.
   if (outcome.failure !== undefined) {
     log(critiqueLine(`model review got no answer (${outcome.failure.kind}): ${outcome.failure.detail}`));
-    void vscode.window.showWarningMessage("Column 80: the model review got no usable answer; nothing was changed.");
+    if (outcome.failure.kind === "unreadable") {
+      void vscode.window.showWarningMessage("Column 80: Review Function could not read the model's answer, so nothing was changed. Try again.");
+      return;
+    }
+    await warnModelNotAsked(transportError ?? new Error(outcome.failure.detail), output);
     return;
   }
   for (const miss of outcome.unplaced) {
@@ -380,8 +444,8 @@ async function proposeAdvice(
     );
     void vscode.window.showInformationMessage(
       plan.outsideRegion.length === 0
-        ? `Column 80: the model had nothing to plant on ${resolved.symbolName}.`
-        : `Column 80: the model's review was all about ${resolved.symbolName}'s doc comment, which this gesture cannot write above; nothing was changed.`,
+        ? `Column 80: the model had nothing to say about ${resolved.symbolName}.`
+        : `Column 80: the model only commented on ${resolved.symbolName}'s doc comment, and review comments cannot go above it. Nothing was changed.`,
     );
     return;
   }
@@ -405,11 +469,13 @@ async function proposeAdvice(
       document,
       span: { start: region.start, end: region.end },
       versionAtResolve,
-      title: `Column 80: model review of ${resolved.symbolName}`,
+      title: `Column 80: review of ${resolved.symbolName}`,
       text: plan.text,
       service: outcomes,
+      // No `onSystemDiscard`: the user pressed this command and is waiting, so a
+      // file that changed before the diff is said on screen by the presenter.
+      // The sink above still puts the reason on the channel.
       discardNoun: "review",
-      onSystemDiscard: (why: string) => log(critiqueLine(`model review discarded before it was shown: ${why}`)),
     });
   } catch (err) {
     if (isCancellation(err)) {
@@ -418,8 +484,8 @@ async function proposeAdvice(
     log(critiqueLine(`the model review proposal failed: ${String(err)}`));
     void vscode.window.showWarningMessage(
       accepted
-        ? `Column 80: the review comments landed, but the gesture failed afterwards (${firstLine(String(err))}).`
-        : `Column 80: the review could not be proposed (${firstLine(String(err))}); nothing was changed.`,
+        ? `Column 80: the review comments were applied, then something failed (${firstLine(err instanceof Error ? err.message : String(err))}). The full message is in the output channel.`
+        : `Column 80: the review could not be shown (${firstLine(err instanceof Error ? err.message : String(err))}). Nothing was changed; the full message is in the output channel.`,
     );
   }
 }

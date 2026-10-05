@@ -1,8 +1,10 @@
 // Implementer oracle, session-v56 phase 3 (roadmap item 64, mechanical half):
 // gaps the blind file leaves open.
 //
-// The blind file proves the surface end to end (fim discard -> channel line,
-// no toast; fngen discard -> today's toast). What it cannot see:
+// The blind file proves the surface end to end (fngen discard -> today's
+// toast). Its fim rows, and this file's, went with the post-FIM-accept check
+// (session-v77 Amendment 1); the presenter seam stays for criticize. What the
+// blind file cannot see:
 //   * the seam is PRE-CONSENT only (the contract's post-review amendment):
 //     the two during-generation causes route to onSystemDiscard, while every
 //     post-Accept discard (changed/closed while previewing, editor refused
@@ -12,14 +14,12 @@
 //     system-discard surface only, and reject stats stay honest;
 //   * the refine evidence line: a system discard of the refine proposal is
 //     result=discarded, a human reject stays result=rejected;
-//   * the call-site wiring: the fim session passes the callback, the fngen
-//     session passes undefined (so toast ownership stays in present()), and
-//     the routing is per session - a fngen session drained behind a fim one
-//     is not painted with the fim surface;
+//   * the call-site wiring: a repair session passes no callback, so toast
+//     ownership stays in present();
 //   * the repair evidence line: result=discarded for a discard (it read
 //     result=rejected before this phase, contradicting the outcome log),
 //     while a human reject keeps result=rejected;
-//   * a fim discard still drains the pending slot exactly as before.
+//   * a discard still drains the pending slot exactly as before.
 //
 // Run: node --test test/impl-v56-p3-fim-discard-surface.test.cjs
 // (needs cargo on PATH: the session rows run a real `cargo check`.)
@@ -238,7 +238,7 @@ test("control: with no race the same rig accepts, so the discards below are the 
   assert.strictEqual(__state.appliedEdits.length, 1);
 });
 
-test("second guard re-pinned (amendment): a race inside the preview window is post-Accept, so it TOASTS even in a fim session", async () => {
+test("second guard re-pinned (amendment): a race inside the preview window is post-Accept, so it TOASTS even with the seam wired", async () => {
   resetState();
   let bump;
   // The version moves between the diff opening and the accept landing: the
@@ -254,7 +254,7 @@ test("second guard re-pinned (amendment): a race inside the preview window is po
   assert.deepStrictEqual(discards, [], "post-Accept causes never reach onSystemDiscard");
   assert.deepStrictEqual(
     __state.messages.map((m) => `${m.kind}: ${m.message}`),
-    ["warn: Column 80: generation discarded — the document changed while previewing."],
+    ["warn: Column 80: the file changed while the preview was open, so the generated code was not applied. Run the command again."],
     "the toast fires with today's wording, seam or no seam",
   );
   assert.deepStrictEqual(
@@ -272,7 +272,7 @@ test("editor refused the edit: post-Accept, toasts in every session, outcome log
   assert.deepStrictEqual(discards, [], "a refused applyEdit is not a background race");
   assert.deepStrictEqual(
     __state.messages.map((m) => `${m.kind}: ${m.message}`),
-    ["warn: Column 80: generation discarded — the editor refused the edit."],
+    ["warn: Column 80: VS Code rejected the edit, so the generated code was not applied."],
   );
   assert.deepStrictEqual(outcomes, [
     { o: "discarded", extra: { discardedWhy: "the editor refused the edit", discardedBecause: undefined } },
@@ -300,7 +300,7 @@ test("no onSystemDiscard: the warning toast fires with today's exact wording (th
   assert.deepStrictEqual(discards, []);
   assert.deepStrictEqual(
     __state.messages.map((m) => `${m.kind}: ${m.message}`),
-    ["warn: Column 80: generation discarded — the document changed during generation."],
+    ["warn: Column 80: the file changed before the generated code was ready, so it was not applied. Run the command again."],
   );
 });
 
@@ -397,7 +397,7 @@ const discardingPresenter = () => {
       if (req.onSystemDiscard !== undefined) {
         req.onSystemDiscard(why);
       } else {
-        __state.messages.push({ kind: "warn", message: `Column 80: generation discarded — ${why}.` });
+        __state.messages.push({ kind: "warn", message: "Column 80: the file changed before the generated code was ready, so it was not applied. Run the command again." });
       }
       req.service.logOutcome("discarded");
       return "discarded";
@@ -416,29 +416,8 @@ const sessionCtx = (file, source, presenter, out) => ({
   repairTierGate: { allowed: true },
 });
 
-test("fim session: the presenter is handed onSystemDiscard, the channel carries the story and result=discarded with the why", async () => {
-  resetState();
-  const { dir, file } = scratchCopy("fim");
-  try {
-    const presenter = discardingPresenter();
-    const out = output();
-    await runPostAcceptOracle(sessionCtx(file, "fim", presenter, out));
-    assert.strictEqual(presenter.seen.length, 1, `one proposal expected, got ${presenter.seen.length}`);
-    assert.strictEqual(typeof presenter.seen[0].onSystemDiscard, "function", "the fim session must route system discards to its channel");
-    assert.ok(
-      out.lines.some((l) => /^\[repair\] round 1 proposal for parse_duration discarded — the document changed during generation \(background fim session: no toast\)$/.test(l)),
-      `the story line names what and why, got ${JSON.stringify(out.lines)}`,
-    );
-    assert.ok(
-      out.lines.includes("[repair] outcome round=1 result=discarded (the document changed during generation)"),
-      `the evidence line agrees with the outcome log, got ${JSON.stringify(out.lines)}`,
-    );
-    assert.ok(!out.lines.some((l) => l.includes("result=rejected")), "a discard is not a rejection");
-    assert.deepStrictEqual(__state.messages, [], "no toast anywhere in the fim session's discard");
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+// The "fim session" row went with the post-FIM-accept check (session-v77
+// Amendment 1): no repair session starts from a FIM accept any more.
 
 test("fngen session: the presenter is handed NO onSystemDiscard (toast ownership stays in present), result=discarded not rejected", async () => {
   resetState();
@@ -538,7 +517,7 @@ test("refine control: a human reject keeps result=rejected", async () => {
   }
 });
 
-test("drain unchanged: a fim discard still drains the pending slot, and the drained fngen session is not painted with the fim surface", async () => {
+test("drain unchanged: a discard still drains the pending slot", async () => {
   resetState();
   const a = scratchCopy("drainA");
   const b = scratchCopy("drainB");
@@ -547,7 +526,7 @@ test("drain unchanged: a fim discard still drains the pending slot, and the drai
     const pb = discardingPresenter();
     const outA = output();
     const outB = output();
-    const runA = runPostAcceptOracle(sessionCtx(a.file, "fim", pa, outA));
+    const runA = runPostAcceptOracle(sessionCtx(a.file, "fngen", pa, outA));
     const runB = runPostAcceptOracle(sessionCtx(b.file, "fngen", pb, outB));
     await Promise.all([runA, runB]);
     // Drain is fire-and-forget: wait for the parked session's own evidence.
@@ -555,9 +534,8 @@ test("drain unchanged: a fim discard still drains the pending slot, and the drai
       await new Promise((r) => setTimeout(r, 25));
     }
     assert.ok(outB.lines.some((l) => l.startsWith("[oracle] check queued")), `b must have parked behind a, got ${JSON.stringify(outB.lines)}`);
-    assert.strictEqual(pa.seen.length, 1, "the fim session reached its proposal and discarded");
-    assert.strictEqual(pb.seen.length, 1, "the fim discard must not strand the pending slot");
-    assert.strictEqual(pb.seen[0].onSystemDiscard, undefined, "the drained fngen session keeps the toast surface: routing is per session, read at its own present call");
+    assert.strictEqual(pa.seen.length, 1, "the first session reached its proposal and discarded");
+    assert.strictEqual(pb.seen.length, 1, "the discard must not strand the pending slot");
   } finally {
     fs.rmSync(a.dir, { recursive: true, force: true });
     fs.rmSync(b.dir, { recursive: true, force: true });

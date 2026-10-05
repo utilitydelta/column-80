@@ -2,7 +2,7 @@
   "name": "column-80",
   "displayName": "Column 80",
   "description": "Making dumb local models smart with intelligent autocomplete and AST-driven function generation.",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "publisher": "utilitydelta",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -37,7 +37,7 @@
     "commands": [
       {
         "command": "column80.toggle",
-        "title": "Toggle FIM Autocomplete",
+        "title": "Toggle Tab Completion",
         "category": "Column 80"
       },
       {
@@ -64,7 +64,7 @@
       },
       {
         "command": "column80.reviewFunctionModel",
-        "title": "Review Function (model)",
+        "title": "Review Function",
         "category": "Column 80",
         "enablement": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
       },
@@ -153,16 +153,17 @@
       },
       {
         "command": "column80.dismissScopedGhost",
-        "title": "Dismiss Scoped Ghost",
+        "title": "Dismiss Member Suggestion",
         "category": "Column 80"
       },
       {
         "command": "column80.dumpCompletionItems",
-        "title": "Column 80: Dump Completion Items At Cursor (diagnostic)"
+        "title": "Dump Completion Items at Cursor (diagnostic)",
+        "category": "Column 80"
       },
       {
         "command": "column80.cancelGeneration",
-        "title": "Cancel Generation",
+        "title": "Cancel Running Task",
         "category": "Column 80"
       },
       {
@@ -177,12 +178,12 @@
       },
       {
         "command": "column80.dictationAccepted",
-        "title": "Dictated Ghost Accepted",
+        "title": "Dictated Suggestion Accepted",
         "category": "Column 80"
       },
       {
         "command": "column80.dismissDictationGhost",
-        "title": "Dismiss the Dictated Ghost",
+        "title": "Dismiss Dictated Suggestion",
         "category": "Column 80"
       },
       {
@@ -265,7 +266,7 @@
     "viewsWelcome": [
       {
         "view": "column80.contextBlocks",
-        "contents": "The model sees only what you add here. Nothing is included automatically.\n[Add Active File](command:column80.contextAddFile)\n[Add Selection](command:column80.contextAddSelection)"
+        "contents": "Code you add here is shown to the model when you run Generate Function Body, Repair Function Body or Generate Tests (TDD).\n[Add Active File](command:column80.contextAddFile)\n[Add Selection](command:column80.contextAddSelection)"
       }
     ],
     "menus": {
@@ -331,6 +332,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "column80.dumpCompletionItems",
+          "when": "false"
+        },
         {
           "command": "column80.generateTests",
           "when": "resourceLangId == rust || resourceLangId == go || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact || resourceLangId == python || resourceLangId == csharp"
@@ -446,12 +451,12 @@
         "column80.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable local FIM autocomplete. On by default; it needs the FIM model (offered on first run) and a running ollama. With neither present it stays silent - no error, just no ghost text. Off turns keystroke FIM off; dictation (column80.dictate) still serves its one request."
+          "description": "Show tab completion suggestions from a local model as you type. On by default. Needs the tab completion model (offered on first run) and a running Ollama server; without them no suggestion appears. Dictation works with this off."
         },
         "column80.fimUsageExamples": {
           "type": "boolean",
           "default": true,
-          "description": "At a member site whose name your buffer already spells, show the model real call sites of that member from your own workspace, under the member signatures. Found through your language server's find-references, so aliases and re-exports are seen through, and never through a text search. Measured on 40 real Rust member sites: continuations that do not type-check drop from 8 in 40 to 3. It sits behind the same 50ms budget as the rest of the injection, so a slow answer costs nothing and simply does not appear; in C# it will rarely appear at all, because Roslyn's find-references has a fixed half-second floor."
+          "description": "At a member call whose name you have typed, show the model how your workspace already calls that member, found through your language server. Fewer suggestions fail to compile. Adds at most 50ms to a suggestion. In C# it rarely helps, because the lookup usually takes longer than that."
         },
         "column80.fimLanguages": {
           "type": "array",
@@ -459,17 +464,17 @@
             "type": "string"
           },
           "default": [],
-          "description": "Extra VS Code language ids to serve FIM in, on top of the ones Column 80 understands (rust, csharp, python, go, typescript, typescriptreact, javascript, javascriptreact). FIM runs on code only: every other language, prose and data formats included, is dark before any model call. This list widens that and never narrows it - use it if you write C, C++, Java, Kotlin or any other language the product has no oracle or extractor for. Language ids, not file extensions ('cpp', not '.cpp'). One caveat, said on the output channel when it applies: the rule that keeps ghost text out of your comments needs the language's comment syntax, and a language the comment table has never met (zig, f#, ocaml and similar) is served with that protection off."
+          "description": "Extra languages to offer tab completion in, by VS Code language id ('cpp', not '.cpp'). Column 80 already covers Rust, C#, Python, Go, TypeScript and JavaScript. Use this for C, C++, Java, Kotlin and the like. It also gates dictation on a code line, the take that becomes a suggestion. Dictating into a comment, or into a markdown or plain text file, needs no entry here, and adding markdown turns on tab completion in markdown. In a language whose comment syntax Column 80 does not know (zig, f#, ocaml and similar), suggestions can appear inside comments."
         },
         "column80.apiBase": {
           "type": "string",
           "default": "http://localhost:11434",
-          "description": "Base URL of the Ollama server that serves function generation. Point it at another machine to run the big model there. FIM tab-completion is always served locally and ignores this when it names a remote host."
+          "description": "Base URL of the Ollama server that serves function generation. Point it at another machine to run the big model there. Tab completion always runs locally and ignores this when it names another machine."
         },
         "column80.fimModel": {
           "type": "string",
           "default": "qwen2.5-coder:1.5b-base",
-          "description": "Ollama model tag for FIM completion. Must be a FIM-capable base model, not -instruct."
+          "description": "Ollama model for tab completion. Must be a base model that supports fill-in-the-middle, not an -instruct model."
         },
         "column80.fnGenModel": {
           "type": "string",
@@ -479,7 +484,7 @@
         "column80.fnGenThinking": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Reasoning mode for the generation model, passed straight through to it. **Leave empty unless you are experimenting.** Empty means the hardware tier decides, and every tier that ships a reasoning model turns reasoning off.\n\n**Reaches ollama and the OpenAI-compatible backends.** On OpenAI it becomes `reasoning_effort`: `off` sends `none`, and any other value is passed through as the provider's own level. `on` sends nothing there, because \"on\" has no portable spelling — the 5.6 line accepts only `none` and refuses `minimal`, so a guessed level would fail the request.\n\n**Anthropic and the Claude Code CLI ignore it, on purpose.** Anthropic has no value valid across its models (`{type:\"disabled\"}` is refused on some, while omitting the field never errors), and the CLI gives no control at all — its model decides. On those two backends a model that reasons by default spends part of its token budget doing so, and the shared pipeline rejects the resulting truncated reply rather than splicing half a function.\n\n**The default is measured, not cautious.** Twelve real C# generations, graded by `dotnet build`, `qwen3.8:27b`:\n\n| reasoning | token cap | compiled | per function | truncated |\n|---|---|---|---|---|\n| off | 2048 | **4 of 12** | **7.7s** | 0 |\n| on | 2048 | 1 of 12 | 68s | 9 of 12 |\n| on | 8192 | 3 of 12 | 86s | 0 |\n\nAt the shipped 2048 cap, reasoning eats the budget and the code is cut off before it is written (`done_reason=length`). Raising the cap fixes that completely — and reasoning still compiles no better while taking **eleven times longer**. It is not a truncation problem you can tune around; reasoning simply does not help this task.\n\n**A free string because the vocabulary belongs to the model, not to this extension.** Measured: `qwen3-coder:30b` refuses reasoning outright, `qwen3:8b` takes `on`, `qwen3.8:27b` takes `on` and `low`, and OpenAI's 5.6 line takes only `none` under a different field name. A fixed drop-down would be wrong the first time a model shipped a level it did not list.\n\n- *(empty)* — the tier decides. The shipped answer.\n- `off` — send reasoning off explicitly.\n- `on` — send reasoning on. Expect roughly ten times the wait, and raise `maxTokens` or the generation will be truncated.\n- anything else (`low`, `medium`, `high`, …) — passed to the model verbatim. If it refuses the value, the output channel prints the model's own words."
+          "markdownDescription": "Reasoning mode for the generation model. **Leave it empty.** Empty means the hardware tier decides, and every tier that ships a reasoning model turns reasoning off. In testing on twelve C# functions, reasoning compiled no more of them and took about ten times as long.\n\nOllama and the OpenAI-compatible backends receive it. Anthropic and Claude Code ignore it.\n\n- *(empty)*: the hardware tier decides.\n- `off`: turn reasoning off explicitly.\n- `on`: turn reasoning on. Expect about ten times the wait, and most answers cut off before the code is written.\n- anything else (`low`, `medium`, `high`, …): passed to the model as written. If the model refuses it, the output channel shows the model's own message."
         },
         "column80.fnGenProvider": {
           "type": "string",
@@ -493,10 +498,10 @@
             "openai-compatible"
           ],
           "default": "ollama",
-          "description": "Backend for per-function generation. 'ollama' is the default local, offline, first path. The others send your prompt (signature, doc comment, selected context, and injected crate surface) off the machine — 'claude-code' through your installed Claude Code CLI on your subscription, the rest to a cloud frontier model over an OpenAI-compatible API with an API key. FIM tab-completion is always local regardless of this setting.",
+          "description": "Backend for per-function generation. 'ollama' is the default: local, offline, first. The others send your prompt (signature, doc comment, selected context and the type definitions Column 80 looked up) off the machine: 'claude-code' through your installed Claude Code CLI on your subscription, the rest to a cloud model over an OpenAI-compatible API with an API key. Tab completion always runs locally.",
           "enumDescriptions": [
             "Local ollama. Offline after the one-time model pull. The default.",
-            "Claude Code. Runs your installed `claude` CLI headless and bills your Claude subscription, no API key. Your prompt leaves the machine. Every call also carries the CLI's own agent harness on top of your prompt. Its built-in tools are disabled, which measured 23,217 tokens of context down to 3,471 on claude 2.1.224 with identical output. Set fnGenModel to a Claude model id; left at the ollama default the CLI picks its own, which measured as Opus. FIM stays local.",
+            "Claude Code. Runs your installed claude CLI and bills your Claude subscription, no API key. Your code leaves the machine. Set fnGenModel to a Claude model id, or leave it at the ollama default and the CLI picks its own. Tab completion stays local.",
             "OpenAI. Needs cloudApiKey and an OpenAI model id in fnGenModel.",
             "Anthropic (Claude), over its native Messages API. Needs cloudApiKey and a Claude model id in fnGenModel. This is the one cloud provider that can cache your context blocks: one breakpoint is placed after them, with a one-hour lifetime, so a second generation against the same blocks reads them instead of re-sending them.",
             "xAI (Grok). Needs cloudApiKey and a Grok model id in fnGenModel.",
@@ -507,7 +512,7 @@
         "column80.cloudApiKey": {
           "type": "string",
           "default": "",
-          "description": "API key for the cloud fnGenProvider. Sent as a Bearer token, except on 'anthropic', whose native API takes it as x-api-key. Ignored by the local 'ollama' backend and by 'claude-code', which authenticates through the CLI's own subscription login. Leave empty and function generation stays disabled with a message, never a failed request."
+          "description": "API key for the cloud fnGenProvider. Sent as a Bearer token, except on 'anthropic', whose native API takes it as x-api-key. Ignored by the local 'ollama' backend and by 'claude-code', which authenticates through the CLI's own subscription login. Leave it empty and function generation stays off with a message."
         },
         "column80.cloudApiBase": {
           "type": "string",
@@ -517,7 +522,7 @@
         "column80.fnGenFallbackModel": {
           "type": "string",
           "default": "qwen2.5-coder:14b-instruct-q4_K_M",
-          "description": "Function-generation model for the 16gb-low-ram tier (dense, ~9GB VRAM, no carve needed)."
+          "description": "Function-generation model for the 16gb-low-ram tier (a dense model of about 9GB that fits on the GPU whole)."
         },
         "column80.hardwareTier": {
           "type": "string",
@@ -529,19 +534,19 @@
             "below-12gb"
           ],
           "default": "auto",
-          "description": "Hardware tier for model selection and the VRAM carve. 'auto' probes VRAM and RAM on activation; a tier id overrides the probe.",
+          "description": "Hardware tier: decides which models run and how they share GPU memory. 'auto' probes VRAM and RAM on activation; a tier id overrides the probe.",
           "enumDescriptions": [
             "Probe nvidia-smi and system RAM, pick the tier automatically.",
-            "24GB+ VRAM: both models fully GPU-resident (provisional, unvalidated).",
-            "16GB VRAM, 32GB+ RAM: 30b layer-capped at num_gpu=30 beside a fully resident FIM model (the reference config).",
-            "12-16GB VRAM or low RAM: dense 14b function generation, no carve needed.",
-            "Below 12GB or no GPU: FIM completion only, function generation disabled."
+            "24GB+ VRAM: both models run fully on the GPU (untested).",
+            "16GB VRAM, 32GB+ RAM: the 30B generation model, partly on the GPU, beside the tab completion model.",
+            "12-16GB VRAM or low RAM: a smaller 14B generation model.",
+            "Below 12GB or no GPU: tab completion only, function generation disabled."
           ]
         },
         "column80.maxTokens": {
           "type": "number",
           "default": 256,
-          "description": "Maximum tokens per completion (num_predict)."
+          "description": "Longest tab completion suggestion, in tokens."
         },
         "column80.temperature": {
           "type": "number",
@@ -552,13 +557,13 @@
           "type": "number",
           "default": 150,
           "minimum": 0,
-          "description": "Delay after the last keystroke before requesting a completion. 0 disables the debounce, so every keystroke issues a full extractor call and a model request: observable per keystroke, and expensive on a busy box. Negative values are not a faster 0 and the schema refuses them."
+          "description": "Delay after the last keystroke before requesting a completion. 0 turns the delay off, so every keystroke asks the language server and the model; that is expensive on a busy machine. Negative values are refused."
         },
         "column80.prefixChars": {
           "type": "number",
           "default": 3000,
           "minimum": 10,
-          "description": "Characters of context kept before the cursor. Below 10 the member-site gate can mis-read the typed partial, so the schema floors it there."
+          "description": "Characters of context kept before the cursor. The minimum is 10; fewer can cut off the member name you are typing."
         },
         "column80.suffixChars": {
           "type": "number",
@@ -569,56 +574,51 @@
           "type": "number",
           "default": 100,
           "minimum": 0,
-          "description": "Completions kept in the FIM cache. Set to 0 to disable caching entirely, so every keystroke goes to the model: slower, but it makes each keystroke's behaviour observable on its own rather than through whatever an earlier one cached."
+          "description": "Tab completion suggestions kept for reuse. 0 turns the cache off, so every keystroke asks the model, which is slower."
         },
         "column80.minGhostChars": {
           "type": "number",
           "default": 8,
           "minimum": 0,
-          "description": "Shortest ghost worth showing, in characters. JetBrains' full-line completion uses 8: a three-character suggestion costs a full review for almost nothing. Measured over 750 real sites here, the floor refuses 7 of 710 served ghosts (1.0%) and none of them matched what the developer went on to write. A ghost that ends on a block opener, which is what a signature completion looks like, is never refused on length. Set to 0 to show every ghost."
+          "description": "Shortest suggestion worth showing, in characters. JetBrains' full-line completion uses 8: a three-character suggestion costs a full review for almost nothing. A suggestion that ends on a block opener is never refused on length. Set to 0 to show every suggestion."
         },
         "column80.minGhostAlnum": {
           "type": "number",
           "default": 2,
           "minimum": 0,
-          "description": "Alphanumeric characters a ghost must carry to be shown. JetBrains' number, and the leg that refuses pure punctuation like `);`. Set to 0 to judge length alone."
+          "description": "Letters and digits a suggestion must carry to be shown, so pure punctuation like \");\" is never offered. JetBrains uses the same number. Set to 0 to judge length alone."
         },
         "column80.repairEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "When an accepted generation fails cargo check, let the function-generation model propose up to two gated repair rounds through the normal preview. Off: diagnostics are surfaced only."
-        },
-        "column80.checkOnFimAccept": {
-          "type": "boolean",
-          "default": true,
-          "description": "Run the compiler check after a FIM ghost is accepted, with the edit-site annotation and the gated repair. Off makes a Tab a Tab: nothing runs after an accept. Function generation keeps its own check."
+          "description": "Let the function-generation model repair compiler errors, up to two rounds through the normal preview, after an accepted generation and when you run Repair Function Body. Off: the errors are shown and nothing is repaired, and Repair Function Body does not run covering tests or compare the function with how the rest of the repo uses what it calls."
         },
         "column80.repairUsageWindows": {
           "type": "boolean",
           "default": false,
-          "description": "Inject real call sites of the members a failing function calls into its repair rounds. Off by default because it lost its measurement (session-v30/measure-p5.md): it scored no better than the control overall, nothing at all on the cases it was built for, and it cost the winning surface six passes and 2.6s per round."
+          "description": "Show the model how your code already calls what a failing function calls, during repair. Off by default: in testing it repaired no more functions and made each repair round about 2.6s slower."
         },
         "column80.compilerDirectedInjection": {
           "type": "boolean",
           "default": true,
-          "description": "Resolve the real API surface of the types your code names, from whichever language server you are running, and inject it into generation and repair rounds so the model calls methods that exist instead of inventing them. Missing imports are qualified in place. Rust, C#, Python, Go and TypeScript. Visible in the preview and always overridable. Off returns diagnostics-only repair."
+          "description": "Look up the real methods of the types your code names, through your language server, and show them to the model so it calls methods that exist. Applies to Generate Function Body and Repair Function Body in Rust, C#, Python, Go and TypeScript. Off: repair sees only the compiler errors."
         },
         "column80.fimAlternatives": {
           "type": "number",
           "default": 3,
           "minimum": 1,
           "maximum": 5,
-          "description": "Completions generated on a MANUAL inline-suggest trigger (Alt+\\). Cycle them with Alt+] / Alt+[. Automatic ghost text always generates one - the latency bar is not for sale. Extras sample at a floor temperature and dedupe, so you may see fewer than asked. The gesture waits for the SLOWEST run before showing anything, and on an ollama with num_parallel=1 (common for large models) the runs serialize - expect roughly this many times one generation."
+          "description": "Suggestions generated when you trigger inline suggestions by hand (Alt+\\). Cycle them with Alt+] and Alt+[. Typing always generates one, to stay fast. Duplicates are dropped, so you may see fewer. Nothing shows until the slowest one finishes, and if Ollama runs one request at a time, expect roughly this many times the wait."
         },
         "column80.fimMemberGate": {
           "type": "boolean",
           "default": true,
-          "description": "Suppress member-site ghost text whose identifier is not among the receiver's RESOLVED members (Rust, C#, Python, Go and TypeScript, and only when the member list is non-empty - untyped receivers and index-signature types are never gated). Turn off if it eats suggestions you wanted; the channel logs every drop."
+          "description": "Hide ghost text after a \".\" when the member it names does not exist on that type (Rust, C#, Python, Go and TypeScript, and only when the language server lists the type's members; untyped values and index-signature types are never filtered). Turn off if it hides suggestions you wanted; the output channel logs every one it hides."
         },
         "column80.logPrompts": {
           "type": "boolean",
           "default": false,
-          "description": "Debug: dump the full assembled prompt to the output channel on every function generation, repair round, AND FIM completion, between prompt-begin/prompt-end markers. Shows exactly what context the model was given, including the injected API surface, byte-for-byte. FIM fires per keystroke so this is very verbose; leave off for normal use."
+          "description": "Debug: write the full prompt to the output channel on every function generation, repair round and tab completion, between prompt-begin/prompt-end markers. Shows exactly what the model was given, including the type information Column 80 added. Tab completion asks on every keystroke, so this is very verbose; leave it off for normal use."
         },
         "column80.injectedContext": {
           "type": "string",
@@ -629,18 +629,18 @@
             "frontier"
           ],
           "default": "small",
-          "description": "How much of your own code the extension puts in front of the model when it generates a function. Before generating, it resolves the types your signature and comments name and injects their real shapes, which is what stops the model inventing method names. Pick the row that matches the model you are generating with: a bigger model has room for more of your code, a small local one does not. Moving this up widens four things at once - how many types are injected, how far each one is followed, how many types in total, and the byte budget they share - so a higher setting means a larger prompt, a slower first token, and more language-server lookups. It also widens the REPAIR prompt, which is the one that shows the model the API surface it got wrong. If you point the extension at a cloud model, this is the setting to raise. Rust and TypeScript feel all four; Go, Python and C# inject type signatures without following them, so there only the number of types and the byte budget move, and 'medium' gives them nothing 'small' does not - the extension says which numbers bound your language on its output channel every time it generates. What raising it is worth was measured once, on one corpus: 80 test-covered Rust functions against qwen3-coder:30b, 'small' against the pre-dial point, twice each. Correctness was flat inside the run-to-run noise, and generation was about 25% slower at the 95th percentile. That is one 30B on one codebase and it is the only reading anyone has; your model and your code are the ones that decide.",
+          "description": "How much of your code Column 80 shows the model when it generates or repairs a function. Match it to the model: small for a local 30B, frontier for Opus-class cloud models. Higher means a bigger prompt and a slower first answer. The output channel says what each generation included.",
           "enumDescriptions": [
-            "For a 30B-class local model. The install default, and the safe one: a small model can get WORSE when the prompt runs long.",
-            "For a 30B with room to spend - a bigger card, or a quantization that leaves headroom.",
+            "For a 30B-class local model. The default: a small model can do worse when the prompt runs long.",
+            "For a 30B with room to spend: a bigger card, or a quantization that leaves headroom.",
             "For a large local model, or a cheap cloud one.",
-            "For Opus and Fable class models. No local window to defend, so this injects as much of your code as the extension can resolve."
+            "For Opus and Fable class models. Shows the model as much of your code as Column 80 can look up."
           ]
         },
         "column80.dictation.enabled": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Dictate the next block: press the shortcut, say what the next line or small block does, press it again, and the FIM ghost is written from what was heard. Off stops the resident speech recogniser (whisper.cpp `base.en`, local, never cloud)."
+          "markdownDescription": "Dictation: press the shortcut, speak, press it again. On a code line Column 80 writes the code from what it heard. Inside a comment the words become the comment. In a markdown or plain text file the words go in as you said them. Off stops the speech recogniser, which runs on this machine and never in the cloud."
         },
         "column80.dictation.microphone": {
           "type": "string",
@@ -655,17 +655,17 @@
         "column80.dictation.partials": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Render what is being heard on the cursor line while you talk (a trailing-window decode every 300ms). Off shows only the recording pulse until you stop."
+          "markdownDescription": "Show what is being heard on the cursor line while you talk, updated every 300ms. Off shows only the recording pulse until you stop."
         },
         "column80.dictation.surfaces": {
           "type": "boolean",
-          "default": true,
-          "markdownDescription": "Resolve the type names you spoke through the language server and put their surfaces above the comment in the FIM prompt. Measured on 360 sites (session-v65): the comment alone landed 157 first lines, with surfaces 145; off costs nothing and saves a resolve per gesture."
+          "default": false,
+          "markdownDescription": "Look up the type names you spoke through the language server and show their definitions to the model above your comment. Off skips the lookup."
         },
         "column80.dictation.autoAccept": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Put the generated code straight into the file when it lands and drop the cursor to the next line, with nothing pressed. Off leaves it as a ghost for Tab or Escape."
+          "markdownDescription": "Put the generated code straight into the file when it lands and drop the cursor to the next line, with nothing pressed. Off leaves it as a suggestion for Tab or Escape."
         },
         "column80.dictation.shortcut": {
           "type": "string",

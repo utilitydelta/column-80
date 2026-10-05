@@ -417,7 +417,7 @@ test("rule 7: an edit that resolves false logs the failure, refuses `failed` on 
     const reason = failed.slice("[dictate] comment insert failed: ".length);
     assert.ok(reason.length > 0, "the failure names a reason");
     assert.ok(
-      statusMessages.some((m) => m === `Column 80: dictation stopped: ${reason}`),
+      statusMessages.some((m) => m === `Column 80: dictation stopped: ${reason}.`),
       `status bar: ${JSON.stringify(statusMessages)}; channel: ${dictateLines(lines)}`,
     );
     assert.equal(tightenCalls().length, 0, "the tighten ran after a declined edit");
@@ -436,7 +436,7 @@ test("rule 7: an edit that rejects logs the rejection's message, refuses `failed
     await sleep(60);
     const failed = lines.find((l) => l.startsWith("[dictate] comment insert failed: "));
     assert.ok(failed && failed.includes("the document is closed"), dictateLines(lines));
-    assert.ok(statusMessages.some((m) => m.startsWith("Column 80: dictation stopped: ") && m.includes("the document is closed")), JSON.stringify(statusMessages));
+    assert.ok(statusMessages.some((m) => m === "Column 80: dictation stopped on an error. The full message is in the output channel."), JSON.stringify(statusMessages));
     assert.equal(tightenCalls().length, 0);
     assert.equal(d.phase, "idle");
   } finally {
@@ -448,7 +448,7 @@ test("rule 7: an edit that rejects logs the rejection's message, refuses `failed
 // Rules 8 to 10: the hand-off
 // ---------------------------------------------------------------------------
 
-test("rules 8, 10: the tighten command runs once, with no arguments, after the insert's edit resolved, with its channel line already written", async () => {
+test("rules 8, 10: the tighten command runs once, with { source: 'dictation' }, after the insert's edit resolved, with its channel line already written", async () => {
   const { d, lines } = newRig();
   const trace = [];
   const editor = editorAt({ text: "//", line: 0, col: 2, editDelayMs: 40, trace });
@@ -465,7 +465,7 @@ test("rules 8, 10: the tighten command runs once, with no arguments, after the i
     assert.deepEqual(trace, ["insert", "edit-resolved", "tighten"], `${JSON.stringify(trace)}\n${dictateLines(lines)}`);
     const calls = tightenCalls();
     assert.equal(calls.length, 1, `tighten calls: ${calls.length}`);
-    assert.deepEqual(calls[0].args, [], "the tighten takes no arguments");
+    assert.deepEqual(calls[0].args, [{ source: "dictation" }], "the tighten takes one argument, { source: \"dictation\" }");
     assert.equal(lineAtInvocation, true, "`[dictate] tighten invoked` was not on the channel when the command ran");
     assert.equal(d.phase, "idle");
   } finally {
@@ -542,7 +542,7 @@ test("rule 11: after the hand-off the heard label shows and hides on its own wit
     await sleep(60);
     assert.equal(editor.edits.length, 1, `CONTROL: the insert happened on the visible editor\n${dictateLines(lines)}`);
     assert.ok(!lines.some((l) => l.startsWith("[dictate] action indicator failed")), `CONTROL: the indicator action ran to its end\n${dictateLines(lines)}`);
-    assert.equal(item.text, "$(mic) heard", `status bar after the transcript: ${JSON.stringify(item.calls)}`);
+    assert.equal(item.text, "$(mic) Column 80: heard", `status bar after the transcript: ${JSON.stringify(item.calls)}`);
     const shown = item.calls.length;
     await sleep(HEARD_LINGER_MS + 700);
     const hidden = item.calls.slice(shown).includes("hide") || !item.text.includes("heard");

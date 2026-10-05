@@ -135,9 +135,9 @@ const settledItems = (doc, cursor) =>
 async function atGestureSite(fn) {
   const doc = await open(spec, site.file);
   // Full pristine text, the probe.js withInsertion discipline: this drive
-  // COMMITS ghosts (Tab), and the product's accept path saves the buffer
-  // before its oracle check, so `files.revert` alone would restore to a
-  // disk state the drive itself just polluted. A committed half-open
+  // COMMITS ghosts (Tab), and any save during the drive (a generate accept
+  // saves before its check) leaves disk dirty, so `files.revert` alone
+  // would restore to a disk state the drive itself polluted. A committed half-open
   // composite literal then breaks the whole Go package for every later
   // suite (session-v23, measured).
   const pristine = doc.getText();

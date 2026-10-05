@@ -74,7 +74,7 @@ test("the disabled selection carries the honest message the vscode layer will su
   assert.strictEqual(sel.fnGenEnabled, false);
   assert.strictEqual(
     sel.message,
-    "Function generation is disabled: this GPU has 8192MB of VRAM and function generation needs at least 12288MB. FIM tab-completion still works."
+    "Function generation is disabled: this GPU has under 12GB of VRAM. Set column80.fnGenProvider to use a cloud model or Claude Code."
   );
 });
 

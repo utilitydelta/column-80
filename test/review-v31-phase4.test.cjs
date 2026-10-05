@@ -926,7 +926,10 @@ test("G2 the import proof proves the SYMBOL, so the survivor whose name is not i
   const res = PY.placementFor(src, "_is_port_available", {});
   assert.strictEqual(res.ok, false, "placement must refuse a symbol its own probe cannot import");
   assert.strictEqual(res.refusal.reason, "unresolvable-import");
-  assert.ok(res.refusal.detail.includes(line), `the refusal must name the LINE that failed: ${res.refusal.detail}`);
+  assert.ok(
+    res.refusal.detail.includes("cannot import _is_port_available from "),
+    `the refusal must name the import that failed: ${res.refusal.detail}`,
+  );
   assert.ok(res.refusal.detail.includes(VENV_PY), "and the interpreter that was asked");
 });
 

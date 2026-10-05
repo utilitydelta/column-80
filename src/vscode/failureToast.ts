@@ -14,10 +14,6 @@
  *  `../core/errorBound` and nothing else of ours. It must never import
  *  `fnGen.ts`, `firstRun.ts`, `tightenDocComment.ts` or anything that imports
  *  them.
- *
- *  Moved out of `src/vscode/fnGen.ts` byte for byte. Every sentence, every
- *  marker and every ordering rule below is as it was; a wording change smuggled
- *  in on a move is a change nobody reviewed.
  */
 import { HttpStatusError } from "../core/errorBound";
 import { firstLine, oneLineWithPointer } from "./toastText";
@@ -60,38 +56,44 @@ import { firstLine, oneLineWithPointer } from "./toastText";
  * sentence. A message that opens with one of these heads is a payload carrier,
  * and no service row may match inside it.
  */
-const TEST_REFUSAL_TOAST =
-  "Column 80: the model's reply contained no usable tests, so nothing was written - run the gesture again.";
-
 interface RejectToast {
   /** Distinctive substrings, any one of which identifies this failure. */
   readonly markers: readonly string[];
   /** Match with startsWith rather than includes. See the note above. */
   readonly anchored?: true;
-  readonly toast: string;
+  readonly toast: (voice: SurfaceVoice) => string;
+}
+
+/** The retry clause, capitalised to open a sentence. */
+function retryCapitalised(voice: SurfaceVoice): string {
+  return `${voice.retry.charAt(0).toUpperCase()}${voice.retry.slice(1)}`;
 }
 
 const SERVICE_REJECT_TOASTS: ReadonlyArray<RejectToast> = [
   {
     markers: ["generation truncated at num_predict"],
-    toast: "Column 80: the model's reply was cut off mid-function, so nothing was written - run the gesture again.",
+    toast: (v) => `Column 80: the model's reply was cut off mid-function, ${v.consequence}. ${retryCapitalised(v)}.`,
   },
   // The test-module refusal has a Rust and a non-Rust throw; one sentence
-  // covers both.
-  { markers: ["does not contain a test module", "test functions (no fenced block"], toast: TEST_REFUSAL_TOAST },
+  // covers both. Only test generation can throw it, so it names that command.
+  {
+    markers: ["does not contain a test module", "test functions (no fenced block"],
+    toast: (v) =>
+      `Column 80: the model's reply had no usable tests, ${v.consequence}. ` +
+      'Run "Column 80: Generate Tests (TDD)" again.',
+  },
   {
     markers: ["generation contains a code-fence line"],
-    toast:
-      "Column 80: the model wrapped its reply in markdown that cannot land in source code, so nothing was written - run the gesture again.",
+    toast: (v) => `Column 80: the model replied with markdown instead of code, ${v.consequence}. ${retryCapitalised(v)}.`,
   },
   {
     markers: ["generation does not contain the requested function"],
-    toast:
-      "Column 80: the model answered with something other than the requested function, so nothing was written - run the gesture again.",
+    toast: (v) =>
+      `Column 80: the model wrote something other than the requested function, ${v.consequence}. ${retryCapitalised(v)}.`,
   },
   {
     markers: ["generation was empty after postprocess"],
-    toast: "Column 80: the model's reply contained no usable code, so nothing was written - run the gesture again.",
+    toast: (v) => `Column 80: the model's reply had no usable code, ${v.consequence}. ${retryCapitalised(v)}.`,
   },
   {
     // THE SILENT SERVER, on every transport that can have one. Item 63 bought
@@ -119,8 +121,8 @@ const SERVICE_REJECT_TOASTS: ReadonlyArray<RejectToast> = [
       "Cloud: the stream ended before any terminal signal",
     ],
     anchored: true,
-    toast:
-      "Column 80: the model server went silent mid-reply, so nothing was written - check the server, then run the gesture again.",
+    toast: (v) =>
+      `Column 80: the model server stopped answering mid-reply, ${v.consequence}. Check the server, then ${v.retry}.`,
   },
 ];
 
@@ -154,10 +156,10 @@ const SERVICE_REJECT_TOASTS: ReadonlyArray<RejectToast> = [
  * session id degrades to a whole-prompt round and says so on the evidence line.
  * Giving it a sentence would invent a reachability it does not have.
  */
-const CLAUDE_CODE_SENTENCES: Readonly<Record<string, (message: string) => string>> = {
-  "logged-out": () =>
-    "Column 80: Claude Code is not logged in, so nothing was written - run `claude` in a terminal, " +
-    "then `/login`, and run the gesture again.",
+const CLAUDE_CODE_SENTENCES: Readonly<Record<string, (message: string, voice: SurfaceVoice) => string>> = {
+  "logged-out": (_m, v) =>
+    `Column 80: Claude Code is not logged in, ${v.consequence}. Run "claude" in a terminal, ` +
+    `then "/login", and ${v.retry}.`,
   // THE ONE EXCEPTION to "no interpolation on screen", and it is safe because
   // these two messages are product prose end to end: the only thing either
   // interpolates is a binary name or a working directory this extension's own
@@ -176,18 +178,16 @@ const CLAUDE_CODE_SENTENCES: Readonly<Record<string, (message: string) => string
   // The real remedies: PATH is re-resolved on every spawn, so putting `claude`
   // back is enough; the directory is created once, so only a rebuild of the
   // service restores it, and a window reload is how a user does that.
-  "binary-missing": (message) =>
-    oneLineWithPointer(`Column 80: ${message}`, "", " Put `claude` on PATH, then run the gesture again."),
-  "bad-cwd": (message) =>
-    oneLineWithPointer(`Column 80: ${message}`, "", " Reload the window, then run the gesture again."),
+  "binary-missing": (message, v) =>
+    oneLineWithPointer(`Column 80: ${message}`, "", ` Put "claude" on PATH, then ${v.retry}.`),
+  "bad-cwd": (message, v) => oneLineWithPointer(`Column 80: ${message}`, "", ` Reload the window, then ${v.retry}.`),
   // A spawn that failed for any reason other than the two above: EACCES, EPERM,
   // EMFILE. The backend never started, so it does NOT belong with the CLI-failed
   // family - a user whose binary is not executable should not read "the CLI
   // failed". It carries no cause, unlike its two siblings, because what it
   // interpolates is Node's own ErrnoException rather than product prose.
-  "spawn-failed": () =>
-    "Column 80: Claude Code could not start, so nothing was written - the full message is in the " +
-    "output channel.",
+  "spawn-failed": (_m, v) =>
+    `Column 80: Claude Code could not start, ${v.consequence}. The full message is in the output channel.`,
   // NO TIMING PROMISE, and the pointer is unconditional. This class is a
   // POSITIVE classification the product makes - it fires only on a rate-limit,
   // overloaded, quota or 429/529 match - so unlike S20's generic envelope a
@@ -197,12 +197,12 @@ const CLAUDE_CODE_SENTENCES: Readonly<Record<string, (message: string) => string
   // sites interpolate a diagnostic this sentence discards and the service logs
   // whole, so the pointer is kept by construction rather than by luck, which is
   // why it can be unconditional where `oneLineWithPointer`'s must be earned.
-  "serving-failure": () =>
-    "Column 80: Claude Code is rate limited or its provider is having trouble, so nothing was " +
-    "written - wait, then run the gesture again. The full message is in the output channel.",
-  timeout: () =>
-    "Column 80: Claude Code did not answer in time, so nothing was written - run the gesture " +
-    "again, or check that the CLI still responds.",
+  "serving-failure": (_m, v) =>
+    `Column 80: Claude Code is rate limited or its provider is having trouble, ${v.consequence}. ` +
+    `Wait, then ${v.retry}. The full message is in the output channel.`,
+  timeout: (_m, v) =>
+    `Column 80: Claude Code did not answer in time, ${v.consequence}. ` +
+    `${retryCapitalised(v)}, or check that "claude" still responds in a terminal.`,
   // FOUR REASONS, ONE SENTENCE, because the next action is the same for all
   // four: read the channel. `exit` is a non-zero exit, `cli-error` a declared
   // failure, `bad-json` unparseable output and `agentic` a reply that is an
@@ -210,20 +210,20 @@ const CLAUDE_CODE_SENTENCES: Readonly<Record<string, (message: string) => string
   // remedy, and item 66's rule is one sentence per thing the USER must do.
   // None of their raw text reaches here: every one of them leads with CLI
   // output.
-  exit: () => CLI_FAILED_TOAST,
-  "cli-error": () => CLI_FAILED_TOAST,
-  "bad-json": () => CLI_FAILED_TOAST,
-  agentic: () => CLI_FAILED_TOAST,
+  exit: (_m, v) => cliFailedToast(v),
+  "cli-error": (_m, v) => cliFailedToast(v),
+  "bad-json": (_m, v) => cliFailedToast(v),
+  agentic: (_m, v) => cliFailedToast(v),
 };
 
-const CLI_FAILED_TOAST =
-  "Column 80: the Claude Code CLI failed, so nothing was written - the full message is in the " +
-  "output channel.";
+function cliFailedToast(voice: SurfaceVoice): string {
+  return `Column 80: the Claude Code CLI failed, ${voice.consequence}. The full message is in the output channel.`;
+}
 
 /** What a SURFACE says happened, and how the user retries there.
  *
- *  Every status sentence below has the shape
- *  `Column 80: <CAUSE>, so nothing was written - <REMEDY>. <pointer>`, and the
+ *  Every status sentence has the shape
+ *  `Column 80: <CAUSE>, <CONSEQUENCE>. <REMEDY>. <pointer>`, and the
  *  two halves are not equally portable. The CAUSE is what the server did, so it
  *  is true wherever the throw lands. The consequence and the remedy are about
  *  the gesture, and on two of the three surfaces the generation gesture's words
@@ -248,20 +248,17 @@ export interface SurfaceVoice {
   readonly retry: string;
 }
 
-/** The generation gestures, and the DEFAULT everywhere. Every caller that does
- *  not name a surface draws exactly the sentences it drew before the split. */
+/** The generation commands, and the default for any caller that names no surface. */
 export const GENERATION_VOICE: SurfaceVoice = {
   consequence: "so nothing was written",
-  retry: "run the gesture again",
+  retry: "try again",
 };
 
-/** The tighten gesture's model round only supplies backticked type names, so a
- *  refused round costs the names and nothing else. This is the clause the
- *  surface's own unclassified sentence has always used, kept rather than
- *  invented. */
+/** The tighten command's model round only marks identifiers in backticks, so a
+ *  refused round costs the marking. Whether a re-wrap follows depends on the comment. */
 export const TIGHTEN_VOICE: SurfaceVoice = {
-  consequence: "so no type names were offered",
-  retry: "run the gesture again",
+  consequence: "so identifiers were not marked",
+  retry: "try again",
 };
 
 /** The download. Its retry names the command the product's own "fn-gen is
@@ -298,10 +295,10 @@ function httpStatusSentence(transport: string, status: number, voice: SurfaceVoi
     // something in front of it wants auth, and that is the user's own
     // deployment.
     return transport === "ollama"
-      ? `Column 80: the local model server refused the request as unauthorised, ${voice.consequence} - ` +
-          "check the server's own authentication. The full message is in the output channel."
-      : `Column 80: the model provider refused the API key, ${voice.consequence} - check ` +
-          `\`column80.cloudApiKey\`, then ${voice.retry}. The full message is in the output channel.`;
+      ? `Column 80: the model server refused the request as unauthorised, ${voice.consequence}. ` +
+          "Check the server's authentication. The full message is in the output channel."
+      : `Column 80: the model provider refused the API key, ${voice.consequence}. Check ` +
+          `column80.cloudApiKey, then ${voice.retry}. The full message is in the output channel.`;
   }
   if (status === 429) {
     // The pointer is not decoration here: the body separates a per-minute rate
@@ -311,8 +308,8 @@ function httpStatusSentence(transport: string, status: number, voice: SurfaceVoi
       // "this key" was wrong on one arm. 401/403 splits on transport because
       // the remedy differs; this one does not need a split, it needed a word
       // that is true everywhere - the local backend has no key to rate limit.
-      `Column 80: the model provider is rate limiting these requests, ${voice.consequence} - ` +
-      `wait, then ${voice.retry}. The full message is in the output channel.`
+      `Column 80: the model provider is rate limiting these requests, ${voice.consequence}. ` +
+      `Wait, then ${voice.retry}. The full message is in the output channel.`
     );
   }
   // THE WHOLE 5xx RANGE, not four enumerated codes. The first cut listed 500,
@@ -327,7 +324,7 @@ function httpStatusSentence(transport: string, status: number, voice: SurfaceVoi
     // authentication is not something a gesture re-run fixes. A voice supplies
     // words where the sentence needs them, not everywhere it could.
     return (
-      `Column 80: the model provider is having trouble, ${voice.consequence} - try again ` +
+      `Column 80: the model provider is having trouble, ${voice.consequence}. Try again ` +
       "shortly. The full message is in the output channel."
     );
   }
@@ -360,7 +357,7 @@ function httpStatusSentence(transport: string, status: number, voice: SurfaceVoi
  *  Defensive about the shape because the thing being classified is a caught
  *  `unknown`: a non-Error, a null, or a plain object wearing the right `name`
  *  must not reach the map or crash the translator. */
-function translateStructural(err: unknown): string | undefined {
+function translateStructural(err: unknown, voice: SurfaceVoice): string | undefined {
   if (!(err instanceof Error) || err.name !== "ClaudeCodeError") {
     return undefined;
   }
@@ -379,7 +376,7 @@ function translateStructural(err: unknown): string | undefined {
   if (!Object.prototype.hasOwnProperty.call(CLAUDE_CODE_SENTENCES, reason)) {
     return undefined;
   }
-  return CLAUDE_CODE_SENTENCES[reason](err.message);
+  return CLAUDE_CODE_SENTENCES[reason](err.message, voice);
 }
 
 /** The second case of the same pass: an HTTP status, from the transport that
@@ -429,16 +426,14 @@ const PAYLOAD_CARRIERS: readonly string[] = [
  *  else. Matches on the error MESSAGE (String(err) would prepend "Error: ").
  *
  *  `voice` is the SURFACE's consequence clause, and it defaults to the
- *  generation gestures' so every caller that does not name a surface gets the
- *  sentence it got before the split, byte for byte. Only the HTTP status
- *  sentences read it today; the structural and marker rows are one wording per
- *  throw and stay that way. */
+ *  generation gestures'. Every row reads it, so a surface that carries on after
+ *  a failed model round never says "nothing was written". */
 export function translateServiceReject(err: unknown, voice: SurfaceVoice = GENERATION_VOICE): string | undefined {
   // STRUCTURAL FIRST, before any text is looked at. A typed failure knows what
   // it is; every pass below is guessing from a string, and the backend this
   // serves leads its strings with text the CLI chose. Only ever narrows: an
   // unrecognised reason returns undefined and falls straight through.
-  const structural = translateStructural(err) ?? httpStatusToast(err, voice);
+  const structural = translateStructural(err, voice) ?? httpStatusToast(err, voice);
   if (structural !== undefined) {
     return structural;
   }
@@ -453,7 +448,7 @@ export function translateServiceReject(err: unknown, voice: SurfaceVoice = GENER
     (row) => row.anchored === true && row.markers.some((m) => text.startsWith(m)),
   );
   if (anchored !== undefined) {
-    return anchored.toast;
+    return anchored.toast(voice);
   }
   // ANCHORED FIRST, then the payload guard, then the substring rows. "This
   // message BEGINS with the marker" is a stronger claim than "it contains the
@@ -468,7 +463,7 @@ export function translateServiceReject(err: unknown, voice: SurfaceVoice = GENER
   // keep it out of.
   return SERVICE_REJECT_TOASTS.find(
     (row) => row.anchored !== true && row.markers.some((m) => text.includes(m)),
-  )?.toast;
+  )?.toast(voice);
 }
 
 /** What a gesture catch-all toasts: a known reject gets its crafted sentence;
@@ -479,7 +474,7 @@ export function translateServiceReject(err: unknown, voice: SurfaceVoice = GENER
  *  The unknown branch reads err.message for the same reason translateServiceReject
  *  does: String(err) prepends "Error: ", which is the internal jargon this whole
  *  table exists to keep out of a toast. An error whose message is empty gets the
- *  bare sentence rather than a dangling "failed - Error." */
+ *  bare sentence rather than a dangling "failed: Error." */
 export function generationFailedToast(err: unknown, gesture: string): string {
   const translated = translateServiceReject(err);
   if (translated !== undefined) return translated;
@@ -488,5 +483,5 @@ export function generationFailedToast(err: unknown, gesture: string): string {
     .trim();
   return detail === ""
     ? `Column 80: ${gesture} failed. The full message is in the output channel.`
-    : `Column 80: ${gesture} failed - ${detail}. The full message is in the output channel.`;
+    : `Column 80: ${gesture} failed: ${detail}. The full message is in the output channel.`;
 }

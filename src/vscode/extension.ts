@@ -298,7 +298,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("column80.dumpCompletionItems", async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor === undefined) {
-        output.appendLine("[diag] no active editor");
+        void vscode.window.showWarningMessage("Column 80: open a file first.");
         return;
       }
       const pos = editor.selection.active;
@@ -309,7 +309,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const items = list?.items ?? [];
         output.appendLine(
           `[diag] ${editor.document.languageId} at ${pos.line}:${pos.character}` +
-            ` — ${items.length} items, incomplete=${(list as { isIncomplete?: boolean })?.isIncomplete}`,
+            `: ${items.length} items, incomplete=${(list as { isIncomplete?: boolean })?.isIncomplete}`,
         );
         for (const item of items.slice(0, 25)) {
           const label = typeof item.label === "string" ? item.label : item.label.label;
@@ -337,6 +337,7 @@ export function activate(context: vscode.ExtensionContext): void {
         output.show(true);
       } catch (err) {
         output.appendLine(`[diag] completion dump failed: ${String(err)}`);
+        output.show(true);
       }
     }),
     vscode.commands.registerCommand("column80.toggle", async () => {
@@ -368,26 +369,35 @@ export function activate(context: vscode.ExtensionContext): void {
         output.appendLine(
           `[fim] toggle failed: could not write 'enabled' at ${vscode.ConfigurationTarget[target]}: ${String(err)}`,
         );
+        void vscode.window.showWarningMessage(
+          "Column 80: could not change tab completion. The full message is in the output channel.",
+        );
         return;
       }
       // Log the effective value after the write, not the intent before it.
       const effective = vscode.workspace
         .getConfiguration("column80")
         .get<boolean>("enabled", true);
-      if (effective === next) {
-        output.appendLine(
-          `[fim] autocomplete ${effective ? "enabled" : "disabled"} (${vscode.ConfigurationTarget[target]})`,
-        );
-      } else {
+      if (effective !== next) {
         output.appendLine(
           `[fim] toggle wrote ${next} at ${vscode.ConfigurationTarget[target]} but effective value is ${effective} (overridden in another scope)`,
         );
+        void vscode.window.showWarningMessage(
+          "Column 80: could not change tab completion, because a workspace or folder setting overrides it. Change column80.enabled there.",
+        );
+        return;
       }
+      output.appendLine(
+        `[fim] autocomplete ${effective ? "enabled" : "disabled"} (${vscode.ConfigurationTarget[target]})`,
+      );
       // Enabling from off is only half the story: with no server or no model,
       // the setting is true but no ghost ever appears. Check readiness now and
-      // offer the fix, so "enabled but silent" is never a mystery.
-      if (effective === true && next === true) {
-        await warnIfFimNotReady(output);
+      // offer the fix, so "enabled but silent" is never a mystery. One press,
+      // one message: a readiness warning replaces the "on." status bar, which
+      // would read as success next to it.
+      const warned = next ? await warnIfFimNotReady(output) : false;
+      if (!warned) {
+        vscode.window.setStatusBarMessage(`Column 80: tab completion ${next ? "on" : "off"}.`, 3000);
       }
     }),
     { dispose: () => service.dispose() },
@@ -424,31 +434,32 @@ async function fimReadiness(list: typeof listModels): Promise<FimIssue | null> {
  *  ghost text appear and offer the fix for whichever is missing. Server down →
  *  the same "Start ollama serve" gesture the first-run and generate paths use;
  *  server up but the FIM model absent → point at the ratified download. All
- *  quiet when everything is ready. */
+ *  quiet when everything is ready. Returns whether it warned. */
 export async function warnIfFimNotReady(
   output: vscode.OutputChannel,
   list: typeof listModels = listModels,
   ollamaCheck: ProbeCommandFn = probeCommandRunner(DEFAULT_PROBE_TIMEOUT_MS),
-): Promise<void> {
+): Promise<boolean> {
   const issue = await fimReadiness(list);
   if (issue === null) {
-    return;
+    return false;
   }
   if (issue.kind === "server-down") {
     output.appendLine("[fim] enabled but server unreachable; offering start");
     const choice = await vscode.window.showWarningMessage(
-      "Column 80: FIM autocomplete is on, but the Ollama server isn't running — no ghost text will appear until it is.",
+      "Column 80: tab completion is on, but the Ollama server is not answering, so no suggestions appear until it does.",
       "Start ollama serve",
     );
     if (choice === "Start ollama serve") {
       await startOllamaTerminal(output, ollamaCheck);
     }
-    return;
+    return true;
   }
   output.appendLine(`[fim] enabled but model ${issue.model} not installed; pointing at download`);
   void vscode.window.showInformationMessage(
-    `Column 80: FIM autocomplete is on, but its model (${issue.model}) isn't installed. Run "Column 80: Select Hardware Tier" to download it.`,
+    `Column 80: tab completion is on, but its model (${issue.model}) is not installed. Run "Column 80: Select Hardware Tier" to download it.`,
   );
+  return true;
 }
 
 /** The toggle press while autocomplete is ALREADY enabled. When it is working,
@@ -469,20 +480,20 @@ export async function resolveToggleWhileEnabled(
   if (issue.kind === "server-down") {
     output.appendLine("[fim] toggled while on-but-server-down; offering start or disable");
     const choice = await vscode.window.showWarningMessage(
-      "Column 80: FIM autocomplete is on, but the Ollama server isn't running — no ghost text appears. Start the server, or turn autocomplete off?",
+      "Column 80: tab completion is on, but the Ollama server is not answering, so no suggestions appear. Start the server, or turn tab completion off?",
       "Start ollama serve",
-      "Disable autocomplete",
+      "Turn off tab completion",
     );
     if (choice === "Start ollama serve") {
       await startOllamaTerminal(output, ollamaCheck);
       return "leave-enabled";
     }
-    return choice === "Disable autocomplete" ? "disable" : "leave-enabled";
+    return choice === "Turn off tab completion" ? "disable" : "leave-enabled";
   }
   output.appendLine(`[fim] toggled while on-but-model-${issue.model}-missing; offering disable`);
   const choice = await vscode.window.showWarningMessage(
-    `Column 80: FIM autocomplete is on, but its model (${issue.model}) isn't installed — no ghost text appears. Run "Column 80: Select Hardware Tier" to download it, or turn autocomplete off?`,
-    "Disable autocomplete",
+    `Column 80: tab completion is on, but its model (${issue.model}) is not installed, so no suggestions appear. Run "Column 80: Select Hardware Tier" to download it, or turn tab completion off?`,
+    "Turn off tab completion",
   );
-  return choice === "Disable autocomplete" ? "disable" : "leave-enabled";
+  return choice === "Turn off tab completion" ? "disable" : "leave-enabled";
 }

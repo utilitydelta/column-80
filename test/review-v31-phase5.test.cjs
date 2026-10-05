@@ -592,9 +592,8 @@ test("VERIFIED: a test project with no ProjectReference back is not a candidate,
   );
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.refusal.reason, "no-test-project");
-  assert.match(r.refusal.detail, /IsTestProject/);
-  assert.match(r.refusal.detail, /Microsoft\.NET\.Test\.Sdk/);
-  assert.match(r.refusal.detail, /ProjectReference/);
+  assert.match(r.refusal.detail, /no test project references .*Create a test project named .*\.Tests that references it/);
+  // What it looked for moved to the [tdd] channel line in session-v77 (M21).
   assert.match(r.refusal.detail, /Src\.Tests/);
 });
 
@@ -612,7 +611,7 @@ test("NIT: an MSBuild variable in the ProjectReference path refuses, and tells t
   assert.strictEqual(r.refusal.reason, "no-test-project");
   assert.doesNotMatch(
     r.refusal.detail,
-    /create a `Src\.Tests` project yourself/,
+    /Create a `Src\.Tests` project/,
     "the detail sends the human to create a test project that is right there",
   );
 });
@@ -826,7 +825,7 @@ test("VERIFIED: every `not-exported` detail on the corpus names a fix the human 
   }
   assert.ok(details.size > 0, "not-exported should fire on a service codebase");
   for (const detail of details) {
-    assert.match(detail, /Make it `public`/, detail);
+    assert.match(detail, /Make it "public"/, detail);
   }
 });
 
@@ -887,7 +886,7 @@ test("NIT: `protected internal static` is refused even when internals ARE visibl
   // catches this one. Over-refusal, the safe direction, and rare.
   const v = classifyCsTestability("protected internal static int W(int n)", "/// doc", { internalsVisible: true });
   assert.strictEqual(v.reason, "not-exported");
-  assert.match(v.detail, /Make it `public`/);
+  assert.match(v.detail, /Make it "public"/);
 });
 
 // ===========================================================================

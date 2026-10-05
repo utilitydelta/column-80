@@ -426,7 +426,7 @@ export class GoOracle implements CompilerOracle {
   }
 
   describeNotCovered(_crateRoot: string, filePath: string): string {
-    return `go test -c does not load ${filePath} (build-tag excluded, \`_\`-prefixed, or an OS/arch suffix that does not match this platform); the check cannot see it`;
+    return `${filePath} is not part of the Go build on this platform (a build tag, a leading "_", or an OS/arch suffix excludes it), so it was not checked`;
   }
 
   describeMissingRoot(filePath: string): string | undefined {
@@ -436,16 +436,16 @@ export class GoOracle implements CompilerOracle {
     }
     const source = this.workspaceSource(moduleRoot);
     if (source !== undefined) {
-      return `workspace mode, not supported yet (${source} governs this module's resolution)`;
+      return `Go workspace mode, not supported yet (${source} is in use)`;
     }
     return undefined;
   }
 
   describeCheckFailure(exitCode: number, evidence?: string): string {
     if (exitCode < 0) {
-      return `go could not be spawned${evidence ? `: ${evidence}` : ""}`;
+      return `could not start go${evidence ? `: ${evidence}` : ""}. Is Go installed and on PATH?`;
     }
-    return `go test -c failed with nothing parseable (exit ${exitCode})${evidence ? `: ${evidence}` : ""}`;
+    return `the Go build failed with no error to show${evidence ? `: ${evidence}` : "; see the output channel"}`;
   }
 
   private nearestGoMod(filePath: string): string | undefined {

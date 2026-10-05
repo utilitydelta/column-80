@@ -280,7 +280,7 @@ export function registerCriticize(
         }
         log(`${critiqueLine(`failed: ${String(err)}`)}`);
         void vscode.window.showWarningMessage(
-          `Column 80: the criticize gesture failed (${firstLine(String(err))}); nothing was changed. The full message is in the output channel.`,
+          `Column 80: Criticize Function failed (${firstLine(err instanceof Error ? err.message : String(err))}). Nothing was changed; the full message is in the output channel.`,
         );
       }
     }),
@@ -381,7 +381,7 @@ async function runCriticize(
   );
   if (unit === undefined) {
     log(refusalLine(sliceRefusalReason(resolved.symbolName)));
-    void vscode.window.showWarningMessage(NO_FUNCTION_TOAST);
+    void vscode.window.showWarningMessage(`Column 80: Criticize Function could not read ${resolved.symbolName}, so nothing was checked.`);
     return;
   }
 
@@ -444,7 +444,8 @@ async function runCriticize(
 
   // 7. Render, and reveal.
   output.appendLine("");
-  if (document.version !== scoredAtVersion) {
+  const stale = document.version !== scoredAtVersion;
+  if (stale) {
     log(staleEvidenceLine(scoredAtVersion, document.version));
     output.appendLine(staleCardLine(card.name));
     output.appendLine("");
@@ -454,7 +455,13 @@ async function runCriticize(
   const enriched: Scorecard = { ...judged.card, rows: explained };
   output.appendLine(renderScorecard(cardInDocumentLines(enriched, view), policy));
   output.show(true);
-  void vscode.window.showInformationMessage(criticizeToast(card.name, summary));
+  // A stale card's proposal is always discarded below, so its toast must not
+  // read as a result that comments will follow.
+  void vscode.window.showInformationMessage(
+    stale
+      ? `Column 80: ${card.name} changed while Criticize Function was reading it, so no comments were offered. Run Criticize Function again.`
+      : criticizeToast(card.name, summary),
+  );
 
   // 8. Propose, which the phase contract numbers 9 because it counts the slice
   //    as a step of its own. THE CARD ABOVE IS UNCHANGED BY THIS: everything
@@ -610,7 +617,7 @@ async function withHonesty(
   }
 
   const controller = new AbortController();
-  const claim = wiring.inFlight?.()?.begin("Judging a function's honesty", controller);
+  const claim = wiring.inFlight?.()?.begin("Criticizing a function", controller);
   // A CANCELLED ROUND STILL HAS TO RENDER FOUR ROWS, AND STILL HAS TO STOP THE
   // WALK. `judgeHonesty` swallows every transport failure into a `blind`
   // outcome by contract, because four of the fourteen rows depend on it and a
@@ -755,7 +762,7 @@ async function proposeInjection(
       document,
       span: { start: region.start, end: region.end },
       versionAtResolve,
-      title: proposalTitle(card.name),
+      title: proposalTitle(card.name, plan.planted),
       text: plan.text,
       service: outcomes,
       // THE NOUN, because the shared discard sentence is fn-gen's otherwise.
@@ -784,8 +791,8 @@ async function proposeInjection(
     log(critiqueLine(`the proposal failed: ${String(err)}`));
     void vscode.window.showWarningMessage(
       accepted
-        ? `Column 80: the rubric comments landed, but the gesture failed afterwards (${firstLine(String(err))}). The full message is in the output channel.`
-        : `Column 80: the criticism could not be proposed (${firstLine(String(err))}); nothing was changed. The full message is in the output channel.`,
+        ? `Column 80: the Criticize Function comments were applied, then something failed (${firstLine(err instanceof Error ? err.message : String(err))}). The full message is in the output channel.`
+        : `Column 80: Criticize Function could not show its comments (${firstLine(err instanceof Error ? err.message : String(err))}). Nothing was changed; the full message is in the output channel.`,
     );
   }
 }

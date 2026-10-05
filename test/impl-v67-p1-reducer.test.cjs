@@ -193,7 +193,9 @@ test("a comment-site gesture's heard sentence is never carried: the second gestu
 
 // ---- refusalFor: six checks, ruled order, inComment absent
 
-const ORDER = ["remote", "binary-missing", "model-missing", "server-down", "not-served", "no-comment-row"];
+// no-comment-row before not-served (session-v77 phase 6, review L1).
+// session-v77 phase 7 (Amendment 4, A2): the language refusals precede the machine checks.
+const ORDER = ["remote", "no-comment-row", "not-served", "binary-missing", "model-missing", "server-down"];
 const FAILING = {
   remote: { remote: true },
   "binary-missing": { binaryPresent: false },
@@ -218,6 +220,11 @@ test("refusalFor: peeling the failures off one by one walks the ruled order and 
       let ready = { inComment };
       for (const kind of ORDER.slice(i)) ready = { ...ready, ...FAILING[kind] };
       const out = reduce(IDLE, press({ ready }));
+      // A comment site skips the served check (session-v77 R8), so not-served falls through to the next.
+      if (inComment && ORDER[i] === "not-served") {
+        assert.strictEqual(out.actions[0].kind, ORDER[i + 1], `inComment=${inComment} from ${ORDER[i]}`);
+        continue;
+      }
       assert.strictEqual(out.actions[0].kind, ORDER[i], `inComment=${inComment} from ${ORDER[i]}`);
     }
     const out = reduce(IDLE, press({ ready: { inComment } }));
@@ -235,9 +242,12 @@ test("refusalFor: a truthy non-boolean inComment marks the site, a falsy one doe
   }
 });
 
-test("refusalFor: a press with a null readiness refuses binary-missing, not in-comment", () => {
-  const out = reduce(IDLE, { ...press(), ready: null });
+test("refusalFor: a press with a null readiness refuses no-comment-row, not in-comment", () => {
+  // session-v77 phase 7 (Amendment 4, A2): the language checks come first, and a null
+  // readiness reads as a language with no comment syntax.
+  const event = press();
+  const out = reduce(IDLE, { ...event, ready: null });
   assert.strictEqual(out.actions[0].type, "refuse");
-  assert.strictEqual(out.actions[0].kind, "binary-missing");
-  assert.strictEqual(out.actions[0].detail, "unknown");
+  assert.strictEqual(out.actions[0].kind, "no-comment-row");
+  assert.strictEqual(out.actions[0].detail, event.languageId);
 });

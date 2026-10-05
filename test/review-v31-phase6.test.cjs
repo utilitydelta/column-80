@@ -1674,7 +1674,7 @@ gtest("write path (accept): nothing warns the human that the file they are about
     return (actions || []).find((a) => ACCEPT_RE.test(labelOf(a)));
   };
   const r = await driveGen(GO, { answer });
-  const warned = r.texts.some((t) => /already exists|overwrit|replac|clobber/i.test(t));
+  const warned = r.texts.some((t) => /already exists|appeared while|overwrit|replac|clobber/i.test(t));
   assert.ok(warned, `no message mentions that the target already existed. MESSAGES: ${JSON.stringify(r.texts)}`);
   clearGoTest();
 });

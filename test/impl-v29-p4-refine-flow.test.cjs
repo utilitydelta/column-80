@@ -322,7 +322,11 @@ test(
     const { prompts, out, messages } = await drive({ extractor: refExtractor(() => []) });
     assert.equal(prompts.length, 0, `no round may be spent on nothing; lines: ${JSON.stringify(out.lines)}`);
     assert.ok(line(out, "no usage anywhere for"), `lines: ${JSON.stringify(out.lines)}`);
-    assert.ok(messages.some((m) => m.kind === "info"), "a manual gesture that did nothing says so");
+    // A nothing-to-do end is a status bar line (R19), as its siblings are.
+    assert.ok(
+      messages.some((m) => m.kind === "status" && /nothing to compare it with/.test(m.message)),
+      `a manual gesture that did nothing says so: ${JSON.stringify(messages)}`,
+    );
   },
 );
 

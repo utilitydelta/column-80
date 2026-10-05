@@ -446,7 +446,7 @@ test("V4 the cap: one press of Repair Function can reach at most two model calls
   // returned "not-run" - which every pre-model return does.
   const guard = oracleSurface.indexOf('ctx.manualRefine === true && action.why === "clean" && session.roundsUsed === 0');
   assert.ok(guard > 0, "the guard must still read roundsUsed === 0");
-  const block = oracleSurface.slice(guard, guard + 1400);
+  const block = oracleSurface.slice(guard, guard + 1700);
   assert.ok(block.includes('if (leg === "not-run") {'), "the refine runs only when the leg did nothing");
   const leg = testLegSource();
   const beforeFirstNext = leg.slice(0, leg.indexOf("let action = session.next("));
@@ -482,11 +482,14 @@ test("V6 the re-run passes the SAME RunGroup[] object the first run used", () =>
 
 test("V7 the wording never claims the function is correct, and never softens a still-red outcome", () => {
   const leg = testLegSource();
-  assert.ok(leg.includes("which is not a statement that the function is right"));
+  // The toast states the passing count and stops; the "not a
+  // statement that the function is right" caveat lives on the channel line.
+  assert.ok(leg.includes("this says nothing about whether the function is right"), "the caveat stays on the channel");
   assert.ok(!/is correct|now correct|verified correct/.test(leg));
-  assert.ok(leg.includes("still fail after the repair rounds"), "the still-red toast names the count and does not soften it");
-  assert.ok(leg.includes("worseThanBeforeMessage"), "the WORSE sentence is used verbatim");
-  assert.ok(leg.includes("showWarningMessage(oneLineWithPointer(`Column 80: ${broke}`))"), "and it is raised at warning severity");
+  assert.ok(leg.includes('still ${stillRed === 1 ? "fails" : "fail"} after the repair rounds'), "the still-red toast names the count and does not soften it");
+  assert.ok(leg.includes("worseThanBeforeMessage"), "the broke sentence is used verbatim");
+  assert.ok(leg.includes("showWarningMessage(oneLineWithPointer(`Column 80: ${broke}`))"), "and it is raised at warning severity when it ends the press alone");
+  assert.ok(leg.includes("showWarningMessage(foldBroke(passed))"), "folded into the final toast, it raises that toast to warning severity");
 });
 
 test("V8 runDelta refuses to blame the repair for a case only one run saw", () => {

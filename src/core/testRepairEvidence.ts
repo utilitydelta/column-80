@@ -187,17 +187,17 @@ export function runDelta(before: TestOracleResult | undefined, after: TestOracle
   return { fixed, broken, stillRed, allGreen: afterRan && broken.length === 0 && stillRed.length === 0 };
 }
 
-/** The sentence for a repair that made things WORSE, or undefined when it did
- *  not. Said in those words, because the alternative is a developer discovering
- *  it by reading their own test output afterwards. */
+/** The sentence for a repair that broke tests that passed before, or undefined
+ *  when it did not. Said plainly, because the alternative is a developer
+ *  discovering it by reading their own test output afterwards. */
 export function worseThanBeforeMessage(delta: RunDelta, symbolName: string): string | undefined {
   if (delta.broken.length === 0) {
     return undefined;
   }
   const n = delta.broken.length;
-  const fixedPart = delta.fixed.length > 0 ? ` It did fix ${delta.fixed.length}.` : "";
+  const fixedPart = delta.fixed.length > 0 ? ` It fixed ${delta.fixed.length}.` : "";
   return (
-    `the repair of ${symbolName} made things WORSE: ${n} test${n === 1 ? "" : "s"} that passed before now fail ` +
+    `the repair of ${symbolName} broke ${n} test${n === 1 ? "" : "s"} that passed before ` +
     `(${delta.broken.slice(0, 5).join(", ")}${n > 5 ? ", ..." : ""}).${fixedPart}`
   );
 }

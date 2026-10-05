@@ -405,12 +405,12 @@ const undefinedBody = (name) => `export function pick(): Leaf[] {\n  return ${na
 const GIVE_UP_SINGLE =
   "Column 80: repair stopped with 1 error still in pick. First: TS2304: Cannot find name 'missingIdentifierTwo'.";
 const REFINE_SINGLE =
-  "Column 80: the refine of pick introduced 1 error that were not there before. " +
-  "First: TS2304: Cannot find name 'missingIdentifier'.. " +
-  "Undo it with the editor's own undo (the build was clean before this change).";
+  "Column 80: the accepted change to pick introduced 1 error that was not there before. " +
+  "First: TS2304: Cannot find name 'missingIdentifier'. " +
+  "Undo takes the change back.";
 
 /** The clause C4 says the refine toast must still end with. */
-const UNDO_CLAUSE = "Undo it with the editor's own undo (the build was clean before this change).";
+const UNDO_CLAUSE = "Undo takes the change back.";
 
 function makeWorkspace(initial) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "blind-v58-p2-"));

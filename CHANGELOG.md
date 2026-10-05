@@ -1,5 +1,42 @@
 # Changelog
 
+## 3.8.0
+
+**A Tab is a Tab.** Accepting a ghost, typed or dictated, no longer saves the file, runs the
+compiler check or starts a repair. If you want a repair, you ask for one.
+
+- **Repair Function Body is the trigger.** Run it when you want the check and repair on the
+  function or type at the cursor. A generated body is still checked after you accept it.
+- **A dictated declaration lands without a body.** The doc comment and the head land as before; run
+  Generate Function Body to write the body. It used to arrive through the post-accept repair.
+- **`column80.checkOnFimAccept` is gone.** There is nothing left for it to turn off, and an existing
+  value is ignored.
+- **Messages read as plain language.** Toasts, prompts and status text across the extension were
+  rewritten to say what happened and what to do, not how the internals got there.
+- **A proposed import shows once, in its diff tab.** When repair proposes an import above the
+  function, the status bar no longer repeats it as `import proposed:`. The diff tab already shows
+  the exact edit.
+- **Dictation asks for its speech model when you first use it.** Activation no longer offers the
+  148MB download; the first dictation press does. Dictating into a comment also works in a language you have
+  not added to `column80.fimLanguages`, since writing a comment needs no tab completion.
+- **Dictate straight into markdown and plain text files.** Press the dictation shortcut in a
+  `.md` or `.txt` file and what you said lands at the cursor as plain text, minus the ums and uhs. No
+  model runs, and Ctrl+Z takes it back. In a language dictation cannot write into at all, the
+  press now says so before it offers the speech model download.
+- **Dictation keeps to what you asked for.** Words cancelled with Escape while they decode never
+  land, even when you have already started the next take. Lines added above the dictated line
+  while you talk no longer move where the words go. In markdown, no space is put after an opening
+  `**`, `[` or `(`. A cursor you moved during the decode is left alone. A read-only file refuses
+  at the press instead of after the take.
+- **Fewer prompts and clearer names.** `Cancel Generation` is now `Cancel Running Task`, because it
+  stops whatever Column 80 is running. A rust-analyzer settings offer you let fade is not asked again
+  until the next window. `Dump Completion Items at Cursor` is gone from the command palette; bind a
+  key to it if you debug completions. `column80.dictation.surfaces` now defaults off: the comment
+  alone gave the better first line.
+- **Tighten Doc Comment re-wraps with generation off.** The re-wrap needs no model, so a machine
+  without function generation now gets the wrapped comment instead of a refusal. The review says
+  type names need function generation, which is off.
+
 ## 3.7.0
 
 **A type a macro builds now has members in the prompt.**

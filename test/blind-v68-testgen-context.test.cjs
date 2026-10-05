@@ -472,7 +472,7 @@ test("[P4 §4+§13 the window refusal still fires with blocks staged] it refuses
   );
   if (err) {
     assert.ok(
-      err instanceof Error && /does not fit|context window|window/i.test(err.message),
+      err instanceof Error && /does not fit|context window|window|too long for the model/i.test(err.message),
       `the refusal reached the caller as something opaque rather than as the named window failure: ${JSON.stringify(ev.message)}`
     );
   }

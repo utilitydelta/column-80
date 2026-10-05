@@ -270,16 +270,19 @@ test("tighten handler: a tier-unresolved gate refuses with the Select Hardware T
   assert.ok(rig.log.some((l) => l.includes("[tighten] refused: tier tier-unresolved")), `the channel records the refusal, got ${JSON.stringify(rig.log)}`);
 });
 
-test("tighten handler: a disabled gate surfaces the tier's recorded reason verbatim", async () => {
-  const reason = "Function generation is disabled: the Ollama server at http://ml-box.invalid:11434 did not answer. FIM tab-completion still works.";
+// session-v77 R2 superseded "a disabled gate surfaces the tier's recorded reason verbatim": the
+// re-wrap needs no model, so a disabled gate lets the pipeline run without the proposer.
+test("tighten handler: a disabled gate runs the pipeline without the transport, and the channel keeps the tier's reason", async () => {
+  const reason = "Function generation is disabled: the Ollama server at http://ml-box.invalid:11434 did not answer.";
   const rig = registerTighten({ gate: { allowed: false, reason: "tier-disabled" }, message: reason });
-  __state.activeTextEditor = { document: { languageId: "typescript" }, selection: { active: { line: 0, character: 0 } } };
+  // An unserved language: the pipeline's own first refusal, proof the handler got past the gate.
+  __state.activeTextEditor = { document: { languageId: "plaintext" }, selection: { active: { line: 0, character: 0 } } };
   await __state.commands[TIGHTEN]();
-  assert.ok(
-    __state.messages.some((m) => typeof m.message === "string" && m.message.includes(reason)),
-    `the refusal carries the tier reason, got ${JSON.stringify(__state.messages)}`,
-  );
-  assert.strictEqual(rig.calls.transport, 0, "the transport thunk is never read on a refused gesture");
+  const warned = __state.messages.map((m) => m.message).join(" | ");
+  assert.match(warned, /does not work in plain text files\./, `the pipeline's own refusal fires, got ${JSON.stringify(warned)}`);
+  assert.ok(!warned.includes(reason), `no toast refuses with the tier reason, got ${JSON.stringify(warned)}`);
+  assert.ok(rig.log.some((l) => l.includes(reason)), `the channel keeps the tier reason, got ${JSON.stringify(rig.log)}`);
+  assert.strictEqual(rig.calls.transport, 0, "the transport thunk is never read on a closed tier");
 });
 
 test("tighten handler: an open gate proceeds into the pipeline (the pre-gate behaviour is unchanged)", async () => {
@@ -289,6 +292,6 @@ test("tighten handler: an open gate proceeds into the pipeline (the pre-gate beh
   __state.activeTextEditor = { document: { languageId: "plaintext" }, selection: { active: { line: 0, character: 0 } } };
   await __state.commands[TIGHTEN]();
   const warned = __state.messages.map((m) => m.message).join(" | ");
-  assert.match(warned, /does not serve plaintext/, `the pipeline's own refusal fires, got ${JSON.stringify(warned)}`);
+  assert.match(warned, /does not work in plain text files\./, `the pipeline's own refusal fires, got ${JSON.stringify(warned)}`);
   assert.ok(!/disabled/.test(warned), "an open gate never tells a disabled story");
 });

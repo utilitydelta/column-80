@@ -368,7 +368,7 @@ test("resolveTier override: the setting supplies the tier, reason=override, prob
   const { selection } = await resolveTier(out, referenceProbe());
   assert.strictEqual(selection.id, "below-12gb");
   assert.strictEqual(selection.fnGenEnabled, false);
-  assert.match(selection.message, /hardwareTier setting/, "the honest reason is the human's own setting, not a hardware claim");
+  assert.match(selection.message, /hardware tier is set to below-12gb/, "the honest reason is the human's own setting, not a hardware claim");
   assert.strictEqual(
     out.lines[1],
     "[carve] tier=below-12gb reason=override vram=16303 ram=61826 numGpu=- fnGen=disabled provisional=false"
@@ -439,7 +439,7 @@ test("first-run, accept the detected default: hardwareTier stays auto (no settin
     assert.strictEqual(items.length, 5, "detected default + all four tiers");
     assert.strictEqual(items[0].value, "auto");
     assert.match(items[0].label, /16gb-large-ram/);
-    assert.match(items[1].detail, /provisional/, "the 24gb item says provisional honestly");
+    assert.match(items[1].detail, /untested/, "the 24gb item says untested honestly");
     return items[0];
   };
   await runFirstRunFlow(fakeContext(), out, {
@@ -462,7 +462,7 @@ test("first-run, missing fn-gen model, Download: offered -> ratified -> done for
     pull,
   });
   const pullLines = out.lines.filter((l) => l.startsWith("[carve] pull"));
-  assert.strictEqual(pullLines[0], `[carve] pull offered model=${MODEL_30B} why=function generation on the 16gb-large-ram tier needs its model`);
+  assert.strictEqual(pullLines[0], `[carve] pull offered model=${MODEL_30B} why=function generation needs its model`);
   assert.strictEqual(pullLines[1], `[carve] pull ratified model=${MODEL_30B}`);
   assert.match(pullLines[2], /^\[carve\] pull done model=qwen3-coder:30b ms=\d+$/);
   assert.strictEqual(pullLines.length, 3);
@@ -491,7 +491,26 @@ test("first-run, decline the fn-gen download: declined line, then the honest fn-
   assert.ok(disabled, `got ${JSON.stringify(out.lines)}`);
   assert.match(disabled, /qwen3-coder:30b/, "names what is missing");
   assert.match(disabled, /Select Hardware Tier/, "names the one-click that fixes it");
-  assert.match(disabled, /FIM tab-completion still works/, "names what still works");
+  assert.doesNotMatch(disabled, /still works/, "promises nothing it never checked");
+});
+
+test("first-run, the fn-gen download FAILS: one warning names the failure, no second disabled toast", async () => {
+  resetState();
+  const out = output();
+  __state.quickPickImpl = async (items) => items[0];
+  __state.infoResponses = ["Download"];
+  const { pull } = recordingPull(out, new Error("pull model manifest: file does not exist"));
+  await runFirstRunFlow(fakeContext(), out, {
+    probe: referenceProbe(),
+    listModels: async () => [FIM_MODEL],
+    pull,
+  });
+  const warns = __state.messages.filter((m) => m.kind === "warn");
+  assert.strictEqual(warns.length, 1, `got ${JSON.stringify(__state.messages)}`);
+  assert.match(warns[0].message, /did not download/);
+  const infos = __state.messages.filter((m) => m.kind === "info" && /disabled until/.test(m.message));
+  assert.deepStrictEqual(infos, [], "the failure toast already names the fix; a second toast repeats it");
+  assert.ok(out.lines.some((l) => l.startsWith("[carve] fn-gen disabled: ")), "the channel still records it");
 });
 
 test("first-run, explicit override pick: tier id persists to settings, override evidence logged, the OVERRIDE tier's model is what gets offered", async () => {
@@ -511,7 +530,7 @@ test("first-run, explicit override pick: tier id persists to settings, override 
   );
   assert.ok(out.lines.some((l) => l.startsWith("[carve] tier=16gb-low-ram reason=override ")));
   assert.ok(
-    out.lines.includes(`[carve] pull offered model=${MODEL_14B} why=function generation on the 16gb-low-ram tier needs its model`),
+    out.lines.includes(`[carve] pull offered model=${MODEL_14B} why=function generation needs its model`),
     `the 14b is the missing one under the override, got ${JSON.stringify(out.lines)}`
   );
 });
@@ -528,7 +547,7 @@ test("first-run on a no-GPU box: below-12gb honesty path, no fn-gen model asked 
   });
   assert.ok(
     out.lines.includes(
-      "[carve] fn-gen disabled: Function generation is disabled: no usable GPU detected. It needs at least 12GB of VRAM. FIM tab-completion still works."
+      "[carve] fn-gen disabled: Function generation is disabled: no usable GPU was found, and it needs 12GB of VRAM. Set column80.fnGenProvider to use a cloud model or Claude Code."
     ),
     `got ${JSON.stringify(out.lines)}`
   );
@@ -566,7 +585,7 @@ test("warnIfFimNotReady, server down: offers Start ollama serve and opens the te
   assert.strictEqual(__state.terminals.length, 1, "the server-start gesture is user-ratified");
   assert.deepStrictEqual(__state.terminals[0].sent, ["ollama serve"]);
   const warn = __state.messages.find((m) => m.kind === "warn");
-  assert.match(warn.message, /server isn't running/);
+  assert.match(warn.message, /server is not answering/);
 });
 
 test("Start ollama serve when the CLI is NOT installed: no terminal, an error that points at the installer", async () => {
@@ -578,7 +597,7 @@ test("Start ollama serve when the CLI is NOT installed: no terminal, an error th
   assert.strictEqual(__state.terminals.length, 0, "no doomed `ollama serve` terminal when the CLI is absent");
   const err = __state.messages.find((m) => m.kind === "error");
   assert.ok(err, "an error names the missing install");
-  assert.match(err.message, /isn't installed/);
+  assert.match(err.message, /ollama command was not found/);
   assert.deepStrictEqual(err.actions, ["Install Ollama"]);
   assert.ok(__state.opened.some((u) => u.includes("ollama.com")), "the installer page opens on consent");
   assert.ok(out.lines.some((l) => l.includes("ollama not found on PATH")), "the reason is on the record");
@@ -600,7 +619,7 @@ test("warnIfFimNotReady, server up but FIM model absent: points at the download,
   assert.strictEqual(__state.terminals.length, 0);
   const info = __state.messages.find((m) => m.kind === "info");
   assert.ok(info.message.includes(FIM_MODEL), "names the missing model so the user knows what to pull");
-  assert.match(info.message, /isn't installed/);
+  assert.match(info.message, /is not installed/);
   assert.match(info.message, /Select Hardware Tier/);
 });
 
@@ -626,13 +645,13 @@ test("resolveToggleWhileEnabled, on-but-server-down: one press offers Start (lea
   assert.strictEqual(__state.terminals.length, 1, "one press reaches the server start");
   assert.deepStrictEqual(__state.terminals[0].sent, ["ollama serve"]);
   const warn = __state.messages.find((m) => m.kind === "warn");
-  assert.deepStrictEqual(warn.actions, ["Start ollama serve", "Disable autocomplete"], "both intents in one prompt");
+  assert.deepStrictEqual(warn.actions, ["Start ollama serve", "Turn off tab completion"], "both intents in one prompt");
 });
 
 test("resolveToggleWhileEnabled, on-but-server-down, user picks Disable: turns off in one press, no terminal", async () => {
   resetState();
   const out = output();
-  __state.warnResponses = ["Disable autocomplete"];
+  __state.warnResponses = ["Turn off tab completion"];
   const decision = await resolveToggleWhileEnabled(out, async () => undefined);
   assert.strictEqual(decision, "disable", "disabling stays reachable in a single press");
   assert.strictEqual(__state.terminals.length, 0);
@@ -660,7 +679,7 @@ test("resolveToggleWhileEnabled, on-but-model-missing: offers disable and names 
   resetState();
   __state.config = { fimModel: FIM_MODEL };
   const out = output();
-  __state.warnResponses = ["Disable autocomplete"];
+  __state.warnResponses = ["Turn off tab completion"];
   const decision = await resolveToggleWhileEnabled(out, async () => [MODEL_30B]);
   assert.strictEqual(decision, "disable");
   assert.strictEqual(__state.terminals.length, 0);
@@ -824,9 +843,10 @@ test("the default apiBase is untouched: the local disabled message still prints 
     probe: noGpuProbe(),
     listModels: async () => [FIM_MODEL],
   });
+  // Channel only since session-v77 DA5: the tier pick row already says generation is off.
   assert.ok(
-    __state.messages.some((m) => /no usable GPU/i.test(m.message)),
-    `the honest local message must survive: ${JSON.stringify(__state.messages)}`
+    out.lines.some((l) => l.startsWith("[carve] fn-gen disabled: ") && /no usable GPU/i.test(l)),
+    `the honest local message must survive: ${JSON.stringify(out.lines)}`
   );
   assert.ok(out.lines.some((l) => l.startsWith("[carve] fn-gen disabled: ")), "and its channel line with it");
   assert.ok(!out.lines.some((l) => l.includes("backend=remote")), "and nothing claims a remote backend");
@@ -847,8 +867,8 @@ test("0.0.0.0 is THIS box, so the tier gate still governs it", async () => {
     listModels: async () => [FIM_MODEL],
   });
   assert.ok(
-    __state.messages.some((m) => /no usable GPU/i.test(m.message)),
-    `0.0.0.0 is local, so the local probe is the right measurement: ${JSON.stringify(__state.messages)}`
+    out.lines.some((l) => l.startsWith("[carve] fn-gen disabled: ") && /no usable GPU/i.test(l)),
+    `0.0.0.0 is local, so the local probe is the right measurement: ${JSON.stringify(out.lines)}`
   );
   assert.ok(!out.lines.some((l) => l.includes("backend=remote")), "and no remote carve is claimed");
 });

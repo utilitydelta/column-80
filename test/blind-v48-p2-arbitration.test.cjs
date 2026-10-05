@@ -451,7 +451,10 @@ const refuseMessage = async () => {
 };
 
 btest("P5a: the message states the estimated total and the window it is measured against", async () => {
-  const { msg } = await refuseMessage();
+  // Superseded 2026-10-05 (session-v77 S77-1, review-p5b M18): the toast names the
+  // remedy and the token figures moved to the refusal's channel line.
+  const { r } = await refuseMessage();
+  const msg = r.logs.find((l) => /refus|does not fit|too large|too big|over the window/i.test(l)) || "";
   assert.ok(msg, "no message to inspect");
   assert.match(msg, new RegExp(String(AVAILABLE)), `P5: the window (${AVAILABLE}) must appear: ${JSON.stringify(msg)}`);
   const nums = (msg.match(/\d[\d,]*/g) || []).map((s) => Number(s.replace(/,/g, "")));
@@ -463,29 +466,30 @@ btest("P5b: the message states how much of the total is the developer's own adde
   assert.match(msg, /context|blocks|you added|your/i, `P5: the developer's share must be named: ${JSON.stringify(msg)}`);
 });
 
-btest("P5c [the honesty constraint]: the message states the PRODUCT's own injected share - and says so even though it is zero", async () => {
-  const { msg } = await refuseMessage();
+btest("P5c [the honesty constraint]: the PRODUCT's own injected share is stated even though it is zero - on the channel, where the breakdown lives", async () => {
+  // Superseded 2026-10-05 (session-v77 S77-1, S77-26 #14): the toast no longer
+  // argues against a setting the user never touched when our share is 0. The
+  // 0 is still stated, on the refusal's channel line.
+  const { r, msg } = await refuseMessage();
+  const line = r.logs.find((l) => /refus|does not fit|too large|too big|over the window/i.test(l)) || "";
   assert.match(
-    msg,
-    /inject/i,
-    `P5: a refusal message without the product's own injected share is a DEFECT by the contract - it blames the developer for our bytes: ${JSON.stringify(msg)}`,
-  );
-  assert.match(
-    msg,
+    line,
     /inject[^\n]{0,80}\b0\b|\b0\b[^\n]{0,80}inject/i,
-    `P5: at refusal time our share is 0 and the message must SAY 0 rather than omit the line - ` +
-      `"we already dropped all of ours" is exactly the fact that makes the refusal fair: ${JSON.stringify(msg)}`,
+    `P5: at refusal time our share is 0 and the channel must SAY 0 rather than omit it: ${JSON.stringify(line)}`,
   );
+  assert.ok(!/column80\.injectedContext/.test(msg), `P5: at a share of 0 the toast does not name the dial: ${JSON.stringify(msg)}`);
 });
 
-btest("P5d: the message says what the developer can do - remove context blocks, or lower column80.injectedContext", async () => {
+btest("P5d: the message says what the developer can do - remove context blocks (the dial is named only when lowering it frees something)", async () => {
   const { msg } = await refuseMessage();
   assert.match(msg, /remove|delete|drop/i, `P5: "remove context blocks" must be offered: ${JSON.stringify(msg)}`);
-  assert.match(msg, /column80\.injectedContext/, `P5: the setting must be named: ${JSON.stringify(msg)}`);
 });
 
 btest("P5f [P2]: the message states its numbers as approximate, because chars/4 is a proxy", async () => {
-  const { msg } = await refuseMessage();
+  // Superseded 2026-10-05 (session-v77 S77-1, review-p5b M18): the numbers live on
+  // the channel line now, so that is where they must read as approximate.
+  const { r } = await refuseMessage();
+  const msg = r.logs.find((l) => /refus|does not fit|too large|too big|over the window/i.test(l)) || "";
   assert.ok(msg, "no message to inspect");
   assert.match(
     msg,

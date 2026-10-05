@@ -218,7 +218,7 @@ export class InFlightRegistry {
     // moment they want to stop something.
     item.tooltip = new vscode.MarkdownString(
       `${claims.map((c) => `Column 80: ${c.label}`).join("\n\n")}\n\n` +
-        "Click to cancel. You can also bind `Column 80: Cancel Generation` to a keyboard shortcut.",
+        "Click to cancel. You can also bind `Column 80: Cancel Running Task` to a keyboard shortcut.",
     );
     item.show();
   }

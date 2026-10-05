@@ -268,6 +268,22 @@ export class RustOracle implements CompilerOracle {
     }
   }
 
+  describeMissingRoot(filePath: string): string | undefined {
+    if (this.detectCrateRoot(filePath) !== undefined) {
+      return undefined;
+    }
+    return `no Cargo.toml above ${filePath}, so it was not checked`;
+  }
+
+  describeCheckFailure(exitCode: number, evidence?: string): string {
+    if (exitCode < 0) {
+      return `could not start cargo${evidence ? ` (${evidence})` : ""}. Is Rust installed and on PATH?`;
+    }
+    // The evidence is not quoted: after a real start cargo's first stderr
+    // line is progress, which would read as the cause.
+    return "cargo check failed with no error to show; see the output channel";
+  }
+
   buildCheckCommand(crateRoot: string): CheckCommand {
     // `--all-targets` since session-v69 (supersession S33). The old command was
     // plain `cargo check`, whose named trade was that `#[cfg(test)]` bodies were
@@ -839,6 +855,22 @@ export async function fileIsCheckable(
   return false;
 }
 
+/** Marks an error whose cause the user has already been told, so the command
+ *  that catches it does not toast the same event a second time. A catch keys
+ *  on this fact, never on the error's shape: a spawn failure nobody announced
+ *  must still reach the user. The property is plain data so it survives any
+ *  bundle boundary; `wasShown` is the one reader. */
+export function markShown<T>(err: T): T {
+  if (err !== null && typeof err === "object") {
+    (err as { shownToUser?: boolean }).shownToUser = true;
+  }
+  return err;
+}
+
+export function wasShown(err: unknown): boolean {
+  return err !== null && typeof err === "object" && (err as { shownToUser?: unknown }).shownToUser === true;
+}
+
 export async function runOracleCheck(
   oracle: CompilerOracle,
   filePath: string,
@@ -950,8 +982,12 @@ export async function runOracleCheck(
     run = await runCommand(checkCmd, opts?.signal);
   } catch (err) {
     log?.(`[oracle] check failed: ${String(err)}`);
-    if (oracle.describeCheckFailure) {
-      opts?.envReason?.(oracle.describeCheckFailure(-1, String(err)));
+    if (oracle.describeCheckFailure && opts?.envReason) {
+      // The sentence carries the message, not `Error: ...`, and its own period:
+      // a message that already ends in one would read "ENOENT.. Is Go ...".
+      const msg = (err instanceof Error ? err.message : String(err)).replace(/\.+$/, "");
+      opts.envReason(oracle.describeCheckFailure(-1, msg));
+      throw markShown(err);
     }
     throw err;
   }
@@ -971,14 +1007,20 @@ export async function runOracleCheck(
   // reason goes to the channel only, never into diagnostics (one-way invariant).
   if (!success && diagnostics.length === 0) {
     const reason = failureEvidence(run.stderr, run.stdout);
+    log?.(`[oracle] check exited ${run.exitCode} with no parsed error`);
     if (reason) {
       log?.(`[oracle] check failed with no diagnostics: ${reason}`);
     }
-    // A failed check that reported NOTHING is a crashed
-    // toolchain, not failing code. Strategies that describe it get the
-    // explicit-gesture surface line, carrying the same evidence.
+    // A failed check that reported NOTHING is a crashed toolchain, not
+    // failing code. Strategies that describe it get the explicit-gesture
+    // surface line, with the evidence where the strategy trusts it (cargo's
+    // first stderr line after a real start is progress, "Compiling foo" or
+    // "Blocking waiting for file lock", so Rust leaves it out). The channel
+    // lines above keep the exit code and the evidence.
     if (oracle.describeCheckFailure) {
-      opts?.envReason?.(oracle.describeCheckFailure(run.exitCode, reason));
+      // A signal kill exits -1 and takes the "could not start" form, whose
+      // evidence is followed by a period of its own.
+      opts?.envReason?.(oracle.describeCheckFailure(run.exitCode, reason?.replace(/\.+$/, "")));
     }
   }
   return { success, diagnostics, durationMs, crateRoot };

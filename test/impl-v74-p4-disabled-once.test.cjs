@@ -1,4 +1,4 @@
-// Implementer oracle, session-v74 phase 4: "column80.fim is disabled" is said
+// Implementer oracle, session-v74 phase 4: "column80.enabled is off" is said
 // ONCE per off.
 //
 // The provider is asked on every keystroke in every open document whatever the
@@ -153,7 +153,7 @@ function newProvider() {
   return { provider, service, lines, generated, ask };
 }
 
-const disabledLines = (lines) => lines.filter((l) => l.includes("column80.fim is disabled"));
+const disabledLines = (lines) => lines.filter((l) => l.includes("column80.enabled is off"));
 
 test("harness: the provider bundle builds [red here is a build problem, not a contract failure]", () => {
   if (buildError) {
@@ -181,7 +181,7 @@ test("[IMPL-V74-P4 2] the one line names the setting AND says it will not repeat
   const [line] = disabledLines(h.lines);
   // Names the setting, because "no ghost in my .rs" is otherwise
   // indistinguishable from the extension being broken.
-  assert.match(line, /column80\.fim is disabled/);
+  assert.match(line, /column80\.enabled is off/);
   // And says the quiet after it is this rule, not a second defect.
   assert.match(line, /said once/);
   h.service.dispose();

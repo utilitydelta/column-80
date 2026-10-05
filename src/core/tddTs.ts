@@ -388,21 +388,21 @@ export function classifyTsTestability(
     return {
       testable: false,
       reason: "io",
-      detail: "IO/network in the signature (node:fs, fs, fetch, http, https) — integration territory, not a blind unit test",
+      detail: "Its signature does IO or networking (fs, fetch, http), which needs an integration test, not a generated unit test.",
     };
   }
   if (TS_THIS_PARAM.test(sig) && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
-      detail: "an explicit `this` parameter — needs a constructed receiver",
+      detail: "It takes an explicit \"this\" parameter, which a generated test cannot construct.",
     };
   }
   if (!TS_TOP_LEVEL_BINDING.test(sig) && TS_METHOD_FORM.test(sig) && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
-      detail: "class method — needs a constructed instance the blind test has no contract for",
+      detail: "It is a class method, and Column 80 found no way to construct the class.",
     };
   }
   if (!TS_TOP_LEVEL_BINDING.test(sig) && TS_CLASS_FIELD_ARROW.test(sig) && ctx?.receiverConstructible !== true) {
@@ -412,7 +412,7 @@ export function classifyTsTestability(
     return {
       testable: false,
       reason: "needs-fixture",
-      detail: "class field holding a function — needs a constructed instance, and a class property cannot be exported",
+      detail: "It is a function stored in a class field, which a test can only reach through an instance Column 80 cannot construct.",
     };
   }
   // A CLASS MEMBER is not "not exported": it is reached through its class, not
@@ -440,13 +440,17 @@ export function classifyTsTestability(
     return {
       testable: false,
       reason: "not-exported",
-      detail: "not exported — the sibling test file imports the unit, so add `export` or it stays untestable",
+      detail: "It is not exported. The test file imports it, so add \"export\".",
     };
   }
   // A missing doc comment is NOT a refusal: the name and signature often say
   // enough, and the prompt tells the model it has only those to go on.
   if (returnType === undefined) {
-    return { testable: false, reason: "underspecified", detail: "returns void or has no return annotation — nothing to assert" };
+    return {
+      testable: false,
+      reason: "underspecified",
+      detail: "It returns \"void\" or has no return type annotation, so there is nothing to check.",
+    };
   }
   // `Promise<void>` USED to be claimed by the async rung (Amendment 3's ruled
   // precedence). Now that async is admitted, it reaches here, and it must be
@@ -457,11 +461,11 @@ export function classifyTsTestability(
     return {
       testable: false,
       reason: "underspecified",
-      detail: `resolves to \`${awaited === "" ? "nothing" : awaited}\` — awaiting it gives nothing to assert`,
+      detail: `Its promise resolves to "${awaited === "" ? "nothing" : awaited}", so there is nothing to check.`,
     };
   }
   if (asyncTarget && returnType === "void") {
-    return { testable: false, reason: "underspecified", detail: "returns void — nothing to assert" };
+    return { testable: false, reason: "underspecified", detail: "It returns \"void\", so there is nothing to check." };
   }
   return { testable: true };
 }
@@ -1857,7 +1861,7 @@ function tsPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
       ok: false,
       refusal: {
         reason: "unresolvable-import",
-        detail: `\`${symbolName}\` is not a plain identifier, so the test file has no name to import it by`,
+        detail: `"${symbolName}" is not a plain identifier, so the test file has no name to import it by`,
       },
     };
   }

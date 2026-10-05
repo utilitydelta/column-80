@@ -231,7 +231,7 @@ export async function runCoveringGroups(input: {
         key: group.key,
         frameworkName: group.frameworkId,
         tests: group.tests,
-        failure: `no test framework in ${group.placement.runRoot}, so these tests were not run.`,
+        failure: `no test framework in ${group.placement.runRoot}, so these tests were not run`,
       });
       continue;
     }
@@ -256,7 +256,7 @@ export async function runCoveringGroups(input: {
         key: group.key,
         frameworkName: framework.displayName,
         tests: group.tests,
-        failure: `the run could not start: ${input.firstLine(String(err))}. Nothing was built and no test ran.`,
+        failure: `the test run could not start: ${input.firstLine(String(err))}`,
       });
       continue;
     }
@@ -347,7 +347,7 @@ export function outcomesThatDidNotRun(outcomes: readonly GroupOutcome[]): NoRunO
         key: outcome.key,
         frameworkName: outcome.frameworkName,
         reason: "notAttempted",
-        detail: "the run did not happen, and named no reason.",
+        detail: "the test run did not start, and gave no reason",
       });
       continue;
     }
@@ -359,21 +359,21 @@ export function outcomesThatDidNotRun(outcomes: readonly GroupOutcome[]): NoRunO
         key: outcome.key,
         frameworkName: outcome.frameworkName,
         reason: "filterMatchedNothing",
-        detail: `the filter matched nothing; it selected none of ${outcome.tests.map((t) => t.filter).join(", ") || "the discovered tests"}. Zero tests ran, so this is not a pass.`,
+        detail: `the test filter matched none of ${outcome.tests.map((t) => t.filter).join(", ") || "the discovered tests"}`,
       });
     } else if (res.environmentError !== undefined) {
       notRun.push({
         key: outcome.key,
         frameworkName: outcome.frameworkName,
         reason: "environmentError",
-        detail: `the run could not start. ${res.environmentError}`,
+        detail: `the test run could not start: ${res.environmentError}`,
       });
     } else if (res.buildError !== undefined) {
       notRun.push({
         key: outcome.key,
         frameworkName: outcome.frameworkName,
         reason: "buildError",
-        detail: `the tests did not compile. ${res.buildError}`,
+        detail: `the tests do not compile: ${res.buildError}`,
       });
     } else if (res.ran) {
       // The FIFTH shape that is still one of the four sentences: the runner ran
@@ -383,14 +383,14 @@ export function outcomesThatDidNotRun(outcomes: readonly GroupOutcome[]): NoRunO
         key: outcome.key,
         frameworkName: outcome.frameworkName,
         reason: "unclassified",
-        detail: "the runner executed no test at all: every selected test was skipped. Nothing passed and nothing failed.",
+        detail: "every selected test was skipped",
       });
     } else {
       notRun.push({
         key: outcome.key,
         frameworkName: outcome.frameworkName,
         reason: "unclassified",
-        detail: "the runner produced no result, and reported no test, no failure and no reason.",
+        detail: "the test runner reported nothing",
       });
     }
   }

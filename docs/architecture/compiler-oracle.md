@@ -2,6 +2,8 @@
 
 Serves product invariant 4 and the one-way diagnostics rule in [ARCHITECTURE.md](../../ARCHITECTURE.md). After a generation lands, verify it with the real compiler, surface the truth at the edit site, and optionally spend up to two tightly routed repair rounds.
 
+Two triggers, both function generation's: the accept of a generated body, and the Repair Function command. Accepting a FIM ghost runs nothing, dictated ghosts included. It used to save, check, annotate and repair after every Tab, and the human ruled it out in session-v77: a Tab is a Tab, and repair is something you ask for.
+
 Files: `src/core/compilerOracle.ts` (strategy, parsing, path resolution), `src/core/repair.ts` (eligibility, session state machine, repair prompt). Execution and display: `src/vscode/oracleSurface.ts`, covered in [vscode-layer](vscode-layer.md).
 
 ## Input of record
@@ -52,9 +54,11 @@ One `RepairSession` per accepted generation. `next(check, scope?)` is the only m
 | source | round 1 | round 2 |
 |---|---|---|
 | `fim` | cross-model (30b repairs the 1.5b's output) | self-repair (30b repairs its own round-1 output) |
-| `fngen` | self-repair | none; surface |
+| `fngen` | self-repair | self-repair if the error count fell; otherwise none, surface |
 
 The shape is measured, not taste: same-model self-repair is dead below ~30B, so FIM output crosses to the big model once; the 30b self-repairing its own compile errors is worth exactly one more round (+1 measured on the spike bench); for fngen source there is no bigger model to cross to. The table can end a session earlier than the cap, never later.
+
+Every live session is `fngen` now. No product path starts a `fim` session since the FIM accept stopped running the oracle, so `oracleSurface.ts` carries no source field and the `fim` row lives on only in `repair.ts` and its frozen contract tests.
 
 **The 2-cap is structural**: `roundsUsed` is typed `0 | 1 | 2`, only `next()` advances it, and the cap branch precedes the routing table, so a third repair action is unrepresentable. There is no reset and no second counter. The live suite additionally asserts the round counter in `[repair]` evidence never exceeds 2.
 

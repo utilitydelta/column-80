@@ -205,7 +205,6 @@ const drive = async ({ reply, spanSurface, accept = true }) => {
     const ctx = {
       document: fileDocument(file),
       landedSpan: { start, end },
-      source: "fim",
       service,
       output: out,
       presenter,

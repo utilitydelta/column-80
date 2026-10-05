@@ -706,7 +706,7 @@ test("item 8a [surface: contract-phase8 'The phase-2 message is not edited']: th
   assert.strictEqual(built.tier.fnGenEnabled, false);
   assert.strictEqual(
     built.tier.message,
-    `Function generation is disabled: the Ollama server at ${REMOTE} did not answer. FIM tab-completion still works.`,
+    `Function generation is disabled: the Ollama server at ${REMOTE} did not answer.`,
     'contract item 8: "A phase that reworded it would have solved nothing." The whole justification for this phase is making this sentence true, not editing it.',
   );
   built.service.dispose();
@@ -717,7 +717,7 @@ test("item 8b: and in that exact scenario the sentence is TRUE - the FIM half is
   __state.config = { apiBase: REMOTE };
   const built = await buildFnGenService(output(), () => {}, referenceProbe(), { listModels: async () => undefined });
 
-  assert.ok(built.tier.message.endsWith("FIM tab-completion still works."), "the sentence is on screen");
+  assert.ok(!/still works/.test(built.tier.message), "the message promises nothing it never checked");
   assert.strictEqual(
     readConfig().apiBase,
     LOCAL,
@@ -749,7 +749,7 @@ test("out of scope [contract-phase8 'The settings description']: column80.apiBas
   );
   assert.match(
     desc,
-    /FIM/i,
+    /FIM|tab completion/i,
     "a reader of this setting has to be told which half of the product it moves, which is the whole reason the contract asks for the edit",
   );
 });

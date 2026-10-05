@@ -55,14 +55,17 @@ test("repair's field-shape renders through the SHARED primitives, not a bespoke 
   );
 });
 
-test("all THREE post-accept entry points route through ONE surface path (manual command not bypassed)", () => {
+// SUPERSEDED (session-v77 Amendment 1, scrap S77-6): the FIM accept no longer
+// runs the oracle, so two entry points remain, not three.
+test("both post-accept entry points (generate accept, Repair Function) route through ONE surface path", () => {
   const fnGen = read("vscode/fnGen.ts");
   const oracle = read("vscode/oracleSurface.ts");
-  // The two accept paths call the oracle directly; the manual command routes via
-  // the (deps.runOracle ?? runPostAcceptOracle) test seam. Both reach the one oracle.
-  const acceptCalls = (fnGen.match(/runPostAcceptOracle\(\{/g) || []).length;
-  assert.strictEqual(acceptCalls, 2, `expected 2 direct accept-path oracle calls (fn-gen, FIM), found ${acceptCalls}`);
-  assert.match(fnGen, /\?\?\s*runPostAcceptOracle\)\(/, "the manual command invokes the SAME oracle (via the runOracle seam)");
+  // Both entry points route via the (deps.runOracle ?? runPostAcceptOracle) seam,
+  // so both reach the one oracle and nothing calls it around the seam.
+  const directCalls = (fnGen.match(/runPostAcceptOracle\(\{/g) || []).length;
+  assert.strictEqual(directCalls, 0, `expected no direct oracle call around the seam, found ${directCalls}`);
+  const seamCalls = (fnGen.match(/\?\?\s*runPostAcceptOracle\)\(/g) || []).length;
+  assert.strictEqual(seamCalls, 2, `expected 2 entry points through the runOracle seam (generate accept, Repair Function), found ${seamCalls}`);
   assert.match(fnGen, /registerCommand\("column80\.repairFunction"/, "the manual Repair Function command is registered");
   const surfaceDefs = (oracle.match(/export async function resolveSurfaceInjection\b/g) || []).length;
   assert.strictEqual(surfaceDefs, 1, `exactly one resolveSurfaceInjection (the single surface path), found ${surfaceDefs}`);

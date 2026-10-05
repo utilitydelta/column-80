@@ -827,8 +827,7 @@ function rustAsyncRuntime(filePath: string, deps: TddDeps): TestabilityContext {
     dir = parent;
   }
   const lookedFor =
-    "async fn, and no async test runtime found in Cargo.toml — looked for tokio (with the `macros` feature), " +
-    "async-std and smol. This gesture never adds a dependency.";
+    "It is async, and Cargo.toml has no async test runtime. Add tokio with the \"macros\" feature, async-std with \"attributes\", or smol-potat.";
   if (manifests.length === 0) {
     return { asyncLookedFor: lookedFor };
   }
@@ -864,16 +863,15 @@ function rustAsyncRuntime(filePath: string, deps: TddDeps): TestabilityContext {
     // checked, so the refusal says what is actually true.
     return {
       asyncLookedFor:
-        "async fn. This crate inherits tokio from the workspace, and no `[workspace.dependencies] tokio` " +
-        "entry was found to read its features from, so whether `#[tokio::test]` exists here could not be " +
-        "determined. Stage a test-function template as a context block, or spell the feature in this crate.",
+        "It is async, and this crate inherits tokio from a workspace entry Column 80 could not find, so it " +
+        "cannot tell whether \"#[tokio::test]\" is available. Add tokio's \"macros\" feature in this crate's Cargo.toml.",
     };
   }
   if (sawTokio) {
     return {
       asyncLookedFor:
-        "async fn. Cargo.toml declares tokio but not its `macros` feature, so `#[tokio::test]` does not exist " +
-        "here. This gesture never adds a dependency or a feature.",
+        "It is async, and Cargo.toml declares tokio without its \"macros\" feature, so \"#[tokio::test]\" is not " +
+        "available. Add the \"macros\" feature.",
     };
   }
   return { asyncLookedFor: lookedFor };

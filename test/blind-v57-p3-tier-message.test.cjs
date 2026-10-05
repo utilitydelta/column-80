@@ -607,15 +607,19 @@ for (const [label, failure] of [["5a single-line failure", SINGLE], ["5b MULTI-L
 
 // ===========================================================================
 // Clause 1-3 sweep on the SECOND gesture that renders this tier's message.
-// Tighten toasts the same disabled story; its channel records a short reason
-// code rather than the message, so it is deliberately NOT held to contract 4.
+// Tighten's channel records a short reason code rather than the message, so it
+// is deliberately NOT held to contract 4.
+//
+// SUPERSEDED (session-v77 R2, S77-1, ratified under the human's 2026-10-05
+// agreement to S77-26 #2): Tighten no longer toasts the closed tier, so the
+// row no longer requires a "disabled" notification. It holds EVERY Tighten
+// notification to contracts 1 and 2 instead; a multi-line or "Error:" message
+// of any wording still turns it red.
 // ===========================================================================
 
 gtest("contract 1+2 sweep [tighten x MULTI-LINE failure]: the second gesture's notification is one line and carries no \"Error:\"", async () => {
   const r = await drive({ command: TIGHTEN, failure: MULTI, cursor: IN_COMMENT });
-  const toasts = disabledToasts(r);
-  assert.ok(toasts.length > 0, `tighten produced no disabled notification${show("tighten", r)}`);
-  for (const t of toasts) {
+  for (const t of r.messages) {
     assert.ok(!t.includes("\n"), `contract 1 on the tighten gesture: the notification embeds a newline.${show("tighten", r)}`);
     assert.ok(!t.includes("Error:"), `contract 2 on the tighten gesture: the notification contains "Error:".${show("tighten", r)}`);
   }

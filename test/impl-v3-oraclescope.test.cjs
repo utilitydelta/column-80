@@ -44,7 +44,7 @@ test("a span-less error alone -> clean-out-of-span with no files (message states
   assert.strictEqual(v.kind, "clean-out-of-span");
   assert.deepStrictEqual(v.outOfSpanFiles, []);
   const m = spanScopedMessage(v, "f");
-  assert.ok(/no error landed inside/.test(m) && /outside the touched span/.test(m), `geometric wording: ${m}`);
+  assert.ok(/no error is inside/.test(m) && /outside it\b/.test(m), `geometric wording: ${m}`);
   assert.ok(!/, in /.test(m), `no bogus file clause when nothing is locatable: ${m}`);
   assert.ok(!/pre-existing/.test(m), `does not claim the error pre-dates the generation: ${m}`);
 });

@@ -217,7 +217,6 @@ test("an unsupported-language document never spawns a check: the no-oracle gate 
   await runPostAcceptOracle({
     document: fileDocument("/tmp/nope.txt", { languageId: "plaintext" }),
     landedSpan: { start: 0, end: 1 },
-    source: "fim",
     service,
     output: out,
     presenter: recordingPresenter("/tmp/nope.txt"),
@@ -303,7 +302,6 @@ test("wave scenario end to end: E0599 masks E0596, two scripted rounds through g
     await runPostAcceptOracle({
       document: fileDocument(file),
       landedSpan: { start: fnStart, end: fnStart + brokenFn.length },
-      source: "fim",
       service,
       output: out,
       presenter,
@@ -320,9 +318,11 @@ test("wave scenario end to end: E0599 masks E0596, two scripted rounds through g
     const checks = out.lines.filter((l) => l.startsWith("[oracle] check done"));
     assert.strictEqual(checks.length, 3, "initial check + one re-check per executed splice (wave semantics)");
     assert.ok(/success=true$/.test(checks[2]), "final re-check clean");
-    assert.ok(out.lines.some((l) => /^\[repair\] decision round=1\/2 route=cross-model source=fim eligible=\d+$/.test(l)), `got ${JSON.stringify(out.lines)}`);
-    assert.ok(out.lines.some((l) => /^\[repair\] decision round=2\/2 route=self-repair source=fim eligible=\d+$/.test(l)), `got ${JSON.stringify(out.lines)}`);
-    assert.ok(out.lines.some((l) => l.startsWith("[repair] round 1/2 model=") && l.endsWith("route=cross-model")), `executor round line, got ${JSON.stringify(out.lines)}`);
+    // Every session is fngen-sourced since the FIM accept stopped running the
+    // oracle (session-v77): round 2 runs because the error count fell.
+    assert.ok(out.lines.some((l) => /^\[repair\] decision round=1\/2 route=self-repair source=fngen eligible=\d+$/.test(l)), `got ${JSON.stringify(out.lines)}`);
+    assert.ok(out.lines.some((l) => /^\[repair\] decision round=2\/2 route=self-repair source=fngen eligible=\d+$/.test(l)), `got ${JSON.stringify(out.lines)}`);
+    assert.ok(out.lines.some((l) => l.startsWith("[repair] round 1/2 model=") && l.endsWith("route=self-repair")), `executor round line, got ${JSON.stringify(out.lines)}`);
     assert.ok(out.lines.some((l) => /^\[repair\] outcome round=1 result=errors-remain=\d+$/.test(l)), `round 1 outcome names the remaining wave, got ${JSON.stringify(out.lines)}`);
     assert.ok(out.lines.includes("[repair] outcome round=2 result=clean"), `got ${JSON.stringify(out.lines)}`);
     assert.ok(out.lines.some((l) => l.startsWith("[repair] surface why=clean")), `got ${JSON.stringify(out.lines)}`);
@@ -384,7 +384,6 @@ test("display surface: NO diagnostic is ever published; the edit-site decoration
     await runPostAcceptOracle({
       document: doc,
       landedSpan: { start: fs.readFileSync(file, "utf8").indexOf("pub fn"), end: 400 },
-      source: "fim",
       service: scriptedService([]).service,
       output: output(),
       presenter: recordingPresenter(file),
@@ -392,7 +391,7 @@ test("display surface: NO diagnostic is ever published; the edit-site decoration
     });
     assert.strictEqual(__state.collections.length, 0, "a check with errors still publishes no diagnostics");
     assert.strictEqual(decorationCalls.length, 1);
-    assert.match(decorationCalls[0][0].renderOptions.after.contentText, /^cargo check: 1 error\(s\), 0 warning\(s\)$/);
+    assert.match(decorationCalls[0][0].renderOptions.after.contentText, /^cargo check: 1 error, 0 warnings$/);
 
     // The annotation is now the ONLY on-screen surface, so its lifecycle is the
     // whole question the Problems mirror got wrong. It describes the text as the
@@ -433,7 +432,6 @@ test("display surface: a clean re-check clears the edit-site annotation", async 
     await runPostAcceptOracle({
       document: doc,
       landedSpan: { start: fs.readFileSync(file, "utf8").indexOf("pub fn"), end: 400 },
-      source: "fim",
       service: scriptedService([]).service,
       output: output(),
       presenter: recordingPresenter(file),
@@ -446,7 +444,9 @@ test("display surface: a clean re-check clears the edit-site annotation", async 
   }
 });
 
-test("FIM inline item carries the accept command: post-accept trigger with uri, landed offset, and text length", async () => {
+// SUPERSEDED (session-v77 Amendment 1): the plain item used to carry the
+// post-accept check command. A Tab is a Tab now; Repair Function is the trigger.
+test("a plain FIM inline item carries no accept command: accepting it runs nothing", async () => {
   resetState();
   __state.config = { enabled: true };
   const text = "let x = ";
@@ -469,8 +469,8 @@ test("FIM inline item carries the accept command: post-accept trigger with uri, 
     { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
   );
   assert.strictEqual(items.length, 1);
-  assert.strictEqual(items[0].command.command, "column80.fimAccepted");
-  assert.deepStrictEqual(items[0].command.arguments, ["file:///fake.rs", 8, 2], "uri, landed start offset, accepted text length");
+  assert.strictEqual(items[0].insertText, "1;");
+  assert.strictEqual(items[0].command, undefined, "no command runs when a plain ghost is accepted");
 });
 
 // ---- P4-F2: workspace-member scoping against the committed workspace fixture

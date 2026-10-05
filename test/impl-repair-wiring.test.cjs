@@ -172,7 +172,7 @@ const waitFor = async (predicate, what, tries = 1200) => {
 // the one function, and drive the command. Returns the captured oracle ctxs.
 // listModels defaults to "server up" so the pre-flight passes; override it to
 // exercise the down-server path. terminals records startOllamaTerminal spawns.
-const driveRepairCommand = async (probeOpts, listModels = async () => ["qwen3-coder:30b"]) => {
+const driveRepairCommand = async (probeOpts, listModels = async () => ["qwen3-coder:30b"], runOracle) => {
   __state.config = { repairEnabled: true, compilerDirectedInjection: false };
   __state.messages = [];
   __state.commands = {};
@@ -182,7 +182,7 @@ const driveRepairCommand = async (probeOpts, listModels = async () => ["qwen3-co
   const store = new ContextBlockStore(() => {});
   registerFnGen({ subscriptions: [] }, out, store, {
     probeOpts,
-    runOracle: async (ctx) => { oracleCalls.push(ctx); },
+    runOracle: runOracle ?? (async (ctx) => { oracleCalls.push(ctx); }),
     listModels,
     // Ollama IS on PATH so the "Start ollama serve" consent opens the terminal
     // deterministically (no real spawn, no host dependency).
@@ -205,7 +205,7 @@ const driveRepairCommand = async (probeOpts, listModels = async () => ["qwen3-co
   return { out, oracleCalls };
 };
 
-test("C5 (wiring): a resolved function drives the oracle with its own span, source fngen, the open gate, and a live context reader", async () => {
+test("C5 (wiring): a resolved function drives the oracle with its own span, the open gate, and a live context reader", async () => {
   const expected = await resolveFunctionAtCursor(doc, { line: 1, character: 4 }, false);
   assert.ok(expected, "sanity: the harness must resolve the function (else the test proves nothing)");
 
@@ -214,7 +214,9 @@ test("C5 (wiring): a resolved function drives the oracle with its own span, sour
   assert.strictEqual(oracleCalls.length, 1, "a resolved function runs exactly one oracle pass");
   const ctx = oracleCalls[0];
   assert.deepStrictEqual(ctx.landedSpan, expected.span, "landedSpan is the resolved function's own span");
-  assert.strictEqual(ctx.source, "fngen", "manual repair rides the fngen self-repair route");
+  // No source field since session-v77: the FIM accept no longer runs the
+  // oracle, so every session rides the fngen self-repair route.
+  assert.strictEqual(ctx.source, undefined, "the oracle ctx carries no generation source");
   assert.strictEqual(ctx.repairTierGate.allowed, true, "the fail-closed gate is passed through, open here");
   assert.strictEqual(typeof ctx.readContextBlocks, "function", "the live staged-context reader is wired");
   assert.deepStrictEqual(
@@ -240,7 +242,7 @@ test("closed tier: the manual command STILL runs the oracle, with the closed gat
     "the closed gate is passed through so the oracle bars repair rounds but still surfaces",
   );
   assert.ok(
-    __state.messages.some((m) => m.kind === "warn" && /repair is unavailable/.test(m.message)),
+    __state.messages.some((m) => m.kind === "warn" && /will only check this function/.test(m.message)),
     "the user gets the honest closed-tier message, not silence",
   );
   assert.ok(
@@ -258,7 +260,7 @@ test("server down: the manual command offers Start ollama serve and never runs a
   assert.strictEqual(oracleCalls.length, 0, "a down server never runs the oracle from the manual path");
   const warn = __state.messages.find((m) => m.kind === "warn");
   assert.ok(warn, "the user gets an honest message, not a silently failed round");
-  assert.match(warn.message, /server isn't running/);
+  assert.match(warn.message, /server is not answering/);
   assert.deepStrictEqual(warn.actions, ["Start ollama serve"], "the start gesture is offered");
   assert.ok(out.lines.some((l) => l.includes("server unreachable; offering start")), "reason on the record");
 });
@@ -270,4 +272,17 @@ test("server down, user consents: Start ollama serve opens a visible terminal (u
   assert.strictEqual(__state.terminals.length, 1, "the server is started only on the explicit click");
   assert.strictEqual(__state.terminals[0].shown, true);
   assert.deepStrictEqual(__state.terminals[0].sent, ["ollama serve"]);
+});
+
+test("a Repair Function press whose check throws (a failed save) warns, instead of ending silently", async () => {
+  const { out } = await driveRepairCommand(referenceProbe(), undefined, async () => {
+    throw new Error("could not save /w/lib.rs before the check");
+  });
+  await waitFor(() => __state.messages.some((m) => m.kind === "warn"), "the warning");
+  const warns = __state.messages.filter((m) => m.kind === "warn");
+  assert.deepStrictEqual(
+    warns.map((m) => m.message),
+    ["Column 80: Repair Function Body stopped (could not save /w/lib.rs before the check). The full message is in the output channel."],
+  );
+  assert.ok(out.lines.some((l) => l.includes("[oracle] manual repair failed")), "the channel keeps the whole error");
 });

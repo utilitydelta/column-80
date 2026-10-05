@@ -1415,15 +1415,15 @@ btest("C6 [no-session draws no sentence]: FORWARD GUARD - the pass must not inve
 // and five phases of v56/v57 translation work is what this row protects.
 // ===========================================================================
 
-const TRUNCATED = "Column 80: the model's reply was cut off mid-function, so nothing was written - run the gesture again.";
-const NO_TESTS = "Column 80: the model's reply contained no usable tests, so nothing was written - run the gesture again.";
+const TRUNCATED = "Column 80: the model's reply was cut off mid-function, so nothing was written. Try again.";
+const NO_TESTS = "Column 80: the model's reply had no usable tests, so nothing was written. Run \"Column 80: Generate Tests (TDD)\" again.";
 const FENCED =
-  "Column 80: the model wrapped its reply in markdown that cannot land in source code, so nothing was written - run the gesture again.";
+  "Column 80: the model replied with markdown instead of code, so nothing was written. Try again.";
 const WRONG_FN =
-  "Column 80: the model answered with something other than the requested function, so nothing was written - run the gesture again.";
-const NO_CODE = "Column 80: the model's reply contained no usable code, so nothing was written - run the gesture again.";
+  "Column 80: the model wrote something other than the requested function, so nothing was written. Try again.";
+const NO_CODE = "Column 80: the model's reply had no usable code, so nothing was written. Try again.";
 const SILENT =
-  "Column 80: the model server went silent mid-reply, so nothing was written - check the server, then run the gesture again.";
+  "Column 80: the model server stopped answering mid-reply, so nothing was written. Check the server, then try again.";
 
 const PREFIXED = (marker) => `the fn-gen service rejected this: ${marker} (round 2)`;
 const CARRIED = (head) => `${head} something the server said: generation was empty after postprocess`;
@@ -1450,49 +1450,49 @@ const GOLDEN = [
     "silent/ollama-cut/prefixed",
     PREFIXED("Ollama stream cut:"),
     undefined,
-    "Column 80: function generation failed - the fn-gen service rejected this: Ollama stream cut: (round 2). The full message is in the output channel.",
+    "Column 80: function generation failed: the fn-gen service rejected this: Ollama stream cut: (round 2). The full message is in the output channel.",
   ],
   ["silent/ollama-nobody/bare", "Ollama: response has no body", SILENT, SILENT],
   [
     "silent/ollama-nobody/prefixed",
     PREFIXED("Ollama: response has no body"),
     undefined,
-    "Column 80: function generation failed - the fn-gen service rejected this: Ollama: response has no body (round 2). The full message is in the output channel.",
+    "Column 80: function generation failed: the fn-gen service rejected this: Ollama: response has no body (round 2). The full message is in the output channel.",
   ],
   ["silent/anthropic-stop/bare", "Anthropic: the stream ended before message_stop", SILENT, SILENT],
   [
     "silent/anthropic-stop/prefixed",
     PREFIXED("Anthropic: the stream ended before message_stop"),
     undefined,
-    "Column 80: function generation failed - the fn-gen service rejected this: Anthropic: the stream ended before message_stop (round 2). The full message is in the output channel.",
+    "Column 80: function generation failed: the fn-gen service rejected this: Anthropic: the stream ended before message_stop (round 2). The full message is in the output channel.",
   ],
   ["silent/anthropic-nobody/bare", "Anthropic: response has no body", SILENT, SILENT],
   [
     "silent/anthropic-nobody/prefixed",
     PREFIXED("Anthropic: response has no body"),
     undefined,
-    "Column 80: function generation failed - the fn-gen service rejected this: Anthropic: response has no body (round 2). The full message is in the output channel.",
+    "Column 80: function generation failed: the fn-gen service rejected this: Anthropic: response has no body (round 2). The full message is in the output channel.",
   ],
   ["silent/cloud-nobody/bare", "Cloud: response has no body", SILENT, SILENT],
   [
     "silent/cloud-nobody/prefixed",
     PREFIXED("Cloud: response has no body"),
     undefined,
-    "Column 80: function generation failed - the fn-gen service rejected this: Cloud: response has no body (round 2). The full message is in the output channel.",
+    "Column 80: function generation failed: the fn-gen service rejected this: Cloud: response has no body (round 2). The full message is in the output channel.",
   ],
   ["silent/ollama-done/bare", "Ollama: the stream ended before its done frame", SILENT, SILENT],
   [
     "silent/ollama-done/prefixed",
     PREFIXED("Ollama: the stream ended before its done frame"),
     undefined,
-    "Column 80: function generation failed - the fn-gen service rejected this: Ollama: the stream ended before its done frame (round 2). The full message is in the output channel.",
+    "Column 80: function generation failed: the fn-gen service rejected this: Ollama: the stream ended before its done frame (round 2). The full message is in the output channel.",
   ],
   ["silent/cloud-terminal/bare", "Cloud: the stream ended before any terminal signal", SILENT, SILENT],
   [
     "silent/cloud-terminal/prefixed",
     PREFIXED("Cloud: the stream ended before any terminal signal"),
     undefined,
-    "Column 80: function generation failed - the fn-gen service rejected this: Cloud: the stream ended before any terminal signal (round 2). The full message is in the output channel.",
+    "Column 80: function generation failed: the fn-gen service rejected this: Cloud: the stream ended before any terminal signal (round 2). The full message is in the output channel.",
   ],
 
   // -- payload carriers: a service marker inside server text draws nothing --
@@ -1500,7 +1500,7 @@ const GOLDEN = [
     "carrier/ollama-error",
     CARRIED("Ollama error:"),
     undefined,
-    "Column 80: function generation failed - Ollama error: something the server said: generation was empty after postprocess. The full message is in the output channel.",
+    "Column 80: function generation failed: Ollama error: something the server said: generation was empty after postprocess. The full message is in the output channel.",
   ],
   // The one carrier that IS also an anchored marker, so it keeps its sentence.
   ["carrier/ollama-cut", CARRIED("Ollama stream cut:"), SILENT, SILENT],
@@ -1508,31 +1508,31 @@ const GOLDEN = [
     "carrier/ollama-space",
     CARRIED("Ollama "),
     undefined,
-    "Column 80: function generation failed - Ollama  something the server said: generation was empty after postprocess. The full message is in the output channel.",
+    "Column 80: function generation failed: Ollama  something the server said: generation was empty after postprocess. The full message is in the output channel.",
   ],
   [
     "carrier/anthropic-mid-reply",
     CARRIED("Anthropic reported an error mid-reply:"),
     undefined,
-    "Column 80: function generation failed - Anthropic reported an error mid-reply: something the server said: generation was empty after postprocess. The full message is in the output channel.",
+    "Column 80: function generation failed: Anthropic reported an error mid-reply: something the server said: generation was empty after postprocess. The full message is in the output channel.",
   ],
   [
     "carrier/anthropic-space",
     CARRIED("Anthropic "),
     undefined,
-    "Column 80: function generation failed - Anthropic  something the server said: generation was empty after postprocess. The full message is in the output channel.",
+    "Column 80: function generation failed: Anthropic  something the server said: generation was empty after postprocess. The full message is in the output channel.",
   ],
   [
     "carrier/cloud-mid-reply",
     CARRIED("Cloud reported an error mid-reply:"),
     undefined,
-    "Column 80: function generation failed - Cloud reported an error mid-reply: something the server said: generation was empty after postprocess. The full message is in the output channel.",
+    "Column 80: function generation failed: Cloud reported an error mid-reply: something the server said: generation was empty after postprocess. The full message is in the output channel.",
   ],
   [
     "carrier/cloud-space",
     CARRIED("Cloud "),
     undefined,
-    "Column 80: function generation failed - Cloud  something the server said: generation was empty after postprocess. The full message is in the output channel.",
+    "Column 80: function generation failed: Cloud  something the server said: generation was empty after postprocess. The full message is in the output channel.",
   ],
 
   // -- the catch-all's own shapes ------------------------------------------
@@ -1540,44 +1540,44 @@ const GOLDEN = [
     "catchall/plain",
     "socket hang up",
     undefined,
-    "Column 80: function generation failed - socket hang up. The full message is in the output channel.",
+    "Column 80: function generation failed: socket hang up. The full message is in the output channel.",
   ],
   [
     "catchall/error-colon",
     "Error: fetch failed",
     undefined,
-    "Column 80: function generation failed - Error: fetch failed. The full message is in the output channel.",
+    "Column 80: function generation failed: Error: fetch failed. The full message is in the output channel.",
   ],
   [
     "catchall/multiline",
     "first line of the dump\nsecond line\nthird",
     undefined,
-    "Column 80: function generation failed - first line of the dump. The full message is in the output channel.",
+    "Column 80: function generation failed: first line of the dump. The full message is in the output channel.",
   ],
   ["catchall/empty", "", undefined, "Column 80: function generation failed. The full message is in the output channel."],
   [
     "catchall/trailing-dot",
     "the request was refused.",
     undefined,
-    "Column 80: function generation failed - the request was refused. The full message is in the output channel.",
+    "Column 80: function generation failed: the request was refused. The full message is in the output channel.",
   ],
   [
     "catchall/claude-code-forgery",
     S57_10_THROW,
     undefined,
-    "Column 80: function generation failed - Claude Code exited 1: Error: connection closed. The full message is in the output channel.",
+    "Column 80: function generation failed: Claude Code exited 1: Error: connection closed. The full message is in the output channel.",
   ],
   [
     "catchall/class-name-forgery",
     "the server said ClaudeCodeError reason=logged-out",
     undefined,
-    "Column 80: function generation failed - the server said ClaudeCodeError reason=logged-out. The full message is in the output channel.",
+    "Column 80: function generation failed: the server said ClaudeCodeError reason=logged-out. The full message is in the output channel.",
   ],
   [
     "catchall/bare-reason-word",
     "logged-out",
     undefined,
-    "Column 80: function generation failed - logged-out. The full message is in the output channel.",
+    "Column 80: function generation failed: logged-out. The full message is in the output channel.",
   ],
 ];
 
@@ -1622,20 +1622,20 @@ btest("F8 [non-Error rejects]: REGRESSION - the same clause, off the Error path"
   // structural pass that reads `err.name` without checking what `err` IS would
   // throw here on null or undefined.
   const rows = [
-    ["a bare string reject", "Column 80: function generation failed - a bare string reject. The full message is in the output channel."],
-    [42, "Column 80: function generation failed - 42. The full message is in the output channel."],
-    [null, "Column 80: function generation failed - null. The full message is in the output channel."],
-    [undefined, "Column 80: function generation failed - undefined. The full message is in the output channel."],
+    ["a bare string reject", "Column 80: function generation failed: a bare string reject. The full message is in the output channel."],
+    [42, "Column 80: function generation failed: 42. The full message is in the output channel."],
+    [null, "Column 80: function generation failed: null. The full message is in the output channel."],
+    [undefined, "Column 80: function generation failed: undefined. The full message is in the output channel."],
     [
       { toString: () => "an object that stringifies" },
-      "Column 80: function generation failed - an object that stringifies. The full message is in the output channel.",
+      "Column 80: function generation failed: an object that stringifies. The full message is in the output channel.",
     ],
     // The nastiest one: a plain object wearing the identity but not an Error.
     // Whatever the pass decides here, it must not crash, and today it is the
     // catch-all.
     [
       { name: "ClaudeCodeError", reason: "logged-out" },
-      "Column 80: function generation failed - [object Object]. The full message is in the output channel.",
+      "Column 80: function generation failed: [object Object]. The full message is in the output channel.",
     ],
   ];
   for (const [value, want] of rows) {

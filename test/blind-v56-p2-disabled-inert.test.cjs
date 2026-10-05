@@ -9,6 +9,10 @@
 //               row: a spy on the HTTP layer records ZERO calls)
 //   contract 4  an enabled service behaves exactly as today
 //
+// SUPERSEDED for Tighten Doc Comment (session-v77 Amendment 3 R2): contracts
+// 1-2 no longer bind it. Its re-wrap needs no model, so a disabled tier skips
+// the proposer and offers the re-wrap. Contract 3 still binds Tighten.
+//
 // REAL TIERS ONLY. No tier object is hand-built here. Every row drives the
 // product's own construction (`buildFnGenService`, reached through
 // `registerFnGen`'s `buildService` seam so the registered gestures and the
@@ -576,20 +580,25 @@ for (const scenario of ["remote-empty", "below-12gb"]) {
     );
   });
 
-  gtest(`contract 2 [tighten x ${scenario}]: the refusal carries the tier's recorded reason`, async () => {
+  // SUPERSEDED, session-v77 Amendment 3 R2 (S77-26 #2): contracts 1-2 no longer bind Tighten.
+  // The re-wrap needs no model, so a disabled tier skips the proposer and still offers the
+  // re-wrap; the review says type names need function generation, and the tier's recorded
+  // reason stays on the channel. Contract 3 above still binds: zero network calls.
+  gtest(`R2 supersedes contracts 1-2 [tighten x ${scenario}]: no refusal; the re-wrap is offered and the channel keeps the tier's reason`, async () => {
     const r = await drive({ scenario, command: TIGHTEN, cursor: IN_COMMENT });
     const reason = r.tier.message;
     assert.ok(typeof reason === "string" && reason.trim() !== "", `harness: the ${scenario} tier must have recorded a reason`);
     assert.ok(
-      r.messages.length > 0,
-      `contract 1: invoking tighten on a disabled (${scenario}) tier must refuse ON THE USER SURFACE, ` +
-        `not proceed or go silent. No message was shown. Channel: ${JSON.stringify(r.lines)}`,
+      !r.messages.some((m) => typeof m === "string" && m.includes(reason)),
+      `R2: a disabled tier must not refuse Tighten with the tier reason. Messages shown: ${JSON.stringify(r.messages)}`,
     );
     assert.ok(
-      r.messages.some((m) => typeof m === "string" && m.includes(reason)),
-      `contract 2: "The refusal names the tier's reason (the same reason the service recorded when it ` +
-        `disabled), not a generic failure." Recorded reason: ${JSON.stringify(reason)}. ` +
-        `Messages shown: ${JSON.stringify(r.messages)}`,
+      r.lines.some((l) => l.startsWith("[tighten]") && l.includes(reason)),
+      `R2: the channel keeps the recorded reason ${JSON.stringify(reason)}. Channel: ${JSON.stringify(r.lines)}`,
+    );
+    assert.ok(
+      r.messages.some((m) => typeof m === "string" && m.includes("re-wrap this comment?") && m.includes("type names need function generation, which is off")),
+      `R2: the re-wrap review opens and says type names need function generation. Messages: ${JSON.stringify(r.messages)}`,
     );
   });
 }

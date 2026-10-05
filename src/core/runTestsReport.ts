@@ -13,9 +13,10 @@
  *   truncation in the words of a fact is the worst thing this file could do.
  * - DISTANCE IS CONFIDENCE. Graded against execution on a real 534-test crate,
  *   every test the walk selected at distance 2 really ran the target and
- *   precision settles near 89% deeper. The report says the distance and lets the
- *   developer read certainty from it, rather than inventing a narrow answer that
- *   is not there.
+ *   precision settles near 89% deeper. The channel report says the distance and
+ *   lets the developer read certainty from it, rather than inventing a narrow
+ *   answer that is not there. The toast leaves it out: it is a number the user
+ *   cannot act on without the path beside it.
  */
 
 import { TestOracleResult } from "./compilerOracle";
@@ -38,10 +39,8 @@ export interface GroupOutcome {
 export interface RunTestsReport {
   /** The channel transcript, many lines. */
   channel: string;
-  /** The single toast. As short as honesty allows, and never a newline. The
-   *  no-run paths carry a "this is not a pass" clause that makes them three
-   *  sentences, and that clause is required rather than optional: without it a
-   *  run that executed nothing reads exactly like a run that passed. */
+  /** The single toast, never a newline. A no-run toast is an error that says no
+   *  test ran and names why, so it cannot read like a run that passed. */
   toast: string;
   severity: "info" | "warning" | "error";
 }
@@ -81,22 +80,22 @@ function unclassifiedNoResult(outcome: GroupOutcome, res: TestOracleResult): boo
   return (res.buildError ?? "").trim().length === 0;
 }
 
-/** Why a walk stopped, in the developer's words and naming the DIAL, so the
- *  sentence points at something they could turn. */
+/** Why a walk stopped, in the developer's words. Shown after "the search
+ *  stopped early:", so each reason reads as the rest of that sentence. */
 function stopReason(stoppedBy: string): string {
   switch (stoppedBy) {
     case "requests":
-      return "the search hit its request cap before the caller graph ran out";
+      return "it hit its request limit";
     case "nodes":
-      return "the search hit its cap on how many callers it may hold at once";
+      return "it hit its limit on how many callers it can hold at once";
     case "depth":
-      return "the search hit its depth cap with callers still unexplored";
+      return "it hit its depth limit";
     case "cancelled":
-      return "you cancelled the search";
+      return "you cancelled it";
     case "hang-guard":
-      return "the language server stopped answering and the hang guard fired";
+      return "the language server stopped answering and the search timed out";
     default:
-      return `the search stopped early (${stoppedBy})`;
+      return `it stopped early (${stoppedBy})`;
   }
 }
 
@@ -126,7 +125,7 @@ export function renderRunTestsReport(input: RunTestsReportInput): RunTestsReport
       // state a zero as a fact: the walk completed, every node it was allowed to
       // visit was visited, and no request failed.
       lines.push(
-        `no ${unit} in this ${scopeWord} calls ${symbolName}, directly or through any caller I could reach.`,
+        `no ${unit} in this ${scopeWord} calls ${symbolName}, directly or through any caller the search could reach.`,
       );
       lines.push(
         `Nothing was run, so this run proved nothing about whether ${symbolName} behaves correctly.`,
@@ -139,7 +138,7 @@ export function renderRunTestsReport(input: RunTestsReportInput): RunTestsReport
       return {
         channel: lines.join("\n"),
         toast:
-          `Column 80: no ${unit} calls ${symbolName} in this ${scopeWord}. Nothing ran, so nothing about its behaviour was checked.`,
+          `Column 80: no ${unit} calls ${symbolName} in this ${scopeWord}.`,
         // Warning, never info: an info toast on a zero reads like a pass, and a
         // function no test reaches is the opposite of a checked one.
         severity: "warning",
@@ -150,20 +149,19 @@ export function renderRunTestsReport(input: RunTestsReportInput): RunTestsReport
     const why =
       discovery.walk.stoppedBy !== undefined
         ? stopReason(discovery.walk.stoppedBy)
-        : `${discovery.walk.failedRequests} caller lookup(s) failed, so part of the graph was never seen`;
-    lines.push(`I found no covering ${unit} for ${symbolName}, but the search did not finish: ${why}.`);
+        : `${discovery.walk.failedRequests} caller lookup(s) failed`;
+    lines.push(`found no covering ${unit} for ${symbolName}, but the search stopped early: ${why}.`);
     lines.push(
       `That is not the same as there being none. ${discovery.walk.requests} caller lookup(s) were made and ${discovery.walk.nodesAdmitted} caller(s) examined.`,
     );
     return {
       channel: lines.join("\n"),
-      toast: `Column 80: found no covering ${unit} for ${symbolName}, but the search did not finish - ${why}. See the output channel.`,
+      toast: `Column 80: found no covering ${unit} for ${symbolName}, but the search stopped early: ${why}. See the output channel.`,
       severity: "warning",
     };
   }
 
   // --- What was found, nearest first, with the distance and the path. ------
-  const runnable = discovery.discovered.filter((d) => d.excluded === undefined && d.unrunnable === undefined);
   const excluded = discovery.discovered.filter((d) => d.excluded !== undefined);
   const unrunnable = discovery.discovered.filter((d) => d.excluded === undefined && d.unrunnable !== undefined);
 
@@ -185,7 +183,7 @@ export function renderRunTestsReport(input: RunTestsReportInput): RunTestsReport
   }
   if (discovery.walk.stoppedBy !== undefined) {
     lines.push(
-      `The search did not finish: ${stopReason(discovery.walk.stoppedBy)}. There may be more covering ${unit}s than these.`,
+      `The search stopped early: ${stopReason(discovery.walk.stoppedBy)}. There may be more covering ${unit}s than these.`,
     );
   }
 
@@ -265,41 +263,40 @@ export function renderRunTestsReport(input: RunTestsReportInput): RunTestsReport
   }
 
   if (failed > 0) {
-    const near = runnable.length > 0 ? Math.min(...runnable.map((t) => t.distance)) : undefined;
+    return {
+      channel: lines.join("\n"),
+      toast: `Column 80: ${failed} covering ${failed === 1 ? "test" : "tests"} failed for ${symbolName} (${passed} passed). See the output channel.`,
+      severity: "warning",
+    };
+  }
+  if (!ranAnything && outcomes.length === 0 && excluded.length + unrunnable.length > 0) {
+    // Nothing was handed to a runner, so the runner cannot be the reason.
+    const n = discovery.discovered.length;
     return {
       channel: lines.join("\n"),
       toast:
-        `Column 80: ${failed} covering test(s) failed for ${symbolName} (${passed} passed` +
-        `${near === undefined ? "" : `, nearest at distance ${near}`}). See the output channel.`,
+        `Column 80: found ${n} covering ${unit}${n === 1 ? "" : "s"} for ${symbolName} but ran none, ` +
+        "because each is marked to be skipped or to share state, or could not be run. See the output channel.",
       severity: "warning",
     };
   }
   if (!ranAnything) {
     return {
       channel: lines.join("\n"),
-      toast: `Column 80: no covering ${unit} actually ran for ${symbolName} - ${problems[0] ?? "the runner produced no result"}. This is not a pass. See the output channel.`,
+      toast: `Column 80: no covering ${unit} ran for ${symbolName}: ${problems[0] ?? "the runner produced no result"}. See the output channel.`,
       severity: "error",
     };
   }
-  // A green run states what passed and how far away it was, and stops there. It
-  // does not say the function is correct: the tests that passed are the tests
-  // that were found, and finding them is not the same as covering the behaviour.
-  const distances = runnable.map((t) => t.distance);
-  const nearest = distances.length > 0 ? Math.min(...distances) : undefined;
-  const farthest = distances.length > 0 ? Math.max(...distances) : undefined;
+  // A green run states what passed and stops there. It does not say the
+  // function is correct: the tests that passed are the tests that were found,
+  // and finding them is not the same as covering the behaviour.
   lines.push(
     `${passed} covering ${unit}(s) passed. They are what this ${scopeWord}'s own tests reach; passing is not a statement that ${symbolName} is right.`,
   );
-  const spread =
-    nearest === undefined
-      ? ""
-      : nearest === farthest
-        ? ` at distance ${nearest}`
-        : ` at distances ${nearest} to ${farthest}`;
   return {
     channel: lines.join("\n"),
     toast:
-      `Column 80: ${passed} covering ${unit}(s) passed for ${symbolName}${spread}` +
+      `Column 80: ${passed} covering ${unit}${passed === 1 ? "" : "s"} passed for ${symbolName}` +
       `${excluded.length > 0 ? `; ${excluded.length} found but not run` : ""}.`,
     severity: "info",
   };

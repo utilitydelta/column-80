@@ -1168,6 +1168,19 @@ const surfacesText = () =>
     __state.shownDocs.map((d) => `${d.uri} ${d.text}`).join("\n"),
   ].join("\n");
 
+// Every diff tab the product opened: the `vscode.diff` call's original uri,
+// title, and the modified side's text read back through the preview content
+// provider, the text the user reads in the tab.
+const diffTabs = () =>
+  __state.executeCalls
+    .filter((c) => c.id === "vscode.diff")
+    .map((c) => {
+      const [left, right, title] = c.args;
+      const provider = right && __state.contentProviders[right.scheme];
+      const text = provider ? provider.provideTextDocumentContent(right) : undefined;
+      return { left: String(left && left.toString ? left.toString() : left), title, text: typeof text === "string" ? text : "" };
+    });
+
 const appliedText = () => JSON.stringify(__state.appliedEdits) + JSON.stringify(__state.editorEdits);
 
 const diagX = () =>
@@ -1259,10 +1272,11 @@ gtestX("qualify TS2304: a single-provider import fix is SHOWN through the consen
     ],
   };
   const drive = await driveRepair({ doc: fix.doc, cursor: fix.cursor, handlers, docs: fix.docs });
+  const importTab = () => diffTabs().find((t) => t.text.includes("soleprovider"));
   await waitFor(
     () =>
       __state.executeCalls.some((c) => c.id === "vscode.executeCodeActionProvider") &&
-      surfacesText().includes("soleprovider"),
+      importTab() !== undefined,
     "the qualify consultation and the consent surface",
     400,
     true
@@ -1271,9 +1285,18 @@ gtestX("qualify TS2304: a single-provider import fix is SHOWN through the consen
     __state.executeCalls.some((c) => c.id === "vscode.executeCodeActionProvider"),
     `the extractor's qualifyImport (code-action probe) must be consulted for a TS2304; ${diagX()}`
   );
+  // The consent surface is the diff tab (session-v77 R6): its original side is
+  // the file, and its modified side is the file with EXACTLY the import edit.
+  const tab = importTab();
   assert.ok(
-    surfacesText().includes("soleprovider"),
-    `the EXACT edit must be shown on a user-visible surface (consent gate), got surfaces:\n${surfacesText()}\n${diagX()}`
+    tab,
+    `the EXACT edit must be shown in a diff tab (consent gate), got tabs:\n${JSON.stringify(diffTabs())}\n${diagX()}`
+  );
+  assert.strictEqual(tab.left, "file://" + fix.abs, "the diff tab's original side is the file being repaired");
+  assert.strictEqual(tab.text, QUALIFY_IMPORT_TEXT + before, "the diff tab's modified side is the file plus exactly the import edit");
+  assert.ok(
+    !surfacesText().includes("import proposed"),
+    `the diff tab is the one surface for the edit; no status bar line repeats it, got surfaces:\n${surfacesText()}`
   );
   assert.ok(
     !appliedText().includes("soleprovider"),
@@ -1306,6 +1329,10 @@ gtestX("qualify TS2304 ambiguity: two matching providers mean NO qualify offer [
   assert.ok(
     !surfacesText().includes("dualA") && !surfacesText().includes("dualB"),
     `an ambiguous fix must never be offered; got surfaces:\n${surfacesText()}`
+  );
+  assert.ok(
+    !diffTabs().some((t) => t.text.includes("dualA") || t.text.includes("dualB")),
+    `an ambiguous fix must never open a diff tab; got tabs:\n${JSON.stringify(diffTabs())}`
   );
   assert.ok(!appliedText().includes("dualExport"), "and certainly never applied");
   assert.strictEqual(fs.readFileSync(fix.abs, "utf8"), before, "the file on disk is untouched");

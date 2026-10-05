@@ -32,9 +32,10 @@ const MODEL_14B = "qwen2.5-coder:14b-instruct-q4_K_M";
 
 // Byte-exact per surface: 'message is present exactly when fn-gen is disabled, byte-exact'.
 const NO_GPU_MSG =
-  "Function generation is disabled: no usable GPU detected. It needs at least 12GB of VRAM. FIM tab-completion still works.";
-const lowVramMsg = (mb) =>
-  `Function generation is disabled: this GPU has ${mb}MB of VRAM and function generation needs at least 12288MB. FIM tab-completion still works.`;
+  "Function generation is disabled: no usable GPU was found, and it needs 12GB of VRAM." +
+  " Set column80.fnGenProvider to use a cloud model or Claude Code.";
+const lowVramMsg = (_mb) =>
+  `Function generation is disabled: this GPU has under 12GB of VRAM. Set column80.fnGenProvider to use a cloud model or Claude Code.`;
 
 // ---- TIER_TABLE as data [surface: 'The tier table, as data']
 
@@ -184,7 +185,7 @@ test("message is present exactly when fn-gen is disabled, on every tier [surface
   for (const sel of disabled) {
     assert.strictEqual(sel.fnGenEnabled, false);
     assert.strictEqual(typeof sel.message, "string");
-    assert.ok(sel.message.endsWith("FIM tab-completion still works."), "every disable message ends on the FIM reassurance");
+    assert.ok(!/still works/.test(sel.message), "no disable message promises tab completion it never checked");
   }
 });
 

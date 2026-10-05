@@ -173,16 +173,16 @@ test.after(() => {
 
 const SENTENCES = {
   truncation:
-    "Column 80: the model's reply was cut off mid-function, so nothing was written - run the gesture again.",
+    "Column 80: the model's reply was cut off mid-function, so nothing was written. Try again.",
   fence:
-    "Column 80: the model wrapped its reply in markdown that cannot land in source code, so nothing was written - run the gesture again.",
+    "Column 80: the model replied with markdown instead of code, so nothing was written. Try again.",
   missingHead:
-    "Column 80: the model answered with something other than the requested function, so nothing was written - run the gesture again.",
-  empty: "Column 80: the model's reply contained no usable code, so nothing was written - run the gesture again.",
+    "Column 80: the model wrote something other than the requested function, so nothing was written. Try again.",
+  empty: "Column 80: the model's reply had no usable code, so nothing was written. Try again.",
   streamCut:
-    "Column 80: the model server went silent mid-reply, so nothing was written - check the server, then run the gesture again.",
+    "Column 80: the model server stopped answering mid-reply, so nothing was written. Check the server, then try again.",
   testRefusal:
-    "Column 80: the model's reply contained no usable tests, so nothing was written - run the gesture again.",
+    "Column 80: the model's reply had no usable tests, so nothing was written. Run \"Column 80: Generate Tests (TDD)\" again.",
 };
 
 const TABLE = [
@@ -225,7 +225,7 @@ test("translator table: an unknown error is NOT translated and falls to the catc
   // translations exist to remove. The unknown branch now reads err.message.
   assert.strictEqual(
     toast,
-    "Column 80: function generation failed - the flux capacitor failed. The full message is in the output channel.",
+    "Column 80: function generation failed: the flux capacitor failed. The full message is in the output channel.",
   );
   assert.ok(!toast.includes("\n"), "the catch-all toast is one line");
 });
@@ -284,7 +284,7 @@ test("catch-all fallback: a message already ending in a period does not render '
   assert.ok(!toast.includes(".."), `no doubled period in ${toast}`);
   assert.strictEqual(
     toast,
-    "Column 80: function generation failed - Claude Code exited 1 despite a well-formed reply. The full message is in the output channel.",
+    "Column 80: function generation failed: Claude Code exited 1 despite a well-formed reply. The full message is in the output channel.",
   );
 });
 
@@ -409,7 +409,7 @@ test("marker coupling [stream cut]: the transport's throw template carries the m
 // sibling's fallback - the toast and the channel line.
 // ---------------------------------------------------------------------------
 
-const FALLBACK = "the hardware tier is unavailable for generation";
+const FALLBACK = 'function generation is off on this machine. Run "Column 80: Select Hardware Tier" to see why.';
 
 test("message-less disabled tier: toast and channel line both use the fallback, never 'undefined'", async () => {
   const st = B.__state;

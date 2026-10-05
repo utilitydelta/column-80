@@ -3,8 +3,9 @@
  * (the reducer) and `src/core/dictation.ts` (the cleaner and the comment); this file resolves
  * editor state into events and executes the reducer's actions: the recorder child, the resident
  * recogniser, the speaker mute, the cursor-line decoration, the status bar item, the one
- * FIM request the intent rides on, and on a comment site the one edit that puts the sentence
- * in the comment before the tighten command takes over.
+ * FIM request the intent rides on, on a comment site the one edit that puts the sentence in
+ * the comment before the tighten command takes over, and on a prose site the one edit that
+ * puts the words in the file.
  *
  * Rulings this file carries (session-v65 goal.md): the recogniser is resident from activation
  * and the model downloads through a ratified toast like every other model; the indicator goes
@@ -17,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { CaptureTake, classifyCaptureExit, listCaptureDevices, type TakeResult } from "../core/capture";
-import { backtickSpokenNames, partialWindow, refusalSentence, timingLine, virtualComment } from "../core/dictation";
+import { backtickSpokenNames, isProseLanguage, needsSeparator, partialWindow, refusalSentence, timingLine, virtualComment } from "../core/dictation";
 import { docCommentAbove, docStyleFor } from "../core/dictationDoc";
 import { IDLE, reduce, type Action, type GestureEvent, type GestureState, type Readiness, type RefusalKind, type Site } from "../core/dictationGesture";
 import { commentSyntaxFor, cursorInComment } from "../core/fimComment";
@@ -30,6 +31,7 @@ import { muteSpeakers, type MuteHandle } from "../core/speakerMute";
 import { commentScanStart, type ArmedIntent } from "./completionProvider";
 import { readConfig } from "./config";
 import { isDocumentScheme } from "./documentSchemes";
+import { firstLine } from "./toastText";
 
 export const DICTATE_COMMAND = "column80.dictate";
 export const SELECT_MIC_COMMAND = "column80.selectMicrophone";
@@ -48,6 +50,7 @@ const PARTIAL_WINDOW_MS = 6000;
 const PARTIAL_INTERVAL_MS = 300;
 const PULSE_MS = 450;
 const REFUSAL_STATUS_MS = 8000;
+const DOWNLOADING_STATUS_MS = 5000;
 /** How long a cursor move off the site is held after an edit on it, waiting for the accept
  *  command that follows an accepted ghost. */
 const ACCEPT_GRACE_MS = 300;
@@ -98,7 +101,7 @@ export function readDictationConfig(): DictationConfig {
     microphone: s("dictation.microphone", ""),
     muteSpeakers: b("dictation.muteSpeakers", true),
     partials: b("dictation.partials", true),
-    surfaces: b("dictation.surfaces", true),
+    surfaces: b("dictation.surfaces", false),
     autoAccept: b("dictation.autoAccept", true),
   };
 }
@@ -131,6 +134,66 @@ export function indentUnitFor(document: vscode.TextDocument, line: number): stri
     }
   }
   return tabs ? "\t" : " ".repeat(unit === 0 ? 4 : unit);
+}
+
+/** The `failed` reasons the adapter writes itself. Anything else on a `failed` refusal is an
+ *  exception message or recorder stderr, which belongs on the channel, not the status bar. */
+const STOP_REASONS: ReadonlySet<string> = new Set([
+  "the editor moved away from the dictated line",
+  "the dictated line is gone",
+  "the editor declined the edit",
+]);
+
+const PLATFORM = `${process.platform}-${process.arch}`;
+
+/** The status bar sentence for a refusal. `binary-missing` always names this machine's
+ *  platform: on a capture exit the reducer's detail is the recorder's stderr. `site` is what
+ *  the take would have written: code goes to the model, text lands as a comment or prose. */
+export function refusalStatusText(kind: RefusalKind, detail?: string, site: "code" | "text" = "code"): string {
+  switch (kind) {
+    case "empty-transcript":
+      return site === "text" ? "Column 80: heard nothing, so nothing was written." : refusalSentence(kind, detail);
+    case "not-served":
+      return detail === undefined || detail === ""
+        ? "Column 80: dictation does not run in this language. Add it to column80.fimLanguages to use it here."
+        : `Column 80: dictation does not run in ${detail} files. Add ${detail} to column80.fimLanguages to use it here.`;
+    case "failed":
+      return detail !== undefined && STOP_REASONS.has(detail)
+        ? `Column 80: dictation stopped: ${detail}.`
+        : "Column 80: dictation stopped on an error. The full message is in the output channel.";
+    case "cancelled":
+      return "Column 80: dictation cancelled.";
+    case "nothing-landed":
+      return "Column 80: the dictated code was not inserted. Dictate again.";
+    case "binary-missing":
+      return refusalSentence(kind, PLATFORM);
+    default:
+      return refusalSentence(kind, detail);
+  }
+}
+
+/** The site line after one document change event: each change above it adds its inserted
+ *  newlines and removes the line breaks it replaced. A change ending at column 0 of the site
+ *  line is above it too when the site's text keeps its column: a whole-line delete, or an
+ *  insert that ends in a newline. VS Code reports the ranges of one event against the
+ *  document before that event. */
+export function siteLineAfter(
+  line: number,
+  changes: readonly { range: { start: { line: number; character: number }; end: { line: number; character: number } }; text: string }[],
+): number {
+  let delta = 0;
+  for (const change of changes) {
+    const { start, end } = change.range;
+    const endsAtSiteStart = end.line === line && end.character === 0 && (change.text.endsWith("\n") || (change.text === "" && start.character === 0));
+    if (end.line < line || endsAtSiteStart) {
+      delta += (change.text.match(/\n/g)?.length ?? 0) - (change.range.end.line - change.range.start.line);
+    }
+  }
+  return Math.max(0, line + delta);
+}
+
+function caretAt(selection: vscode.Selection, at: vscode.Position): boolean {
+  return selection.isEmpty && selection.active.line === at.line && selection.active.character === at.character;
 }
 
 /** A rejection's message, for the channel and the status bar: the `Error: ` prefix is noise there. */
@@ -179,7 +242,7 @@ export class Dictation implements vscode.Disposable {
   private readonly statusItem: vscode.StatusBarItem | undefined;
   private micClosedAt = 0;
   /** The caret's column at the press that ARMED the gesture. The reducer's site is
-   *  `{uri, line}`; the column is the adapter's, used only by the comment insert. The stop
+   *  `{uri, line}`; the column is the adapter's, used only by the comment and prose inserts. The stop
    *  press reads a caret too, and that one must not move the insert. */
   private pressCharacter = 0;
   /** The comment insert in flight, so the `tighten` action that follows it in the same action
@@ -192,6 +255,10 @@ export class Dictation implements vscode.Disposable {
   private pendingSentence = "";
   private holdMovesUntil = 0;
   private gestureId = 0;
+  /** The decode in flight. Escape and every new decode move it on, so a recogniser answer for
+   *  a take the user cancelled finds a stale id and is dropped, the way `gestureId` drops a
+   *  cancelled FIM answer. */
+  private takeId = 0;
   private lingerHeard = false;
   private lingerTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly downloads = new Map<string, Promise<void>>();
@@ -256,10 +323,13 @@ export class Dictation implements vscode.Disposable {
     }
     // An env override (tests, the measurement rigs) names a file that may be a different upload
     // of the same model, so presence there is existence, not the spec's byte count.
-    const speechPresent = process.env.COLUMN80_WHISPER_MODEL
-      ? existsSync(this.paths.model)
-      : await modelPresent(this.paths.model, SPEECH_MODEL);
+    const speechPresent = await this.speechModelPresent();
     if (!speechPresent) {
+      if (!existsSync(this.paths.capture) || !existsSync(this.paths.server)) {
+        // A model this machine has no recorder or recogniser to run is a download for nothing.
+        this.log("[dictate] recorder binaries missing; model not offered");
+        return;
+      }
       if (!offer || !(await this.offerModel(fromPress))) {
         return;
       }
@@ -275,6 +345,42 @@ export class Dictation implements vscode.Disposable {
     await this.startRecogniser();
   }
 
+  /** An env override (tests, the measurement rigs) names a file that may be a different upload
+   *  of the same model, so presence there is existence, not the spec's byte count. */
+  private speechModelPresent(): Promise<boolean> {
+    return process.env.COLUMN80_WHISPER_MODEL
+      ? Promise.resolve(existsSync(this.paths.model))
+      : modelPresent(this.paths.model, SPEECH_MODEL);
+  }
+
+  /** The Download Speech Model command. The press path re-offers through `ensureReady`; this
+   *  one says why there is nothing to download instead of returning silently. */
+  async downloadSpeechModel(): Promise<void> {
+    if (!readDictationConfig().enabled) {
+      void vscode.window.showInformationMessage("Column 80: dictation is off. Turn on column80.dictation.enabled first.");
+      return;
+    }
+    if (vscode.env.remoteName !== undefined) {
+      void vscode.window.showInformationMessage(refusalSentence("remote"));
+      return;
+    }
+    if (await this.speechModelPresent()) {
+      void vscode.window.showInformationMessage("Column 80: the speech model is already downloaded.");
+      // Still readies dictation: a missing VAD file is fetched and the recogniser starts.
+      await this.ensureReady(false);
+      return;
+    }
+    if (this.downloads.has(this.paths.model)) {
+      void vscode.window.showInformationMessage("Column 80: the download is still running. Dictation starts when it finishes.");
+      return;
+    }
+    if (!existsSync(this.paths.capture) || !existsSync(this.paths.server)) {
+      void vscode.window.showInformationMessage(refusalSentence("binary-missing", PLATFORM));
+      return;
+    }
+    await this.ensureReady(true, true);
+  }
+
   /** A declined download is remembered, so activation does not ask again every morning; a
    *  press with the model still missing re-offers, because that is the user asking. */
   private async offerModel(fromPress: boolean): Promise<boolean> {
@@ -284,7 +390,7 @@ export class Dictation implements vscode.Disposable {
     }
     this.log(`[dictate] model offered model=${SPEECH_MODEL.file} bytes=${SPEECH_MODEL.bytes}`);
     const pick = await vscode.window.showInformationMessage(
-      `Column 80: dictation needs the ${SPEECH_MODEL.name} speech model (${Math.round(SPEECH_MODEL.bytes / 1e6)}MB, whisper.cpp). Download it?`,
+      `Column 80: dictation needs a ${Math.round(SPEECH_MODEL.bytes / 1e6)}MB speech model that runs on this machine. Download it?`,
       "Download",
     );
     if (pick !== "Download") {
@@ -298,8 +404,16 @@ export class Dictation implements vscode.Disposable {
       await this.fetchModel(SPEECH_MODEL, this.paths.model);
       return true;
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        // The user pressed Cancel on the progress notification: nothing failed.
+        this.log(`[dictate] model download cancelled model=${SPEECH_MODEL.file}`);
+        return false;
+      }
       this.log(`[dictate] model download failed model=${SPEECH_MODEL.file}: ${String(err)}`);
-      void vscode.window.showWarningMessage(`Column 80: the speech model download failed: ${String(err)}`);
+      const reason = err instanceof Error ? err.message : String(err);
+      void vscode.window.showWarningMessage(
+        `Column 80: the speech model did not download (${firstLine(reason)}). Run "Column 80: Download Speech Model" to try again.`,
+      );
       return false;
     }
   }
@@ -321,7 +435,7 @@ export class Dictation implements vscode.Disposable {
     }
     const started = Date.now();
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Column 80: downloading ${spec.file}…`, cancellable: true },
+      { location: vscode.ProgressLocation.Notification, title: spec === VAD_MODEL ? "Column 80: downloading the voice detection model…" : "Column 80: downloading the speech model…", cancellable: true },
       async (progress, token) => {
         const controller = new AbortController();
         token.onCancellationRequested(() => controller.abort());
@@ -376,12 +490,17 @@ export class Dictation implements vscode.Disposable {
   // ---- events in
 
   dispatch(event: GestureEvent): void {
-    const step = reduce(this.state, event);
-    const before = this.state.phase;
+    if (event.type === "stopped" && event.failure !== undefined && event.stderr !== undefined && event.stderr !== "") {
+      // The status bar shows a fixed sentence for a failed take; the recorder's own words live here.
+      this.log(`[dictate] capture stderr: ${event.stderr}`);
+    }
+    const prior = this.state;
+    const step = reduce(prior, event);
+    const before = prior.phase;
     this.state = step.state;
     for (const action of step.actions) {
       try {
-        this.execute(action);
+        this.execute(action, prior);
       } catch (err) {
         this.log(`[dictate] action ${action.type} failed: ${String(err)}`);
       }
@@ -412,6 +531,7 @@ export class Dictation implements vscode.Disposable {
     if (this.state.phase === "ghost") {
       void vscode.commands.executeCommand("editor.action.inlineSuggest.hide").then(undefined, () => undefined);
     }
+    this.takeId += 1;
     this.dispatch({ type: "cancel", now: Date.now() });
   }
 
@@ -420,13 +540,21 @@ export class Dictation implements vscode.Disposable {
     const editor = vscode.window.activeTextEditor;
     if (editor === undefined) {
       this.log("[dictate] refused: no active editor");
-      void vscode.window.setStatusBarMessage("Column 80: dictation needs an editor with a cursor.", REFUSAL_STATUS_MS);
+      void vscode.window.setStatusBarMessage("Column 80: open a file first.", REFUSAL_STATUS_MS);
       return;
     }
     const config = readDictationConfig();
     if (!config.enabled) {
       this.log("[dictate] refused: disabled by column80.dictation.enabled");
-      void vscode.window.setStatusBarMessage("Column 80: dictation is off (column80.dictation.enabled).", REFUSAL_STATUS_MS);
+      void vscode.window.setStatusBarMessage("Column 80: dictation is off. Turn on column80.dictation.enabled first.", REFUSAL_STATUS_MS);
+      return;
+    }
+    const arms = this.state.phase === "idle" || this.state.phase === "ghost" || this.state.phase === "requesting";
+    if (arms && vscode.workspace.fs.isWritableFileSystem?.(editor.document.uri.scheme) === false) {
+      // Refused before the recorder starts: the take would only end in a declined edit.
+      // undefined means the host does not know the scheme, which is not a refusal.
+      this.log(`[dictate] refused: read-only document ${editor.document.uri.toString()}`);
+      void vscode.window.setStatusBarMessage("Column 80: this file is read-only, so dictation cannot write to it.", REFUSAL_STATUS_MS);
       return;
     }
     if (!readConfig().enabled) {
@@ -448,6 +576,7 @@ export class Dictation implements vscode.Disposable {
       served: fimServesLanguage(document.languageId, readConfig().fimLanguages),
       commentRow: syntax !== undefined,
       inComment,
+      prose: isProseLanguage(document.languageId),
       platform: `${process.platform}-${process.arch}`,
     };
     if (!ready.recogniserAlive && ready.modelPresent && ready.binaryPresent) {
@@ -470,6 +599,11 @@ export class Dictation implements vscode.Disposable {
   }
 
   onDocumentChanged(e: vscode.TextDocumentChangeEvent): void {
+    const phase = this.state.phase;
+    if (phase === "arming" || phase === "recording" || phase === "finalising") {
+      this.followSite(e);
+      return;
+    }
     if ((this.state.phase !== "ghost" && this.state.phase !== "requesting") || e.contentChanges.length === 0) {
       return;
     }
@@ -489,6 +623,21 @@ export class Dictation implements vscode.Disposable {
       this.holdMovesUntil = Date.now() + ACCEPT_GRACE_MS;
     }
     this.dispatch({ type: "edit", site });
+  }
+
+  /** While the take records or decodes, lines added or removed ABOVE the site move it, so the
+   *  words land on the line the user pressed on, not on whatever line now has its number. The
+   *  reducer has no rule on this: it is a coordinate shift of the site it already holds. An edit
+   *  on the site line itself is left to the insert's column clamp. */
+  private followSite(e: vscode.TextDocumentChangeEvent): void {
+    const site = this.state.site;
+    if (site === undefined || e.document.uri.toString() !== site.uri) {
+      return;
+    }
+    const line = siteLineAfter(site.line, e.contentChanges);
+    if (line !== site.line) {
+      this.state = { ...this.state, site: { ...site, line } };
+    }
   }
 
   onSelectionChanged(e: vscode.TextEditorSelectionChangeEvent): void {
@@ -554,7 +703,8 @@ export class Dictation implements vscode.Disposable {
       // draws now is that request's, and committing it would land the wrong ghost.
       this.log("[dictate] the dictated ghost was superseded by a keystroke request at the site; not committed");
       void vscode.commands.executeCommand("editor.action.inlineSuggest.hide").then(undefined, () => undefined);
-      this.dispatch({ type: "nothing-landed" });
+      // The user's own typing replaced the dictated ghost, so there is nothing to report.
+      this.dispatch({ type: "dismissed" });
       return;
     }
     this.landingAttempts += 1;
@@ -589,8 +739,9 @@ export class Dictation implements vscode.Disposable {
         this.landingWatch = setTimeout(() => {
           this.landingWatch = undefined;
           if (this.state.phase === "ghost") {
+            // The code is in the buffer, so the take ends as an accept: no refusal to show.
             this.log("[dictate] an edit landed on the site but no accept arrived; the gesture ends");
-            this.dispatch({ type: "nothing-landed" });
+            this.dispatch({ type: "accepted" });
           }
         }, ACCEPT_GRACE_MS);
         return;
@@ -608,7 +759,9 @@ export class Dictation implements vscode.Disposable {
 
   // ---- actions out
 
-  private execute(action: Action): void {
+  /** `prior` is the state the event arrived in; a refusal ends the gesture, so the site it
+   *  refused for is only there. An action run outside a dispatch reads the current state. */
+  private execute(action: Action, prior: GestureState = this.state): void {
     switch (action.type) {
       case "log":
         this.log(action.line);
@@ -662,7 +815,10 @@ export class Dictation implements vscode.Disposable {
         this.triggerFim(action.site, action.comment);
         return;
       case "insert-comment":
-        this.pendingInsert = this.insertComment(action.site, action.sentence);
+        this.pendingInsert = this.insertAtCaret(action.site, action.sentence, "comment");
+        return;
+      case "insert-text":
+        void this.insertAtCaret(action.site, action.text, "text");
         return;
       case "tighten": {
         // The reducer lists the tighten right after the insert; the command must not run
@@ -677,7 +833,7 @@ export class Dictation implements vscode.Disposable {
         return;
       }
       case "refuse":
-        this.refuse(action.kind, action.detail);
+        this.refuse(action.kind, action.detail, prior.proseSite === true || prior.commentSite === true ? "text" : "code");
         return;
       default:
         return;
@@ -697,6 +853,7 @@ export class Dictation implements vscode.Disposable {
         if (this.take === take) {
           this.clearPartials();
           this.take = undefined;
+          this.logCaptureExit(result);
           this.dispatch({
             type: "stopped",
             pcmBytes: result.pcm.length,
@@ -721,12 +878,21 @@ export class Dictation implements vscode.Disposable {
     void take.stop().then((result) => {
       this.lastTake = result;
       const failure = classifyCaptureExit(result.exitCode);
+      if (failure !== undefined) {
+        this.logCaptureExit(result);
+      }
       this.dispatch(
         failure === undefined
           ? { type: "stopped", pcmBytes: result.pcm.length }
           : { type: "stopped", pcmBytes: result.pcm.length, failure, stderr: result.stderr },
       );
     });
+  }
+
+  /** The channel line the failed-take sentence points at, even when the recorder wrote
+   *  nothing to stderr. */
+  private logCaptureExit(result: TakeResult): void {
+    this.log(`[dictate] capture exited code=${result.exitCode ?? "none"} signal=${result.signal ?? "none"}`);
   }
 
   private startPartials(take: CaptureTake): void {
@@ -771,16 +937,30 @@ export class Dictation implements vscode.Disposable {
     const rec = this.recogniser;
     const take = this.lastTake;
     if (rec === undefined || !rec.alive || take === undefined) {
-      this.dispatch({ type: "error", message: refusalSentence("server-down") });
+      this.dispatch({ type: "error", message: "the speech recogniser is not running", refusal: { kind: "server-down" } });
+      // The sentence says to dictate again in a moment; this is what makes that true.
+      void this.startRecogniser();
       return;
     }
+    this.takeId += 1;
+    const takeId = this.takeId;
     rec
       .transcribe(take.pcm)
-      .then((t) => {
-        this.decodeMs = t.decodeMs;
-        this.dispatch({ type: "transcript", text: t.text, decodeMs: t.decodeMs });
-      })
-      .catch((err) => this.dispatch({ type: "error", message: String(err) }));
+      .then(
+        (t) => {
+          if (takeId !== this.takeId) {
+            this.log(`[dictate] dropped the transcript of a cancelled take (decode=${t.decodeMs}ms)`);
+            return;
+          }
+          this.decodeMs = t.decodeMs;
+          this.dispatch({ type: "transcript", text: t.text, decodeMs: t.decodeMs });
+        },
+        (err) => {
+          if (takeId === this.takeId) {
+            this.dispatch({ type: "error", message: String(err) });
+          }
+        },
+      );
   }
 
   private buildIntent(sentence: string, languageId: string, indentColumns: number): void {
@@ -831,7 +1011,7 @@ export class Dictation implements vscode.Disposable {
         ? (docCommentAbove(ticked.text, languageId, indentColumns) ?? virtualComment(ticked.text, languageId, indentColumns))
         : virtualComment(ticked.text, languageId, indentColumns);
     if (comment === undefined) {
-      this.dispatch({ type: "error", message: refusalSentence("no-comment-row", languageId) });
+      this.dispatch({ type: "error", message: `no comment syntax for ${languageId}`, refusal: { kind: "no-comment-row", detail: languageId } });
       return;
     }
     if (kind === "declaration") {
@@ -967,21 +1147,22 @@ export class Dictation implements vscode.Disposable {
   }
 
   /** Put the sentence at the press caret as ONE edit with undo stops on both sides, so Ctrl+Z
-   *  takes it back in one step and the tighten's edit is its own. Resolves whether the
-   *  sentence is in the file; a refusal here reads as the failure it is, not as a crash. */
-  private async insertComment(site: Site, sentence: string): Promise<vscode.TextEditor | undefined> {
+   *  takes it back in one step and a comment's tighten edit is its own. Resolves whether the
+   *  sentence is in the file; a refusal here reads as the failure it is, not as a crash.
+   *  `noun` names the site on the channel: a comment, or prose text. */
+  private async insertAtCaret(site: Site, sentence: string, noun: "comment" | "text"): Promise<vscode.TextEditor | undefined> {
     const started = Date.now();
     const editor = this.siteEditor(site);
     // A site with nowhere to land is an insert failure to the user, not a channel-only
     // error: the sentence is lost and the status bar must say so.
     if (editor === undefined) {
       this.log("[dictate] error: the editor moved away from the dictated line");
-      this.insertFailed("the editor moved away from the dictated line");
+      this.insertFailed("the editor moved away from the dictated line", noun);
       return undefined;
     }
     if (site.line >= editor.document.lineCount) {
       this.log("[dictate] error: the dictated line is gone");
-      this.insertFailed("the dictated line is gone");
+      this.insertFailed("the dictated line is gone", noun);
       return undefined;
     }
     // The line may have changed since the press; the column clamps to the line as it is now,
@@ -989,29 +1170,33 @@ export class Dictation implements vscode.Disposable {
     // `//  |` lands `//  Sentence.`, column 0 gets no space).
     const lineText = editor.document.lineAt(site.line).text;
     const column = Math.min(this.pressCharacter, lineText.length);
-    const before = column > 0 ? lineText[column - 1] : "";
-    const text = before !== "" && !/\s/.test(before) ? ` ${sentence}` : sentence;
+    const text = needsSeparator(lineText, column, noun === "text") ? ` ${sentence}` : sentence;
     const at = new vscode.Position(site.line, column);
+    // A comment site always takes the caret: the tighten that follows reads it. A prose insert
+    // ends the gesture, so a caret the user moved during the decode stays where they put it.
+    const takeCaret = noun === "comment" || caretAt(editor.selection, at);
     let applied: boolean;
     try {
       applied = await editor.edit((builder) => builder.insert(at, text), { undoStopBefore: true, undoStopAfter: true });
     } catch (err) {
-      this.insertFailed(reasonOf(err));
+      this.insertFailed(reasonOf(err), noun);
       return undefined;
     }
     if (!applied) {
-      this.insertFailed("the editor declined the edit");
+      this.insertFailed("the editor declined the edit", noun);
       return undefined;
     }
-    const after = new vscode.Position(site.line, column + text.length);
-    editor.selection = new vscode.Selection(after, after);
-    this.log(`[dictate] comment inserted at ${site.uri}:${site.line}:${column} chars=${text.length} insert=${Date.now() - started}ms`);
+    if (takeCaret) {
+      const after = new vscode.Position(site.line, column + text.length);
+      editor.selection = new vscode.Selection(after, after);
+    }
+    this.log(`[dictate] ${noun} inserted at ${site.uri}:${site.line}:${column} chars=${text.length} insert=${Date.now() - started}ms`);
     this.endHeard();
     return editor;
   }
 
-  private insertFailed(reason: string): void {
-    this.log(`[dictate] comment insert failed: ${reason}`);
+  private insertFailed(reason: string, noun: "comment" | "text"): void {
+    this.log(`[dictate] ${noun} insert failed: ${reason}`);
     this.refuse("failed", reason);
     this.endHeard();
   }
@@ -1048,26 +1233,23 @@ export class Dictation implements vscode.Disposable {
       }
     }
     this.log("[dictate] tighten invoked");
-    await Promise.resolve(vscode.commands.executeCommand("column80.tightenDocComment")).then(undefined, (err) =>
+    await Promise.resolve(vscode.commands.executeCommand("column80.tightenDocComment", { source: "dictation" })).then(undefined, (err) =>
       this.log(`[dictate] tighten failed: ${reasonOf(err)}`),
     );
   }
 
-  private refuse(kind: RefusalKind, detail?: string): void {
-    const sentence =
-      kind === "not-served"
-        ? `Column 80: FIM does not serve ${detail ?? "this language"}; add it to column80.fimLanguages first.`
-        : kind === "failed"
-          ? `Column 80: dictation stopped: ${detail ?? "unknown error"}`
-          : kind === "cancelled"
-            ? "Column 80: dictation cancelled."
-            : kind === "nothing-landed"
-              ? "Column 80: nothing landed for the dictated ghost."
-              : refusalSentence(kind, detail);
-    void vscode.window.setStatusBarMessage(sentence, REFUSAL_STATUS_MS);
+  private refuse(kind: RefusalKind, detail?: string, site: "code" | "text" = "code"): void {
     if (kind === "model-missing") {
+      // The offer toast is the message, so the status bar does not repeat it. A download
+      // already running is not offered again.
+      if (this.downloads.has(this.paths.model)) {
+        void vscode.window.setStatusBarMessage("Column 80: the speech model is still downloading.", DOWNLOADING_STATUS_MS);
+        return;
+      }
       void this.ensureReady(true, true);
+      return;
     }
+    void vscode.window.setStatusBarMessage(refusalStatusText(kind, detail, site), REFUSAL_STATUS_MS);
   }
 
   // ---- the indicator
@@ -1116,22 +1298,22 @@ export class Dictation implements vscode.Disposable {
     }
     switch (this.indicatorMode) {
       case "armed":
-        item.text = "$(record) opening mic…";
+        item.text = "$(record) Column 80: opening mic…";
         item.backgroundColor = undefined;
         item.show();
         return;
       case "live":
-        item.text = "$(record) Column 80 listening";
+        item.text = "$(record) Column 80: listening";
         item.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
         item.show();
         return;
       case "thinking":
-        item.text = "$(sync~spin) Column 80 hearing…";
+        item.text = "$(sync~spin) Column 80: transcribing…";
         item.backgroundColor = undefined;
         item.show();
         return;
       case "heard":
-        item.text = "$(mic) heard";
+        item.text = "$(mic) Column 80: heard";
         item.backgroundColor = undefined;
         item.show();
         return;
@@ -1160,7 +1342,7 @@ export class Dictation implements vscode.Disposable {
       this.indicatorMode === "live"
         ? this.indicatorText === "" ? "listening…" : this.indicatorText
         : this.indicatorMode === "thinking"
-          ? "hearing…"
+          ? "transcribing…"
           : `heard: “${this.indicatorText}”`;
     this.decoration = vscode.window.createTextEditorDecorationType({
       after: {
@@ -1179,7 +1361,7 @@ export class Dictation implements vscode.Disposable {
 
   async selectMicrophone(): Promise<void> {
     if (!existsSync(this.paths.capture)) {
-      void vscode.window.setStatusBarMessage(refusalSentence("binary-missing", `${process.platform}-${process.arch}`), REFUSAL_STATUS_MS);
+      void vscode.window.setStatusBarMessage(refusalSentence("binary-missing", PLATFORM), REFUSAL_STATUS_MS);
       return;
     }
     let devices: Awaited<ReturnType<typeof listCaptureDevices>>;
@@ -1187,11 +1369,11 @@ export class Dictation implements vscode.Disposable {
       devices = await listCaptureDevices(this.paths.capture);
     } catch (err) {
       this.log(`[dictate] device list failed: ${String(err)}`);
-      void vscode.window.setStatusBarMessage(`Column 80: could not list microphones: ${String(err)}`, REFUSAL_STATUS_MS);
+      void vscode.window.setStatusBarMessage("Column 80: could not list microphones. The full message is in the output channel.", REFUSAL_STATUS_MS);
       return;
     }
     if (devices.length === 0) {
-      void vscode.window.setStatusBarMessage(refusalSentence("no-device"), REFUSAL_STATUS_MS);
+      void vscode.window.setStatusBarMessage("Column 80: no microphone found. Plug one in and try again.", REFUSAL_STATUS_MS);
       return;
     }
     const current = readDictationConfig().microphone;
@@ -1251,10 +1433,9 @@ export function registerDictation(
     dictation,
     vscode.commands.registerCommand(DICTATE_COMMAND, () => dictation.press()),
     vscode.commands.registerCommand(SELECT_MIC_COMMAND, () => dictation.selectMicrophone()),
-    vscode.commands.registerCommand(DOWNLOAD_MODEL_COMMAND, () => dictation.ensureReady(true, true)),
-    vscode.commands.registerCommand(DICTATION_ACCEPTED_COMMAND, async (...args: unknown[]) => {
-      // A declaration ghost says where the caret belongs (the body line); place it before the
-      // check runs, so the developer is already inside the body when the annotation lands.
+    vscode.commands.registerCommand(DOWNLOAD_MODEL_COMMAND, () => dictation.downloadSpeechModel()),
+    vscode.commands.registerCommand(DICTATION_ACCEPTED_COMMAND, (...args: unknown[]) => {
+      // A declaration ghost says where the caret belongs: the body line, not the closer.
       const [uriString, , , caretOffset] = args as [string, number, number, number | undefined];
       if (typeof caretOffset === "number") {
         const editor = vscode.window.activeTextEditor;
@@ -1263,10 +1444,6 @@ export function registerDictation(
           editor.selection = new vscode.Selection(at, at);
         }
       }
-      // The post-accept check, exactly as a plain ghost gets it; then the gesture hears.
-      await Promise.resolve(vscode.commands.executeCommand("column80.fimAccepted", ...args.slice(0, 3))).catch((err) =>
-        output.appendLine(`[dictate] post-accept check failed: ${String(err)}`),
-      );
       dictation.accepted();
     }),
     vscode.commands.registerCommand(CANCEL_DICTATION_COMMAND, () => dictation.cancel()),
@@ -1287,7 +1464,9 @@ export function registerDictation(
       }
     }),
   );
-  void dictation.ensureReady(true);
+  // No offer here: first activation already asks about the tier and its models, and the first
+  // press offers the speech model (Amendment 3, R1). A model on disk still starts the recogniser.
+  void dictation.ensureReady(false);
   return dictation;
 }
 

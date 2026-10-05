@@ -113,7 +113,8 @@ word with a non-ASCII letter never matches, because the fold is ASCII-only by de
 
 ## The pipeline, and where the surfaces go
 
-Ruled order: dictation, backtick parser, resolver, prompt. The ticked names of kind `type` go
+Ruled order: dictation, backtick parser, resolver, prompt. The resolver step runs only with
+`column80.dictation.surfaces` on, which is off by default (below). The ticked names of kind `type` go
 to `resolveWholeBlock` as the FIRST roots, above the signature's types, at both places the
 budget bites: the root list and the render. A dictated request resolves even where the cursor
 is not at a whole-block site, since a mid-body cursor is the common dictation site, and it
@@ -143,8 +144,8 @@ authored Rust enum `match`-arm sites are where the comment earns most and the su
 most: bare 18 of 40, comment 24, with surfaces 16 at 300 and 18 at 1200, below bare. No C#
 enum row exists: the Contoso tree has no `case Enum.Member:` arm anywhere.
 
-So the wiring ships as ruled, `column80.dictation.surfaces` switches it off, and the decision
-whether the default stays on is the human's (session-v65 hand-back). FIM does not join the
+So the wiring stays, and `column80.dictation.surfaces` defaults off since session-v77 (ruled
+2026-10-05, S77-26 #7): the spoken-name roots step above runs only with the setting on. FIM does not join the
 `injectedContext` dial: the curve gave it nothing to dial.
 
 Three things on the service's `intent` seam, each measured against a defect: the request skips
@@ -221,10 +222,11 @@ command then honours. One accept, one write path, the comment kept because it is
 ghost. The scout's measurement on 100 documented Rust heads (doc comment present: 81 declare,
 31 name right, 16 whole head within 0.9) is the ceiling this half ships at.
 
-The accept runs through `column80.fimAccepted`, so the compiler check and the repair loop
-already run on the landed head: on 2026-09-02 the human dictated the doc comment of
-`endOfLiteral` in `src/core/brackets.ts`, the head landed, tsc went red on the empty body, and
-repair wrote the body. What roadmap item 78 still owes is the dictated name and parameter list
+The accept runs `column80.dictationAccepted`, which places the caret and ends the take. It runs
+no compiler check. Until session-v77 it forwarded to the post-FIM-accept check, so tsc went red on
+the empty body and repair wrote it unasked (2026-09-02, `endOfLiteral` in
+`src/core/brackets.ts`); the human ruled that leg out, and Repair Function is how to get the body
+written now. What roadmap item 78 still owes is the dictated name and parameter list
 matched rather than guessed, and the fifty-gesture falsifier. A head that opens no body (a type
 alias, `struct Foo;`, a trait method) lands with the caret at its end at module level, or on a
 fresh line at the block's indent inside a block. A dictated request reads through attribute and
@@ -289,15 +291,58 @@ Two rulings are the human's to overturn, batched in `session-v67/scraps.md`: the
 tighten against a silent re-wrap with no pick, and no dictation-matched backticks against the
 fold-matched ticks the intent leg computes. Built as ruled.
 
+## Prose site: dictate into markdown and plain text
+
+The human, session-v77 Amendment 4: "you should be able to dictate into a markdown file raw,
+that's dumb otherwise." `markdown` and `plaintext` (`PROSE_LANGUAGES` in `src/core/dictation.ts`,
+the one named set) are the third site kind. The adapter reads it into `Readiness.prose`; the
+reducer keeps it on the state as `proseSite`, beside `commentSite`, not as a new phase.
+
+Same press, mic, partials, second press and decode. The tail is one action, `insert-text`, and
+nothing after it: no `build-intent`, no `trigger-fim`, no `tighten`, no comment marker. The text
+is `proseTranscript`: whitespace collapsed, whisper's noise markers and spoken fillers dropped,
+no capital and no full stop added. `cleanTranscript` builds the comment and intent sentence on top
+of it, so the two cleaners cannot drift. The insert is the comment site's insert
+(`insertAtCaret`): the press caret, one edit with undo stops on both sides. The space rule
+(`needsSeparator`) differs by site. A comment gets a space after any non-whitespace character.
+Prose gets none after an opening run of markup (a bracket, or `*` `_` `~` `` ` `` `"` `'` after
+whitespace or line start), because `** text**` is not bold; after a word or closing punctuation
+it gets one. The comment insert always moves the caret to the end of the sentence, since the
+tighten reads it. The prose insert moves it only when it is still at the press position, so a
+caret the user moved during the decode stays put. The gesture is idle when the transcript
+arrives, and the heard label lingers and hides the way it does after a comment.
+
+While the take records or decodes, a document change above the site moves the site line by the
+lines it added or removed (`siteLineAfter`), for every site kind. An edit on the site line itself
+is not followed; the insert clamps the press column to the line as it is. A late transcript
+from a take Escape cancelled is dropped by a take id, the way `gestureId` drops a cancelled FIM
+answer, so a press made while the old decode is still running never receives the old words.
+
+A prose press skips `no-comment-row` and `not-served`: there is no comment to write and no tab
+completion to need. Remote, the recorder, the speech model and the recogniser still apply. An
+empty take refuses `heard nothing, so nothing was written` (a code line keeps `nothing was
+generated`); Escape cancels as anywhere else. The record:
+`press at <uri>:<line> (prose)`, the mic lines, `heard: <text>`, `text inserted at
+<uri>:<line>:<col> chars=<n> insert=<n>ms`, or `text insert failed: <reason>`.
+
 ## Refusals
 
 Every refusal is one sentence in the product's voice on the status bar and a `[dictate]
-refused: <kind>` line, in this order at the press: Remote (the extension host is the server and
+refused: <kind>` line. Before the reducer sees the press, the adapter refuses no editor, dictation
+off, and a read-only document (a scheme `isWritableFileSystem` reports as not writable), so a
+take that could only end in a declined edit never records. Then, in this order: Remote (the extension host is the server and
 the mic is the client; a `ui`-kind companion extension is the fix and is its own session), no
-recorder for this platform, model not downloaded (the toast is re-offered), recogniser not
-running, language not served by FIM, no comment syntax for the language. After the take: no
+comment syntax for the language, language not served by FIM (a line site only: a comment site
+needs no tab completion, so `column80.fimLanguages` does not gate it, session-v77), no recorder
+for this platform, model not downloaded (the toast is re-offered), recogniser not running. A
+prose site skips the two language checks. The language checks come before the machine checks
+because a press dictation can never serve used to offer the 148MB model first and refuse for the
+language once it had downloaded (session-v77 Amendment 4). No comment syntax goes before not-served
+because the not-served sentence tells the user to add the language to `column80.fimLanguages`,
+and that cannot help a language dictation has no comment for. After the take: no
 device, device would not open, heard nothing. Over Remote the recogniser is not started and the
-model is not offered. A caret in a comment is a site, not a refusal, since session-v67; a
+model is not offered. Activation never offers the model either: it starts the recogniser when the
+model is on disk, and the first press makes the offer (session-v77). A caret in a comment is a site, not a refusal, since session-v67; a
 language with no comment syntax mapped cannot have a caret in one, so `no-comment-row` still
 covers that.
 

@@ -2,8 +2,8 @@
  * Gesture 2, the first half: dictate a declaration. At a declaration site (a blank line that
  * is not inside a function body) the heard sentence is the DOC COMMENT and stays in the file;
  * FIM writes the declaration under it, and both land through the one inline-completion accept,
- * whose command forwards to the post-accept compiler check and repair (so an empty body that
- * does not compile is repaired from the doc comment and the head). Roadmap item 78 still owes
+ * whose command places the caret and ends the take. No check or repair runs; the body is
+ * Generate Function Body's job. Roadmap item 78 still owes
  * the dictated name and parameters matched rather than guessed.
  *
  * Pure: the ghost text is assembled here from the served head, the sentence and the site's

@@ -537,26 +537,26 @@ test("timingLine malformed: non-object input and missing or non-numeric fields n
 // ---- refusalSentence
 
 test("refusalSentence: the six fixed sentences, exact text", () => {
-  assert.strictEqual(refusalSentence("no-device"), "Column 80: no microphone found. Plug one in, or pick one with Select Microphone.");
+  assert.strictEqual(refusalSentence("no-device"), "Column 80: no microphone found. Plug one in, or pick one with \"Column 80: Select Microphone\".");
   assert.strictEqual(refusalSentence("device-denied"), "Column 80: the microphone would not open. Check the OS microphone permission for VS Code.");
   // Contract amended 2026-09-02: the sentence names the two ways to get the download.
-  assert.strictEqual(refusalSentence("model-missing"), "Column 80: the speech model is not downloaded yet. Click Download in the notification, or run Column 80: Download Speech Model.");
+  assert.strictEqual(refusalSentence("model-missing"), "Column 80: the speech model is not downloaded yet. Click Download in the notification, or run \"Column 80: Download Speech Model\".");
   assert.strictEqual(refusalSentence("empty-transcript"), "Column 80: heard nothing, so nothing was generated.");
   assert.strictEqual(refusalSentence("remote"), "Column 80: dictation needs the microphone on this machine; not available over Remote yet.");
-  assert.strictEqual(refusalSentence("server-down"), "Column 80: the speech recogniser is not running, so nothing was heard.");
+  assert.strictEqual(refusalSentence("server-down"), "Column 80: the speech recogniser was not running. Dictate again in a moment.");
 });
 
 test("refusalSentence: binary-missing carries the platform, 'unknown' when absent or malformed", () => {
   // Reading: a non-string detail is the same as no detail.
-  assert.strictEqual(refusalSentence("binary-missing", "linux-arm64"), "Column 80: this build carries no recorder for linux-arm64, so dictation is off here.");
-  assert.strictEqual(refusalSentence("binary-missing"), "Column 80: this build carries no recorder for unknown, so dictation is off here.");
-  assert.strictEqual(refusalSentence("binary-missing", 42), "Column 80: this build carries no recorder for unknown, so dictation is off here.");
+  assert.strictEqual(refusalSentence("binary-missing", "linux-arm64"), "Column 80: dictation is not available on linux-arm64 yet.");
+  assert.strictEqual(refusalSentence("binary-missing"), "Column 80: dictation is not available on this platform yet.");
+  assert.strictEqual(refusalSentence("binary-missing", 42), "Column 80: dictation is not available on this platform yet.");
 });
 
 test("refusalSentence: no-comment-row carries the languageId, 'this language' when absent or malformed", () => {
-  assert.strictEqual(refusalSentence("no-comment-row", "plaintext"), "Column 80: no comment syntax for plaintext, so the intent cannot ride into the prompt.");
-  assert.strictEqual(refusalSentence("no-comment-row"), "Column 80: no comment syntax for this language, so the intent cannot ride into the prompt.");
-  assert.strictEqual(refusalSentence("no-comment-row", null), "Column 80: no comment syntax for this language, so the intent cannot ride into the prompt.");
+  assert.strictEqual(refusalSentence("no-comment-row", "plaintext"), "Column 80: dictation does not know how to write a comment in plaintext, so it cannot run here.");
+  assert.strictEqual(refusalSentence("no-comment-row"), "Column 80: dictation does not know how to write a comment in this language, so it cannot run here.");
+  assert.strictEqual(refusalSentence("no-comment-row", null), "Column 80: dictation does not know how to write a comment in this language, so it cannot run here.");
 });
 
 test("refusalSentence: an unknown or malformed kind is the generic refusal and never throws", () => {

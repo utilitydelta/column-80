@@ -218,7 +218,7 @@ ltest("[P6 wiring] the human is TOLD the tests Column 80 wrote do not compile", 
   assert.match(said, /generated for first_even|generated tests for first_even|tests it generated for first_even/i);
   assert.ok(/E0308|mismatched types/i.test(said), `the message carries the first diagnostic. MESSAGES:\n${said}`);
   assert.ok(
-    /not the tests|Generate Tests again/i.test(said),
+    /not the tests|only repairs the function|Generate Tests again/i.test(said),
     `and says what this gesture will NOT do about it. MESSAGES:\n${said}`,
   );
 });
@@ -237,7 +237,7 @@ ltest("[P6 wiring] the channel carries the count, the file and the diagnostic wh
 ltest("[P6 wiring] the general out-of-span note is NOT also shown for the same press", async () => {
   const r = await press(crate("once", LIB));
   assert.deepStrictEqual(
-    r.status.filter((s) => /remains? outside the touched span/.test(s)),
+    r.status.filter((s) => /remains? outside it\b/.test(s)),
     [],
     "one sentence about one situation; the vaguer note would be about the same errors",
   );
@@ -250,7 +250,7 @@ ltest("[P6 wiring] the SAME errors outside the marked region get the general not
   const said = r.messages.map((m) => m.message).join("\n");
   assert.ok(!/generated/i.test(said), `these are not ours and must not be claimed. MESSAGES:\n${said}`);
   assert.ok(
-    r.status.some((s) => /remains? outside the touched span/.test(s)),
+    r.status.some((s) => /remains? outside it\b/.test(s)),
     `the general note is what this case gets. STATUS:\n${r.status.join("\n")}`,
   );
 });

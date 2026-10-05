@@ -216,6 +216,10 @@ test("R4 (RE-RULED 2026-09-02): a press while the activation offer is still open
     __state.messages.push({ kind: "info", message, actions });
     return new Promise(() => {}); // the toast stays open
   };
+  // The recorder binaries are present for this row: since session-v77 DC31 a machine without
+  // them is never offered the model, and this row is about the offer.
+  const staged = ["whisper-server", "column80-capture"].map((name) => path.join(SCRATCH, name));
+  for (const f of staged) fs.writeFileSync(f, "");
   try {
     __state.messages = [];
     const d = newDictation(output);
@@ -234,6 +238,7 @@ test("R4 (RE-RULED 2026-09-02): a press while the activation offer is still open
     await Promise.allSettled([a, b]);
   } finally {
     window.showInformationMessage = original;
+    for (const f of staged) fs.rmSync(f, { force: true });
   }
 });
 
@@ -264,6 +269,8 @@ test("R5: on a Remote host the speech model must not be offered at activation", 
 test("R6: the harvest labels a constant a type and misses acronym-led class names", async () => {
   const { output, lines } = channel();
   const d = newDictation(output);
+  // The harvest feeds the resolver only with surfaces on, which is off by default since v77 R5.
+  __state.config["dictation.surfaces"] = true;
   __state.activeTextEditor = editorAt(3, "MAX_RETRIES = 3\nclass HTTPServer:\n    pass\n");
   // TRIAGED again after the declaration-site check: the build now runs only in `requesting`
   // and is async (it asks whether the site is a declaration), so the row sits in that phase

@@ -823,7 +823,7 @@ btest("P1 [pin]: server-unreachable via generate keeps today's wording", async (
     },
   });
   assert.ok(
-    r.toasts.some((t) => t.message === "Column 80: the Ollama server isn't running, so function generation can't reach a model."),
+    r.toasts.some((t) => t.message === `Column 80: the Ollama server at ${REMOTE_HOST} did not answer, so nothing was written. Check that it is running.`),
     `non-behaviour: "Server-unreachable ... translations already exist; do not reword them." ` +
       `Pinned pre-fix wording missing.\n${fmt(r)}`,
   );
@@ -838,7 +838,7 @@ btest("P2 [pin]: server-unreachable via test-gen keeps today's wording", async (
     },
   });
   assert.ok(
-    r.toasts.some((t) => t.message === "Column 80: the Ollama server isn't running, so tests can't be generated."),
+    r.toasts.some((t) => t.message === `Column 80: the Ollama server at ${REMOTE_HOST} did not answer, so no tests were generated. Check that it is running.`),
     `non-behaviour: pinned pre-fix wording missing.\n${fmt(r)}`,
   );
 });
@@ -858,7 +858,7 @@ btest("P3 [pin]: the window-refusal translation keeps today's opening sentence",
   );
   assert.ok(
     r.toasts.some((t) =>
-      t.message.startsWith("Column 80: this prompt does not fit the model's context window, so nothing was generated."),
+      t.message.startsWith("Column 80: this function and its context are too long for the model, so nothing was generated."),
     ),
     `non-behaviour: "window-refusal translations already exist; do not reword them." ` +
       `Pinned pre-fix opening sentence missing.\n${fmt(r)}`,

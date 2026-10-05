@@ -610,7 +610,7 @@ test("G4 every TS_LANGUAGE_IDS member is served with the same prefix", () => {
   assert.equal(servesTighten("java"), false);
   const r = resolveTightenRegion({ text: "// x\n", languageId: "java", cursor: 0 });
   assert.equal(r.ok, false);
-  assert.ok(r.refusal.includes("java"), r.refusal);
+  assert.ok(r.refusal.includes("in Java files"), r.refusal);
 });
 
 test("G5 width charges a flat tabWidth per tab, not the next tab stop", () => {

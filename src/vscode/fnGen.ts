@@ -8,9 +8,10 @@ import type { PrefillLedgerView } from "../core/tightenClassify";
 import { ContextBlockStore } from "../core/contextBlocks";
 import { ProbeCommandFn, ProbeHardwareOptions, probeCommandRunner } from "../core/hardware";
 import { FnGenService } from "../core/fnGenService";
+import { languageName, unsupportedLanguageToast } from "../core/languageName";
 import { FunctionSpan, spliceSpan } from "../core/span";
 import { ContextBlock, FnGenPromptInput, GenKind, contractDocComment } from "../core/prompt";
-import { isPromptWindowError } from "../core/promptBudget";
+import { type PromptWindowError, isPromptWindowError } from "../core/promptBudget";
 import { makeBlockReader } from "./blockReader";
 import { fileLabel } from "./contextPanel";
 import { attachRunStart, attachedCandidateIndex, declarationHeadLine, hasDocumentSymbolShape } from "../core/symbols";
@@ -34,7 +35,13 @@ import { CLAUDE_CODE, claudeModelLabel, makeClaudeCodeInstruct } from "../core/c
 import { callRootPosition, runPostAcceptOracle } from "./oracleSurface";
 import { extractorFor } from "./extractors";
 import { registerTightenDocComment } from "./tightenDocComment";
-import { firstLine, hasMoreThanOneLine, oneLineWithPointer, tierDisabledToast } from "./toastText";
+import {
+  countOf,
+  firstLine,
+  noFunctionAtCursorToast,
+  oneLineWithPointer,
+  tierDisabledToast,
+} from "./toastText";
 // The failure translator, a leaf beside `toastText.ts` for the same reason it
 // is: the download toast and the tighten gesture need the same sentences and
 // neither may take an edge back into the file that registers them.
@@ -117,20 +124,18 @@ import { StructFieldShape } from "../core/tabstop";
 // S2). Everything that used to be Rust-literal in the two commands — the
 // return-type reader, the scaffold, the blanker, the marker format, the
 // testability classifier and the assertion idiom — comes off the resolved leg.
-import { TddDeps, TestPlacement, blankExpectedValues, frameworkFor, tddLangFor, tddLanguageIds, testGenFieldsFor } from "../core/tddLang";
+import { TddDeps, TestPlacement, blankExpectedValues, frameworkFor, tddLangFor, testGenFieldsFor } from "../core/tddLang";
 import { guardShadowedTestNames } from "../core/tddShadow";
 import { TestOracleResult, fileIsCheckable, oracleFor, runFrameworkTestsAt, runOracleCheck } from "../core/compilerOracle";
 // The Run Covering Tests gesture: the walk and its transport, the classifier's
 // language names, the grouper's target resolution, and the ONE pure module that
 // owns every sentence the gesture can say about a result.
 import { discoverCoveringTests } from "../core/testDiscovery";
-import { coveringTestPlan, runCoveringGroups } from "../core/coveringTestRun";
+import { RUN_TESTS_LANGS, coveringTestPlan, runCoveringGroups } from "../core/coveringTestRun";
 import { RunTestsReport, renderRunTestsReport } from "../core/runTestsReport";
 import { makeLineReader, makeResolveCallers, prepareCallRoot } from "./callHierarchy";
 import { baselineCheck, describeEnvironment, isMissingImportsStorm } from "../core/pyOracle";
 
-/** `column80.checkOnFimAccept` off is announced once per session, not per Tab. */
-let fimCheckOffSaid = false;
 import {
   fenceFor,
   fileImportBindings,
@@ -295,7 +300,34 @@ function isRegisteredLanguage(languageId: string): boolean {
     languageId === "go"
   );
 }
-const SUPPORTED_LANGUAGES_TEXT = "Rust, TypeScript/JavaScript, C#, Python, and Go";
+/** A detail clause as the end of a toast: its own period, never two. */
+function endSentence(text: string): string {
+  return /[.!?]$/.test(text.trimEnd()) ? text.trimEnd() : `${text.trimEnd()}.`;
+}
+
+/** The languages Run Covering Tests serves, named for a person. */
+function coveringTestsLanguagesText(): string {
+  const list = Object.keys(RUN_TESTS_LANGS).map(languageName);
+  return list.length < 2 ? list.join("") : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/** The toast for a project with no test framework the leg recognises. A leg
+ *  that supplies its own detail names the project and the fix itself. */
+function noFrameworkToast(refusal: { lookedFor: string[]; detail?: string }, runRoot: string): string {
+  return refusal.detail !== undefined
+    ? `Column 80: ${endSentence(refusal.detail)}`
+    : `Column 80: no test framework found in ${runRoot}. Column 80 looked for ${refusal.lookedFor.join(", ")}. ` +
+        "Add one, then run the command again.";
+}
+
+/** The period a tier toast needs after the cut: none when the kept line already
+ *  ends a sentence, so a tier message never reads "works..". */
+function tierToastEnd(why: string): string {
+  return /[.!?]$/.test(firstLine(why)) ? "" : ".";
+}
+
+/** The tier toast's text when a disabled tier arrives without its own message. */
+const TIER_OFF_FALLBACK = 'function generation is off on this machine. Run "Column 80: Select Hardware Tier" to see why.';
 
 // Map a resolved symbol's kind to its generation kind. Only kinds the language
 // admits (typeKindsFor) reach the type branches — a Rust Class/Interface never
@@ -364,17 +396,18 @@ export function refusalMessage(
   if (refusal.reason === "no-symbol-at-cursor") {
     return cursorText;
   }
+  const name = languageName(languageId);
   if (refusal.reason === "empty-tree") {
-    return `Column 80: the language server has no symbols for this ${languageId} file yet, so it is probably still indexing. Try again in a moment.`;
+    return `Column 80: the language server has no symbols for this ${name} file yet, so it is probably still indexing. Try again in a moment.`;
   }
   if (refusal.reason === "flat-symbols") {
-    return `Column 80: ${languageId}'s symbol provider answers a flat symbol list, and Column 80 needs a hierarchical document symbol provider to do sound span math.`;
+    return `Column 80: the ${name} language server lists symbols without their nesting, so Column 80 cannot find where the function starts and ends. Use a language server that reports nested document symbols.`;
   }
   const provider = SYMBOL_PROVIDERS[languageId];
   if (provider?.builtIn) {
-    return `Column 80: no language server answered for ${languageId}. ${provider.name} are disabled or still starting, and generate, repair and TDD all need them.`;
+    return `Column 80: no language server answered for this ${name} file. ${provider.name} are disabled or still starting. Column 80 needs them for this command. Try again in a moment.`;
   }
-  const install = provider ? provider.name : `a language server extension for ${languageId}`;
+  const install = provider ? provider.name : `a language server extension for ${name}`;
   // Deliberately does NOT say "install it". The code has one bit here, an
   // `undefined` from the command, and that bit does not prove the extension is
   // missing: VS Code's isFalsyOrEmpty converts an EMPTY symbol result to
@@ -384,7 +417,8 @@ export function refusalMessage(
   // top-level statements, a C# file of only `using` lines. Claiming "install
   // rust-analyzer" at a user who already has it working is the exact message
   // item 55 exists to kill, so the string names the server and stops there.
-  return `Column 80: no document symbols for this ${languageId} file. Either ${install} is not installed or not enabled, or it is still starting up. Inline completions work without it, which is why the setup can look fine.`;
+  const subject = `${install.charAt(0).toUpperCase()}${install.slice(1)}`;
+  return `Column 80: no document symbols for this ${name} file. ${subject} is not installed, not enabled, or still starting. Check it is enabled, then try again.`;
 }
 
 /** The channel line. This branch logged NOTHING before item 55, so the toast was
@@ -578,10 +612,10 @@ function resolveFromSymbolTree(
     // first literal is located, so the rest would be eaten).
     const doc = pyLeadingDocstring(spanText);
     if (doc && doc.sameLineAsHeader) {
-      docstringRefusal = `expand ${symbol.name} to multiple lines before generating — its docstring is on the header line and cannot be preserved in place.`;
+      docstringRefusal = `put ${symbol.name}'s docstring on its own line below the def, then generate again.`;
       refusedDocstring = stripPyDocstring(spanText.slice(doc.start, doc.end));
     } else if (doc && pyDocstringHasAdjacentLiteral(spanText, doc.end)) {
-      docstringRefusal = `join ${symbol.name}'s docstring into one string literal before generating — an implicitly concatenated docstring cannot be preserved in place.`;
+      docstringRefusal = `join ${symbol.name}'s docstring into one string literal, then generate again. A docstring split across several literals would be lost.`;
       // The literals as written, quotes and all, through the end of the line the
       // first one closes on. A concatenation continued onto later lines is cut
       // there; the model still reads the part the first literal carries.
@@ -953,6 +987,26 @@ export function isServerUnreachable(err: unknown): boolean {
   return err instanceof TypeError && /fetch failed/i.test(err.message);
 }
 
+/** The unreachable-server sentence for a backend that is NOT this machine's
+ *  Ollama, or undefined when it is. "Start ollama serve" only helps a local
+ *  server, so blaming a local Ollama for a cloud provider or a remote host that
+ *  went quiet sends the user to fix the wrong machine. Same backend detection
+ *  `buildFnGenService` uses. `consequence` is the press's own "so ..." clause. */
+function unreachableElsewhereToast(consequence: string): string | undefined {
+  const cloud = readCloudConfig();
+  if (cloud !== undefined) {
+    const check = cloud.provider === CLAUDE_CODE ? "Check your network." : "Check your network and column80.cloudApiBase.";
+    // The label carries "(subscription)" for the settings UI; a toast names the product.
+    const name = cloud.provider === CLAUDE_CODE ? "Claude Code" : cloud.label;
+    return `Column 80: could not reach ${name}, ${consequence}. ${check}`;
+  }
+  const host = readFnGenConfig().apiBase;
+  if (isRemoteApiBase(host)) {
+    return `Column 80: the Ollama server at ${host} did not answer, ${consequence}. Check that it is running.`;
+  }
+  return undefined;
+}
+
 const PREVIEW_SCHEME = "column80-fngen";
 
 /**
@@ -987,12 +1041,10 @@ export interface ProposalRequest {
   versionAtResolve: number;
   /** Diff tab title, e.g. "name: generated body (preview)". */
   title: string;
-  /** The NOUN the discard sentence uses, when there is one to say. Absent is
-   *  fn-gen's own word, so fn-gen and repair emit the bytes they always have
-   *  and criticize stops being told its generation was discarded for a gesture
-   *  that generates nothing. It is a property of the REQUEST because the one
-   *  consent gate now serves three gestures, and a sentence that names one of
-   *  them is a sentence that is false for the other two. */
+  /** The NOUN the discard sentence uses ("the ${noun} was not applied").
+   *  Absent is fn-gen's own word. It is a property of the REQUEST because the
+   *  one consent gate serves several commands, and a sentence that names one of
+   *  them is false for the others. */
   discardNoun?: string;
   /** The replacement function text that would land in the span. */
   text: string;
@@ -1002,10 +1054,10 @@ export interface ProposalRequest {
   /** Surface for PRE-CONSENT system discards ONLY: the document closed or
    *  changed during generation — the product's own doing, never a human
    *  verdict. Absent = today's warning toast, right for a gesture the user
-   *  invoked. A background FIM-sourced repair session passes its channel
-   *  logger here: the race it loses is the user's own typing, and a toast
-   *  for that is noise (roadmap item 64, mechanical half; narrowed by its
-   *  post-review amendment). No other cause reaches this callback: every
+   *  invoked. A background gesture (criticize) passes its channel logger
+   *  here: the race it loses is the user's own typing, and a toast for that
+   *  is noise (roadmap item 64, mechanical half; narrowed by its post-review
+   *  amendment). No other cause reaches this callback: every
    *  post-Accept discard (closed/changed while previewing, editor refused
    *  the edit) and a preview that could not open toast in EVERY session,
    *  because an accepted edit failing to land is not a background race the
@@ -1013,10 +1065,9 @@ export interface ProposalRequest {
   onSystemDiscard?: (why: string) => void;
 }
 
-/** The word fn-gen's discard sentence has always used, and the default for a
- *  caller that names none. Named rather than written out twice, so the two
- *  sites that say it cannot drift apart. */
-const FNGEN_DISCARD_NOUN = "generation";
+/** What fn-gen's discard sentence calls the thing that was not applied, and the
+ *  default for a caller that names none. */
+const FNGEN_DISCARD_NOUN = "generated code";
 
 export type ProposalOutcome = "accept" | "reject" | "discarded";
 
@@ -1119,42 +1170,21 @@ export class ProposalPresenter {
     // channel. Everything after the human clicked Accept is news about an edit
     // they approved, so it toasts in every session, callback or not.
     //
-    // `detail` is the one thing on this path the product did not author: the
-    // caught error from a preview that would not open. It arrives separately
-    // from `why` so the CUT can land inside the brackets the sentence puts it
-    // in. Cutting the composed sentence instead - which is what the first fix
-    // did - splits the bracket pair and welds the sentence's own period to a
-    // truncated clause: "...could not be opened (Error: the diff editor is
-    // gone." reached the screen.
+    // `why` is the channel's reason and `toast` the user's sentence. `detail`
+    // is the one thing on this path the product did not author: the caught
+    // error from a preview that would not open. It never reaches the toast;
+    // `logOutcome` below carries it to the channel, which the toast points at.
+    const noun = request.discardNoun ?? FNGEN_DISCARD_NOUN;
     const discard = (
       why: string,
       surface: "channel-if-wired" | "toast",
+      toast: string,
       detail?: string,
     ): ProposalOutcome => {
       if (surface === "channel-if-wired" && request.onSystemDiscard !== undefined) {
         request.onSystemDiscard(why);
       } else {
-        // ONE LINE, the deferred fix item 63 left on this string. Five of the
-        // six reasons below are product prose, but the preview-open branch
-        // interpolates a caught error, and a stack in a notification renders as
-        // a wall of rows.
-        //
-        // The open bracket sits in `text` and its partner is the `end`
-        // argument, on purpose: `oneLineWithPointer` applies `end` AFTER the
-        // cut, so the pair cannot be split however long the error is. The
-        // period is the `tail`, which lands after the bracket rather than
-        // inside it, and the channel pointer - now that the whole reason
-        // reaches `logOutcome` below - is a promise with something behind it.
-        //
-        // THE NOUN IS THE CALLER'S. Interpolated rather than written out, so
-        // fn-gen's and repair's bytes are the ones they always were and the
-        // gesture that generates nothing can say what it actually lost.
-        const opening = `Column 80: ${request.discardNoun ?? FNGEN_DISCARD_NOUN} discarded — ${why}`;
-        void vscode.window.showWarningMessage(
-          detail === undefined
-            ? oneLineWithPointer(opening, ".")
-            : oneLineWithPointer(`${opening} (${detail}`, ")", "."),
-        );
+        void vscode.window.showWarningMessage(toast);
       }
       // THE REASON, BOTH HALVES, AND THE SINK DECIDES WHAT TO DO WITH THEM.
       // `discardedBecause` is the half the product did NOT author - the caught
@@ -1170,10 +1200,18 @@ export class ProposalPresenter {
     };
 
     if (document.isClosed) {
-      return discard("the document was closed during generation", "channel-if-wired");
+      return discard(
+        "the document was closed during generation",
+        "channel-if-wired",
+        `Column 80: the file was closed before the ${noun} was ready, so nothing was changed.`,
+      );
     }
     if (document.version !== versionAtResolve) {
-      return discard("the document changed during generation", "channel-if-wired");
+      return discard(
+        "the document changed during generation",
+        "channel-if-wired",
+        `Column 80: the file changed before the ${noun} was ready, so it was not applied. Run the command again.`,
+      );
     }
 
     const previewUri = vscode.Uri.from({
@@ -1194,7 +1232,12 @@ export class ProposalPresenter {
       // Not one of the two racing causes: an editor that cannot open the diff
       // is broken machinery, not the user typing over background work, and a
       // background session's channel is the wrong place to bury that.
-      return discard("the preview could not be opened", "toast", String(err));
+      return discard(
+        "the preview could not be opened",
+        "toast",
+        "Column 80: the preview could not open, so nothing was changed. The full message is in the output channel.",
+        String(err),
+      );
     } finally {
       // The tab now exists (or never will): the pruner may own the entry.
       this.pendingPreviews.delete(previewKey);
@@ -1225,10 +1268,18 @@ export class ProposalPresenter {
     // mis-apply if a change lands inside it (public WorkspaceEdit text
     // edits carry no versionId, nothing refuses stale edits); see surface.
     if (document.isClosed) {
-      return discard("the document was closed while previewing", "toast");
+      return discard(
+        "the document was closed while previewing",
+        "toast",
+        `Column 80: the file was closed before the ${noun} could be applied, so nothing was changed.`,
+      );
     }
     if (document.version !== versionAtResolve) {
-      return discard("the document changed while previewing", "toast");
+      return discard(
+        "the document changed while previewing",
+        "toast",
+        `Column 80: the file changed while the preview was open, so the ${noun} was not applied. Run the command again.`,
+      );
     }
     const edit = new vscode.WorkspaceEdit();
     edit.replace(
@@ -1238,7 +1289,11 @@ export class ProposalPresenter {
     );
     const applied = await vscode.workspace.applyEdit(edit);
     if (!applied) {
-      return discard("the editor refused the edit", "toast");
+      return discard(
+        "the editor refused the edit",
+        "toast",
+        `Column 80: VS Code rejected the edit, so the ${noun} was not applied.`,
+      );
     }
     service.logOutcome("accept");
     return "accept";
@@ -1403,7 +1458,7 @@ export async function buildFnGenService(
     return {
       service: inertFnGenService(
         config,
-        selection.message ?? "Function generation is disabled on this hardware tier. FIM tab-completion still works.",
+        selection.message ?? "Function generation is disabled on this hardware tier.",
         log,
       ),
       tier: selection,
@@ -1456,7 +1511,7 @@ async function buildRemoteFnGenService(
   ]);
   if (models === undefined) {
     log(`[carve] tier=remote host=${host} fnGen=disabled reason=unreachable`);
-    const message = `Function generation is disabled: the Ollama server at ${host} did not answer. FIM tab-completion still works.`;
+    const message = `Function generation is disabled: the Ollama server at ${host} did not answer.`;
     return {
       service: inertFnGenService(config, message, log),
       tier: { id: "remote", fnGenEnabled: false, provisional: false, message },
@@ -1469,7 +1524,7 @@ async function buildRemoteFnGenService(
   // the MODEL (roadmap item 57).
   if (!hasModel(models, config.model)) {
     log(`[carve] tier=remote host=${host} model=${config.model} fnGen=disabled reason=model-missing`);
-    const message = `Function generation is disabled: the Ollama server at ${host} does not have ${config.model} pulled. FIM tab-completion still works.`;
+    const message = `Function generation is disabled: the Ollama server at ${host} does not have ${config.model} pulled.`;
     return {
       service: inertFnGenService(config, message, log),
       tier: { id: "remote", fnGenEnabled: false, provisional: false, message },
@@ -1507,7 +1562,7 @@ function buildCloudFnGenService(
     cloud.baseUrl === "" ? "endpoint (column80.cloudApiBase)" : cloud.apiKey === "" ? "API key (column80.cloudApiKey)" : undefined;
   if (missing !== undefined) {
     log(`[carve] tier=cloud provider=${cloud.provider} fnGen=disabled reason=missing-${cloud.baseUrl === "" ? "endpoint" : "key"}`);
-    const message = `Function generation is disabled: the ${cloud.label} cloud backend needs an ${missing}. FIM tab-completion still works.`;
+    const message = `Function generation is disabled: the ${cloud.label} cloud backend needs an ${missing}.`;
     return {
       service: inertFnGenService(config, message, log),
       tier: { id: "cloud", fnGenEnabled: false, provisional: false, message },
@@ -1615,7 +1670,7 @@ async function buildClaudeCodeFnGenService(
   if (deps.storagePath === undefined || deps.storagePath === "") {
     return disabled(
       "no-storage-path",
-      "Function generation is disabled: the Claude Code backend has no product-owned directory to run in. FIM tab-completion still works.",
+      "Function generation is disabled: Claude Code has no folder of its own to run in.",
     );
   }
   // The neutral-cwd invariant is only as strong as its weakest input. A
@@ -1625,7 +1680,7 @@ async function buildClaudeCodeFnGenService(
   if (!path.isAbsolute(deps.storagePath)) {
     return disabled(
       "cwd-unusable",
-      `Function generation is disabled: the Claude Code backend needs an absolute working directory and was given ${deps.storagePath}. FIM tab-completion still works.`,
+      `Function generation is disabled: Claude Code needs a full folder path to run in, and was given ${deps.storagePath}.`,
     );
   }
 
@@ -1634,7 +1689,7 @@ async function buildClaudeCodeFnGenService(
   if (binary === undefined) {
     return disabled(
       "binary-missing",
-      "Function generation is disabled: the Claude Code backend needs the `claude` CLI on PATH. FIM tab-completion still works.",
+      "Function generation is disabled: the Claude Code backend needs the \"claude\" CLI on PATH.",
     );
   }
 
@@ -1655,7 +1710,7 @@ async function buildClaudeCodeFnGenService(
     // it for the notification.
     return disabled(
       "cwd-unusable",
-      `Function generation is disabled: the Claude Code backend could not create its working directory ${cwd} (${err instanceof Error ? err.message : String(err)}). FIM tab-completion still works.`,
+      `Function generation is disabled: the Claude Code backend could not create its working directory ${cwd} (${err instanceof Error ? err.message : String(err)}).`,
     );
   }
 
@@ -1722,9 +1777,9 @@ export interface FnGenDeps {
    *  command's targets. Injectable so a headless oracle can read what the item
    *  says without a real status bar; defaults to a real one. */
   inFlight?: InFlightRegistry;
-  /** The post-accept oracle, injectable so the manual repair command's wiring
-   *  (the ctx it builds) is testable without a live cargo check. Defaults to
-   *  the real runPostAcceptOracle. */
+  /** The post-accept oracle, injectable so the ctx the generate accept and the
+   *  manual repair command build is testable without a live cargo check.
+   *  Defaults to the real runPostAcceptOracle. */
   runOracle?: typeof runPostAcceptOracle;
   /** Server-reachability probe for the manual repair pre-flight, injectable so
    *  the down-server path is testable without a live daemon. Defaults to the
@@ -1749,12 +1804,15 @@ function withVerifyStatus(p: Promise<void>): Promise<void> {
   // which reads as "work is happening" far better than a plain status message.
   // Non-blocking: the human keeps editing while the check and any repair run.
   if (typeof vscode.window.withProgress === "function" && vscode.ProgressLocation) {
-    void vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Window, title: "Column 80: verifying generated code…" },
-      () => p,
-    );
+    // The caller handles `p`'s failure; this copy of it must not surface as an unhandled rejection.
+    void Promise.resolve(
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: "Column 80: checking the code…" },
+        () => p,
+      ),
+    ).catch(() => undefined);
   } else if (typeof vscode.window.setStatusBarMessage === "function") {
-    vscode.window.setStatusBarMessage("$(sync~spin) Column 80: verifying generated code…", p);
+    vscode.window.setStatusBarMessage("$(sync~spin) Column 80: checking the code…", p);
   }
   return p;
 }
@@ -1986,7 +2044,7 @@ function contextStopLine(lang: PrefillLang, budget: BudgetProfile, rootCap: numb
         `the gather's own caps can bite`
       : `it renders member signatures only, with no data-shape walk and no graph edges, so the ` +
         `budget reaches it through the member cap alone`;
-  return `${head}; breadth, total types and depth buy nothing in this language - ${why}`;
+  return `${head}; breadth, total types and depth buy nothing in this language: ${why}`;
 }
 
 /**
@@ -5548,9 +5606,8 @@ async function warnIfTestsAreUncheckable(
     `[tdd] ${targetPath} is not an input of the project ${oracle.checkLabel} compiles, so Column 80 cannot check these tests`,
   );
   void vscode.window.showWarningMessage(
-    `Column 80: the tests went into ${path.basename(targetPath)}, which your project does not compile — ` +
-      `it is not an input of the ${oracle.checkLabel} Column 80 runs, so nothing will tell you if they stop building. ` +
-      "Add it to the project's includes, or point the project at the directory your tests live in.",
+    `Column 80: your project does not build ${path.basename(targetPath)}, so Column 80 cannot tell you when these ` +
+      "tests stop compiling. Add it to the project's includes, or move the tests where the project builds them.",
   );
 }
 
@@ -5603,6 +5660,21 @@ export interface ModelGestureWiring {
    *  would settle the wrong one's diff. A getter like the rest, for symmetry
    *  rather than for freshness: this one instance outlives every rebuild. */
   presenter: () => ProposalPresenter;
+}
+
+/** Generate Tests' own window refusal. Generation's sentence says "nothing was
+ *  generated" and points at the sketched body, which a test prompt does not carry. */
+function testWindowRefusalMessage(err: PromptWindowError): string {
+  const a = err.arbitration;
+  // The token counts are on the channel line the service logged before it threw.
+  const remedy =
+    a.fixedTok > a.availableTok
+      ? " The function and its doc comment alone are too long for this model."
+      : a.developerTok > 0
+        ? " Remove a context block."
+        : "";
+  const dial = a.injectedTok > 0 ? " Lowering column80.injectedContext also frees room." : "";
+  return `Column 80: this function and its context are too long for the model, so no tests were generated.${remedy}${dial}`;
 }
 
 export function registerFnGen(
@@ -5684,8 +5756,8 @@ export function registerFnGen(
    * `announce` is the generate-time half of the human's ruling: a lost block
    * DROPS OUT of the prompt rather than refusing it, so the human is told what
    * their prompt went without. Not a duplicate of the loss-time toast - that one
-   * says the block is gone, this one says the prompt lacked it - but the two
-   * fire-and-forget accept paths pass nothing, because a repair round seconds
+   * says the block is gone, this one says the prompt lacked it - but the
+   * fire-and-forget accept path passes nothing, because a repair round seconds
    * after a generation would repeat the warning the generation just showed for
    * the same blocks.
    */
@@ -5761,7 +5833,7 @@ export function registerFnGen(
     { dispose: () => service.dispose() },
   );
 
-  // One host-scoped catalog fetcher, shared by both post-accept paths: it
+  // One host-scoped catalog fetcher, shared by the accept and repair paths: it
   // resolves the host triple once and scopes cargo metadata to it, so catalog
   // steering never promotes a platform-pruned optional dep.
   const catalogFetcher = makeHostScopedCatalogFetcher();
@@ -5786,7 +5858,7 @@ export function registerFnGen(
     vscode.commands.registerCommand("column80.generateFunction", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        void vscode.window.showWarningMessage("Column 80: no active editor.");
+        void vscode.window.showWarningMessage("Column 80: open a file first.");
         return;
       }
       // Honest-dark gate on unregistered languages. Without it a .go file
@@ -5797,7 +5869,7 @@ export function registerFnGen(
       if (!isRegisteredLanguage(langId)) {
         output.appendLine(`[fngen] refused: ${langId} is not a registered language`);
         void vscode.window.showWarningMessage(
-          `Column 80: function generation is not supported for ${langId} - it supports ${SUPPORTED_LANGUAGES_TEXT}.`,
+          unsupportedLanguageToast("Generate Function Body", langId),
         );
         return;
       }
@@ -5809,16 +5881,16 @@ export function registerFnGen(
         if (gate.reason === "tier-unresolved") {
           output.appendLine("[carve] fn-gen skipped: tier unresolved (tier flow failed; see [carve] lines above)");
           void vscode.window.showWarningMessage(
-            'Column 80: function generation is unavailable - the hardware tier could not be resolved. Re-run "Column 80: Select Hardware Tier" (details in the output channel).',
+            'Column 80: function generation is unavailable because Column 80 could not detect your hardware. Run "Column 80: Select Hardware Tier" to choose one. Details are in the output channel.',
           );
         } else {
           // Same fallback the TDD gate below uses: a disabled tier that
           // arrives without a message must not render "Column 80: undefined"
           // on either surface.
-          const why = tier?.message ?? "the hardware tier is unavailable for generation";
+          const why = tier?.message ?? TIER_OFF_FALLBACK;
           // The channel takes the message whole, the toast takes one line of it.
           output.appendLine(`[carve] fn-gen disabled: ${why}`);
-          void vscode.window.showWarningMessage(`Column 80: ${tierDisabledToast(why)}`);
+          void vscode.window.showWarningMessage(`Column 80: ${tierDisabledToast(why, tierToastEnd(why))}`);
         }
         return;
       }
@@ -5850,8 +5922,8 @@ export function registerFnGen(
             resolution.refusal,
             document.languageId,
             admitTypes
-              ? "Column 80: nothing to generate here — the cursor is not inside a function or on a generatable type header."
-              : "Column 80: no function at the cursor.",
+              ? noFunctionAtCursorToast("Generate Function Body", true)
+              : noFunctionAtCursorToast("Generate Function Body"),
           ),
         );
         return;
@@ -5859,7 +5931,7 @@ export function registerFnGen(
       const resolved = resolution.fn;
       if (document.version !== versionAtResolve) {
         void vscode.window.showWarningMessage(
-          `Column 80: ${FNGEN_DISCARD_NOUN} discarded — the document changed while the function was being resolved.`,
+          "Column 80: the file changed before generation started, so nothing was generated. Run the command again.",
         );
         service.logOutcome("discarded");
         return;
@@ -5890,7 +5962,8 @@ export function registerFnGen(
           const baseline = await runOracleCheck(oracle, document.uri.fsPath, { log });
           if (baseline && isMissingImportsStorm(baselineCheck(baseline))) {
             const reason =
-              describeEnvironment(baselineCheck(baseline)) ?? "the Python environment is not ready";
+              describeEnvironment(baselineCheck(baseline)) ??
+              "the selected Python interpreter cannot import this project's packages. Select the project's interpreter, then try again.";
             log(`[fngen] declined (pre-generation baseline storm): ${reason}`);
             void vscode.window.showWarningMessage(`Column 80: ${reason}`);
             return;
@@ -5913,7 +5986,7 @@ export function registerFnGen(
           const shape = bracelessTypeShape(document.languageId, resolved.kind);
           log(`[fngen] nothing to generate: ${resolved.symbolName} is ${shape} (no body block)`);
           void vscode.window.showWarningMessage(
-            `Column 80: nothing to generate — ${resolved.symbolName} is ${shape} with no body block.`,
+            `Column 80: ${resolved.symbolName} is ${shape}, which has no body to generate.`,
           );
           return;
         }
@@ -5932,7 +6005,7 @@ export function registerFnGen(
         if (isBodylessMemberTarget(document.languageId, spanText)) {
           log(`[fngen] nothing to generate: ${resolved.symbolName} is a bodyless member signature (interface/abstract)`);
           void vscode.window.showWarningMessage(
-            `Column 80: nothing to generate — ${resolved.symbolName} is a bodyless signature (an interface or abstract member has no body to generate).`,
+            `Column 80: ${resolved.symbolName} is an interface or abstract member with no body, so there is nothing to generate.`,
           );
           return;
         }
@@ -6099,8 +6172,13 @@ export function registerFnGen(
           // problem, not a generation failure. Offer, never auto-spawn — the
           // trust contract keeps process spawning a human-ratified click.
           log(`[fngen] server unreachable at generate time: ${String(err)}`);
-          const choice = await vscode.window.showErrorMessage(
-            "Column 80: the Ollama server isn't running, so function generation can't reach a model.",
+          const elsewhere = unreachableElsewhereToast("so nothing was written");
+          if (elsewhere !== undefined) {
+            void vscode.window.showWarningMessage(elsewhere);
+            return;
+          }
+          const choice = await vscode.window.showWarningMessage(
+            "Column 80: the Ollama server is not answering, so nothing was generated.",
             "Start ollama serve",
           );
           if (choice === "Start ollama serve") {
@@ -6178,7 +6256,10 @@ export function registerFnGen(
                 (diagnosis ? ` The model's own reason: ${diagnosis}` : ""),
             );
           } else {
-            log("[fngen] regeneration was aborted; presenting the original");
+            // The user cancelled the retry. Opening the stub's preview now
+            // would show them something they stopped waiting for.
+            log("[fngen] regeneration was aborted; nothing presented");
+            return;
           }
         } catch (err) {
           // THE RETRY IS THE ONE PROMPT THAT CAN STILL OVERFLOW (adversarial
@@ -6193,7 +6274,7 @@ export function registerFnGen(
           if (isPromptWindowError(err)) {
             log(`[fngen] punt regeneration refused: the retry prompt does not fit the window; presenting the original`);
             void vscode.window.showWarningMessage(
-              `${err.message} (This was the retry that would have replaced ${resolved.symbolName}'s stub, so the stub stands.)`,
+              `Column 80: the model returned a stub for ${resolved.symbolName}, and the retry did not fit the model's context window, so the preview shows the stub. Details are in the output channel.`,
             );
           } else {
             log(`[fngen] punt regeneration failed: ${String(err)}; presenting the original`);
@@ -6246,13 +6327,12 @@ export function registerFnGen(
       void tierGate()
         .then((repairTierGate) =>
           withVerifyStatus(
-            runPostAcceptOracle({
+            (deps.runOracle ?? runPostAcceptOracle)({
               document,
               landedSpan: {
                 start: resolved.span.start,
                 end: resolved.span.start + result.text.length,
               },
-              source: "fngen",
               service,
               // The registry, so a repair or refine round can be stopped from the
               // status bar (roadmap item 67's ruled cancel affordance).
@@ -6286,74 +6366,14 @@ export function registerFnGen(
         .catch((err) => output.appendLine(`[oracle] post-accept hook failed: ${String(err)}`));
     }),
 
-    // FIM-accept trigger: the inline item's accept command (wired in the
-    // completion provider) lands here. Same post-accept flow, same repair
-    // service; non-blocking so an oracle hiccup can never break the accept.
-    // Same fail-closed tier gate as every other model-call entry point.
-    vscode.commands.registerCommand(
-      "column80.fimAccepted",
-      (uriString: string, startOffset: number, textLength: number) => {
-        const document = vscode.workspace.textDocuments.find(
-          (d) => d.uri.toString() === uriString,
-        );
-        if (!document) {
-          return;
-        }
-        // A Tab is a Tab when the user says so: no check, no annotation, no
-        // repair after a FIM accept. Said once per session, not per accept.
-        if (!readOracleConfig().checkOnFimAccept) {
-          if (!fimCheckOffSaid) {
-            fimCheckOffSaid = true;
-            output.appendLine("[oracle] check skipped after FIM accept: column80.checkOnFimAccept is off (said once per session)");
-          }
-          return;
-        }
-        void tierGate()
-          .then((repairTierGate) =>
-            withVerifyStatus(
-              runPostAcceptOracle({
-                document,
-                landedSpan: { start: startOffset, end: startOffset + textLength },
-                source: "fim",
-                service,
-                // The registry, so a repair or refine round can be stopped from the
-                // status bar (roadmap item 67's ruled cancel affordance).
-                inFlight,
-                output,
-                presenter,
-                // Admit Struct/Enum under the injection gate so a FIM
-                // accept inside a type resolves to the container and repairs
-                // as a type; v1 function-only when injection is off.
-                resolveFunction: (doc, pos) =>
-                  resolveFunctionAtCursor(doc, pos, readOracleConfig().injectionEnabled),
-                repairTierGate,
-                extractor: injectionExtractor(document.languageId),
-                fetchCatalog: catalogFetcher,
-                // Silent about lost blocks: a FIM accept is not a gesture that
-                // built a prompt from the panel, so a warning here would arrive
-                // attached to nothing the human just asked for.
-                readContextBlocks: () => resolveContextBlocks(),
-                // The span-surface engine, injected rather than imported: the runtime
-                // dependency arrow runs this file -> oracleSurface, never back.
-                resolveSpanSurface: (extractor, doc, target, logLine, opts) =>
-                  resolvePrefill(extractor, doc, target, logLine, opts),
-                resolveCallOwners: (extractor, doc, targets, logLine, skip) =>
-                  resolveCallOwners(extractor, doc, targets, logLine, skip),
-              }),
-            ),
-          )
-          .catch((err) => output.appendLine(`[oracle] post-accept hook failed: ${String(err)}`));
-      },
-    ),
-
     // Manual "Repair Function" command: the same post-accept oracle (check,
-    // surface, repair) the accept paths run, but on demand for the function
+    // surface, repair) the generate accept runs, but on demand for the function
     // already under the cursor. Same service, presenter, extractor, catalog,
     // and staged-context reader - no second repair route.
     vscode.commands.registerCommand("column80.repairFunction", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        void vscode.window.showWarningMessage("Column 80: no active editor.");
+        void vscode.window.showWarningMessage("Column 80: open a file first.");
         return;
       }
       const document = editor.document;
@@ -6365,7 +6385,7 @@ export function registerFnGen(
       if (!isRegisteredLanguage(document.languageId)) {
         output.appendLine(`[repair] refused: ${document.languageId} is not a registered language`);
         void vscode.window.showWarningMessage(
-          `Column 80: function repair is not supported for ${document.languageId} - it supports ${SUPPORTED_LANGUAGES_TEXT}.`,
+          unsupportedLanguageToast("Repair Function Body", document.languageId),
         );
         return;
       }
@@ -6381,13 +6401,13 @@ export function registerFnGen(
           refusalMessage(
             resolution.refusal,
             document.languageId,
-            "Column 80: no function at the cursor to repair.",
+            noFunctionAtCursorToast("Repair Function Body"),
           ),
         );
         return;
       }
       const resolved = resolution.fn;
-      // Fail-closed gate, read at invoke time like the accept paths, and read
+      // Fail-closed gate, read at invoke time like the accept path, and read
       // BEFORE the server pre-flight: the pre-flight's listModels is a network
       // request, and a refused gesture must issue none (item 58). A closed
       // tier still checks-and-surfaces through the oracle; it only bars the
@@ -6401,15 +6421,24 @@ export function registerFnGen(
       // answers "is the server up". The cloud backend has no local daemon to
       // start, so skip the probe: its reachability surfaces as a normal round
       // error against the provider.
+      // With repair rounds switched off the press only checks, which needs no
+      // model, so a down server is no reason to refuse it.
       const probe = deps.listModels ?? listModels;
       if (
         repairTierGate.allowed &&
+        readOracleConfig().repairEnabled &&
         readCloudConfig() === undefined &&
         (await probe(readFnGenConfig().apiBase)) === undefined
       ) {
+        const elsewhere = unreachableElsewhereToast("so the function was not repaired");
+        if (elsewhere !== undefined) {
+          output.appendLine("[repair] manual repair: remote server unreachable");
+          void vscode.window.showWarningMessage(elsewhere);
+          return;
+        }
         output.appendLine("[repair] manual repair: server unreachable; offering start");
         const choice = await vscode.window.showWarningMessage(
-          "Column 80: the Ollama server isn't running, so the function can't be repaired.",
+          "Column 80: the Ollama server is not answering, so the function was not repaired.",
           "Start ollama serve",
         );
         if (choice === "Start ollama serve") {
@@ -6425,27 +6454,29 @@ export function registerFnGen(
         output.appendLine(
           `[repair] manual repair: gate closed reason=${repairTierGate.reason}; check-and-surface only: ${why}`,
         );
+        // Says what the press does, and nothing it may not: a clean build ends
+        // with no further word, so "errors will be checked" promised a result.
+        // The tier's own message follows whole, as its own sentence: it is the
+        // reason the service recorded, and a refusal names that reason verbatim.
+        const onlyChecks = "Column 80: Repair Function Body will only check this function";
+        const repairOff = `${onlyChecks}. ${tier?.message ?? ""}`;
         void vscode.window.showWarningMessage(
-          // `hasMoreThanOneLine`, not `firstLine(why) === why.trim()`. The two
-          // agree on every message broken by `\n`, and disagree once `firstLine`
-          // cuts the wider set: `trim()` strips U+2028 and U+2029 but not NEL,
-          // so a `why` ending in NEL was cut by the toast and kept by the
-          // comparison, and the pointer promised a channel line that had no more
-          // than the toast did. The leaf states the rule now; this was the last
-          // site still inferring it.
-          `Column 80: repair is unavailable - ${firstLine(why)}. Errors are still checked and surfaced.` +
-            (hasMoreThanOneLine(why) ? " The full message is in the output channel." : ""),
+          repairTierGate.reason === "tier-unresolved"
+            ? `${onlyChecks}, because Column 80 could not detect your hardware. ` +
+                'Run "Column 80: Select Hardware Tier" to choose one.'
+            : tier?.message === undefined
+              ? `${onlyChecks}, because function generation is off on this machine.`
+              : oneLineWithPointer(repairOff, tierToastEnd(repairOff)),
         );
       }
       // One announcer for the whole invocation. The oracle runs the reader once
       // per repair round, and two rounds naming the same lost blocks in two
-      // toasts is the repetition the accept paths stay silent to avoid.
+      // toasts is the repetition the accept path stays silent to avoid.
       const announce = announceOnce();
       await withVerifyStatus(
         (deps.runOracle ?? runPostAcceptOracle)({
           document,
           landedSpan: resolved.span,
-          source: "fngen",
           service,
           // The registry, so a repair or refine round can be stopped from the
           // status bar (roadmap item 67's ruled cancel affordance).
@@ -6465,8 +6496,8 @@ export function registerFnGen(
           // Repair becomes refine when the build is already clean, and ONLY
           // here. The human's words: "if the user initiates the repair command,
           // and there's no build error and everything's fine, then ... inject
-          // other usages of the types and methods". The two accept paths above
-          // deliberately do not pass this: a clean accept still ends at
+          // other usages of the types and methods". The accept path above
+          // deliberately does not pass this: a clean accept still ends at
           // `why=clean`, silently, exactly as it always has.
           manualRefine: true,
           // The span-surface engine, injected rather than imported: the runtime
@@ -6476,7 +6507,22 @@ export function registerFnGen(
           resolveCallOwners: (extractor, doc, targets, logLine, skip) =>
             resolveCallOwners(extractor, doc, targets, logLine, skip),
         }),
-      ).catch((err) => output.appendLine(`[oracle] manual repair failed: ${String(err)}`));
+      ).catch((err) => {
+        output.appendLine(`[oracle] manual repair failed: ${String(err)}`);
+        // The user pressed Repair Function Body and is waiting on it; a throw
+        // here (a save that failed before the check, say) is not a quiet end.
+        // The exception is an error the user was already told about (a check
+        // tool that could not spawn put its status bar line up; the test leg
+        // toasted its own stop), marked by `markShown` in compilerOracle.ts.
+        // Keyed on that mark, not on the error's shape, so a failure nobody
+        // announced still gets this toast.
+        const alreadyShown = (err as { shownToUser?: unknown } | null)?.shownToUser === true;
+        if (!isCancellation(err) && !alreadyShown) {
+          void vscode.window.showWarningMessage(
+            `Column 80: Repair Function Body stopped (${firstLine(err instanceof Error ? err.message : String(err))}). The full message is in the output channel.`,
+          );
+        }
+      });
     }),
 
     // TDD Generate Tests — the blind, blank-value test-authoring gesture.
@@ -6493,7 +6539,7 @@ export function registerFnGen(
     vscode.commands.registerCommand("column80.generateTests", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        void vscode.window.showWarningMessage("Column 80: no active editor.");
+        void vscode.window.showWarningMessage("Column 80: open a file first.");
         return;
       }
       // The per-language gate. An unregistered language gets a refusal NAMING it,
@@ -6505,18 +6551,19 @@ export function registerFnGen(
       if (lang === undefined) {
         output.appendLine(`[tdd] refused: no TDD leg registered for ${editor.document.languageId}`);
         void vscode.window.showWarningMessage(
-          `Column 80: TDD test generation is not built for ${editor.document.languageId} — this gesture is only registered for ${tddLanguageIds().join(", ")}.`,
+          unsupportedLanguageToast("Generate Tests (TDD)", editor.document.languageId),
         );
         return;
       }
       const gate = await tierGate();
       if (!gate.allowed) {
-        const why = tier?.message ?? "the hardware tier is unavailable for generation";
+        const why = tier?.message ?? TIER_OFF_FALLBACK;
         output.appendLine(`[tdd] tests skipped: tier ${gate.reason}: ${why}`);
-        // The period goes on the CUT clause, never into the text being cut: a
-        // sentence built first and shortened after loses its own punctuation to
-        // the cut and glues the channel pointer onto a half-sentence.
-        void vscode.window.showWarningMessage(`Column 80: ${tierDisabledToast(why, ".")}`);
+        void vscode.window.showWarningMessage(
+          gate.reason === "tier-unresolved"
+            ? 'Column 80: test generation is unavailable because Column 80 could not detect your hardware. Run "Column 80: Select Hardware Tier" to choose one. Details are in the output channel.'
+            : `Column 80: ${tierDisabledToast(why, tierToastEnd(why))}`,
+        );
         return;
       }
       const document = editor.document;
@@ -6529,7 +6576,7 @@ export function registerFnGen(
           refusalMessage(
             resolution.refusal,
             document.languageId,
-            "Column 80: place the cursor in a function to generate TDD tests.",
+            noFunctionAtCursorToast("Generate Tests (TDD)"),
           ),
         );
         return;
@@ -6537,13 +6584,13 @@ export function registerFnGen(
       const resolved = resolution.fn;
       if (resolved.kind !== "function") {
         void vscode.window.showWarningMessage(
-          "Column 80: place the cursor in a function to generate TDD tests.",
+          noFunctionAtCursorToast("Generate Tests (TDD)"),
         );
         return;
       }
       if (document.version !== versionAtResolve) {
         void vscode.window.showWarningMessage(
-          "Column 80: TDD tests discarded — the document changed during resolution.",
+          "Column 80: the file changed before test generation started, so no tests were written. Run the command again.",
         );
         return;
       }
@@ -6559,14 +6606,14 @@ export function registerFnGen(
       // root, which `runTddTests` refuses over and names. Authoring never did.
       const fallback = placed.ok ? undefined : lang.placementWithoutProject?.(document.uri.fsPath);
       if (!placed.ok && fallback === undefined) {
-        output.appendLine(`[tdd] refused: placement ${placed.refusal.reason} — ${placed.refusal.detail}`);
-        void vscode.window.showWarningMessage(`Column 80: ${placed.refusal.detail}.`);
+        output.appendLine(`[tdd] refused: placement ${placed.refusal.reason}: ${placed.refusal.detail}`);
+        void vscode.window.showWarningMessage(`Column 80: ${endSentence(placed.refusal.detail)}`);
         return;
       }
       const placement = placed.ok ? placed.placement : (fallback as TestPlacement);
       if (!placed.ok) {
         output.appendLine(
-          `[tdd] no project (${placed.refusal.reason}): authoring into ${placement.targetPath}; the tests will have nowhere to run until this is fixed — ${placed.refusal.detail}`,
+          `[tdd] no project (${placed.refusal.reason}): authoring into ${placement.targetPath}; the tests will have nowhere to run until this is fixed: ${placed.refusal.detail}`,
         );
       }
       const resolvedFramework = frameworkFor(lang, placement.runRoot, tddDeps);
@@ -6581,11 +6628,12 @@ export function registerFnGen(
           ? lang.frameworks[0]
           : undefined;
       if (framework === undefined) {
-        const detail = !resolvedFramework.ok
-          ? resolvedFramework.detail ?? `looked for ${resolvedFramework.lookedFor.join(", ")} in ${placement.runRoot}`
-          : "";
-        output.appendLine(`[tdd] refused: no test framework — ${detail}`);
-        void vscode.window.showWarningMessage(`Column 80: this project has no test framework configured — ${detail}.`);
+        const refusal: { lookedFor: string[]; detail?: string } = resolvedFramework.ok
+          ? { lookedFor: [] }
+          : resolvedFramework;
+        const detail = refusal.detail ?? `looked for ${refusal.lookedFor.join(", ")} in ${placement.runRoot}`;
+        output.appendLine(`[tdd] refused: no test framework: ${detail}`);
+        void vscode.window.showWarningMessage(noFrameworkToast(refusal, placement.runRoot));
         return;
       }
       // Honest-failure gate: TDD generation fits a minority of functions. Surface
@@ -6652,8 +6700,8 @@ export function registerFnGen(
               testable: false,
               reason: "needs-fixture",
               detail: receiverType === undefined
-                ? "a method, and the enclosing type could not be resolved, so there is no surface to construct one from"
-                : `a method, and nothing in \`${receiverType}\`'s surface produces a \`${receiverType}\`, so a test has no way to construct one`,
+                ? "It is a method, and Column 80 could not find its class to construct one."
+                : `It is a method, and "${receiverType}" has no constructor or factory Column 80 can see, so a test cannot build one.`,
             };
           }
         }
@@ -6661,14 +6709,17 @@ export function registerFnGen(
 
       if (!testability.testable) {
         output.appendLine(`[tdd] not auto-testable fn=${resolved.symbolName} reason=${testability.reason}`);
-        void vscode.window.showInformationMessage(`Column 80: not auto-testable — ${testability.detail}.`);
+        void vscode.window.showInformationMessage(
+          `Column 80: no tests generated for ${resolved.symbolName}.` +
+            (testability.detail === undefined ? "" : ` ${endSentence(testability.detail)}`),
+        );
         return;
       }
       const returnType = lang.returnTypeOf(resolved.signature);
       if (returnType === undefined) {
         output.appendLine(`[tdd] no return type on ${resolved.symbolName}; nothing to assert`);
         void vscode.window.showInformationMessage(
-          "Column 80: not auto-testable — the function returns no value to assert.",
+          `Column 80: no tests generated for ${resolved.symbolName}. It returns no value to check.`,
         );
         return;
       }
@@ -6714,10 +6765,9 @@ export function registerFnGen(
             "the test-authoring pass is blind of the implementation",
         );
         void vscode.window.showWarningMessage(
-          `Column 80: ${selfBlocks.length === 1 ? "a context block covers" : `${selfBlocks.length} context blocks cover`} ` +
-            `${resolved.symbolName}'s own body (${named}), so ${selfBlocks.length === 1 ? "it was" : "they were"} left ` +
-            "out of the test prompt. Tests are authored from the contract alone; a test written from the implementation " +
-            "agrees with its bugs and goes green forever.",
+          `Column 80: the tests for ${resolved.symbolName} leave out ` +
+            `${selfBlocks.length === 1 ? "the context block" : `the ${selfBlocks.length} context blocks`} on its own ` +
+            `body (${named}), so they come from its signature and doc comment, not its code.`,
         );
       }
 
@@ -6771,13 +6821,18 @@ export function registerFnGen(
         // breakdown as generation's (adversarial review D1) - the callee surface
         // this prompt carries is exactly what can push it over.
         if (isPromptWindowError(err)) {
-          void vscode.window.showWarningMessage(err.message);
+          void vscode.window.showWarningMessage(testWindowRefusalMessage(err));
           return;
         }
         if (isServerUnreachable(err)) {
           log(`[tdd] server unreachable: ${String(err)}`);
-          const choice = await vscode.window.showErrorMessage(
-            "Column 80: the Ollama server isn't running, so tests can't be generated.",
+          const elsewhere = unreachableElsewhereToast("so no tests were generated");
+          if (elsewhere !== undefined) {
+            void vscode.window.showWarningMessage(elsewhere);
+            return;
+          }
+          const choice = await vscode.window.showWarningMessage(
+            "Column 80: the Ollama server is not answering, so no tests were generated.",
             "Start ollama serve",
           );
           if (choice === "Start ollama serve") {
@@ -6832,7 +6887,7 @@ export function registerFnGen(
           `[tdd] refused: the generated tests declare ${resolved.symbolName} itself and no free name was available; nothing written`,
         );
         void vscode.window.showWarningMessage(
-          `Column 80: the generated tests declare a function called ${resolved.symbolName}, which shadows the function under test, and no free name was available to rename it to. Nothing was written. Run it again for a different generation.`,
+          `Column 80: the generated tests define their own function named ${resolved.symbolName}, which would hide the real one, so nothing was written. Run the command again.`,
         );
         return;
       }
@@ -6869,7 +6924,7 @@ export function registerFnGen(
           `[tdd] refused: no expected value located in the generated tests for ${resolved.symbolName}; nothing written`,
         );
         void vscode.window.showWarningMessage(
-          `Column 80: no expected value could be located in the generated tests for ${resolved.symbolName}, so nothing was written.`,
+          `Column 80: the generated tests for ${resolved.symbolName} had no expected values to leave blank, so nothing was written. Run the command again.`,
         );
         return;
       }
@@ -6882,7 +6937,7 @@ export function registerFnGen(
           `[tdd] declined: ${blanked.unresolved} assertion shape(s) in the generated tests for ${resolved.symbolName} are ones this gesture does not blank; nothing written`,
         );
         void vscode.window.showWarningMessage(
-          `Column 80: ${blanked.unresolved} of the generated assertions for ${resolved.symbolName} are written in a shape this gesture declines to blank, so nothing was written. Inserting a partly blanked pass would leave a guessed value in your file. Run it again for a different generation, or write those cases yourself.`,
+          `Column 80: ${blanked.unresolved} of the generated assertions for ${resolved.symbolName} are in a form Column 80 cannot blank out, so nothing was written. Run the command again, or write those tests yourself.`,
         );
         return;
       }
@@ -6905,17 +6960,15 @@ export function registerFnGen(
           }; nothing written`,
         );
         void vscode.window.showWarningMessage(
-          `Column 80: the generated test table for ${resolved.symbolName} declares ${named} and never reads ` +
-            `${deadColumns.length === 1 ? "that column" : "those columns"}, so a row value there would change ` +
-            "nothing and the table covers less than it looks like it does. Nothing was written. Run it again " +
-            "for a different generation.",
+          `Column 80: the generated test table for ${resolved.symbolName} declares ${named} but never uses ` +
+            `${deadColumns.length === 1 ? "it" : "them"}, so nothing was written. Run the command again.`,
         );
         return;
       }
 
       if (document.isClosed || document.version !== versionAtResolve) {
         void vscode.window.showWarningMessage(
-          "Column 80: TDD tests discarded — the document changed during generation.",
+          "Column 80: the file changed while tests were generating, so nothing was written. Run the command again.",
         );
         return;
       }
@@ -6944,7 +6997,7 @@ export function registerFnGen(
         });
         if (created) {
           void vscode.window.showInformationMessage(
-            `Tests created in ${path.basename(placement.targetPath)} — Tab through the ${blanked.holes} blank value(s), type each expected value, then generate the function and run "Run TDD Tests".`,
+            `Column 80: tests created in ${path.basename(placement.targetPath)}. Tab through the ${countOf(blanked.holes, "blank value")} and type each expected value, then run "Column 80: Generate Function Body" and "Column 80: Run TDD Tests".`,
           );
           void warnIfTestsAreUncheckable(placement.targetPath, document.languageId, output);
         }
@@ -6963,7 +7016,7 @@ export function registerFnGen(
           targetEditor = await vscode.window.showTextDocument(targetDocument, editor.viewColumn);
         } catch (err) {
           void vscode.window.showWarningMessage(
-            `Column 80: TDD tests discarded — ${placement.targetPath} could not be opened (${firstLine(String(err))}).`,
+            `Column 80: could not open ${path.basename(placement.targetPath)}, so no tests were written (${firstLine(String(err))}).`,
           );
           return;
         }
@@ -6987,8 +7040,8 @@ export function registerFnGen(
         );
         const title =
           plan.mode === "replace-generated"
-            ? `Regenerate tests for ${resolved.symbolName} — review, then Tab the values`
-            : `Add tests for ${resolved.symbolName} to ${path.basename(placement.targetPath)} — review, then Tab the values`;
+            ? `Regenerate tests for ${resolved.symbolName}: review, then Tab the values`
+            : `Add tests for ${resolved.symbolName} to ${path.basename(placement.targetPath)}: review, then Tab the values`;
         const decision = await presenter.confirmDiff({
           document: targetDocument,
           previewFullText: preview,
@@ -7010,7 +7063,7 @@ export function registerFnGen(
         // The review took human time; re-validate before the write.
         if (targetDocument.isClosed || (sameFile && targetDocument.version !== versionAtResolve)) {
           void vscode.window.showWarningMessage(
-            "Column 80: TDD tests discarded — the document changed during review.",
+            "Column 80: the file changed during the review, so no tests were written. Run the command again.",
           );
           return;
         }
@@ -7019,7 +7072,7 @@ export function registerFnGen(
           targetEditor = await vscode.window.showTextDocument(targetDocument, editor.viewColumn);
         } catch {
           void vscode.window.showWarningMessage(
-            "Column 80: TDD tests discarded — the target editor could not be reopened.",
+            "Column 80: the test file could not be reopened, so no tests were written.",
           );
           return;
         }
@@ -7028,7 +7081,7 @@ export function registerFnGen(
         // `editor` point at a document the user is no longer looking at. Only
         // write when our target is still the active editor.
         void vscode.window.showWarningMessage(
-          "Column 80: TDD tests discarded — the active editor changed during generation.",
+          "Column 80: you switched editors while tests were generating, so nothing was written. Run the command again.",
         );
         return;
       }
@@ -7037,12 +7090,12 @@ export function registerFnGen(
       const range = new vscode.Range(targetDocument.positionAt(plan.start), targetDocument.positionAt(plan.end));
       const ok = await targetEditor.insertSnippet(new vscode.SnippetString(blanked.snippet), range);
       if (!ok) {
-        void vscode.window.showWarningMessage("Column 80: the editor refused the test insertion.");
+        void vscode.window.showWarningMessage("Column 80: VS Code rejected the test insertion, so nothing was written.");
         return;
       }
       // holes is always > 0 here: the floor above returns on a zero-hole pass.
       void vscode.window.showInformationMessage(
-        `Tests inserted — Tab through the ${blanked.holes} blank value(s), type each expected value, then generate the function and run "Run TDD Tests".`,
+        `Column 80: tests inserted. Tab through the ${countOf(blanked.holes, "blank value")} and type each expected value, then run "Column 80: Generate Function Body" and "Column 80: Run TDD Tests".`,
       );
       void warnIfTestsAreUncheckable(placement.targetPath, document.languageId, output);
     }),
@@ -7056,7 +7109,7 @@ export function registerFnGen(
     vscode.commands.registerCommand("column80.runTddTests", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        void vscode.window.showWarningMessage("Column 80: no active editor.");
+        void vscode.window.showWarningMessage("Column 80: open a file first.");
         return;
       }
       const document = editor.document;
@@ -7067,7 +7120,7 @@ export function registerFnGen(
       if (lang === undefined) {
         output.appendLine(`[tdd] refused: no TDD leg registered for ${document.languageId}`);
         void vscode.window.showWarningMessage(
-          `Column 80: running TDD tests is not built for ${document.languageId} — this gesture is only registered for ${tddLanguageIds().join(", ")}.`,
+          unsupportedLanguageToast("Run TDD Tests", document.languageId),
         );
         return;
       }
@@ -7081,7 +7134,7 @@ export function registerFnGen(
           refusalMessage(
             resolution.refusal,
             document.languageId,
-            "Column 80: place the cursor in the function whose TDD tests you want to run.",
+            noFunctionAtCursorToast("Run TDD Tests"),
           ),
         );
         return;
@@ -7089,15 +7142,15 @@ export function registerFnGen(
       const resolved = resolution.fn;
       if (resolved.kind !== "function") {
         void vscode.window.showWarningMessage(
-          "Column 80: place the cursor in the function whose TDD tests you want to run.",
+          noFunctionAtCursorToast("Run TDD Tests"),
         );
         return;
       }
       const tddDeps: TddDeps = { log };
       const placed = lang.placementFor(document.uri.fsPath, resolved.symbolName, tddDeps);
       if (!placed.ok) {
-        output.appendLine(`[tdd] run refused: placement ${placed.refusal.reason} — ${placed.refusal.detail}`);
-        void vscode.window.showWarningMessage(`Column 80: ${placed.refusal.detail}.`);
+        output.appendLine(`[tdd] run refused: placement ${placed.refusal.reason}: ${placed.refusal.detail}`);
+        void vscode.window.showWarningMessage(`Column 80: ${endSentence(placed.refusal.detail)}`);
         return;
       }
       const placement = placed.placement;
@@ -7106,8 +7159,8 @@ export function registerFnGen(
         const detail =
           resolvedFramework.detail ??
           `looked for ${resolvedFramework.lookedFor.join(", ")} in ${placement.runRoot}`;
-        output.appendLine(`[tdd] run refused: no test framework — ${detail}`);
-        void vscode.window.showWarningMessage(`Column 80: this project has no test framework configured — ${detail}.`);
+        output.appendLine(`[tdd] run refused: no test framework: ${detail}`);
+        void vscode.window.showWarningMessage(noFrameworkToast(resolvedFramework, placement.runRoot));
         return;
       }
       const framework = resolvedFramework.framework;
@@ -7138,12 +7191,12 @@ export function registerFnGen(
         const alternative =
           sibling === undefined
             ? ""
-            : ` Run "Column 80: Run Covering Tests" instead to run this repo's own tests that reach it.`;
+            : ` Or run "Column 80: Run Covering Tests" to run the existing tests that call it.`;
         output.appendLine(
           `[tdd] run refused: no marked region for ${resolved.symbolName} in ${placement.targetPath}`,
         );
         void vscode.window.showInformationMessage(
-          `Column 80: no generated tests for ${resolved.symbolName} - run "Generate Tests (TDD)" to write some.${alternative}`,
+          `Column 80: there are no generated tests for ${resolved.symbolName} yet. Run "Column 80: Generate Tests (TDD)" to write some.${alternative}`,
         );
         return;
       }
@@ -7180,12 +7233,12 @@ export function registerFnGen(
         // the problem and STOP: this product never offers to install anything.
         output.appendLine(`[tdd] the ${framework.displayName} run could not start: ${String(err)}`);
         void vscode.window.showErrorMessage(
-          `Column 80: the ${framework.displayName} run could not start — ${firstLine(String(err))}. Nothing was built and no test ran.`,
+          `Column 80: the ${framework.displayName} run could not start: ${firstLine(err instanceof Error ? err.message : String(err))}. No tests ran.`,
         );
         return;
       }
       if (res === undefined) {
-        void vscode.window.showWarningMessage("Column 80: no project root for this file.");
+        void vscode.window.showWarningMessage("Column 80: this file is not inside a project Column 80 can run tests in.");
         return;
       }
       if (!res.ran) {
@@ -7193,7 +7246,7 @@ export function registerFnGen(
         return;
       }
       if (res.success) {
-        void vscode.window.showInformationMessage(`Column 80: ${res.passed} test(s) passed for ${resolved.symbolName}.`);
+        void vscode.window.showInformationMessage(`Column 80: ${countOf(res.passed, "test")} passed for ${resolved.symbolName}.`);
         return;
       }
       // THE FIFTH OUTCOME. The run happened, so none of the four no-run sentences
@@ -7208,7 +7261,7 @@ export function registerFnGen(
           `[tdd] every test for ${resolved.symbolName} was skipped by ${framework.displayName}: ${testNames.join(", ")}`,
         );
         void vscode.window.showWarningMessage(
-          `Column 80: every test for ${resolved.symbolName} was SKIPPED. ${framework.displayName} ran and executed none of ${testNames.join(", ")}. Nothing passed and nothing failed, so this is neither a green nor a divergence.`,
+          `Column 80: the ${framework.displayName} run skipped every test for ${resolved.symbolName}, so nothing was checked. The test names are in the output channel.`,
         );
         return;
       }
@@ -7222,7 +7275,7 @@ export function registerFnGen(
           : res.cases.filter((c) => c.outcome === "fail").map((c) => `  ${c.name}: failed (no failure detail reported by the runner)`).join("\n");
       output.appendLine(`[tdd] RED for ${resolved.symbolName} failed=${res.failed} passed=${res.passed}\n${detail}`);
       void vscode.window.showWarningMessage(
-        `Column 80: ${res.failed} test(s) failed (${res.passed} passed) for ${resolved.symbolName} — divergence between the ratified tests and the implementation. See the output channel.`,
+        `Column 80: ${countOf(res.failed, "test")} failed and ${res.passed} passed for ${resolved.symbolName}. The failures are in the output channel.`,
       );
     }),
 
@@ -7243,7 +7296,7 @@ export function registerFnGen(
     vscode.commands.registerCommand("column80.runTests", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        void vscode.window.showWarningMessage("Column 80: no active editor.");
+        void vscode.window.showWarningMessage("Column 80: open a file first.");
         return;
       }
       const document = editor.document;
@@ -7256,7 +7309,7 @@ export function registerFnGen(
       if (plan === undefined) {
         output.appendLine(`[tests] refused: no covering-test leg registered for ${document.languageId}`);
         void vscode.window.showWarningMessage(
-          `Column 80: running covering tests is not built for ${document.languageId} - this gesture is only registered for ${tddLanguageIds().join(", ")}.`,
+          unsupportedLanguageToast("Run Covering Tests", document.languageId, coveringTestsLanguagesText()),
         );
         return;
       }
@@ -7267,7 +7320,7 @@ export function registerFnGen(
           refusalMessage(
             resolution.refusal,
             document.languageId,
-            "Column 80: place the cursor in the function whose covering tests you want to run.",
+            noFunctionAtCursorToast("Run Covering Tests"),
           ),
         );
         return;
@@ -7285,7 +7338,7 @@ export function registerFnGen(
       // `column80.runTddTests` keeps its own kind gate untouched.
       if (resolved.kind !== "function") {
         void vscode.window.showWarningMessage(
-          "Column 80: place the cursor in the function whose covering tests you want to run.",
+          noFunctionAtCursorToast("Run Covering Tests"),
         );
         return;
       }
@@ -7394,7 +7447,7 @@ export function registerFnGen(
         }
         output.appendLine(`[tests] the covering-test run for ${resolved.symbolName} could not finish: ${String(err)}`);
         void vscode.window.showErrorMessage(
-          `Column 80: the covering-test run for ${resolved.symbolName} could not finish - ${firstLine(String(err))}. See the output channel.`,
+          `Column 80: the covering-test run for ${resolved.symbolName} could not finish: ${firstLine(err instanceof Error ? err.message : String(err))}. See the output channel.`,
         );
         return;
       }
@@ -7407,7 +7460,7 @@ export function registerFnGen(
           `[tests] no call-hierarchy root for ${resolved.symbolName} at ${document.uri.fsPath}:${editor.selection.active.line + 1}; discovery did not start`,
         );
         void vscode.window.showWarningMessage(
-          `Column 80: the ${document.languageId} language server could not place the cursor on ${resolved.symbolName} for a call-hierarchy query, so the search for covering tests never started. Nothing was searched and nothing ran.`,
+          `Column 80: the ${languageName(document.languageId)} language server could not start a caller search for ${resolved.symbolName}, so no tests were searched or run. If it is still loading, try again.`,
         );
         return;
       }
@@ -7475,8 +7528,8 @@ async function createTestFileWithSnippet(args: {
   const decision = await presenter.confirmNewFile({
     targetUri,
     previewFullText,
-    title: `Create ${path.basename(targetPath)} for ${symbolName} — review, then Tab the values`,
-    prompt: `Column 80: create ${path.basename(targetPath)} with ${args.holes} blank value(s) for ${symbolName}? Review the diff first; nothing is written until you choose.`,
+    title: `Create ${path.basename(targetPath)} for ${symbolName}: review, then Tab the values`,
+    prompt: `Column 80: create ${path.basename(targetPath)} with ${countOf(args.holes, "blank value")} for ${symbolName}? Review the diff, then choose.`,
     acceptLabel: "Create the test file",
   });
   output.appendLine(`[tdd] new-file review=${decision} target=${targetPath}`);
@@ -7494,7 +7547,7 @@ async function createTestFileWithSnippet(args: {
   if (await pathExists(targetUri)) {
     output.appendLine(`[tdd] new-file abandoned: ${targetPath} already exists; it appeared during the review`);
     void vscode.window.showWarningMessage(
-      `Column 80: ${path.basename(targetPath)} already exists, so nothing was written. You reviewed it as a NEW file, and it appeared while the diff was open. Open it and run the gesture again to append instead.`,
+      `Column 80: ${path.basename(targetPath)} appeared while you were reviewing it, so nothing was written. Run the command again to add the tests to it.`,
     );
     return false;
   }
@@ -7521,7 +7574,7 @@ async function createTestFileWithSnippet(args: {
     // zero-byte file they never heard about, exactly as the open-failure branch
     // above already does.
     void vscode.window.showWarningMessage(
-      `Column 80: the editor refused the test insertion, so ${path.basename(targetPath)} was created and is EMPTY. Delete it, or run the gesture again.`,
+      `Column 80: VS Code rejected the test insertion, so ${path.basename(targetPath)} was created empty. Delete it, or run the command again.`,
     );
     return false;
   }
@@ -7568,7 +7621,7 @@ function reportNoRun(
       `[tdd] the ${framework.displayName} run matched no tests for ${symbolName}; filter was: ${testNames.join(", ")}`,
     );
     void vscode.window.showWarningMessage(
-      `Column 80: the test filter matched nothing for ${symbolName} — ${framework.displayName} selected none of ${testNames.join(", ")}. Zero tests ran, so this is not a pass.`,
+      `Column 80: the test filter matched none of the tests for ${symbolName} (${testNames.join(", ")}), so no tests ran.`,
     );
     return;
   }
@@ -7578,7 +7631,7 @@ function reportNoRun(
   if (res.environmentError !== undefined) {
     output.appendLine(`[tdd] the ${framework.displayName} run could not start for ${symbolName}:\n${res.environmentError}`);
     void vscode.window.showErrorMessage(
-      `Column 80: the ${framework.displayName} run could not start — ${firstLine(res.environmentError)}. Nothing was built and no test ran; the full message is in the channel.`,
+      `Column 80: the ${framework.displayName} run could not start: ${firstLine(res.environmentError)}. No tests ran. The full message is in the output channel.`,
     );
     return;
   }
@@ -7595,7 +7648,7 @@ function reportNoRun(
       `[tdd] the ${framework.displayName} run produced no result for ${symbolName}.\nstdout:\n${res.stdout || "(empty)"}\nstderr:\n${res.stderr || "(empty)"}`,
     );
     void vscode.window.showWarningMessage(
-      `Column 80: ${framework.displayName} produced no result for ${symbolName} — it reported no test, no failure and no reason. What it printed on both streams is in the channel.`,
+      `Column 80: the ${framework.displayName} run reported no result for ${symbolName}. Its output is in the output channel.`,
     );
     return;
   }
@@ -7605,7 +7658,7 @@ function reportNoRun(
     (res.buildError ?? "").split("\n").find((l) => /^\s*error[[:]/.test(l))?.trim() ?? firstLine(res.buildError);
   output.appendLine(`[tdd] tests for ${symbolName} did not compile:\n${res.buildError ?? "(no output)"}`);
   void vscode.window.showErrorMessage(
-    `Column 80: the tests did not compile. ${errLine} (full output in the channel).`,
+    `Column 80: the tests did not compile. ${errLine} See the output channel.`,
   );
 }
 

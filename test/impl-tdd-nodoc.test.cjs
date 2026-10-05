@@ -446,7 +446,7 @@ for (const L of LANGS) {
 
   test(`gesture ${L.id}: an UNDOCUMENTED function reaches the model with the no-doc prompt`, async () => {
     const r = await drive(L, "undocumented");
-    assert.ok(!r.messages.some((m) => /not auto-testable/.test(m.message)), `refused${say(r)}`);
+    assert.ok(!r.messages.some((m) => /no tests generated/.test(m.message)), `refused${say(r)}`);
     assert.strictEqual(r.prompts.length, 1, `expected one model call${say(r)}`);
     const p = r.prompts[0];
     assert.ok(p.includes(L.name), "the prompt names the function");
@@ -460,7 +460,7 @@ for (const L of LANGS) {
     const r = await drive(L, "void");
     assert.strictEqual(r.prompts.length, 0, `a void target reached the model${say(r)}`);
     assert.ok(
-      r.messages.some((m) => /not auto-testable/.test(m.message) && /nothing to assert|return/.test(m.message)),
+      r.messages.some((m) => /no tests generated/.test(m.message) && /nothing to check|value to check|return/.test(m.message)),
       `the refusal names the return value${say(r)}`,
     );
   });

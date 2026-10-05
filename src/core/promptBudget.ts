@@ -344,73 +344,47 @@ export function isPromptWindowError(err: unknown): err is PromptWindowError {
   );
 }
 
-/** The window clause both human-facing strings share, so the two can never
- *  quote different arithmetic. */
-function windowClause(a: PromptArbitrationNumbers): string {
-  return `about ${a.availableTok} available (a ${a.numCtx}-token window less the ${a.maxTokens} tokens reserved for the reply)`;
-}
-
 /**
  * What the developer can actually DO about this particular refusal, and nothing
  * they cannot (adversarial review D2).
  *
  * The message used to end "Remove a context block, or lower
  * `column80.injectedContext`" on every refusal. Measured on a real target, that
- * was three lies at once: it told a developer with NO context blocks to remove
- * one, told them to lower a setting already contributing zero, and quoted a
- * 34842-token total whose entire weight was the `fixed` share it never
- * mentioned. So the remedy is chosen by which share is actually over the line.
+ * told a developer with NO context blocks to remove one and to lower a setting
+ * already contributing zero. So the remedy is chosen by which share is actually
+ * over the line.
  *
- * The setting is still NAMED in every branch, because "raising or lowering this
- * will not help you here" is itself the thing a developer reaching for the dial
- * needs to read - a message that simply omitted it invites the wrong move.
+ * The setting is named only when lowering it frees something. At a share of 0
+ * the toast does not argue against a setting the user never touched; the
+ * channel line still records the 0, which is where the breakdown lives.
  */
 function refusalRemedy(a: Extract<PromptArbitration, { verdict: "refuse" }>): string {
-  const dial =
-    a.injectedTok > 0
-      ? `Lowering \`column80.injectedContext\` would give back about ${a.injectedTok} more tokens.`
-      : `Lowering \`column80.injectedContext\` will not help: Column 80's injected surface is already 0 tokens.`;
+  const dial = a.injectedTok > 0 ? " Lowering column80.injectedContext also frees room." : "";
   if (a.fixedTok > a.availableTok) {
-    // THEIR bytes are not the problem and removing them cannot fix it: even with
-    // no context at all this prompt is over the window. Name what `fixed` is
-    // made of, because those are things a developer can actually shorten.
+    // Even with no context at all this prompt is over the window, so removing a
+    // block cannot fix it. Name what the fixed share is made of, because those
+    // are things a developer can actually shorten.
     return (
-      `The request itself is over the window before any context is added, so removing a context block will not ` +
-      `help: shorten the doc comment or the commented-out body you sketched above the target, or split the target ` +
-      `into smaller pieces. ${dial}`
+      "Even without context blocks it is too long: shorten the doc comment or the sketched body above " +
+      `the function, or split the function.${dial}`
     );
   }
   if (a.developerTok > 0) {
-    return `Remove a context block - about ${a.developerTok} tokens of the total are yours. ${dial}`;
+    return a.injectedTok > 0 ? "Remove a context block, or lower column80.injectedContext." : "Remove a context block.";
   }
-  return `Shorten the doc comment or the commented-out body you sketched above the target. ${dial}`;
+  return `Shorten the doc comment or the sketched body above the function.${dial}`;
 }
 
 /**
- * The refusal, in the product's own voice, carrying the honest breakdown.
+ * The refusal, in the product's own voice: what happened and one remedy.
  *
- * ALL THREE SHARES, ALWAYS, INCLUDING `fixed` (adversarial review D2). A
- * breakdown that names two of three accounts for less than the total it quotes,
- * and the case where the missing one is the whole answer is REACHABLE: a target
- * whose body is a long commented-out block produced a 34842-token prompt with no
- * context blocks and no injection at all.
- *
- * THE INJECTED LINE IS NOT OPTIONAL. At refusal time our share is zero, and
- * saying so is the fact that makes refusing the developer's own files fair: we
- * gave up all of ours first. A message that quoted only the total and their
- * context would blame them for our bytes.
+ * The token counts are on the channel in `promptRefusalChannelLine`, which every
+ * refusal logs. A user cannot act on "about 9120 tokens"; they can act on
+ * "remove a context block".
  */
 export function promptRefusalMessage(a: Extract<PromptArbitration, { verdict: "refuse" }>): string {
-  const gaveUp =
-    a.injectedTokDropped > 0
-      ? `about ${a.injectedTokDropped} tokens of it were dropped to make room before this refusal`
-      : `there was none to drop`;
   return (
-    `Column 80: this prompt does not fit the model's context window, so nothing was generated. ` +
-    `The estimate is approximate: about ${a.totalTok} tokens against ${windowClause(a)}. ` +
-    `Of that, your own added context blocks are about ${a.developerTok} tokens; Column 80's own ` +
-    `injected type surface is ${a.injectedTok} tokens (${gaveUp}); and about ${a.fixedTok} tokens are the ` +
-    `request itself - the signature, the doc comment, any body you sketched as comments, and the instruction. ` +
+    "Column 80: this function and its context are too long for the model, so nothing was generated. " +
     refusalRemedy(a)
   );
 }

@@ -525,7 +525,7 @@ gtest("cause empty-tree (provider returned []): the message says the server may 
 gtest("cause flat-symbols (SymbolInformation[], no selectionRange): the message keeps today's meaning - a HIERARCHICAL document symbol provider is required", async () => {
   const r = await drive({ command: GEN, answer: "flat-symbols" });
   const msg = soleWarning(r, "flat-symbols");
-  assert.match(msg, /hierarch/i, `contract item 5: flat-symbols must say the language needs a hierarchical document symbol provider. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /nested/i, `contract item 5: flat-symbols must say the language needs a hierarchical document symbol provider. Got ${JSON.stringify(msg)}`);
   assert.match(msg, /symbol/i, `item 5: the message names document symbols. Got ${JSON.stringify(msg)}`);
   assert.ok(!/cursor/i.test(msg), `item 5: a flat server shape is not the human's cursor. Got ${JSON.stringify(msg)}`);
   assertRefusalLine(r, "flat-symbols", "flat-symbols");
@@ -546,7 +546,7 @@ gtest("cause no-symbol-at-cursor (good hierarchy, cursor outside every symbol, t
   const msg = soleWarning(r, "no-symbol-at-cursor");
   assert.match(msg, /cursor/i, `contract item 6: this is the one case that IS the cursor, and the wording must not regress. Got ${JSON.stringify(msg)}`);
   assert.match(msg, /function/i, `item 6: the message names a function. Got ${JSON.stringify(msg)}`);
-  assert.match(msg, /type header/i, `item 6: with type admission on it still names a generatable type header. Got ${JSON.stringify(msg)}`);
+  assert.match(msg, /type declaration/i, `item 6: with type admission on it still names a generatable type header. Got ${JSON.stringify(msg)}`);
   // Anti-swap: generate's wording must not be another gesture's.
   assert.ok(!/repair/i.test(msg), `generate must not borrow repair's wording. Got ${JSON.stringify(msg)}`);
   assert.ok(!/TDD/i.test(msg), `generate must not borrow a TDD gesture's wording. Got ${JSON.stringify(msg)}`);
@@ -566,7 +566,7 @@ gtest("cause no-symbol-at-cursor (type admission OFF): the function-only wording
   );
   // Anti-swap: with admission OFF there is no type target, so the type-header
   // clause must not leak in, and neither may another gesture's wording.
-  assert.ok(!/type header/i.test(msg), `item 6: admission off has no generatable type target. Got ${JSON.stringify(msg)}`);
+  assert.ok(!/type declaration/i.test(msg), `item 6: admission off has no generatable type target. Got ${JSON.stringify(msg)}`);
   assert.ok(!/repair/i.test(msg), `generate must not borrow repair's wording. Got ${JSON.stringify(msg)}`);
   assert.ok(!/TDD/i.test(msg), `generate must not borrow a TDD gesture's wording. Got ${JSON.stringify(msg)}`);
   assertRefusalLine(r, "no-symbol-at-cursor", "no-symbol-at-cursor/admission-off");
@@ -694,7 +694,7 @@ gtest("item 6 (repair): the cursor refusal says the function is wanted TO REPAIR
   assert.match(msg, /function/i, `it still names a function. Got ${JSON.stringify(msg)}`);
   assert.ok(!/TDD/i.test(msg), `repair must not borrow a TDD gesture's wording. Got ${JSON.stringify(msg)}`);
   assert.ok(
-    !/type header/i.test(msg),
+    !/type declaration/i.test(msg),
     `repair targets a function body, so generate's type-header clause must not leak in. Got ${JSON.stringify(msg)}`,
   );
   assertRefusalLine(r, "no-symbol-at-cursor", "repair/no-symbol-at-cursor");
@@ -710,7 +710,7 @@ gtest("item 6 (TDD generate): the cursor refusal is about generating TDD tests f
   assert.match(msg, /function/i, `it still names a function. Got ${JSON.stringify(msg)}`);
   assert.ok(!/repair/i.test(msg), `TDD generate must not borrow repair's wording. Got ${JSON.stringify(msg)}`);
   assert.ok(
-    !/type header/i.test(msg),
+    !/type declaration/i.test(msg),
     `TDD only targets functions, so offering a generatable TYPE HEADER would be a lie. Got ${JSON.stringify(msg)}`,
   );
   assertRefusalLine(r, "no-symbol-at-cursor", "tdd-generate/no-symbol-at-cursor");
@@ -726,7 +726,7 @@ gtest("item 6 (TDD run): the cursor refusal is about RUNNING a function's TDD te
   assert.match(msg, /function/i, `it still names a function. Got ${JSON.stringify(msg)}`);
   assert.ok(!/repair/i.test(msg), `TDD run must not borrow repair's wording. Got ${JSON.stringify(msg)}`);
   assert.ok(
-    !/type header/i.test(msg),
+    !/type declaration/i.test(msg),
     `TDD only targets functions, so offering a generatable TYPE HEADER would be a lie. Got ${JSON.stringify(msg)}`,
   );
   assertRefusalLine(r, "no-symbol-at-cursor", "tdd-run/no-symbol-at-cursor");

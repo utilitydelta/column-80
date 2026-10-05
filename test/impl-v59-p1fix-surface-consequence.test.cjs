@@ -191,7 +191,7 @@ const CLASSIFIED = [401, 403, 429, 503];
 /** The clause the generation surfaces state and the other two must not. */
 const WRITE_CLAUSE = "so nothing was written";
 /** The remedy only a gesture surface can offer. */
-const GESTURE_REMEDY = "run the gesture again";
+const GESTURE_REMEDY = "then try again";
 
 // ===========================================================================
 // H1 - harness
@@ -223,49 +223,49 @@ const GENERATION_SENTENCES = [
   [
     401,
     "ollama",
-    "Column 80: the local model server refused the request as unauthorised, so nothing was written - " +
-      "check the server's own authentication. The full message is in the output channel.",
+    "Column 80: the model server refused the request as unauthorised, so nothing was written. " +
+      "Check the server's authentication. The full message is in the output channel.",
   ],
   [
     403,
     "ollama",
-    "Column 80: the local model server refused the request as unauthorised, so nothing was written - " +
-      "check the server's own authentication. The full message is in the output channel.",
+    "Column 80: the model server refused the request as unauthorised, so nothing was written. " +
+      "Check the server's authentication. The full message is in the output channel.",
   ],
   [
     401,
     "cloud",
-    "Column 80: the model provider refused the API key, so nothing was written - check " +
-      "`column80.cloudApiKey`, then run the gesture again. The full message is in the output channel.",
+    "Column 80: the model provider refused the API key, so nothing was written. Check " +
+      "column80.cloudApiKey, then try again. The full message is in the output channel.",
   ],
   [
     403,
     "anthropic",
-    "Column 80: the model provider refused the API key, so nothing was written - check " +
-      "`column80.cloudApiKey`, then run the gesture again. The full message is in the output channel.",
+    "Column 80: the model provider refused the API key, so nothing was written. Check " +
+      "column80.cloudApiKey, then try again. The full message is in the output channel.",
   ],
   [
     429,
     "ollama",
-    "Column 80: the model provider is rate limiting these requests, so nothing was written - " +
-      "wait, then run the gesture again. The full message is in the output channel.",
+    "Column 80: the model provider is rate limiting these requests, so nothing was written. " +
+      "Wait, then try again. The full message is in the output channel.",
   ],
   [
     429,
     "cloud",
-    "Column 80: the model provider is rate limiting these requests, so nothing was written - " +
-      "wait, then run the gesture again. The full message is in the output channel.",
+    "Column 80: the model provider is rate limiting these requests, so nothing was written. " +
+      "Wait, then try again. The full message is in the output channel.",
   ],
   [
     503,
     "ollama",
-    "Column 80: the model provider is having trouble, so nothing was written - try again " +
+    "Column 80: the model provider is having trouble, so nothing was written. Try again " +
       "shortly. The full message is in the output channel.",
   ],
   [
     500,
     "cloud",
-    "Column 80: the model provider is having trouble, so nothing was written - try again " +
+    "Column 80: the model provider is having trouble, so nothing was written. Try again " +
       "shortly. The full message is in the output channel.",
   ],
 ];
@@ -340,26 +340,13 @@ async function drivePreviewFailure(err) {
 const MULTILINE_ERR = () =>
   new Error("the diff editor is gone\n  at Object.<anonymous> (/x.js:1:1)\n  at Module._compile");
 
-btest("D1a [discard]: a multi-line reason never renders an unclosed bracket", async () => {
+btest("D1a [discard]: a multi-line reason never reaches the toast", async () => {
   const got = await drivePreviewFailure(MULTILINE_ERR());
   assert.strictEqual(got.outcome, "discarded", "PRECONDITION: the preview failure still discards");
   assert.strictEqual(got.warns.length, 1, `exactly one toast, got ${show(got.warns)}`);
   const t = got.warns[0];
   assert.ok(!BREAKS.test(t), `D1a: the toast is still one line: ${show(t)}`);
-  const opens = (t.match(/\(/g) || []).length;
-  const closes = (t.match(/\)/g) || []).length;
-  assert.strictEqual(
-    opens,
-    closes,
-    `D1a: the cut landed INSIDE the brackets. Phase 1 wrapped the whole sentence in firstLine, so a ` +
-      `reason carrying a break loses its closing bracket and the period is glued to a truncated ` +
-      `clause.\n  got: ${show(t)}\n  opens=${opens} closes=${closes}`,
-  );
-  assert.ok(
-    /\)\.( |$)/.test(t),
-    `D1a: the sentence's own period sits OUTSIDE the bracket pair, after it, not welded to the cut.\n` +
-      `  got: ${show(t)}`,
-  );
+  assert.ok(!t.includes("diff editor is gone"), `D1a: the raw error goes to the channel only: ${show(t)}`);
 });
 
 btest("D1b [discard]: the tail the cut dropped reaches the channel, so the pointer is a true promise", async () => {
@@ -385,8 +372,8 @@ btest("D1c [discard control]: a single-line reason is byte-identical to today's"
   const got = await drivePreviewFailure(new Error("the diff editor is gone"));
   assert.deepStrictEqual(
     got.warns,
-    ["Column 80: generation discarded — the preview could not be opened (Error: the diff editor is gone)."],
-    "D1c: nothing was dropped, so no pointer, and the wording does not move",
+    ["Column 80: the preview could not open, so nothing was changed. The full message is in the output channel."],
+    "D1c: the error is in the channel, and the toast points there",
   );
 });
 
@@ -410,7 +397,7 @@ btest("D1d [discard control]: a literal reason keeps its wording and gets no poi
   vs.__state.messages.length = 0;
   assert.strictEqual(outcome, "discarded");
   assert.deepStrictEqual(warns, [
-    "Column 80: generation discarded — the document was closed during generation.",
+    "Column 80: the file was closed before the generated code was ready, so nothing was changed.",
   ]);
 });
 
@@ -596,7 +583,7 @@ btest("D3a [download/typed-unclassified]: a 404 carrying a generation marker dra
   const got = await drivePull(err);
   assert.deepStrictEqual(
     got.warns,
-    [`Column 80: the download failed - ${err.message}. The full message is in the output channel.`],
+    [`Column 80: test-model did not download (${err.message}). Run "Column 80: Select Hardware Tier" to try again. The full message is in the output channel.`],
     `D3a: an unclassified status has no class, so the provider's own message is the actionable half. ` +
       `The download surface must consult the TYPED STATUS and nothing else.`,
   );
@@ -606,6 +593,6 @@ btest("D3b [download/typed-unclassified control]: a 418 still keeps today's word
   const odd = new B.HttpStatusError("ollama", 418, 'Ollama 418 I am a teapot: {"error":"short and stout"}');
   const got = await drivePull(odd);
   assert.deepStrictEqual(got.warns, [
-    `Column 80: the download failed - ${odd.message}. The full message is in the output channel.`,
+    `Column 80: test-model did not download (${odd.message}). Run "Column 80: Select Hardware Tier" to try again. The full message is in the output channel.`,
   ]);
 });

@@ -328,7 +328,7 @@ test("a function with nothing above the bar proposes nothing", () => {
 // ---------------------------------------------------------------------------
 
 test("the diff tab is named for the rubric and not for a generated body", () => {
-  assert.equal(proposalTitle("parse_header"), "parse_header: rubric (preview)");
+  assert.equal(proposalTitle("parse_header"), "parse_header: Criticize (preview)");
   assert.notEqual(proposalTitle("f"), "f: generated body (preview)");
   assert.equal(proposalTitle("f").split("\n").length, 1);
   assert.ok(proposalTitle("f").includes("(preview)"), "the human must know nothing has landed yet");

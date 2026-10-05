@@ -235,8 +235,8 @@ becomes the DOC COMMENT and stays in the file, in the language's own form (`///`
 `//` in Go, `/** */` in TypeScript, a docstring inside the body in Python), and the model writes
 the declaration head under it. Where the head opens a body, the body's first line and the closer
 land too and the caret is inside, ready for the next dictation or Generate Function Body. The
-accept runs the same compiler check as any ghost, so a head whose empty body does not compile
-goes straight to repair, and repair writes the body from the doc comment and the signature.
+accept runs no compiler check, like any ghost. Run Generate Function Body for the body; it writes
+it from the doc comment and the signature.
 Enums, structs, records, classes, interfaces, traits and type aliases all land this way; an
 attribute or decorator the model puts above the head (`#[derive(Debug)]`, `[Serializable]`,
 `@dataclass`) rides along with it.
@@ -250,6 +250,16 @@ can prove exist. The tidy opens for line comments and Python docstrings; inside 
 comment (`/* */`, `/** */`) the sentence lands and the tidy refuses. Ctrl+Z is two steps when
 the tighten applied and one when it did not.
 
+**Dictate into prose.** In a markdown or plain text file the press records the same way, and
+what you said lands at the cursor as you said it: no capital or full stop added, no comment
+marker, no model, no tighten, no ghost. One space goes in front when the cursor follows a word
+or closing punctuation, and none after an opening marker, so `**|**` lands `**words**` and
+`[|](url)` lands `[words](url)`. A cursor you moved while the take decoded stays where you put
+it. Lines added or removed above the dictated line while you talk or while it decodes do not
+move where the words land. Ctrl+Z takes it back in one step. `column80.fimLanguages` does not gate it, and the
+speech model and recorder are the only setup it needs. Whisper's own noise markers
+(`[BLANK_AUDIO]`) and spoken fillers (`um`, `uh`) are dropped; everything else is your words.
+
 The rules of the road:
 
 - Each press is its own sentence. Chaining is a new press on the same line; the last sentence is
@@ -261,16 +271,21 @@ The rules of the road:
 - If the editor draws nothing for a dictated ghost, the gesture ends on its own within a second
   and the status bar says so, rather than leaving the "heard:" label up.
 - A partly written line has its rest filled, and the cursor stays where it is.
-- A file FIM does not serve refuses the press, and so does a Remote window (the microphone
-  is on your machine and the extension host is on the server).
+- A take that heard nothing says so in the status bar and writes nothing.
+- A read-only file refuses at the press, before the microphone opens.
+- A file FIM does not serve refuses a press on a code line, and so does a Remote window (the
+  microphone is on your machine and the extension host is on the server). A press inside a
+  comment is not refused for the language: writing a comment needs no tab completion. A press
+  in a language dictation cannot write into says so before it checks for the speech model, so
+  it never offers the 148MB download for a file it would refuse anyway.
 - Dictation without the keystroke ghosts: turn `column80.enabled` off (or Toggle FIM
   Autocomplete). A dictated request is still served; nothing is generated on typing.
 - Talk as long as you like. The whole take is decoded; nothing is cut.
 - The speakers are muted while the mic is open and put back after, unless they were already
   muted (`column80.dictation.muteSpeakers`). Windows is not muted yet.
 
-Setup: the speech model (whisper.cpp `base.en`, 148MB) downloads on first activation after you
-click Download, the same way the ollama models do, and a small voice-activity model with it.
+Setup: the first press offers the speech model (whisper.cpp `base.en`, 148MB), and it downloads
+after you click Download, with a small voice-activity model alongside. Activation does not ask.
 Everything runs locally. `Column 80: Select Microphone` picks a device; empty means the system
 default. `column80.dictation.enabled` off stops the resident recogniser. The chord is
 `column80.dictation.shortcut`: pick another of the offered chords if `shift+alt+d` is taken
@@ -409,7 +424,7 @@ FIM never sees context blocks. They feed function generation only.
 
 ## Compiler check and repair
 
-After you accept a generation (or a FIM completion) in a served language, the extension runs that language's own compiler against disk and shows you the truth.
+After you accept a generated body, or run **Repair Function Body**, in a served language, the extension runs that language's own compiler against disk and shows you the truth.
 
 | Language | Command | Root |
 |---|---|---|
@@ -441,18 +456,18 @@ The compiler's own output is the input of record. VS Code's diagnostics API is n
 - **Never warnings, never span-less diagnostics.**
 - **Same consent gate.** Every repair proposal goes through the identical diff preview. Reject ends the session and the remaining diagnostics stay on screen. Repair has no insertion path of its own.
 
-Routing is measured, not taste. A FIM-sourced failure crosses to the big model first (same-model self-repair is dead below ~30B), then self-repairs once. A generation-sourced failure gets one self-repair round and then surfaces.
+A failure gets one self-repair round, and a second only when the first cut the error count. Otherwise it surfaces.
 
 After every accepted repair the check re-runs, because compilers suppress later error waves while earlier ones stand: fixing a name error can unmask a borrow error. Waves are handled inside the same 2-round cap.
 
 With `compilerDirectedInjection` on (default), a repair round leads with the real API surface the compiler's error class points at, resolved from your language server: the crate's worked example or real signatures on a hallucinated method, the installed-dependency catalog on a reach for a package you do not have. A missing-but-resolvable import is qualified in place (`fastbloom::BloomFilter`) rather than injected as a `use` line you did not write. Every injected block is a labelled, visible section in the previewed prompt.
 
 Turning `repairEnabled` off disables repair only. Check-and-surface always runs after a
-generation; after a FIM accept it runs unless `checkOnFimAccept` is off, which turns the whole
-post-accept flow off for ghosts (dictated ones included) and leaves function generation's own
-check alone.
+generation. Accepting a FIM ghost, dictated or not, runs nothing: no save, no check, no repair. A
+Tab is a Tab. **Repair Function Body** checks and repairs the function or type at the cursor
+when you ask.
 
-Two things stated plainly. On an eligible failure the repair **model call happens before you are asked anything**: consent gates the splice, not the generation. And a FIM accept on a dirty file forces a save you did not explicitly ask for, because the check reads disk.
+On an eligible failure the repair **model call happens before you are asked anything**: consent gates the splice, not the generation.
 
 ### Refine: repair on a clean build
 
@@ -953,7 +968,7 @@ FIM stays local, as ever. Twelve seconds per keystroke would be daft, and the CL
 | `[claude-code]` | one line per round on the Claude Code backend: fence strip, turns, both latencies, cache mode, token accounting |
 | `[anthropic]` | one line per round on the native Anthropic backend: whether a cache marker was sent, and the same accounting |
 | `[tdd]` | test generation, testability refusals, insertion, run verdicts |
-| `[diag]` | `Dump Completion Items At Cursor`, on demand only |
+| `[diag]` | `Dump Completion Items at Cursor`, on demand only |
 
 ```
 [fim] invoked automatic selection=none at 42:18
@@ -982,7 +997,7 @@ Habits worth having: `promptBytes` and `blocks` tell you what a generation actua
 
 | Setting | Default | What it does |
 |---|---|---|
-| `column80.enabled` | `true` | Keystroke FIM autocomplete on/off. Off, dictation still serves its one request. |
+| `column80.enabled` | `true` | Keystroke FIM autocomplete on/off. Off, dictation still works. |
 | `column80.apiBase` | `http://localhost:11434` | Ollama base URL for function generation. FIM follows it only to a loopback address; a remote host leaves FIM on `http://localhost:11434`. |
 | `column80.fimModel` | `qwen2.5-coder:1.5b-base` | FIM model. Must be a FIM-capable **base** model, not `-instruct`. |
 | `column80.fimLanguages` | `[]` | Extra VS Code language ids to serve FIM in. Widens, never narrows. |
@@ -993,7 +1008,7 @@ Habits worth having: `promptBytes` and `blocks` tell you what a generation actua
 | `column80.dictation.partials` | `true` | Show what is being heard on the cursor line while you talk. |
 | `column80.dictation.shortcut` | `shift+alt+d` | The chord that toggles dictation: one of five, or `none` to bind `column80.dictate` yourself in Keyboard Shortcuts. |
 | `column80.dictation.autoAccept` | `true` | The generated code goes straight into the file and the cursor drops to the next line (at module level it stays at the end of the landed code); off leaves a ghost for Tab. Ctrl+Z undoes either way. |
-| `column80.dictation.surfaces` | `true` | Resolve the type names you spoke into surfaces above the comment. Measured to cost first-line accuracy (157 to 145 of 360); off is the safer setting until the human's own gestures say otherwise. |
+| `column80.dictation.surfaces` | `false` | Resolve the type names you spoke into surfaces above the comment. Off by default: measured on 360 sites, the comment alone got the first line right 157 times, with surfaces 145. |
 | `column80.fimMemberGate` | `true` | Drop member-site ghosts naming an unresolved member (TS, C#, Python). |
 | `column80.fimAlternatives` | `3` | Completions generated on a manual trigger. Automatic always generates one. |
 | `column80.minGhostChars` | `8` | Shortest ghost worth showing. `0` disables the floor. |
@@ -1010,8 +1025,7 @@ Habits worth having: `promptBytes` and `blocks` tell you what a generation actua
 | `column80.cloudApiKey` | `""` | Key for the cloud backend: a Bearer token, or `x-api-key` on `anthropic`. Blank keeps cloud generation disabled. Ignored by `claude-code`. |
 | `column80.cloudApiBase` | `""` | Endpoint for the cloud backend. Required for `openai-compatible`. Ignored by `claude-code`. |
 | `column80.hardwareTier` | `auto` | `auto` probes on activation; a tier id skips the probe. |
-| `column80.repairEnabled` | `true` | Gated compiler-error repair after accepted generations. Off: surface only. |
-| `column80.checkOnFimAccept` | `true` | The compiler check, the annotation and the repair after a FIM ghost is accepted. Off makes a Tab a Tab; function generation keeps its own check. |
+| `column80.repairEnabled` | `true` | Let the function-generation model repair compiler errors, up to two rounds through the normal preview, after an accepted generation and when you run Repair Function Body. Off: the errors are shown and nothing is repaired, and Repair Function Body does not run covering tests or refine. |
 | `column80.injectedContext` | `small` | How much of your own code goes into the function-generation prompt. Pick the row that matches the model you generate with: `small` (a 30B-class local model), `medium`, `large` (a large local model or a cheap cloud one), `frontier` (Opus and Fable class). Moving it up widens four things at once - how many of your types are injected, how far each is followed, how many types in total, and the byte budget they share - so a higher setting means a larger prompt, a slower first token and more language-server lookups. It widens the repair prompt too. Note what it does NOT reach: Go, Python and C# inject member signatures rather than data shapes, so for those three the setting moves how many types are injected and how many members each shows, and nothing else - the extension says which numbers are in force, per language, on its output channel. Replaced `column80.injectedSurface`, which moved one of those four and so could not change the prompt on its own. |
 | `column80.compilerDirectedInjection` | `true` | Inject the real API surface the compiler's error points at, and qualify missing imports in place. Off returns diagnostics-only repair. |
 | `column80.repairUsageWindows` | `false` | Inject call sites into compiler repair rounds. Off by default: it lost its measurement, scoring no better than the control and costing 2.6s per round. |
@@ -1021,16 +1035,17 @@ No `num_gpu` setting, deliberately. See [the carve](#the-tiers).
 
 ## Commands and keys
 
-Every command is under the **Column 80** category in the palette.
+Every command you run by hand is under the **Column 80** category in the palette, except Dump Completion Items.
 
 | Command | Where else |
 |---|---|
 | Toggle FIM Autocomplete | palette |
 | Dictate the Next Block | `column80.dictation.shortcut` (default `shift+alt+d`), palette |
 | Cancel Dictation | `Escape` while the mic is open or the take is decoding or generating; palette |
+| Cancel Running Task | the status bar item while a task runs; palette |
 | Dismiss the Dictated Ghost | `Escape` over the ghost |
 | Select Microphone | palette |
-| Download Speech Model | palette; also offered on first activation and on a press while the model is missing |
+| Download Speech Model | palette; also offered on a press while the model is missing, and when you turn `column80.dictation.enabled` on |
 | Generate Function Body | editor right-click > Column 80 |
 | Repair Function Body | editor right-click > Column 80 |
 | Generate Tests (TDD) | editor right-click > Column 80 |
@@ -1045,7 +1060,7 @@ Every command is under the **Column 80** category in the palette.
 | Add Enclosing Block to Model Context | editor right-click |
 | Remove / Move Up / Move Down | panel item, inline icons or right-click |
 | Clear Model Context | panel title |
-| Dump Completion Items At Cursor | palette, diagnostic only |
+| Dump Completion Items at Cursor | a keybinding you add; hidden from the palette, diagnostic only |
 
 The keybindings that ship are lifecycle keys and the dictation toggle:
 

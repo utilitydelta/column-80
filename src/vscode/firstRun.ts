@@ -49,11 +49,10 @@ const FIRST_RUN_KEY = "column80.firstRunDone";
 // Honest one-liners per tier for the QuickPick; package.json's
 // enumDescriptions carry the same facts for the settings UI.
 const TIER_DESCRIPTIONS: Record<TierId, string> = {
-  "24gb": "24GB+ VRAM: both models fully GPU-resident (provisional, never validated on real hardware)",
-  "16gb-large-ram":
-    "16GB VRAM, 32GB+ RAM: 30b layer-capped at num_gpu=30 beside a fully resident FIM model (the reference config)",
-  "16gb-low-ram": "12-16GB VRAM or low RAM: dense 14b function generation, no carve needed",
-  "below-12gb": "Below 12GB or no GPU: FIM completion only, function generation disabled",
+  "24gb": "24GB+ VRAM: both models run fully on the GPU (untested)",
+  "16gb-large-ram": "16GB VRAM, 32GB+ RAM: the 30B generation model, partly on the GPU, beside the tab completion model",
+  "16gb-low-ram": "12-16GB VRAM or low RAM: a smaller 14B generation model",
+  "below-12gb": "Below 12GB or no GPU: tab completion only, function generation disabled",
 };
 
 // A tier forced by the hardwareTier setting: the row supplies the model
@@ -67,7 +66,7 @@ function overrideSelection(id: TierId): TierSelection {
       id: row.id,
       fnGenEnabled: false,
       provisional: row.provisional,
-      message: `Function generation is disabled: the hardwareTier setting is '${id}'. FIM tab-completion still works.`,
+      message: `Function generation is off: the hardware tier is set to ${id}. Run "Column 80: Select Hardware Tier" to change it.`,
     };
   }
   return {
@@ -103,6 +102,23 @@ export async function resolveTier(
   return { probe, selection };
 }
 
+/** Write the picked tier at Global. A workspace or folder value outranks
+ *  Global, so the write can take and change nothing; re-read the effective
+ *  value and say where the override lives instead of leaving the pick silent. */
+async function writeTierSetting(value: TierId | "auto", output: vscode.OutputChannel): Promise<void> {
+  await vscode.workspace
+    .getConfiguration("column80")
+    .update("hardwareTier", value, vscode.ConfigurationTarget.Global);
+  const effective = readTierConfig().hardwareTier;
+  if (effective === value) {
+    return;
+  }
+  output.appendLine(`[carve] hardwareTier wrote ${value} at Global but effective value is ${effective} (overridden in another scope)`);
+  void vscode.window.showWarningMessage(
+    "Column 80: a workspace or folder setting still sets column80.hardwareTier. Change it there.",
+  );
+}
+
 /** Probe -> offer the computed tier as the default -> let the human override
  *  -> persist the pick -> offer ratified pulls for whatever the tier needs
  *  and disk lacks. Runs once per install (globalState-gated) and on demand
@@ -122,12 +138,14 @@ export async function runFirstRunFlow(
     return; // dismissed: change nothing, ask nothing
   }
   let selection = computed;
+  if (picked === "auto" && readTierConfig().hardwareTier !== "auto") {
+    // The detected row says it stays on auto, so an earlier override goes back to auto.
+    await writeTierSetting("auto", output);
+  }
   if (picked !== "auto") {
     // An explicit pick persists; accepting the computed default keeps
     // hardwareTier "auto" so a hardware change re-adapts.
-    await vscode.workspace
-      .getConfiguration("column80")
-      .update("hardwareTier", picked, vscode.ConfigurationTarget.Global);
+    await writeTierSetting(picked, output);
     selection = overrideSelection(picked);
     output.appendLine(tierLogLine(selection, probe.vramMB, probe.ramMB, "override"));
   }
@@ -157,8 +175,9 @@ export async function runFirstRunFlow(
   }
 
   if (!cloud && remoteHost === undefined && !selection.fnGenEnabled) {
+    // Channel only: the pick row already said generation is off, and Generate Function Body
+    // refuses with the tier sentence when pressed.
     output.appendLine(`[carve] fn-gen disabled: ${selection.message}`);
-    void vscode.window.showInformationMessage(`Column 80: ${selection.message}`);
   }
 
   // Model availability. One listModels call answers both "is the server up"
@@ -192,7 +211,7 @@ export async function runFirstRunFlow(
   }
 
   const needed: { model: string; why: string; fnGen: boolean }[] = [
-    { model: fimConfig.model, why: "FIM tab-completion needs its model", fnGen: false },
+    { model: fimConfig.model, why: "tab completion needs its model", fnGen: false },
   ];
   // The cloud backend serves fn-gen from the provider, so no local fn-gen
   // model is ever pulled; FIM above is the only local model a cloud user needs.
@@ -209,7 +228,7 @@ export async function runFirstRunFlow(
   if (!cloud && remoteHost === undefined && selection.fnGenEnabled) {
     needed.push({
       model: fnGenConfig.model,
-      why: `function generation on the ${selection.id} tier needs its model`,
+      why: "function generation needs its model",
       fnGen: true,
     });
   }
@@ -221,13 +240,16 @@ export async function runFirstRunFlow(
     // `hasModel` decided this model is absent FROM THAT LIST, so pulling it
     // anywhere else answers a question nobody asked. On the local arm this is
     // byte-identical to the fn-gen base; on the remote arm it is the fix.
-    const landed = await offerModelPull(fimConfig.apiBase, need.model, output, need.why, deps);
-    if (!landed && need.fnGen) {
+    const outcome = await offerPull(fimConfig.apiBase, need.model, output, need.why, deps);
+    if (outcome !== "landed" && need.fnGen) {
       // Declining leaves the extension honest: what is missing, what that
-      // disables, and the one-click that fixes it.
-      const message = `Function generation is disabled until ${need.model} is downloaded. Run "Column 80: Select Hardware Tier" for the one-click download. FIM tab-completion still works.`;
+      // disables, and the one-click that fixes it. A failed pull already
+      // toasted the same fix, so this one stays on the channel.
+      const message = `Function generation is disabled until ${need.model} is downloaded. Run "Column 80: Select Hardware Tier" for the one-click download.`;
       output.appendLine(`[carve] fn-gen disabled: ${message}`);
-      void vscode.window.showInformationMessage(`Column 80: ${message}`);
+      if (outcome !== "failed") {
+        void vscode.window.showInformationMessage(`Column 80: ${message}`);
+      }
     }
   }
 }
@@ -242,7 +264,7 @@ async function pickTier(computed: TierSelection): Promise<TierId | "auto" | unde
       // computeTier only ever emits a TierId; the "cloud" selection is
       // synthesized past this local-only flow and never reaches pickTier.
       detail: TIER_DESCRIPTIONS[computed.id as TierId],
-      description: "recommended - keeps 'auto' so a hardware change re-adapts",
+      description: "recommended: stays on auto, so a hardware change is picked up",
       value: "auto",
     },
     ...TIER_TABLE.map((row) => ({
@@ -254,15 +276,14 @@ async function pickTier(computed: TierSelection): Promise<TierId | "auto" | unde
   ];
   const pick = await vscode.window.showQuickPick(items, {
     title: "Column 80: hardware tier",
-    placeHolder: "Which models fit this machine - the carve keeps FIM fast beside the 30b",
+    placeHolder: "Which models should this machine run? The detected tier is usually right.",
   });
   return pick?.value;
 }
 
-/** One-click ratified download. The Download click logs
- *  `[carve] pull ratified` BEFORE the request starts; decline logs
- *  `[carve] pull declined` and changes nothing. Returns true when the model
- *  landed. */
+type PullOutcome = "landed" | "declined" | "cancelled" | "failed";
+
+/** One-click ratified download; true when the model landed. */
 export async function offerModelPull(
   apiBase: string,
   model: string,
@@ -270,6 +291,19 @@ export async function offerModelPull(
   why: string,
   deps: FirstRunDeps = {},
 ): Promise<boolean> {
+  return (await offerPull(apiBase, model, output, why, deps)) === "landed";
+}
+
+/** One-click ratified download. The Download click logs
+ *  `[carve] pull ratified` BEFORE the request starts; decline logs
+ *  `[carve] pull declined` and changes nothing. */
+async function offerPull(
+  apiBase: string,
+  model: string,
+  output: vscode.OutputChannel,
+  why: string,
+  deps: FirstRunDeps = {},
+): Promise<PullOutcome> {
   output.appendLine(`[carve] pull offered model=${model} why=${why}`);
   const choice = await vscode.window.showInformationMessage(
     `Column 80: ${why}. Download ${model}?`,
@@ -277,7 +311,7 @@ export async function offerModelPull(
   );
   if (choice !== "Download") {
     output.appendLine(`[carve] pull declined model=${model}`);
-    return false;
+    return "declined";
   }
   // The trust contract's ordering: the ratify line is on the record before
   // any request starts, so a pull line without a ratify line above it is a
@@ -308,11 +342,11 @@ export async function offerModelPull(
       },
     );
     output.appendLine(`[carve] pull done model=${model} ms=${Date.now() - started}`);
-    return true;
+    return "landed";
   } catch (err) {
     if (isAbort(err)) {
       output.appendLine(`[carve] pull cancelled model=${model}`);
-      return false;
+      return "cancelled";
     }
     // ESCAPED. This sink IS a real `OutputChannel`, which renders one row per
     // line break, and the tail of the transport's throw is the registry's own
@@ -359,10 +393,10 @@ export async function offerModelPull(
     // gesture behind a Download click, so `DOWNLOAD_VOICE` names the command
     // that actually re-offers the download.
     void vscode.window.showWarningMessage(
-      httpStatusToast(err, DOWNLOAD_VOICE) ??
-        `Column 80: the download failed - ${firstLine(errorText(err))}. The full message is in the output channel.`,
+      httpStatusToast(err, { ...DOWNLOAD_VOICE, consequence: `so ${model} was not downloaded` }) ??
+        `Column 80: ${model} did not download (${firstLine(errorText(err))}). Run "Column 80: Select Hardware Tier" to try again. The full message is in the output channel.`,
     );
-    return false;
+    return "failed";
   }
 }
 
@@ -381,9 +415,9 @@ export async function startOllamaTerminal(
   runOllamaCheck: ProbeCommandFn = probeCommandRunner(DEFAULT_PROBE_TIMEOUT_MS),
 ): Promise<void> {
   if (!(await ollamaInstalled(runOllamaCheck))) {
-    output.appendLine("[carve] ollama not found on PATH — pointed the user to the installer");
+    output.appendLine("[carve] ollama not found on PATH; pointed the user to the installer");
     const choice = await vscode.window.showErrorMessage(
-      "Column 80: Ollama isn't installed — the `ollama` command was not found. Install it, then run this again.",
+      "Column 80: the ollama command was not found, so Ollama cannot be started. Install Ollama, then try again.",
       "Install Ollama",
     );
     if (choice === "Install Ollama") {
@@ -414,6 +448,9 @@ export function registerFirstRun(
         await runFirstRunFlow(context, output, deps);
       } catch (err) {
         output.appendLine(`[carve] tier flow failed: ${String(err)}`);
+        void vscode.window.showWarningMessage(
+          "Column 80: Select Hardware Tier failed. The full message is in the output channel.",
+        );
       }
     }),
   );
@@ -495,6 +532,22 @@ async function recordAnswer(context: vscode.ExtensionContext, key: string): Prom
 // question is unanswered.
 const offersInFlight = new Set<string>();
 
+// Offers whose toast faded unanswered, per ExtensionContext, which is one VS Code
+// session. A faded toast is still not an answer, so nothing persists: the next
+// window asks again. Within this one it does not, because re-asking at every
+// member site is a nag the user already waved off.
+const fadedThisSession = new WeakMap<vscode.ExtensionContext, Set<string>>();
+
+function fadedIn(context: vscode.ExtensionContext, key: string): boolean {
+  return fadedThisSession.get(context)?.has(key) === true;
+}
+
+function recordFaded(context: vscode.ExtensionContext, key: string): void {
+  const faded = fadedThisSession.get(context) ?? new Set<string>();
+  faded.add(key);
+  fadedThisSession.set(context, faded);
+}
+
 /** One-time, one-click, Rust-only offer to turn rust-analyzer's argument
  *  snippets off so the ghost re-renders while the user arrows the member list.
  *
@@ -521,7 +574,7 @@ export async function offerRaSnippetFix(
     return false;
   }
   const answered = RA_NUDGE_KEY;
-  if (answeredIn(context, answered) || offersInFlight.has(answered)) {
+  if (answeredIn(context, answered) || offersInFlight.has(answered) || fadedIn(context, answered)) {
     return false;
   }
   const config = vscode.workspace.getConfiguration(RA_SNIPPET_SECTION);
@@ -536,15 +589,17 @@ export async function offerRaSnippetFix(
   const TURN_OFF = "Turn it off";
   try {
     const choice = await vscode.window.showInformationMessage(
-      "Column 80: rust-analyzer's argument snippets stop the inline ghost re-rendering as you arrow" +
-        " the member list. Turning them off trades the widget's tabbable parameter-name placeholders" +
-        " for a live preview of the real call.",
+      "Column 80: rust-analyzer's argument snippets stop Column 80's suggestion from updating as you move" +
+        " through the completion list. Turn them off? You trade the parameter placeholders for a" +
+        " live preview of the call.",
       TURN_OFF,
       "Not now",
     );
     // A modeless message that faded while the developer kept typing is not an
-    // answer, and recording it as one costs them the offer forever.
+    // answer, and recording it as one costs them the offer forever. It waits
+    // for the next session instead.
     if (choice === undefined) {
+      recordFaded(context, answered);
       return false;
     }
     if (choice !== TURN_OFF) {
@@ -622,7 +677,14 @@ export async function offerRaHoverCapFix(
     return false;
   }
   const answered = RA_HOVER_NUDGE_KEY;
-  if (answeredIn(context, answered) || offersInFlight.has(answered)) {
+  // The snippet offer still on screen counts too: it returns false while its toast is open,
+  // and one member site must not put two rust-analyzer questions up at once.
+  if (
+    answeredIn(context, answered) ||
+    offersInFlight.has(answered) ||
+    offersInFlight.has(RA_NUDGE_KEY) ||
+    fadedIn(context, answered)
+  ) {
     return false;
   }
   const config = vscode.workspace.getConfiguration(RA_HOVER_SECTION);
@@ -640,17 +702,17 @@ export async function offerRaHoverCapFix(
   output.appendLine(
     `[carve] ra hover cap nudge offered truncating=${JSON.stringify(truncating)}`,
   );
-  const RAISE = "Show all";
+  const RAISE = "Raise limit";
   try {
     const choice = await vscode.window.showInformationMessage(
-      "Column 80: rust-analyzer's hover shows five struct fields and five enum variants, and the" +
-        " rest arrive as `/* … */`. That ellipsis is what the model is asked to write against," +
-        " so it invents the names it cannot see. Showing all of them measured a 19 point gain in" +
-        " hidden-field recall.",
+      "Column 80: rust-analyzer's hover cuts long structs and enums short, so the model guesses" +
+        ` the names it cannot see. Raise rust-analyzer's hover limit to ${RA_HOVER_TARGET}?`,
       RAISE,
       "Not now",
     );
+    // Faded unanswered: the same per-session silence as the snippet offer.
     if (choice === undefined) {
+      recordFaded(context, answered);
       return false;
     }
     if (choice !== RAISE) {

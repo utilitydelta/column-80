@@ -271,8 +271,8 @@ export function classifyPyTestability(
         reason: "async",
         detail:
           ctx?.asyncLookedFor ??
-          "async def, and this project's interpreter has neither pytest-asyncio nor anyio, so pytest would " +
-            "collect the test and skip it. This gesture never installs a package.",
+          "It is async, and this project's interpreter has neither pytest-asyncio nor anyio, so pytest would " +
+            "skip the test. Install one of them.",
       };
     }
   }
@@ -280,7 +280,9 @@ export function classifyPyTestability(
     return {
       testable: false,
       reason: "io",
-      detail: "IO/network in the signature (open, Path, socket, requests): integration territory, not a blind unit test",
+      detail:
+        "Its signature does IO or networking (open, Path, socket, requests), which needs an integration test, " +
+        "not a generated unit test.",
     };
   }
   const first = parametersOf(sig)[0];
@@ -288,7 +290,7 @@ export function classifyPyTestability(
     return {
       testable: false,
       reason: "needs-fixture",
-      detail: `method taking \`${/^\w+/.exec(first)?.[0] ?? "self"}\`: needs a constructed fixture`,
+      detail: `It is a method, and Column 80 found no way to construct "${/^\w+/.exec(first)?.[0] ?? "self"}".`,
     };
   }
   // A missing docstring is NOT a refusal: the name and signature often say
@@ -297,7 +299,7 @@ export function classifyPyTestability(
     return {
       testable: false,
       reason: "underspecified",
-      detail: "no return annotation, or `-> None`: nothing to assert on",
+      detail: "It has no return annotation, or returns \"None\", so there is nothing to check.",
     };
   }
   return { testable: true };
@@ -1876,7 +1878,7 @@ function pyPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
       ok: false,
       refusal: {
         reason: "unresolvable-import",
-        detail: `\`${symbolName}\` is not a plain identifier, so the test file has no name to import it by`,
+        detail: `"${symbolName}" is not a plain identifier, so the test file has no name to import it by`,
       },
     };
   }
@@ -1887,7 +1889,7 @@ function pyPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
       ok: false,
       refusal: {
         reason: "unresolvable-import",
-        detail: `${filePath} does not sit at an importable module path under ${root}, so the test file has no module to import \`${symbolName}\` from`,
+        detail: `${filePath} does not sit at an importable module path under ${root}, so the test file has no module to import "${symbolName}" from`,
       },
     };
   }
@@ -1922,9 +1924,8 @@ function pyPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
       refusal: {
         reason: "unresolvable-import",
         detail:
-          `\`${importLine}\` does not resolve in ${interpreter}, so a generated test importing ` +
-          `\`${symbolName}\` from \`${moduleName}\` would fail to collect. Install the project into that ` +
-          "environment (for example an editable install), or select an interpreter that has it.",
+          `${interpreter} cannot import ${symbolName} from ${moduleName}, so its tests cannot run. Install the ` +
+          'project into that environment ("pip install -e ."), or select the project\'s interpreter.',
       },
     };
   }
@@ -2029,9 +2030,8 @@ function pyAsyncSupport(root: string, placement: TestPlacement, deps: TddDeps): 
   }
   return {
     asyncLookedFor:
-      "async def, and this project's interpreter imports neither pytest-asyncio nor anyio. pytest would " +
-      "collect the test and SKIP it, which is a green board with nothing run. This gesture never installs " +
-      "a package.",
+      "It is async, and this project's interpreter has neither pytest-asyncio nor anyio, so pytest would " +
+      "skip the test. Install one of them.",
   };
 }
 

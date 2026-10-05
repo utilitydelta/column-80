@@ -143,9 +143,9 @@ const PRESENT = { stdout: "2.1.224 (Claude Code)\n", exitCode: 0 };
 // The contract's C3 message battery, verbatim.
 const MSG = {
   "no-storage-path":
-    "Function generation is disabled: the Claude Code backend has no product-owned directory to run in. FIM tab-completion still works.",
+    "Function generation is disabled: Claude Code has no folder of its own to run in.",
   "binary-missing":
-    "Function generation is disabled: the Claude Code backend needs the `claude` CLI on PATH. FIM tab-completion still works.",
+    "Function generation is disabled: the Claude Code backend needs the \"claude\" CLI on PATH.",
 };
 
 // A fake `claude` on PATH that records the cwd it was spawned in. Used only by
@@ -319,7 +319,7 @@ test("A3a: an ensureDir that throws yields the cwd-unusable reason, message and 
   const cwd = path.join(storagePath, "claude-cwd");
   assert.match(built.tier.message, /^Function generation is disabled: the Claude Code backend could not create its working directory /);
   assert.ok(built.tier.message.includes(cwd), "the message names the path");
-  assert.ok(built.tier.message.endsWith("FIM tab-completion still works."), "the message ends with the FIM sentence");
+  assert.ok(!/still works/.test(built.tier.message), "the message promises nothing about tab completion");
   built.service.dispose();
 });
 

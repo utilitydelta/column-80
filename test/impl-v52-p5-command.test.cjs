@@ -441,7 +441,7 @@ btest("row 8: a refusal at every stage leaves the buffer untouched and says why"
   const lang = await run({ languageId: "ruby" });
   assert.equal(lang.outcome.status, "refused");
   assert.equal(lang.edits.length, 0);
-  assert.match(lang.warnings.join(" "), /ruby/);
+  assert.match(lang.warnings.join(" "), /Ruby/);
 
   // A cursor on a line of code: phase 1's naked-prose gate is deliberately mean.
   const code = await run({ text: "const total = shard + cache;\nexport function walk() {}\n" });
@@ -456,7 +456,7 @@ btest("row 8: a refusal at every stage leaves the buffer untouched and says why"
   assert.equal(dead.edits.length, 1, "the wrap needs no model");
   assert.ok(dead.logs.some((l) => l.includes("proposer round failed")), dead.logs.join("\n"));
   assert.ok(
-    dead.warnings.some((w) => /model could not be reached/i.test(w)),
+    dead.warnings.some((w) => /could not ask the model/i.test(w)),
     `ship condition 8: say why. Got ${JSON.stringify(dead.warnings)}`,
   );
 
@@ -502,18 +502,21 @@ btest("row 10: class 1 and class 2 are silent to the review and loud on the chan
   assert.equal(r.counts.queries.length, 0, "a name already in the surface must not cost a round trip");
 });
 
-btest("row 11: the swap line names what accepting displaces", async () => {
+btest("row 11: the swap is the channel's; the review row keeps only the import fact", async () => {
+  // session-v77 phase 5 M17: prompt-budget internals do not belong in a comment-editing menu.
   const r = await run();
   const shard = r.review.rows.find((row) => row.label === "ShardMemCache");
-  assert.match(shard.detail, /not currently injected/, `class 4 says so: ${shard.detail}`);
-  assert.match(shard.detail, /displaces SegmentIndex/, `and the full cap says what it costs: ${shard.detail}`);
-  assert.match(shard.detail, /~\d+ tok/, `with the displaced block priced off the SAME ledger: ${shard.detail}`);
+  assert.doesNotMatch(shard.detail, /the model/, `no prompt internals in the review row: ${shard.detail}`);
+  assert.doesNotMatch(shard.detail, /pushes/, `no prompt internals in the review row: ${shard.detail}`);
+  // The token figure is the channel's, off the SAME ledger.
+  const line = r.logs.find((l) => l.startsWith("[tighten] row ShardMemCache: ")) ?? "";
+  assert.match(line, /not currently injected, displaces SegmentIndex \(~\d+ tok\)/, line);
   assert.match(shard.detail, /import \{ ShardMemCache \} from "\.\/core\/shardMemCache"/, shard.detail);
 
   // A cap with a free slot is a pure addition and says nothing about a swap.
   const roomy = await run({ ledger: { ...LEDGER, admitted: 1 } });
   const row = roomy.review.rows.find((x) => x.label === "ShardMemCache");
-  assert.ok(!row.detail.includes("displaces"), row.detail);
+  assert.ok(!row.detail.includes("pushes"), row.detail);
 });
 
 btest("row 12: the verbatim guard refuses a doctored row rather than writing it", async () => {

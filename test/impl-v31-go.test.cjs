@@ -870,11 +870,11 @@ test("(T, error) is TESTABLE; three or more results is not", () => {
   assert.strictEqual(classifyGoTestability("func F(n int) (n2 int, err error)", DOC).testable, true);
   const three = classifyGoTestability("func F(n int) (int, string, error)", DOC);
   assert.strictEqual(three.reason, "underspecified");
-  assert.match(three.detail, /3 return values/);
+  assert.match(three.detail, /returns 3 values/);
 });
 
 test("no return value is underspecified: there is nothing to assert", () => {
-  assert.strictEqual(classifyGoTestability("func F(n int)", DOC).detail, "no return value to assert — side-effect only");
+  assert.strictEqual(classifyGoTestability("func F(n int)", DOC).detail, "It returns no value to check.");
 });
 
 // ===========================================================================

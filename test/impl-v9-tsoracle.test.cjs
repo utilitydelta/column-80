@@ -157,8 +157,8 @@ test("all-unplaced: the message drops the geometry claim and names no file", () 
   assert.strictEqual(verdict.unplaced, 1);
   assert.deepStrictEqual(verdict.outOfSpanFiles, [], "-1 carries no geometry, so no file is named");
   const msg = spanScopedMessage(verdict, "f");
-  assert.ok(!msg.includes("outside the touched span"), `no geometry claim, got: ${msg}`);
-  assert.ok(msg.includes("could not be located"), msg);
+  assert.ok(!msg.includes("outside it"), `no geometry claim, got: ${msg}`);
+  assert.ok(msg.includes("could not be matched to a position"), msg);
 });
 
 test("mixed placed+unplaced: placed count and files only, plus an unplaced tail", () => {
@@ -166,8 +166,8 @@ test("mixed placed+unplaced: placed count and files only, plus an unplaced tail"
   assert.strictEqual(verdict.unplaced, 1);
   assert.deepStrictEqual(verdict.outOfSpanFiles, ["/p/b.ts"]);
   const msg = spanScopedMessage(verdict, "f");
-  assert.ok(msg.includes("1 error remains outside the touched span, in b.ts"), msg);
-  assert.ok(msg.includes("(+1 not precisely located)"), msg);
+  assert.ok(msg.includes("1 error remains outside it, in b.ts"), msg);
+  assert.ok(msg.includes(", plus 1 more with no position in the file"), msg);
 });
 
 test("a span-less error keeps its old shape: out of span, not unplaced, message byte-identical", () => {
@@ -176,7 +176,7 @@ test("a span-less error keeps its old shape: out of span, not unplaced, message 
   assert.strictEqual(verdict.unplaced, 0, "no primaries means nothing to place, not an unplaced conversion");
   assert.strictEqual(
     spanScopedMessage(verdict, "f"),
-    "no error landed inside `f`; 1 error remains outside the touched span",
+    "no error is inside f; 1 error remains outside it",
   );
 });
 

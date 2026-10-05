@@ -39,7 +39,7 @@ Apple Silicon is a probe of its own: there is no nvidia-smi and no discrete GPU,
 
 ## Fail-closed gating
 
-Every model-call entry point (`generateFunction`, the fn-gen accept hook, the FIM accept hook) consults the tier gate. Unresolved tier (the flow failed) and disabled tier both close it: generation shows the honest message and makes no model call; the post-accept oracle still checks and surfaces but starts its repair session disabled, with the gate-close reason on the record before any round could start.
+Every model-call entry point (`generateFunction`, the fn-gen accept hook, Repair Function) consults the tier gate. Unresolved tier (the flow failed) and disabled tier both close it: generation shows the honest message and makes no model call; the post-accept oracle still checks and surfaces but starts its repair session disabled, with the gate-close reason on the record before any round could start.
 
 ## Ratified pulls
 

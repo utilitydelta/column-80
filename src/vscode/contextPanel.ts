@@ -82,10 +82,12 @@ export class ContextBlockTreeProvider implements vscode.TreeDataProvider<Context
     // red, so the row and its tooltip cannot disagree about one entry. Branching
     // on `reason` instead made a lost block with no sentence behind its reason
     // paint red and then promise the human the model gets these lines.
+    // The path a human reads, not the raw `file:///...#L3-L9` uri.
+    const where = `${vscode.workspace.asRelativePath(vscode.Uri.parse(entry.uri))} ${rangeLabel}`;
     item.tooltip =
       shape.icon === "error"
-        ? `${entry.uri}#${rangeLabel}\n\nLost${shape.reason === undefined ? "" : `: ${shape.reason}`}, so this block reaches no prompt. Remove it, or select the lines again. Last seen:\n\n${preview}`
-        : `${entry.uri}#${rangeLabel}\n\nThe model gets these lines as they read at generate time. Last seen:\n\n${preview}`;
+        ? `${where}\n\nLost${shape.reason === undefined ? "" : `: ${shape.reason}`}, so the model no longer sees this block. Remove it, or select the lines and add them again. Last seen:\n\n${preview}`
+        : `${where}\n\nThe model gets these lines as they read at generate time. Last seen:\n\n${preview}`;
     item.command = {
       command: "column80.contextReveal",
       title: "Reveal Context Block",
@@ -130,15 +132,15 @@ function addWholeDocument(
   document: vscode.TextDocument,
   warn: (message: string) => void,
   label: string,
-): void {
+): boolean {
   const text = document.getText();
   if (text === "") {
-    warn(`${label} is empty; nothing added to model context.`);
-    return;
+    warn(`${label} is empty; nothing added to Model Context.`);
+    return false;
   }
   if (looksBinary(text)) {
-    warn(`${label} is not text; nothing added to model context.`);
-    return;
+    warn(`${label} is not text; nothing added to Model Context.`);
+    return false;
   }
   store.add({
     uri: document.uri.toString(),
@@ -146,6 +148,7 @@ function addWholeDocument(
     text,
     version: document.version,
   });
+  return true;
 }
 
 // Every cursor, in document order, top of file first. Whatever order the
@@ -183,11 +186,12 @@ function addLineBlocks(
   blocks: readonly ContextBlockRange[],
   warn: (message: string) => void,
   nothingResolved: string,
-): void {
+): number {
   if (blocks.length === 0) {
-    warn(`${nothingResolved}; nothing added to model context.`);
-    return;
+    warn(`${nothingResolved}; nothing added to Model Context.`);
+    return 0;
   }
+  let added = 0;
   const seen = new Set<string>();
   for (const range of blocks) {
     const key = `${range.startLine}:${range.endLine}`;
@@ -202,7 +206,7 @@ function addLineBlocks(
     if (text === "") {
       // The same guard the other two add gestures carry: an empty block would
       // claim the model sees something it does not.
-      warn(`the block at L${range.startLine}-L${range.endLine} is empty; nothing added to model context.`);
+      warn(`the block at L${range.startLine}-L${range.endLine} is empty; nothing added to Model Context.`);
       continue;
     }
     store.add({
@@ -211,7 +215,9 @@ function addLineBlocks(
       text,
       version: document.version,
     });
+    added++;
   }
+  return added;
 }
 
 // Line boundaries a replacement text adds. `\r\n` is one boundary, not two,
@@ -318,6 +324,11 @@ export function registerContextPanel(
   const warn = (message: string) => {
     void vscode.window.showWarningMessage(`Column 80: ${message}`);
   };
+  // The add commands run from the Explorer and editor menus, where the panel
+  // may be collapsed. Without this a successful add shows nothing at all.
+  const confirmAdded = (what: string) => {
+    vscode.window.setStatusBarMessage(`Column 80: added ${what} to Model Context.`, 5000);
+  };
 
   /**
    * ONE toast per EVENT, however many blocks that event took.
@@ -368,7 +379,7 @@ export function registerContextPanel(
   const activeEditor = (): vscode.TextEditor | undefined => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      warn("no active editor.");
+      warn("open a file first.");
     }
     return editor;
   };
@@ -417,7 +428,7 @@ export function registerContextPanel(
       // Unconditional: the preview text can change with no anchor moving.
       repaint();
       // One notification for the whole event. An accept splice is a change
-      // event too, and both accept paths stay deliberately quiet about drops,
+      // event too, and the accept path stays deliberately quiet about drops,
       // so this is the only surface aimed at a human when an edit crosses a
       // block.
       lostToast(report.lost);
@@ -500,7 +511,7 @@ export function registerContextPanel(
         try {
           document = await vscode.workspace.openTextDocument(vscode.Uri.parse(entry.uri));
         } catch {
-          warn(`cannot open ${entry.uri}`);
+          warn(`cannot open ${fileLabel(entry.uri)}.`);
           return;
         }
         const editor = await vscode.window.showTextDocument(document);
@@ -538,13 +549,14 @@ export function registerContextPanel(
         // Nothing usable was passed, which is the palette path and every surface
         // that hands over something other than a Uri. Today's behavior, kept.
         const editor = activeEditor();
-        if (editor) {
-          addWholeDocument(store, editor.document, warn, "the active document");
+        if (editor && addWholeDocument(store, editor.document, warn, "the active document")) {
+          confirmAdded(fileLabel(editor.document.uri.toString()));
         }
         return;
       }
       // Per FILE, never all-or-nothing: one unreadable file in a selection of six
       // adds the other five and names the one it skipped.
+      const added: string[] = [];
       for (const target of targets) {
         let document: vscode.TextDocument;
         try {
@@ -556,7 +568,12 @@ export function registerContextPanel(
           warn(`cannot read ${fileLabel(target.toString())}; nothing added for it.`);
           continue;
         }
-        addWholeDocument(store, document, warn, fileLabel(target.toString()));
+        if (addWholeDocument(store, document, warn, fileLabel(target.toString()))) {
+          added.push(fileLabel(target.toString()));
+        }
+      }
+      if (added.length > 0) {
+        confirmAdded(added.length === 1 ? added[0] : `${added.length} files`);
       }
     }),
 
@@ -580,7 +597,7 @@ export function registerContextPanel(
       if (selections.length === 0) {
         // Gesture-level guard: an empty snapshot in the panel would claim
         // the model sees something it does not.
-        warn("selection is empty; nothing added to model context.");
+        warn("selection is empty; nothing added to Model Context.");
         return;
       }
       for (const s of selections) {
@@ -593,6 +610,7 @@ export function registerContextPanel(
           version: editor.document.version,
         });
       }
+      confirmAdded(selections.length === 1 ? "the selection" : `${selections.length} selections`);
     }),
 
     // The AST gestures. Drag-selecting a function's lines by hand is fiddly,
@@ -606,14 +624,19 @@ export function registerContextPanel(
         return;
       }
       const blocks: ContextBlockRange[] = [];
+      const names: string[] = [];
       for (const cursor of cursorsOf(editor)) {
         const resolved = await resolveBlockAtCursor(editor.document, cursor);
         if (!resolved) {
           continue;
         }
         blocks.push(symbolBlockRange(resolved.firstLine, resolved.symbol.range.end.line));
+        names.push(resolved.symbol.name);
       }
-      addLineBlocks(store, editor.document, blocks, warn, "no function, type or block at the cursor");
+      const added = addLineBlocks(store, editor.document, blocks, warn, "no function, type or block at the cursor");
+      if (added > 0) {
+        confirmAdded(added === 1 && names.length === 1 ? names[0] : `${added} blocks`);
+      }
     }),
 
     vscode.commands.registerCommand("column80.contextAddBlock", async () => {
@@ -631,11 +654,13 @@ export function registerContextPanel(
         cursors,
       );
       const blocks: ContextBlockRange[] = [];
+      const names: string[] = [];
       for (let i = 0; i < cursors.length; i++) {
         const resolved = await resolveBlockAtCursor(document, cursors[i]);
         if (!resolved) {
           continue; // Outside every symbol: never fall back to the file.
         }
+        names.push(resolved.symbol.name);
         const bound = { firstLine: resolved.firstLine, lastLine: resolved.symbol.range.end.line };
         const chosen = chooseChainBlock(flattenChain(chains?.[i]), bound);
         // No usable node in the chain (or no provider at all) falls back to the
@@ -646,7 +671,10 @@ export function registerContextPanel(
             : symbolBlockRange(bound.firstLine, bound.lastLine),
         );
       }
-      addLineBlocks(store, document, blocks, warn, "no block at the cursor");
+      const added = addLineBlocks(store, document, blocks, warn, "no block at the cursor");
+      if (added > 0) {
+        confirmAdded(added === 1 && names.length === 1 ? `a block of ${names[0]}` : `${added} blocks`);
+      }
     }),
 
     vscode.commands.registerCommand(

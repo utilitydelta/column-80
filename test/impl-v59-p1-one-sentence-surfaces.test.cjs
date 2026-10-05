@@ -250,12 +250,15 @@ for (const status of CLASSIFIED) {
     const got = await drivePull(err);
     assert.strictEqual(got.landed, false, "the pull must report failure");
     assert.strictEqual(got.warns.length, 1, `exactly one toast, got ${got.warns.length}`);
+    // Since session-v77 phase 4 NA3 the download voice names the model it
+    // failed to pull ("so test-model was not downloaded").
+    const voice = { ...B.DOWNLOAD_VOICE, consequence: "so test-model was not downloaded" };
     assert.strictEqual(
       got.warns[0],
-      B.translateServiceReject(err, B.DOWNLOAD_VOICE),
+      B.translateServiceReject(err, voice),
       `row 2: the download surface draws the class's crafted sentence in its OWN voice - same ` +
         `diagnosis, its own consequence.\n  got     : ${show(got.warns[0])}\n` +
-        `  expected: ${show(B.translateServiceReject(err, B.DOWNLOAD_VOICE))}`,
+        `  expected: ${show(B.translateServiceReject(err, voice))}`,
     );
     assert.ok(
       got.warns[0].includes(diagnosisOf(err)),
@@ -270,13 +273,13 @@ btest("row 3 [download/unclassified]: a 418 and a plain Error keep today's wordi
   assert.strictEqual(B.translateServiceReject(odd), undefined, "PRECONDITION: 418 has no class");
   const got = await drivePull(odd);
   assert.deepStrictEqual(got.warns, [
-    `Column 80: the download failed - ${odd.message}. The full message is in the output channel.`,
+    `Column 80: test-model did not download (${odd.message}). Run "Column 80: Select Hardware Tier" to try again. The full message is in the output channel.`,
   ]);
 
   const plain = new Error("the socket went away");
   const got2 = await drivePull(plain);
   assert.deepStrictEqual(got2.warns, [
-    "Column 80: the download failed - the socket went away. The full message is in the output channel.",
+    'Column 80: test-model did not download (the socket went away). Run "Column 80: Select Hardware Tier" to try again. The full message is in the output channel.',
   ]);
 });
 
@@ -325,7 +328,7 @@ btest("row 5b [download/forgery]: a registry that puts a generation reject in it
   ]) {
     const got = await drivePull(new Error(marker));
     assert.deepStrictEqual(got.warns, [
-      `Column 80: the download failed - ${marker}. The full message is in the output channel.`,
+      `Column 80: test-model did not download (${marker}). Run "Column 80: Select Hardware Tier" to try again. The full message is in the output channel.`,
     ]);
   }
 });
@@ -335,8 +338,10 @@ btest("row 5b [download/forgery]: a registry that puts a generation reject in it
 // ===========================================================================
 
 const TIGHTEN_TAIL = "The re-wrap needs no model.";
-const TIGHTEN_TODAY =
-  "Column 80: the model could not be reached, so no type names were offered. The re-wrap needs no model.";
+/** session-v77 H1: an unclassified failure is not evidence the model was unreachable (a 404
+ *  "model not found" lands here), so the sentence says the ask failed and shows the first line. */
+const tightenUnclassified = (first) =>
+  `Column 80: Tighten Doc Comment could not ask the model (${first}), so identifiers were not marked. The re-wrap needs no model.`;
 
 const TS_FILE = "/repo/src/walk.ts";
 const DICTATED =
@@ -442,15 +447,23 @@ for (const status of CLASSIFIED) {
   });
 }
 
-btest("row 7 [tighten/unclassified]: today's sentence survives byte for byte", async () => {
+btest("row 7 [tighten/unclassified]: no class says the ask failed, with the error's first line", async () => {
   for (const err of [new Error("server unreachable"), new B.HttpStatusError("ollama", 418, "Ollama 418 teapot")]) {
     assert.strictEqual(B.translateServiceReject(err), undefined, `PRECONDITION: ${err.message} has no class`);
     assert.deepStrictEqual(
       await driveTighten(err),
-      [TIGHTEN_TODAY],
+      [tightenUnclassified(err.message)],
       `row 7: no class means no crafted sentence, on this surface as on every other`,
     );
   }
+});
+
+btest("row 7b [tighten/unclassified, multi-line]: one line on screen, the rest in the output channel", async () => {
+  const err = new Error("model 'qwen3-coder:30b' not found\ntry pulling it first");
+  assert.strictEqual(B.translateServiceReject(err), undefined, "PRECONDITION: no class");
+  assert.deepStrictEqual(await driveTighten(err), [
+    `${tightenUnclassified("model 'qwen3-coder:30b' not found")} The full message is in the output channel.`,
+  ]);
 });
 
 // ===========================================================================
@@ -549,32 +562,16 @@ btest("row 9 [ride-along]: a multi-line discard reason renders one line", async 
     `row 9: a notification carrying a break renders as two rows with no channel pointer, which is the ` +
       `defect item 63 closed for the other strings.\n  got: ${show(got.warns[0])}`,
   );
-  assert.ok(
-    got.warns[0].startsWith("Column 80: generation discarded — the preview could not be opened ("),
-    `row 9: the wording is unchanged, only the cut is added: ${show(got.warns[0])}`,
-  );
-  // STRENGTHENED after the phase 1 review. The row above passed on
-  // "...could not be opened (Error: the diff editor is gone." - an unclosed
-  // bracket with the sentence's period welded to a truncated clause - because
-  // the only thing it asked about was the head. The cut belongs at the
-  // interpolation, inside the bracket pair, never across it.
-  const opens = (got.warns[0].match(/\(/g) || []).length;
-  const closes = (got.warns[0].match(/\)/g) || []).length;
   assert.strictEqual(
-    opens,
-    closes,
-    `row 9: the cut landed inside the brackets and the pair never closed.\n  got: ${show(got.warns[0])}`,
-  );
-  assert.ok(
-    /\)\.( |$)/.test(got.warns[0]),
-    `row 9: the period is the SENTENCE's, so it sits after the closing bracket rather than glued to a ` +
-      `cut clause.\n  got: ${show(got.warns[0])}`,
+    got.warns[0],
+    "Column 80: the preview could not open, so nothing was changed. The full message is in the output channel.",
+    `row 9: the raw error goes to the channel, never into the toast: ${show(got.warns[0])}`,
   );
 });
 
 btest("row 10 [ride-along control]: a single-line reason is byte-identical to today's", async () => {
   const got = await drivePreviewFailure(new Error("the diff editor is gone"));
   assert.deepStrictEqual(got.warns, [
-    "Column 80: generation discarded — the preview could not be opened (Error: the diff editor is gone).",
+    "Column 80: the preview could not open, so nothing was changed. The full message is in the output channel.",
   ]);
 });

@@ -466,7 +466,10 @@ test("item 1D: a second member site under a still-open message opens no second o
   await withTimeout(first, 500, "the in-flight offer after the click");
 });
 
-test("item 1D: a toast that fades without an answer is not an answer - a later member site still offers", async () => {
+// SUPERSEDED by session-v77 Amendment 3 R4 (S77-26 #4): a faded offer is not
+// re-asked in the same session (same ExtensionContext). It is still not an
+// answer, so nothing persists and the next session asks again.
+test("item 1D: a toast that fades without an answer is not an answer - the next session still offers", async () => {
   resetState({ [SNIPPET_KEY]: "fill_arguments" });
   const ctx = install();
 
@@ -481,9 +484,13 @@ test("item 1D: a toast that fades without an answer is not an answer - a later m
     "an unanswered message persists nothing: the question was never answered",
   );
 
-  // Later, still typing Rust, still rendering arguments.
+  // Later in the same session: the faded offer waits for the next window.
   answerWith("decline");
   await visitSnippet(ctx);
+  assert.strictEqual(offers().length, 1, "a faded offer is not re-asked in the same session (v77 R4)");
+
+  // The next session, same workspace memento: still rendering arguments.
+  await visitSnippet(install(ctx.globalStore, ctx.workspaceStore));
   assert.strictEqual(
     offers().length,
     2,
@@ -618,7 +625,7 @@ test("item 2: ratify lands before the write", async () => {
   );
 });
 
-test("item 2: a dismissed hover offer is not an answer either", async () => {
+test("item 2: a dismissed hover offer is not an answer either - the next session still offers", async () => {
   resetState({ [FIELDS_KEY]: CAPPED, [VARIANTS_KEY]: CAPPED });
   const ctx = install();
   answerWith("dismiss");
@@ -626,9 +633,14 @@ test("item 2: a dismissed hover offer is not an answer either", async () => {
   assert.strictEqual(offers().length, 1, "the offer was shown");
   assert.deepStrictEqual(ctx.stateWrites, [], "an unanswered message persists nothing");
 
+  // Later in the same session: the faded offer waits for the next window.
   answerWith("decline");
   await visitHover(ctx);
-  assert.strictEqual(offers().length, 2, "a faded toast leaves the question open");
+  assert.strictEqual(offers().length, 1, "a faded hover offer is not re-asked in the same session (v77 R4)");
+
+  // The next session, same workspace memento: the caps still truncate.
+  await visitHover(install(ctx.globalStore, ctx.workspaceStore));
+  assert.strictEqual(offers().length, 2, "a faded toast leaves the question open for the next session");
 });
 
 test("item 2: a second member site under a still-open hover offer opens no second offer", async () => {

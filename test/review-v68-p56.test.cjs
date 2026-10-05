@@ -125,7 +125,7 @@ test("F3b rust: the walk stops at the member manifest and never sees the workspa
 test("CLEAN rust: `tokio-util` alone does not match the tokio check", () => {
   const toml = ["[dev-dependencies]", 'tokio-util = { version = "0.7", features = ["full"] }'].join("\n");
   assert.strictEqual(rustVerdict(ASYNC_FN, DOC, toml).testable, false);
-  assert.ok(/looked for tokio/.test(rustVerdict(ASYNC_FN, DOC, toml).detail ?? ""));
+  assert.ok(/has no async test runtime/.test(rustVerdict(ASYNC_FN, DOC, toml).detail ?? ""));
 });
 
 test("CLEAN rust: a commented-out tokio line does not match", () => {

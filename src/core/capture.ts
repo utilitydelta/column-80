@@ -105,6 +105,8 @@ export interface TakeHooks {
 export interface TakeResult {
   pcm: Buffer;
   exitCode: number | null;
+  /** The signal that ended the child, when one did. */
+  signal?: NodeJS.Signals | null;
   stderr: string;
 }
 
@@ -116,7 +118,7 @@ export class CaptureTake {
   private readonly stderrChunks: Buffer[] = [];
   private child: ChildProcess | undefined;
   private spawnError: NodeJS.ErrnoException | undefined;
-  private exit: { code: number | null } | undefined;
+  private exit: { code: number | null; signal?: NodeJS.Signals | null } | undefined;
   private readonly exited: Promise<number | null>;
   private stopping: Promise<TakeResult> | undefined;
   private aborted = false;
@@ -166,12 +168,12 @@ export class CaptureTake {
           }
         }
       });
-      child.once("exit", (code) => {
+      child.once("exit", (code, signal) => {
         if (this.exit === undefined) {
-          this.exit = { code };
+          this.exit = { code, signal };
           resolve(code);
           if (this.stopping === undefined && !this.aborted) {
-            setImmediate(() => this.fireExit({ pcm: this.pcm, exitCode: code, stderr: this.stderr }));
+            setImmediate(() => this.fireExit({ pcm: this.pcm, exitCode: code, signal, stderr: this.stderr }));
           }
         }
       });
@@ -228,7 +230,7 @@ export class CaptureTake {
       // The stdout stream can still hold a chunk that arrives after `exit`; a turn of the loop
       // lets it land before the take is read.
       await new Promise<void>((resolve) => setImmediate(resolve));
-      return { pcm: this.pcm, exitCode: this.exit?.code ?? null, stderr: this.stderr };
+      return { pcm: this.pcm, exitCode: this.exit?.code ?? null, signal: this.exit?.signal ?? null, stderr: this.stderr };
     })();
     return this.stopping;
   }

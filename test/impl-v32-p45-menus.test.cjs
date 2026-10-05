@@ -68,11 +68,7 @@ test("every command in the manifest is registered under the Column 80 category",
   // The whole of the discovery story: typing "column 80" in Keyboard Shortcuts
   // lists them all, and binding one is a right-click. Decision 3 rests on this.
   const uncategorized = commands.filter((c) => c.category !== "Column 80").map((c) => c.command);
-  assert.deepStrictEqual(
-    uncategorized,
-    ["column80.dumpCompletionItems"],
-    "only the diagnostic dump is allowed outside the category",
-  );
+  assert.deepStrictEqual(uncategorized, [], "every command, the diagnostic dump included, is in the category");
 });
 
 // ===========================================================================

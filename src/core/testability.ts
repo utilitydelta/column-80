@@ -139,14 +139,18 @@ export function classifyTestability(
         reason: "async",
         detail:
           ctx?.asyncLookedFor ??
-          "async fn, and no async test runtime found in Cargo.toml — looked for tokio, async-std and smol",
+          "It is async, and Cargo.toml has no async test runtime. Add tokio with the \"macros\" feature, async-std with \"attributes\", or smol-potat.",
       };
     }
   }
 
   // 2. io — a closed IO/network marker anywhere in the signature (params or return).
   if (IO_MARKER.test(sig)) {
-    return { testable: false, reason: "io", detail: "IO/network in the signature — integration territory, not a blind unit test" };
+    return {
+      testable: false,
+      reason: "io",
+      detail: "Its signature does IO or networking, which needs an integration test, not a generated unit test.",
+    };
   }
 
   // 3. needs-fixture — a `self` receiver: constructing a meaningful receiver state
@@ -156,7 +160,11 @@ export function classifyTestability(
   //    async method still reports async and a side-effect-only one still
   //    reports underspecified.
   if (RECEIVER.test(sig) && ctx?.receiverConstructible !== true) {
-    return { testable: false, reason: "needs-fixture", detail: "method with a `self` receiver — needs a constructed fixture" };
+    return {
+      testable: false,
+      reason: "needs-fixture",
+      detail: "It is a method, and Column 80 found no way to construct its \"self\" value.",
+    };
   }
 
   // 4. underspecified — nothing to assert. A missing doc comment is NOT a
@@ -168,7 +176,7 @@ export function classifyTestability(
     /^\(\s*\)$/.test(returnType) ||
     /^Result\s*<\s*\(\s*\)\s*,/.test(returnType);
   if (unitReturn) {
-    return { testable: false, reason: "underspecified", detail: "no return value to assert — side-effect only" };
+    return { testable: false, reason: "underspecified", detail: "It returns no value to check." };
   }
 
   // 5. Otherwise a valid blind-unit-test target.

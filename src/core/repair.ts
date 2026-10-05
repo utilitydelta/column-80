@@ -275,15 +275,14 @@ export function spanScopedMessage(verdict: SpanScopedVerdict, symbol?: string): 
   if (verdict.kind !== "clean-out-of-span") {
     return undefined;
   }
-  const what = symbol ? `\`${symbol}\`` : "the generated code";
+  const what = symbol ?? "the function";
   const n = verdict.outOfSpan.length;
   // Unplaced errors have no geometry: the message may not claim they sit
   // outside the span (one could be inside the accepted file, merely
   // unconverted). All-unplaced drops the geometry claim entirely; a mixed
   // set states the placed count and names only placed files.
   if (verdict.unplaced >= n) {
-    const noun = n === 1 ? "error" : "errors";
-    return `no error could be placed against ${what}'s span; ${n} ${noun} could not be located precisely`;
+    return `${n} ${n === 1 ? "error" : "errors"} could not be matched to a position in the file, so Column 80 cannot tell whether ${n === 1 ? "it is" : "they are"} in ${what}`;
   }
   const placed = n - verdict.unplaced;
   const noun = placed === 1 ? "error" : "errors";
@@ -291,8 +290,8 @@ export function spanScopedMessage(verdict: SpanScopedVerdict, symbol?: string): 
   const where = verdict.outOfSpanFiles.length
     ? `, in ${verdict.outOfSpanFiles.map(basename).join(", ")}`
     : "";
-  const unplacedTail = verdict.unplaced > 0 ? ` (+${verdict.unplaced} not precisely located)` : "";
-  return `no error landed inside ${what}; ${placed} ${noun} ${verb} outside the touched span${where}${unplacedTail}`;
+  const unplacedTail = verdict.unplaced > 0 ? `, plus ${verdict.unplaced} more with no position in the file` : "";
+  return `no error is inside ${what}; ${placed} ${noun} ${verb} outside it${where}${unplacedTail}`;
 }
 
 /** One error that landed inside a marked generated-test region. */

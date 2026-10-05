@@ -91,3 +91,16 @@ export function oneLineWithPointer(text: string, end = "", tail = ""): string {
 export function tierDisabledToast(why: string, end = ""): string {
   return oneLineWithPointer(why, end);
 }
+
+/** Every command's refusal when the cursor is not inside a function. One shape,
+ *  and it names the command: four commands sharing one string is how a swapped
+ *  refusal once went unnoticed. */
+export function noFunctionAtCursorToast(command: string, orTypeDeclaration = false): string {
+  return `Column 80: ${command} needs the cursor inside a function${orTypeDeclaration ? " or on a type declaration" : ""}.`;
+}
+
+/** "1 test", "2 tests": a count and its noun, pluralised for the count. Toasts
+ *  wrote "1 test(s)" before; `plural` defaults to the noun plus "s". */
+export function countOf(n: number, noun: string, plural = `${noun}s`): string {
+  return `${n} ${n === 1 ? noun : plural}`;
+}

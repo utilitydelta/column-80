@@ -292,6 +292,11 @@ const ROOT = path.join(__dirname, "..");
 const BASE_OLD_REF = "6861edd";
 const BASE_P6_REF = "5190b7a";
 
+// session-v77 supersession (S77-1): the human's 2026-10-05 instruction rewrote these
+// sentences. The frozen tree still renders the old text, so the rows that compare
+// against it compare against that text rewritten to the new wording, pair by pair.
+const { v77 } = require("./v77-text.cjs");
+
 // ---------------------------------------------------------------------------
 // The vscode stub. `firstRun.ts` (C7) and `fnGen.ts` both import vscode; the
 // stub is EXTERNAL to the bundles so this file and the product code share one
@@ -1409,9 +1414,11 @@ btest("C7 [pull toast]: the download toast IS the class sentence, not the baseli
   // rest of the sentence is about the gesture, and there is no gesture behind a
   // Download click. "So nothing was written - run the gesture again" named a
   // control this surface does not have.
+  // session-v77 phase 4 NA3: the download voice names the model it failed to
+  // pull, so its consequence is "so test-model was not downloaded".
   const want = NOW.translateServiceReject(
     new NOW.HttpStatusError("ollama", 503, "Ollama 503 x"),
-    NOW.DOWNLOAD_VOICE,
+    { ...NOW.DOWNLOAD_VOICE, consequence: "so test-model was not downloaded" },
   );
   assert.strictEqual(
     t,
@@ -1515,7 +1522,7 @@ btest("F5 [forgery: plain Error]: REGRESSION - a hand-built copy of a real 503 t
   );
   assert.strictEqual(
     NOW.generationFailedToast(fake, GESTURE),
-    BASE_P6.generationFailedToast(fake, GESTURE),
+    v77(BASE_P6.generationFailedToast(fake, GESTURE)),
     `F5: and it renders exactly as it did at ${BASE_P6_REF}`,
   );
 });
@@ -1527,7 +1534,7 @@ btest("F5 [forgery: a status field on a plain Error]: REGRESSION - the field alo
   const got = NOW.generationFailedToast(fake, GESTURE);
   assert.strictEqual(
     got,
-    BASE_P6.generationFailedToast(new Error(fake.message), GESTURE),
+    v77(BASE_P6.generationFailedToast(new Error(fake.message), GESTURE)),
     "F5: phase 6 settled this shape for ClaudeCodeError - a plain object wearing the right fields is not " +
       "the class. `err instanceof <the leaf's class>` is the test; a duck-typed `typeof err.status === " +
       `"number"` + " is forgeable by anything that reaches the catch, including a JSON parse failure " +
@@ -1545,7 +1552,7 @@ btest("F6 [phase 6 still fires]: REGRESSION - a ClaudeCodeError keeps its own se
   assert.ok(typeof got === "string" && got.trim() !== "", "phase 6's pass must still return a sentence");
   assert.strictEqual(
     got,
-    BASE_P6.translateServiceReject(cce),
+    v77(BASE_P6.translateServiceReject(cce)),
     `F6: byte-identical to ${BASE_P6_REF}. Phase 7 adds a case; it does not touch phase 6's`,
   );
 });
@@ -1568,7 +1575,7 @@ btest("F6 [neither pass swallows the other]: a 429 throw and a ClaudeCodeError s
   );
   assert.strictEqual(
     cceToast,
-    BASE_P6.generationFailedToast(cce, GESTURE),
+    v77(BASE_P6.generationFailedToast(cce, GESTURE)),
     "F6: and phase 6's side of it did not move",
   );
 });
@@ -1578,7 +1585,7 @@ btest("F6 [a ClaudeCodeError with a status field]: phase 6 wins, because it runs
   cce.status = 503;
   assert.strictEqual(
     NOW.generationFailedToast(cce, GESTURE),
-    BASE_P6.generationFailedToast(new NOW.ClaudeCodeError("timeout", cce.message), GESTURE),
+    v77(BASE_P6.generationFailedToast(new NOW.ClaudeCodeError("timeout", cce.message), GESTURE)),
     "F6: phase 6's case is placed first and stays first. A ClaudeCodeError that happens to carry a status " +
       "must not be re-diagnosed as an HTTP failure",
   );
@@ -1634,9 +1641,9 @@ btest(`C8 [phase 6 corpus]: REGRESSION - all twelve reasons render as they did a
     const message = `Claude Code failed (${reason}): 429 Service Unavailable`;
     const err = new NOW.ClaudeCodeError(reason, message);
     const a = NOW.generationFailedToast(err, GESTURE);
-    const b = BASE_P6.generationFailedToast(err, GESTURE);
+    const b = v77(BASE_P6.generationFailedToast(err, GESTURE));
     if (a !== b) diffs.push({ reason, now: short(a), was: short(b) });
-    if (b !== BASE_P6.generationFailedToast(new Error(message), GESTURE)) live++;
+    if (b !== v77(BASE_P6.generationFailedToast(new Error(message), GESTURE))) live++;
   }
   // LIVENESS. The comparison is against frozen code, so it cannot go vacuous on
   // its own - but a later edit that guts this corpus would leave a green row
@@ -1678,15 +1685,15 @@ btest(`C8 [translation surface]: REGRESSION - 24 message shapes render as they d
   for (const message of SURFACE) {
     const err = new Error(message);
     const a = NOW.generationFailedToast(err, GESTURE);
-    const b = BASE_P6.generationFailedToast(err, GESTURE);
+    const b = v77(BASE_P6.generationFailedToast(err, GESTURE));
     if (a !== b) diffs.push({ message: short(message), now: short(a), was: short(b) });
     const ta = NOW.translateServiceReject(err);
-    const tb = BASE_P6.translateServiceReject(err);
+    const tb = v77(BASE_P6.translateServiceReject(err));
     if (ta !== tb) diffs.push({ message: short(message), tsrNow: short(ta), tsrWas: short(tb) });
   }
   for (const odd of [undefined, null, 42, "a bare string reject", { message: "an object, not an Error" }]) {
     const a = NOW.generationFailedToast(odd, GESTURE);
-    const b = BASE_P6.generationFailedToast(odd, GESTURE);
+    const b = v77(BASE_P6.generationFailedToast(odd, GESTURE));
     if (a !== b) diffs.push({ reject: String(odd), now: short(a), was: short(b) });
   }
   // LIVENESS, as above: at BASE_P6 this corpus draws crafted sentences for the

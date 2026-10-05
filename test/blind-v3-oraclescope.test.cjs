@@ -97,7 +97,7 @@ test("spanScopedMessage names the clean symbol, the out-of-span count, and the f
   assert.ok(typeof m === "string", "clean-out-of-span produces a message");
   assert.ok(m.includes("bloom_membership"), `names the touched symbol: ${m}`);
   // Geometric claim only: no error INSIDE the span. Never "is clean" / "pre-existing".
-  assert.ok(/no error landed inside/.test(m), `states no error landed inside the span: ${m}`);
+  assert.ok(/no error is inside/.test(m), `states no error landed inside the span: ${m}`);
   assert.ok(!/\bclean\b/.test(m) && !/pre-existing/.test(m), `does not overclaim clean/pre-existing: ${m}`);
   assert.ok(/\b1 error\b/.test(m), `states the out-of-span error count: ${m}`);
   assert.ok(/outside/.test(m), `states the errors are outside the touched span: ${m}`);

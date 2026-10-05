@@ -281,7 +281,7 @@ atest("D1b the same hole with rows present: everything unticked leaves 110 colum
 atest("D1c the silent half of D1: an unreachable model warns, and the wrap still lands", async () => {
   const dead = await run({ transportThrows: true });
   assert.ok(
-    dead.warnings.some((w) => /model could not be reached/i.test(w)),
+    dead.warnings.some((w) => /could not ask the model/i.test(w)),
     `ship condition 8: the developer must be told why no names were offered. Got ${JSON.stringify(dead.warnings)}`,
   );
   assert.equal(dead.edits.length, 1, "and the re-wrap is not a model's business");
@@ -421,8 +421,9 @@ atest("D5 the swap line prices the wrong block when the name appears earlier in 
   const block = "SegmentIndex\n  - id: number\n  - name: string\n  - rows: SegmentRow[]\n  - meta: Meta\n";
   const honestLedger = { ...LEDGER, surface: block };
   const shadowedLedger = { ...LEDGER, surface: `PageTable\n  - index: SegmentIndex\n\n${block}` };
+  // The token figure moved off the review row onto the channel's `[tighten] row` line.
   const detailOf = async (ledger) =>
-    (await run({ ledger, reply: "shard mem cache\n" })).review.rows.find((x) => x.label === "ShardMemCache").detail;
+    (await run({ ledger, reply: "shard mem cache\n" })).logs.find((l) => l.startsWith("[tighten] row ShardMemCache: "));
 
   const honest = await detailOf(honestLedger);
   const shadowed = await detailOf(shadowedLedger);
@@ -447,7 +448,7 @@ atest("D6 a run with no ledger asserts a measurement it never made", async () =>
   assert.ok(r.logs.some((l) => l.includes("ledger: none")), "the channel is honest: no pre-fill ran");
   const detail = r.review.rows[0].detail;
   assert.ok(
-    !/not currently injected/.test(detail),
+    !/does not see this type/.test(detail),
     `no pre-fill ran, so nothing is known about the injected set, and the row states the ` +
       `opposite as fact: ${JSON.stringify(detail)}`,
   );
@@ -455,9 +456,10 @@ atest("D6 a run with no ledger asserts a measurement it never made", async () =>
 
 atest("D6b and the budget note reads as a measured zero", async () => {
   const r = await run({ noFunction: true });
-  const note = r.review.notes[0];
+  const note = r.logs.find((l) => l.startsWith("[tighten] budget"));
+  assert.ok(note, `precondition: the budget line is on the channel: ${r.logs.join("\n")}`);
   assert.ok(
-    !/injected surface ~0 tok/.test(note),
+    !/~0 tok/.test(note),
     `"~0 tok" is what an empty prompt looks like, not what an unmeasured one looks like: ${JSON.stringify(note)}`,
   );
 });
@@ -706,7 +708,7 @@ atest("SOUND the verbatim guard refuses an out-of-range accept rather than writi
   const r = await run({ review: () => [0, 99] });
   assert.equal(r.outcome.status, "refused", JSON.stringify(r.outcome));
   assert.equal(r.edits.length, 0);
-  assert.match(r.warnings.join(" "), /not word-for-word|does not exist/);
+  assert.match(r.warnings.join(" "), /internal error|changed your words/);
 });
 
 atest("SOUND press two is a strict no-op once the fold match has been accepted", async () => {

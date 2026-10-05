@@ -39,6 +39,7 @@ import type { FailureLocation } from "./failureDigest";
 import {
   CsFsDeps,
   CsOracle,
+  SDK_FLOOR_MAJOR,
   csCandidateDirs,
   csIsTestProject,
   csProjectReferenceIncludes,
@@ -473,26 +474,28 @@ export function classifyCsTestability(
     return {
       testable: false,
       reason: "async",
-      detail: "async void: it cannot be awaited, so a test that calls it observes nothing",
+      detail: "It is \"async void\", so a test cannot await it or see what it did.",
     };
   }
   if (CS_IO.test(sig)) {
     return {
       testable: false,
       reason: "io",
-      detail: "IO/network in the signature (Stream, File, HttpClient, Socket, DbConnection): integration territory, not a blind unit test",
+      detail:
+        "Its signature does IO or networking (Stream, File, HttpClient, Socket, DbConnection), which needs an " +
+        "integration test, not a generated unit test.",
     };
   }
   if (head === undefined) {
     // Not a method declaration this leg can read. Honest-dark rather than a
     // verdict assembled out of a failed parse.
-    return { testable: false, reason: "underspecified", detail: "not a readable C# method signature: nothing to author a blind test from" };
+    return { testable: false, reason: "underspecified", detail: "Column 80 could not read its signature." };
   }
   if (!modifiers.includes("static") && ctx?.receiverConstructible !== true) {
     return {
       testable: false,
       reason: "needs-fixture",
-      detail: "instance method: needs a constructed receiver, which a blind unit test has no contract for",
+      detail: "It is an instance method, and Column 80 found no way to construct its class.",
     };
   }
   if (!modifiers.includes("public")) {
@@ -506,7 +509,7 @@ export function classifyCsTestability(
   // A missing `///` doc comment is NOT a refusal: the name and signature often
   // say enough, and the prompt tells the model it has only those to go on.
   if (returnType === "void" || returnType.length === 0) {
-    return { testable: false, reason: "underspecified", detail: "returns `void`: nothing to assert on" };
+    return { testable: false, reason: "underspecified", detail: "It returns \"void\", so there is nothing to check." };
   }
   // A bare `Task` / `ValueTask` is void once awaited. It reached the async rung
   // before phase 5 admitted async; now that it does not, the unit-return rule
@@ -515,7 +518,7 @@ export function classifyCsTestability(
     return {
       testable: false,
       reason: "underspecified",
-      detail: `returns \`${returnType.trim()}\` with no type argument: awaiting it gives nothing to assert`,
+      detail: `It returns "${returnType.trim()}" with no result, so there is nothing to check.`,
     };
   }
   return { testable: true };
@@ -525,21 +528,21 @@ export function classifyCsTestability(
  *  can actually make. Amendment 5's rule: a refusal the human cannot act on is
  *  worse than one they can. */
 function notExportedDetail(declared: string[]): string {
-  const test = "the test project reaches this method through an assembly reference, and";
+  const test = "The test project reaches this method through an assembly reference, and";
   if (declared.includes("internal")) {
     return (
-      `${test} \`internal\` is not visible across assemblies. Make it \`public\`, or add ` +
-      '`[assembly: InternalsVisibleTo("<your test project>")]` to this project.'
+      `${test} "internal" is not visible across assemblies. Make it "public", or add ` +
+      '[assembly: InternalsVisibleTo("<your test project>")] to this project.'
     );
   }
   if (declared.includes("protected")) {
-    return `${test} \`protected\` is only reachable from a subclass. Make it \`public\` to test it directly.`;
+    return `${test} "protected" is only reachable from a subclass. Make it "public" to test it directly.`;
   }
   if (declared.includes("private")) {
-    return `${test} \`private\` is not visible outside its own type. Make it \`public\`.`;
+    return `${test} "private" is not visible outside its own type. Make it "public".`;
   }
   // No access modifier at all: a class member defaults to `private` in C#.
-  return `${test} a member with no access modifier is \`private\` by default. Make it \`public\`.`;
+  return `${test} a member with no access modifier is "private" by default. Make it "public".`;
 }
 
 /** XML comments blanked, so a grant someone commented out years ago is not read
@@ -1885,6 +1888,18 @@ function refuse(reason: PlacementRefusal["reason"], detail: string): PlacementRe
   return { ok: false, refusal: { reason, detail } };
 }
 
+/** Why the C# project resolution found no project for `filePath`. An SDK pinned
+ *  below the floor is named as the SDK only when a project is there. */
+function missingProjectDetail(oracle: CsOracle, filePath: string, consequence: string): string {
+  if (oracle.missingRootCause(filePath) === "sdk-floor") {
+    return (
+      `a global.json above ${filePath} pins a .NET SDK older than ${SDK_FLOOR_MAJOR}, which Column 80 ` +
+      "does not support. Raise the SDK version in global.json."
+    );
+  }
+  return `${oracle.describeMissingRoot(filePath) ?? `no .csproj above ${filePath}`}, ${consequence}.`;
+}
+
 /**
  * Where a C# test goes, and it is the only leg whose target lives in a different
  * PROJECT from the source. That is the case that forced the rung to take a
@@ -1918,11 +1933,11 @@ function csPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
   // disagree about which project owns a file.
   const sourceProjectDir = oracle.detectCrateRoot(filePath);
   if (sourceProjectDir === undefined) {
-    return refuse("no-project-root", `${oracle.describeMissingRoot(filePath) ?? `no .csproj above ${filePath}`}, so there is no project to test`);
+    return refuse("no-project-root", missingProjectDetail(oracle, filePath, "so there is no project to test"));
   }
   const sourceCsproj = findCsproj(sourceProjectDir, deps);
   if (sourceCsproj === undefined) {
-    return refuse("no-project-root", `no .csproj in ${sourceProjectDir}, so there is no project to test`);
+    return refuse("no-project-root", `no .csproj in ${sourceProjectDir}, so there is no project to test.`);
   }
 
   const sourceName = path.basename(sourceCsproj, path.extname(sourceCsproj));
@@ -1932,19 +1947,22 @@ function csPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
     if (unresolved.length > 0) {
       return refuse(
         "no-test-project",
-        `${unresolved.map((u) => `${path.basename(u.csproj)} references \`${u.include}\``).join(", and ")}. ` +
-          "That path holds an unresolved MSBuild variable, and this gesture does not evaluate MSBuild, so it " +
-          `cannot tell whether the reference points back at ${path.basename(sourceCsproj)}. Spell the path ` +
-          "literally in that `<ProjectReference>`, or write the test yourself.",
+        `${unresolved.map((u) => `${path.basename(u.csproj)} references "${u.include}"`).join(", and ")}. ` +
+          "That path uses an MSBuild variable Column 80 cannot evaluate, so it cannot tell whether the " +
+          `reference points back at ${path.basename(sourceCsproj)}. Write the path out in that ` +
+          "\"<ProjectReference>\", or write the test yourself.",
       );
     }
+    // Where it looked is evidence for the channel; the toast keeps only the fix.
+    deps.log?.(
+      `[tdd] csharp: no test project references ${path.basename(sourceCsproj)}; looked beside ${sourceProjectDir} ` +
+        "and in any solution above it for <IsTestProject>true</IsTestProject> or a Microsoft.NET.Test.Sdk " +
+        "reference with a <ProjectReference> back to it",
+    );
     return refuse(
       "no-test-project",
-      `no test project references ${path.basename(sourceCsproj)}. Looked for a project carrying ` +
-        "`<IsTestProject>true</IsTestProject>` or a `Microsoft.NET.Test.Sdk` package reference AND a " +
-        `\`<ProjectReference>\` back to this project, beside ${sourceProjectDir} and in any solution above it. ` +
-        `This gesture writes a test FILE into an existing test project; create a \`${sourceName}.Tests\` ` +
-        "project yourself and it will be used.",
+      `no test project references ${path.basename(sourceCsproj)}. Create a test project named ` +
+        `${sourceName}.Tests that references it, then run the command again.`,
     );
   }
   const chosen =
@@ -1955,7 +1973,7 @@ function csPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
     return refuse(
       "ambiguous-test-project",
       `${candidates.length} test projects reference ${path.basename(sourceCsproj)} and none is named ` +
-        `\`${sourceName}.Tests\`, so there is no way to tell which one the test belongs in: ` +
+        `"${sourceName}.Tests", so there is no way to tell which one the test belongs in: ` +
         `${candidates.map((c) => path.basename(c.csproj)).join(", ")}.`,
     );
   }
@@ -1970,15 +1988,18 @@ function csPlacementFor(filePath: string, symbolName: string, deps: TddDeps): Pl
   if (propertyIsTrue(chosen.text, "EnableMSTestRunner") || propertyIsTrue(chosen.text, "UseMicrosoftTestingPlatformRunner")) {
     return refuse(
       "unsupported-runner",
-      `${path.basename(chosen.csproj)} sets \`<EnableMSTestRunner>true</EnableMSTestRunner>\`, so it runs on ` +
-        "Microsoft.Testing.Platform. This rung drives `dotnet test --filter`, which that mode rejects outright " +
-        "on the .NET 10 SDK. Remove the property to use the VSTest path, or run those tests yourself.",
+      `${path.basename(chosen.csproj)} runs on Microsoft.Testing.Platform, and on the .NET 10 SDK that mode ` +
+        "rejects the \"dotnet test --filter\" command Column 80 runs. Remove \"<EnableMSTestRunner>\" from the " +
+        "project, or run those tests yourself.",
     );
   }
 
   const relDir = path.relative(sourceProjectDir, path.dirname(filePath));
   if (relDir.startsWith("..") || path.isAbsolute(relDir)) {
-    return refuse("no-project-root", `${filePath} does not sit under ${sourceProjectDir}, so it has no place to mirror in the test project`);
+    return refuse(
+      "no-project-root",
+      `${filePath} is outside ${sourceProjectDir}, so Column 80 cannot tell where its tests belong in the test project.`,
+    );
   }
   const stem = path.basename(filePath, path.extname(filePath));
   const targetPath = path.join(chosen.dir, relDir, `${stem.endsWith("Tests") ? stem : `${stem}Tests`}.cs`);
@@ -2059,12 +2080,12 @@ function csRunTargetForTestFile(testFilePath: string, deps: TddDeps): PlacementR
   if (projectDir === undefined) {
     return refuse(
       "no-project-root",
-      `${oracle.describeMissingRoot(testFilePath) ?? `no .csproj above ${testFilePath}`}, so there is no project to run ${path.basename(testFilePath)} from`,
+      missingProjectDetail(oracle, testFilePath, `so there is no project to run ${path.basename(testFilePath)} from`),
     );
   }
   const csproj = findCsproj(projectDir, deps);
   if (csproj === undefined) {
-    return refuse("no-project-root", `no .csproj in ${projectDir}, so there is no project to run ${path.basename(testFilePath)} from`);
+    return refuse("no-project-root", `no .csproj in ${projectDir}, so there is no project to run ${path.basename(testFilePath)} from.`);
   }
   const framework = detectedFramework(projectDir, deps);
   return {
@@ -2565,9 +2586,8 @@ const CS_TDD_LANG: TddLang = {
   // alone cannot say WHICH project was read.
   frameworkRefusalDetail(root) {
     return (
-      `${path.basename(root)} is a test project but declares no test framework: looked for ` +
-      `${CS_FRAMEWORKS.map((f) => f.displayName).join(", ")} in its <PackageReference> items. ` +
-      "Add one yourself; this gesture never installs a package."
+      `${path.basename(root)} is a test project but references no test framework. Add MSTest, xUnit or ` +
+      "NUnit as a package reference, then run the command again."
     );
   },
 };

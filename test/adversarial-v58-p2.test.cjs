@@ -301,10 +301,10 @@ test("B2 [CLEAN]: no site outside the leaf still infers the pointer from the sup
 // pins them against the source so a rewording turns this group red rather than
 // letting it drift into testing prose that no longer exists.
 const REFINE_END = ".";
-const REFINE_TAIL = " Undo it with the editor's own undo (the build was clean before this change).";
+const REFINE_TAIL = " Undo takes the change back.";
 const refineText = (msg, { code = "TS2322: ", sym = "pick", n = 1 } = {}) =>
-  `Column 80: the refine of ${sym} introduced ${n} error${n === 1 ? "" : "s"} that were not there before. ` +
-  `First: ${code}${msg}`;
+  `Column 80: the accepted change to ${sym} introduced ${n} error${n === 1 ? "" : "s"} that ${n === 1 ? "was" : "were"} not there before. ` +
+  `First: ${code}${msg.replace(/\.+(?=\r?\n|$)/, "")}`;
 const giveUpText = (msg, { code = "TS2322: ", sym = "pick", n = 1 } = {}) =>
   `Column 80: repair stopped with ${n} error${n === 1 ? "" : "s"} still in ${sym}. First: ${code}${msg}`;
 
@@ -319,14 +319,15 @@ test("C0 [CLEAN]: the two sentences this group models are still the ones oracleS
   const src = readSrc("vscode/oracleSurface.ts");
   for (const frag of [
     "Column 80: repair stopped with ${errors.length} error${errors.length === 1 ? \"\" : \"s\"} still in ",
-    "that were not there before. ",
-    "First: ${code0}${first.message}",
+    'that ${n === 1 ? "was" : "were"} not there before. ',
+    "First: ${code0}${firstMsg}",
+    'const firstMsg = first.message.replace(/\\.+(?=\\r?\\n|$)/, "");',
     REFINE_TAIL,
   ]) {
     assert.ok(src.includes(frag), `harness: oracleSurface.ts no longer composes ${JSON.stringify(frag)}.`);
   }
   assert.ok(
-    /oneLineWithPointer\(\s*`Column 80: the refine of/.test(src.replace(/\/\/[^\n]*\n/g, "")),
+    /oneLineWithPointer\(\s*`Column 80: the accepted change to/.test(src.replace(/\/\/[^\n]*\n/g, "")),
     "harness: the refine toast no longer goes through oneLineWithPointer.",
   );
 });
@@ -368,23 +369,20 @@ test("C1 [CLEAN]: the undo clause survives every hostile diagnostic, unbroken an
 });
 
 // `end` is applied AFTER the cut, so the caller's period cannot be eaten. The
-// branch point's own doubled period (tsc messages end in ".") is out of scope
-// for the phase and must be preserved exactly, not quietly tidied.
-test("C2 [CLEAN]: punctuation is unchanged - no new '..' and none of the branch point's own removed", () => {
+// message's own closing period is stripped first (session-v77 R6: a doubled
+// period is a bug), so the refine toast never shows "..".
+test("C2 [CLEAN]: punctuation - the refine toast has no '..', and the give-up site is unchanged", () => {
   const single = "Cannot find name 'missingIdentifier'.";
-  assert.strictEqual(
-    nowRefine(single),
-    bpRefine(single),
-    "C2 / falsifier 2: a single-line diagnostic must render byte-identically to the branch point, doubled " +
-      "period and all.",
+  assert.ok(!nowRefine(single).includes(".."), `C2: a single-line diagnostic doubled its period: ${show(nowRefine(single))}`);
+  assert.ok(
+    nowRefine(single).includes("Cannot find name 'missingIdentifier'." + REFINE_TAIL),
+    `C2: the single-line diagnostic lost its one period: ${show(nowRefine(single))}`,
   );
   const noPeriod = "Cannot find name 'x'";
   assert.strictEqual(nowRefine(noPeriod), bpRefine(noPeriod), "C2: a message with no trailing period is unchanged.");
+  assert.ok(!nowRefine(noPeriod).includes(".."), `C2: no-period case: ${show(nowRefine(noPeriod))}`);
   const multi = "Type 'A' is not assignable.\n  Type 'C' is not assignable.";
-  assert.ok(
-    nowRefine(multi).includes("Type 'A' is not assignable.." + REFINE_TAIL),
-    `C2: the branch point's doubled period is the phase's to keep, not to fix: ${show(nowRefine(multi))}`,
-  );
+  assert.ok(!nowRefine(multi).includes(".."), `C2: a multi-line diagnostic doubled its period: ${show(nowRefine(multi))}`);
   // The give-up site passes no `end`, exactly as the branch point had none.
   assert.strictEqual(nowGiveUp(single), bpGiveUp(single), "C2: the give-up sentence is unchanged on one line.");
   assert.ok(!nowGiveUp(single).endsWith(".."), "C2: the give-up site must not have grown a period.");

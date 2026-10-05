@@ -214,7 +214,7 @@ test("classify: Promise<void> is `underspecified`, not `async`, and it is still 
   const v = classifyTsTestability("export async function save(w: Widget): Promise<void> {", DOC);
   assert.equal(v.testable, false);
   assert.equal(v.reason, "underspecified");
-  assert.match(v.detail, /nothing to assert/);
+  assert.match(v.detail, /nothing to check/);
   // Plain void and an absent annotation are unaffected.
   assert.equal(classifyTsTestability("export function save(w: Widget): void {", DOC).reason, "underspecified");
 });

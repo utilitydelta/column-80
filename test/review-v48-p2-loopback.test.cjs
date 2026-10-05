@@ -178,7 +178,7 @@ fs.writeFileSync(
 export { FnGenService } from "../src/core/fnGenService";
 export { ContextBlockStore } from "../src/core/contextBlocks";
 export { assembleFnGenPrompt } from "../src/core/prompt";
-export { estimateTextTok, promptRefusalMessage, arbitratePrompt } from "../src/core/promptBudget";
+export { estimateTextTok, promptRefusalMessage, promptRefusalChannelLine, arbitratePrompt } from "../src/core/promptBudget";
 export { walkDataShape } from "../src/core/dataShape";
 export { Position, Range, SymbolKind, __state } from "vscode";\n`,
 );
@@ -300,7 +300,6 @@ test("D1 path 1 [repair]: an over-window repair prompt is refused, not sent, and
     await R.runPostAcceptOracle({
       document: fileDocument(file),
       landedSpan: { start: fnStart, end: fnEnd },
-      source: "fim",
       service,
       output: out,
       presenter: { present: async () => "reject" },
@@ -318,7 +317,7 @@ test("D1 path 1 [repair]: an over-window repair prompt is refused, not sent, and
     assert.match(refused[0], new RegExp(String(AVAILABLE)), "the channel line states the window");
     const warn = R.__state.messages.find((m) => m.kind === "warn" && /^Column 80: /.test(m.message));
     assert.ok(warn, `the refusal must reach the user, not just the channel: ${JSON.stringify(R.__state.messages)}`);
-    assert.match(warn.message, /does not fit/, warn.message);
+    assert.match(warn.message, /too long for the model's context window, so nothing was sent to the model/, warn.message);
   } finally {
     fs.rmSync(crate, { recursive: true, force: true });
   }
@@ -515,7 +514,7 @@ test("D1 path 3 [punt retry]: the circle-back prompt is refused rather than sent
   assert.strictEqual(refusalLines(out.lines).length, 1, `one refusal line, got ${JSON.stringify(out.lines.slice(-8))}`);
   const warn = C.__state.messages.find((m) => m.kind === "warn" && /^Column 80: /.test(m.message));
   assert.ok(warn, `the human is about to be shown a stub and is owed the reason: ${JSON.stringify(C.__state.messages)}`);
-  assert.match(warn.message, /does not fit/, warn.message);
+  assert.match(warn.message, /did not fit/, warn.message);
   assert.match(warn.message, /stub/, "and it says which gesture was refused");
 });
 
@@ -553,7 +552,7 @@ test("D1 path 4 [test-gen]: an over-window test prompt is refused rather than se
   assert.ok(warn, `test-gen must surface the refusal too: ${JSON.stringify(C.__state.messages)}`);
   // D2 in the same breath: nothing here is a context block and nothing is
   // injected, so the message must not tell them to remove one.
-  assert.match(warn.message, /request itself is over the window/, warn.message);
+  assert.match(warn.message, /The function and its doc comment alone are too long/, warn.message);
   fs.rmSync(crate, { recursive: true, force: true });
 });
 
@@ -573,32 +572,33 @@ const refuseWith = (developerTok, fixedTok) =>
     injectedTokFor: () => 0,
   });
 
-test("D2: the message states ALL THREE shares, so the numbers it quotes add up", () => {
+test("D2: the channel line states ALL THREE shares, so the numbers it quotes add up; the toast quotes the totals", () => {
   const d = refuseWith(9000, 9000);
-  const msg = C.promptRefusalMessage(d);
-  assert.match(msg, /9000 tokens/, `the developer's share: ${msg}`);
-  assert.match(msg, /is 0 tokens/, `the injected share, stated even at zero: ${msg}`);
-  assert.match(msg, /about 9000 tokens are the request itself/, `the fixed share, which used to be missing entirely: ${msg}`);
-  // The three shares account for the total, which is what the old message could
-  // not do: it quoted 34842 tokens and named 0 of them.
-  assert.match(msg, new RegExp(`about ${d.totalTok} tokens against`), msg);
+  const line = C.promptRefusalChannelLine(d);
+  assert.match(line, /developer context ~9000 tok/, `the developer's share: ${line}`);
+  assert.match(line, /injected surface 0 tok/, `the injected share, stated even at zero: ${line}`);
+  assert.match(line, /fixed ~9000 tok/, `the fixed share, which used to be missing entirely: ${line}`);
   assert.equal(d.developerTok + d.injectedTok + d.fixedTok, d.totalTok, "and the arithmetic actually closes");
+  const msg = C.promptRefusalMessage(d);
+  // The totals moved to the channel line in session-v77: a toast reader cannot act on a token count.
+  assert.doesNotMatch(msg, /tokens/, msg);
+  assert.match(msg, /too long for the model, so nothing was generated/, msg);
 });
 
 test("D2: when `fixed` alone overflows, the message says so and does not tell them to remove a context block", () => {
   // The reachable case from the review: a function whose body is a long
   // commented-out block, no context blocks, no injection.
   const msg = C.promptRefusalMessage(refuseWith(0, AVAILABLE + 5000));
-  assert.match(msg, /request itself is over the window before any context is added/, msg);
-  assert.match(msg, /doc comment|commented-out body/, "and it names what `fixed` is made of, which they can act on");
+  assert.match(msg, /Even without context blocks it is too long/, msg);
+  assert.match(msg, /doc comment|sketched body/, "and it names what `fixed` is made of, which they can act on");
   assert.ok(!/Remove a context block/.test(msg), `it must not offer a remedy that cannot work: ${msg}`);
-  assert.match(msg, /Lowering `column80\.injectedContext` will not help/, "and it says the dial is not the answer either");
+  assert.ok(!/column80\.injectedContext/.test(msg), `at a share of 0 the toast does not argue about the dial: ${msg}`);
 });
 
 test("D2: when their context is the weight, removing a block IS offered - the remedy tracks the case", () => {
   const msg = C.promptRefusalMessage(refuseWith(AVAILABLE + 100, 200));
   assert.match(msg, /Remove a context block/, msg);
-  assert.match(msg, /Lowering `column80\.injectedContext` will not help/, "the dial is still named, and still honestly");
+  assert.ok(!/column80\.injectedContext/.test(msg), `at a share of 0 the dial is not named: ${msg}`);
 });
 
 // ===========================================================================
