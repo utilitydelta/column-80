@@ -116,6 +116,7 @@ import {
 } from "../core/receiver";
 import { renderImportHint } from "../core/usePath";
 import { bodyTextOfSpan, harvestBodyComments } from "../core/scaffold";
+import { keepSketchForPreview } from "../core/scaffoldKeep";
 import { makeHostScopedCatalogFetcher } from "../core/catalog";
 import { assembleAntiPuntReprompt, looksLikePunt, puntDiagnosis } from "../core/punt";
 import { blankSnippetToDisplay, withoutMarkedRegion } from "../core/testAssembly";
@@ -1433,7 +1434,7 @@ export async function buildFnGenService(
   log: (line: string) => void,
   probeOpts?: ProbeHardwareOptions,
   claudeCode?: FnGenBackendDeps,
-): Promise<{ service: FnGenService; tier: TierSelection; config: FnGenConfig }> {
+): Promise<{ service: FnGenService; tier: TierSelection; config: FnGenConfig; recheck?: true }> {
   // Cloud short-circuits the whole local machine story: no hardware probe, no
   // VRAM tier, no carve. FIM stays local and is wired elsewhere, untouched.
   const cloud = readCloudConfig();
@@ -1452,8 +1453,19 @@ export async function buildFnGenService(
   if (isRemoteApiBase(localConfig.apiBase)) {
     return buildRemoteFnGenService(localConfig, log, claudeCode?.listModels);
   }
-  const { selection } = await resolveTier(output, probeOpts);
-  const config = applyTier(readFnGenConfig(), selection, readTierConfig().explicitFnGenModel);
+  // The catalogue read is for one case only, a Mac whose tier took the MLX build:
+  // resolveTier skips it everywhere else. An explicit fnGenModel overrides the
+  // selection it would correct, so it skips the read too. Bounded like the
+  // remote probe, so a wedged local server cannot hang activation.
+  const explicit = readTierConfig().explicitFnGenModel;
+  const lister = claudeCode?.listModels ?? listModels;
+  const { selection, catalogueUnknown } = await resolveTier(
+    output,
+    probeOpts,
+    explicit ? undefined : (base) => boundedList(lister, base),
+  );
+  const config = applyTier(readFnGenConfig(), selection, explicit);
+  const recheck = catalogueUnknown ? { recheck: true as const } : {};
   if (!selection.fnGenEnabled) {
     return {
       service: inertFnGenService(
@@ -1463,9 +1475,10 @@ export async function buildFnGenService(
       ),
       tier: selection,
       config,
+      ...recheck,
     };
   }
-  return { service: new FnGenService(config, undefined, log), tier: selection, config };
+  return { service: new FnGenService(config, undefined, log), tier: selection, config, ...recheck };
 }
 
 /** The service a DISABLED arm returns: same config and logging as the live one,
@@ -1484,6 +1497,21 @@ function inertFnGenService(config: FnGenConfig, message: string, log: (line: str
  *  AbortSignal would otherwise hang activation. */
 const REMOTE_REACHABILITY_MS = 2000;
 
+/** When a Mac's local catalogue did not answer, the session build is retried at
+ *  these delays: at once (Ollama often starts beside VS Code at login), then 5s,
+ *  15s, 30s and 60s later. About 110s in all, then it gives up and says so. */
+const CATALOGUE_RECHECK_DELAYS_MS: readonly number[] = [0, 5000, 15000, 30000, 60000];
+
+/** One catalogue read, raced rather than merely signalled: an injected seam that
+ *  ignores the signal still must not hold activation or a gesture open. */
+async function boundedList(listModelsFn: typeof listModels, host: string): Promise<string[] | undefined> {
+  const bounded = new Promise<undefined>((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), REMOTE_REACHABILITY_MS);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  return Promise.race([listModelsFn(host, AbortSignal.timeout(REMOTE_REACHABILITY_MS)), bounded]);
+}
+
 /** The remote arm: the same off-table treatment the cloud backends get, for the
  *  one case that was falling through to a probe of the wrong machine. No
  *  hardware probe, no model override, no local carve. Fails CLOSED on a host
@@ -1499,16 +1527,7 @@ async function buildRemoteFnGenService(
   // numGpu is a local serving carve, tuned against a VRAM row on this box. It
   // means nothing about somebody else's machine.
   delete config.numGpu;
-  // Raced, not just signalled: an injected seam that ignores the signal still
-  // must not hold activation open.
-  const bounded = new Promise<undefined>((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), REMOTE_REACHABILITY_MS);
-    (timer as { unref?: () => void }).unref?.();
-  });
-  const models = await Promise.race([
-    listModelsFn(host, AbortSignal.timeout(REMOTE_REACHABILITY_MS)),
-    bounded,
-  ]);
+  const models = await boundedList(listModelsFn, host);
   if (models === undefined) {
     log(`[carve] tier=remote host=${host} fnGen=disabled reason=unreachable`);
     const message = `Function generation is disabled: the Ollama server at ${host} did not answer.`;
@@ -1773,6 +1792,9 @@ async function resolveClaudeBinary(run: ProbeCommandFn): Promise<string | undefi
 export interface FnGenDeps {
   probeOpts?: ProbeHardwareOptions;
   buildService?: typeof buildFnGenService;
+  /** The catalogue re-check schedule (default `CATALOGUE_RECHECK_DELAYS_MS`).
+   *  Injectable so an oracle can run the whole schedule without waiting it out. */
+  catalogueRecheckDelaysMs?: readonly number[];
   /** The in-flight registry that owns the status-bar item and the cancel
    *  command's targets. Injectable so a headless oracle can read what the item
    *  says without a real status bar; defaults to a real one. */
@@ -5660,6 +5682,10 @@ export interface ModelGestureWiring {
    *  would settle the wrong one's diff. A getter like the rest, for symmetry
    *  rather than for freshness: this one instance outlives every rebuild. */
   presenter: () => ProposalPresenter;
+  /** Re-resolve the tier and rebuild the service, for a change no setting
+   *  carries: the first-run flow landed a model, or settled on the GGUF tag
+   *  where the tier named an MLX build that is not there. */
+  refreshTier: () => void;
 }
 
 /** Generate Tests' own window refusal. Generation's sentence says "nothing was
@@ -5699,12 +5725,26 @@ export function registerFnGen(
     log,
   );
   let tier: TierSelection | undefined;
-  const rebuild = async (): Promise<void> => {
+  // LATEST STARTED WINS. Builds overlap: a settings change can land while an
+  // earlier build is still reading the catalogue, and the earlier one finishing
+  // last would put back the service for settings the human already changed.
+  let buildSeq = 0;
+  // Set on deactivate. A build already reading the catalogue cannot be
+  // cancelled, so the flag is what stops it installing a service nobody will
+  // dispose, or arming another retry against a dead extension.
+  let disposed = false;
+  /** Undefined when a newer build started meanwhile, or the extension was
+   *  deactivated, and this one was dropped. */
+  const rebuild = async (sink: vscode.OutputChannel = output): Promise<{ recheck: boolean } | undefined> => {
+    if (disposed) {
+      return undefined;
+    }
+    const seq = (buildSeq += 1);
     // The global storage path is the ONLY place the neutral cwd can come from,
     // and only registerFnGen holds the ExtensionContext that names it. Threading
     // it through the build is what keeps the CLI out of the user's workspace;
     // an arm that could not see it would fail closed instead.
-    const built = await (deps.buildService ?? buildFnGenService)(output, log, deps.probeOpts, {
+    const built = await (deps.buildService ?? buildFnGenService)(sink, log, deps.probeOpts, {
       ...deps.claudeCode,
       storagePath: deps.claudeCode?.storagePath ?? context.globalStorageUri?.fsPath,
       // The remote arm's reachability probe is a real network call at
@@ -5713,12 +5753,86 @@ export function registerFnGen(
       // it had covered activation and had not.
       listModels: deps.claudeCode?.listModels ?? deps.listModels,
     });
+    if (disposed || seq !== buildSeq) {
+      built.service.dispose();
+      return undefined;
+    }
     service.dispose();
     service = built.service;
     tier = built.tier;
+    return { recheck: built.recheck === true };
   };
-  const rebuildLogged = (): Promise<void> =>
-    rebuild().catch((err) => output.appendLine(`[carve] tier flow failed: ${String(err)}`));
+
+  // A Mac whose local catalogue did not answer at build time runs the MLX tag on
+  // no evidence; the GGUF-only population would fail every call on a missing
+  // model. The build is retried in the background, never on a gesture: a refused
+  // gesture must dial nothing (roadmap item 58), and a gesture must not pay the
+  // read's bound. Each attempt goes through `rebuild`, so a newer build wins.
+  let recheckTimer: ReturnType<typeof setTimeout> | undefined;
+  const stopRecheck = (): void => {
+    if (recheckTimer !== undefined) {
+      clearTimeout(recheckTimer);
+      recheckTimer = undefined;
+    }
+  };
+  const delays = deps.catalogueRecheckDelaysMs ?? CATALOGUE_RECHECK_DELAYS_MS;
+  const armRecheck = (attempt: number): void => {
+    stopRecheck();
+    if (disposed) {
+      return;
+    }
+    if (attempt >= delays.length) {
+      output.appendLine(
+        `[carve] fn-gen model still not checked: the Ollama server has not answered; ${tier?.fnGenModel ?? "the tier's model"} stands`,
+      );
+      return;
+    }
+    recheckTimer = setTimeout(() => {
+      recheckTimer = undefined;
+      tierReady = recheckOnce(attempt);
+    }, delays[attempt]);
+    (recheckTimer as { unref?: () => void }).unref?.();
+  };
+  // A retry that fails again says nothing: its tier block and not-checked line
+  // repeat what the channel already holds. One that answers prints its block,
+  // which carries the `fn-gen uses` line when the tag changed.
+  const recheckOnce = async (attempt: number): Promise<void> => {
+    const held: string[] = [];
+    const sink = { appendLine: (line: string) => held.push(line) } as unknown as vscode.OutputChannel;
+    try {
+      const result = await rebuild(sink);
+      if (result === undefined) {
+        return; // a newer build owns the decision
+      }
+      if (result.recheck) {
+        armRecheck(attempt + 1);
+        return;
+      }
+      for (const line of held) {
+        output.appendLine(line);
+      }
+    } catch (err) {
+      output.appendLine(`[carve] tier flow failed: ${String(err)}`);
+    }
+  };
+  context.subscriptions.push({
+    dispose: () => {
+      disposed = true;
+      stopRecheck();
+    },
+  });
+
+  const rebuildLogged = async (): Promise<void> => {
+    stopRecheck();
+    try {
+      const result = await rebuild();
+      if (result?.recheck === true) {
+        armRecheck(0);
+      }
+    } catch (err) {
+      output.appendLine(`[carve] tier flow failed: ${String(err)}`);
+    }
+  };
   let tierReady = rebuildLogged();
   // The one tier decision every model-call path consults. Unresolved (the
   // rebuild rejected) is treated exactly like disabled: closed. Honesty,
@@ -6047,10 +6161,12 @@ export function registerFnGen(
       // harvesting from it costs the human nothing, and the "harvested N of M"
       // line is the number that says whether the depth rule needs narrowing.
       // GENERATION only - the TDD gestures never call this.
+      // Held: the sketch keeper compares the reply against this same text.
+      const spanAtResolve = document.getText(
+        new vscode.Range(document.positionAt(resolved.span.start), document.positionAt(resolved.span.end)),
+      );
       const bodyText = bodyTextOfSpan(
-        document.getText(
-          new vscode.Range(document.positionAt(resolved.span.start), document.positionAt(resolved.span.end)),
-        ),
+        spanAtResolve,
         resolved.languageId,
         // Fork A already moved span.start past the preserved docstring, so the
         // span IS the body and there is no header left to cut.
@@ -6307,12 +6423,33 @@ export function registerFnGen(
         headerIndent: resolved.headerIndent,
         bodyIndent: resolved.bodyIndent,
       });
+      const sketch = keepSketchForPreview({
+        languageId: resolved.languageId,
+        originalSpan: spanAtResolve,
+        reply: result.text,
+        bodyOnly: resolved.bodyOnly,
+        bodyIndent: resolved.bodyIndent,
+        channelTag: "[fngen]",
+        title: `${resolved.symbolName}: generated body (preview)`,
+      });
+      result.text = sketch.text;
+      if (sketch.refusal !== undefined) {
+        // Accepting a reply with no body would delete the developer's sketch.
+        log(`[fngen] refused: ${sketch.refusal}`);
+        void vscode.window.showWarningMessage(
+          `Column 80: the model's reply for ${resolved.symbolName} had no function body, so nothing was changed and your sketch comments are as you left them.`,
+        );
+        return;
+      }
+      if (sketch.channelLine !== undefined) {
+        log(sketch.channelLine);
+      }
 
       const outcome = await presenter.present({
         document,
         span: resolved.span,
         versionAtResolve,
-        title: `${resolved.symbolName}: generated body (preview)`,
+        title: sketch.title,
         text: result.text,
         service,
       });
@@ -7493,6 +7630,9 @@ export function registerFnGen(
     transport: () => service.transport,
     inFlight: () => inFlight,
     presenter: () => presenter,
+    refreshTier: () => {
+      tierReady = rebuildLogged();
+    },
   };
 }
 

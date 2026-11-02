@@ -22,7 +22,7 @@ Data, not code: `computeTier` walks `TIER_TABLE` in order, first row whose inclu
 
 | id | minVramMB | minRamMB | fn-gen | carve |
 |---|---|---|---|---|
-| `24gb` | 20480 | 0 | 30b | none (full offload); provisional, never validated on real hardware |
+| `24gb` | 20480 | 0 | `qwen3.8:27b`, `qwen3.8:27b-mlx` on unified memory | none (full offload); provisional, never validated on real hardware |
 | `16gb-large-ram` | 15360 | 28672 | 30b | `num_gpu=30`, the reference config, the only spike-proven row |
 | `16gb-low-ram` | 12288 | 0 | dense 14b (~9GB) | none needed; both models fit resident. Doubles as the 12-16GB band |
 | `below-12gb` | 0 | 0 | disabled, honest message | FIM only |
@@ -32,6 +32,10 @@ Data, not code: `computeTier` walks `TIER_TABLE` in order, first row whose inclu
 A failed probe selects `below-12gb`. Honesty, never optimism: a machine whose GPU cannot be seen is treated as a machine without one, because guessing risks silent thrash or CPU spill. Non-NVIDIA, non-Apple boxes land here; the manual `hardwareTier` override is the workaround.
 
 Apple Silicon is a probe of its own: there is no nvidia-smi and no discrete GPU, so the UNIFIED memory pool (`os.totalmem`) is read as the model budget and the machine gets a real tier instead of the no-GPU path. `process.arch` cannot gate this, because it reports the PROCESS arch, not the hardware's: an arm64 Mac running the x64 build of VS Code under Rosetta 2 (the common MDM-managed shape) reports `x64`, which used to skip the Mac path and drop a 32GB M-series box to `below-12gb` with function generation disabled. `isAppleSilicon` sees through that with `sysctl -n hw.optional.arm64` (=1 on every Apple Silicon machine, absent on a real Intel Mac, and it survives translation), run through the same injectable runner as the nvidia probe. A genuine Intel Mac still falls through to the nvidia spawn and its honest `below-12gb`.
+
+On unified memory a row with an `appleSiliconModel` runs that tag instead of its GGUF one. Only the `24gb` row has one, `qwen3.8:27b-mlx`, because no other product model has an `-mlx` tag in the Ollama registry. Measured on an M-series Mac through the product's own generate path (session-v78 measurement-p5): about twice as fast end to end on short prompts, about even on prompts near 5,000 tokens, where prefill dominates and both builds read at the same rate. MLX decode slowed during that run, so the size of the short-prompt win is not settled. The `hardwareTier` override gets the same substitution, since the probe still reports unified memory, and the `[carve]` tier line ends in `apple-silicon` when it happened. The carve compares against the selected tag. Think follows the row's model: an explicit `column80.fnGenModel` still wins, and gets the row's `think: false` only when it is the selected tag or its GGUF fallback (`qwen3.8:27b` on a Mac), as it did on every machine before the MLX tag existed. Any other explicit model gets neither.
+
+A Mac with the GGUF tag and not the MLX build runs the GGUF tag, with one `[carve] fn-gen uses` line that names Select Hardware Tier as the way to the MLX build: the session resolution reads the local catalogue for that one case, and only when `column80.fnGenModel` is not set. When the server does not answer, the channel says the MLX tag was not checked and the session build is retried in the background, never on a gesture: at once, then 5s, 15s, 30s and 60s later. The first answer settles the tag; if none comes, one `still not checked` line says the MLX tag stands. The newest build always wins, so a retry that finishes after a settings change is dropped. A remote `apiBase` is untouched, because the probe measures this box and not the server; a client pointed at a Mac sets `column80.fnGenModel` by hand.
 
 ## applyTier, the config seam
 
@@ -44,6 +48,8 @@ Every model-call entry point (`generateFunction`, the fn-gen accept hook, Repair
 ## Ratified pulls
 
 `pullModel` streams `/api/pull` with layer-aggregated progress (`PullProgress` is clamped and high-watermarked so a bar never runs backwards). The contract around it is the invariant: `offerModelPull` in `firstRun.ts` is the sole caller, its only triggers are the first-run flow and the explicit Select Hardware Tier command, and the `[carve] pull ratified` line lands before the request starts. Activation never pulls, tier selection never pulls, a settings change never pulls. Declining a download changes nothing and leaves the extension explicit about what stays disabled and the one gesture that fixes it. No test anywhere pulls a real model.
+
+On a Mac the offer names the MLX tag. If that pull fails, the existing `pull failed` line says why and the GGUF tag is offered once; whichever lands runs. A declined MLX offer offers nothing else; with the GGUF tag already on disk the session runs it. There is no minimum Ollama version check: the fallback on a failed pull is the guard.
 
 First-run flow: probe, `computeTier`, QuickPick with the computed tier preselected and honest descriptions (the 24gb item says provisional), then per-missing-model ratified download offers. Accepting the computed default keeps `hardwareTier: "auto"` so a hardware change re-adapts; an explicit pick persists the tier id.
 

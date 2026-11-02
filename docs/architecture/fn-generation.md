@@ -2,7 +2,7 @@
 
 Serves product invariant 2 and the prompt-identity invariant in [ARCHITECTURE.md](../../ARCHITECTURE.md). The unit of generation is the function; the model's output replaces exactly one span and touches nothing else.
 
-Files: `src/core/span.ts`, `src/core/symbols.ts`, `src/core/prompt.ts`, `src/core/instructPostprocess.ts`, `src/core/fnGenService.ts`, `src/core/ollama.ts` (local instruct leg), `src/core/cloudInstruct.ts` (optional cloud instruct leg), `src/core/claudeCodeInstruct.ts` (optional Claude Code CLI leg). Editor side: `src/vscode/fnGen.ts` (span resolution, command, `ProposalPresenter`).
+Files: `src/core/span.ts`, `src/core/symbols.ts`, `src/core/prompt.ts`, `src/core/scaffoldKeep.ts`, `src/core/instructPostprocess.ts`, `src/core/fnGenService.ts`, `src/core/ollama.ts` (local instruct leg), `src/core/cloudInstruct.ts` (optional cloud instruct leg), `src/core/claudeCodeInstruct.ts` (optional Claude Code CLI leg). Editor side: `src/vscode/fnGen.ts` (span resolution, command, `ProposalPresenter`).
 
 Unlike FIM this is an explicit human gesture, so the service has no cache and no debounce, concurrency is newest-wins with no join (a second generate is the regenerate gesture and cancels the first), and failures reject with the reason instead of degrading to `undefined`.
 
@@ -25,6 +25,8 @@ The head normalization lives headless in `src/core/symbols.ts`: providers includ
 ## Prompt assembly
 
 `assembleFnGenPrompt` is a deterministic, byte-for-byte function of its input: one section per context block in list order, the fixed instruction line, then the fenced target (language tag, doc comment, signature). Zero blocks means instruction plus target only.
+
+When the span carries a sketch (`harvestBodyComments`: the comments at the body's own depth), one more fixed section sits above any injected surface: the sketch lines as a bulleted spec, closed by one sentence asking for each line back word for word, as a comment at body depth, in order, above the code that does it. No sketch, no section, and the bytes above unchanged. Only the generate prompt carries the sentence; repair and refine prompts have no slot for it and rely on the sketch keeper below.
 
 What is excluded is the point: no file prefix/suffix, no surrounding code, no imports, no repo content, no prior generations, no system message. Only what the input carries enters the prompt. Any change here is a change to the product identity and traces to L0.
 
@@ -56,6 +58,24 @@ function's visibility by guessing either.
 `FnGenService` has two entry points over one private pipeline: `generate` (assembles the prompt) and `generateRaw` (pre-assembled prompt, used by repair rounds). Every producer guard lives in the shared pipeline exactly once, so a repair round cannot dodge one by construction. `modelTag` names the real server of a round rather than the setting: tier selection may have swapped the tag, and a backend that declines to send a model id at all (Claude Code, when `fnGenModel` still reads a local Ollama tag) passes an explicit label instead, so evidence never attributes a round to a server that did not serve it.
 
 Models: `qwen3-coder:30b` by default (measured 71 tok/s solo, 34.6 tok/s co-resident under the carve, roughly 4-8s per ~150-token function warm), `qwen2.5-coder:14b-instruct-q4_K_M` on the low-RAM tier. There is no fn-gen latency bar; the envelope informs test timeouts only.
+
+## The sketch keeper
+
+A developer who sketched the body in comments wants them back, so the next generation reads the same spec. The prompt asks; `keepSketch` (`scaffoldKeep.ts`, pure) guarantees. Measured with `qwen3-coder:30b` on 23 authored sites, 69 calls per arm: the model kept every line unaided in 9 of 69 replies on the old prompt and 66 of 69 with the sentence (session-v78, `session-v78/measurement-p3.md`).
+
+Where it runs: every path that replaces a span with a model reply, through one helper, `keepSketchForPreview`. Generate Function, the compiler repair round, the test repair round and the refine round. Each calls it AFTER `placeGeneratedReply`, so placed lines take document indentation, and BEFORE the "round changed nothing" check, so a reply that differs from the function only by dropped sketch lines counts as unchanged (`onlyCommentsDiffer`, alongside `isNoOpRepair`). A round reads its sketch from the function as it stands, model-added comments included. TDD, FIM and dictation never run it.
+
+The rules:
+
+- **The model places, code backstops.** Sketch lines the reply kept at body depth, matched as the longest in-order common subsequence on the harvest's rendering, stay where the model put them. Each missing or reworded line is inserted in the developer's original words before the first body-depth statement after the previous kept line, or above the first statement when none was kept. A multi-line block comment is one unit, placed whole.
+- **Never remove, never reword.** Every reply line survives byte-identical, model-added comments included. `stripped` is always empty, so adding stripping later is a shape change a test sees.
+- **One-line slot rule.** A reply with no line inside the body (`{ a + b }`, `def f(): stmt`, a `=>` expression body in C# or a TS concise arrow) gets a slot made by line breaks and indentation only, at token boundaries. No non-whitespace character changes.
+- **Refusal.** An empty reply or a signature only has nothing to break. Those lines come back `unplaced`, and every path refuses the reply rather than present it: accepting it would delete the sketch.
+- **Round trip.** The sketch is an in-order subsequence of the harvest of the result. Running the keeper on its own output changes nothing.
+
+The developer sees a title note only when code placed a line (`N sketch comments restored`) and a channel line on every write with a sketch: `[fngen] sketch: N kept by the model, M placed by Column 80, K could not be placed`, `[repair]` or `[tests]` on rounds. The line is written just before `present`, so a round not proposed claims nothing.
+
+Known residual: a sketch line the model keeps nested inside a loop or block is not at body depth, so it counts as dropped and is restored at body depth too. The developer sees it twice. Compiles and round-trips; open as S78-11.
 
 ## The instruct backend seam
 

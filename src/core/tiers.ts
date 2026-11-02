@@ -5,6 +5,7 @@
 // Contract: docs/architecture/hardware-tiers.md.
 
 import { DEFAULT_FNGEN_CONFIG, FnGenConfig, REFERENCE_CARVE_NUM_GPU } from "./config";
+import { hasModel } from "./ollama";
 
 export type TierId = "24gb" | "16gb-large-ram" | "16gb-low-ram" | "below-12gb";
 
@@ -40,6 +41,15 @@ export interface TierRow {
    * TWELVE replies empty - the budget was gone before any code was emitted.
    */
   fnGenThink?: boolean;
+  /**
+   * The same model's MLX build, run instead of `fnGenModel` on unified memory.
+   * Measured on an M-series Mac for `qwen3.8:27b`: decode about three times
+   * faster, long-prompt prefill close to even, and `num_ctx`, `stop` and
+   * `think:false` all honoured. Only a row whose model has an `-mlx` tag in the
+   * Ollama registry carries one. It is the same model, so `fnGenThink` applies to
+   * it unchanged.
+   */
+  appleSiliconModel?: string;
   /** True while the tier has never been validated on real hardware. */
   provisional: boolean;
 }
@@ -62,6 +72,7 @@ export const TIER_TABLE: readonly TierRow[] = [
     minRamMB: 0,
     fnGenModel: "qwen3.8:27b",
     fnGenThink: false,
+    appleSiliconModel: "qwen3.8:27b-mlx",
     provisional: true,
   },
   // THE CARVE IS BACK, AND ITS REMOVAL WAS A REAL REGRESSION CAUGHT BEFORE IT
@@ -144,12 +155,12 @@ const MIN_FNGEN_VRAM_GB = MIN_FNGEN_VRAM_MB / 1024;
 /** Pure (VRAM, RAM) -> tier. Probe failure (vram undefined) lands on
  *  below-12gb with the no-GPU message - honesty, never optimism.
  *
- *  `unifiedMemory` says the model and the toolchain draw on ONE pool. One thing
- *  changes, and it is a refusal rather than an addition: the CUDA layer carve is
- *  never emitted, because a `num_gpu` cap means nothing on Metal. That was already
- *  true, but only by arithmetic accident (the Mac path reports vram == ram and the
- *  carve row needs vram BELOW its RAM bound), and an invariant this load-bearing
- *  should not depend on one.
+ *  `unifiedMemory` says the model and the toolchain draw on ONE pool. Two things
+ *  change. The CUDA layer carve is never emitted, because a `num_gpu` cap means
+ *  nothing on Metal. That was already true, but only by arithmetic accident (the
+ *  Mac path reports vram == ram and the carve row needs vram BELOW its RAM bound),
+ *  and an invariant this load-bearing should not depend on one. And a row with an
+ *  `appleSiliconModel` runs that tag instead of its GGUF one.
  *
  *  What this does NOT do is size the model down for the toolchain. That was built
  *  and then refuted on the hardware; see TOOLCHAIN_RESERVE_MB. `vramMB` is the
@@ -182,15 +193,55 @@ export function computeTier(
       ? `Function generation is disabled: this GPU has under ${MIN_FNGEN_VRAM_GB}GB of VRAM.` +
         PROVIDER_HINT
       : undefined;
-  const selection = selectionFromRow(row, message);
+  return forMemory(selectionFromRow(row, message), opts);
+}
+
+/** The row's selection as the hardwareTier override names it, before the
+ *  caller words a disabled message. The same memory rule as computeTier: the
+ *  probe still reports unified memory when the tier is forced. */
+export function selectionForTier(id: TierId, opts?: { unifiedMemory?: boolean }): TierSelection {
+  return forMemory(selectionFromRow(TIER_TABLE.find((r) => r.id === id) as TierRow), opts);
+}
+
+/** Unified memory: strip the carve and run the row's MLX build when it has one.
+ *  A layer cap tuned for a 16GB CUDA card is not a thing to hand to Metal. */
+function forMemory(selection: TierSelection, opts?: { unifiedMemory?: boolean }): TierSelection {
   if (opts?.unifiedMemory !== true) {
     return selection;
   }
-  // Unified memory: strip the carve, and change nothing else. A layer cap tuned
-  // for a 16GB CUDA card is not a thing to hand to Metal.
   const out: TierSelection = { ...selection };
   delete out.fnGenNumGpu;
+  const mlx = rowOf(selection)?.appleSiliconModel;
+  if (mlx !== undefined && out.fnGenEnabled) {
+    out.fnGenModel = mlx;
+  }
   return out;
+}
+
+const rowOf = (sel: TierSelection): TierRow | undefined => TIER_TABLE.find((r) => r.id === sel.id);
+
+/** The GGUF tag a selection would run instead of its MLX build, or undefined
+ *  when the selection did not take an MLX build. */
+export function appleSiliconFallback(sel: TierSelection): string | undefined {
+  const row = rowOf(sel);
+  return row?.appleSiliconModel !== undefined && sel.fnGenModel === row.appleSiliconModel
+    ? row.fnGenModel
+    : undefined;
+}
+
+/** A box that has the GGUF tag and not the MLX build runs the GGUF tag rather
+ *  than a model that is not there. Anything else keeps the selection: with
+ *  neither installed, or no answer from the server, the MLX build stays the
+ *  one the pull offer names. */
+export function preferInstalledTag(sel: TierSelection, models: string[] | undefined): TierSelection {
+  const gguf = appleSiliconFallback(sel);
+  if (gguf === undefined || models === undefined) {
+    return sel;
+  }
+  if (hasModel(models, sel.fnGenModel as string) || !hasModel(models, gguf)) {
+    return sel;
+  }
+  return { ...sel, fnGenModel: gguf };
 }
 
 /** The [carve] tier evidence line, formatted in core so the format is
@@ -206,7 +257,8 @@ export function tierLogLine(
   const mb = (v: number | undefined): string => (v === undefined ? "-" : String(Math.floor(v)));
   const numGpu = sel.fnGenNumGpu === undefined ? "-" : String(sel.fnGenNumGpu);
   const fnGen = sel.fnGenEnabled ? (sel.fnGenModel as string) : "disabled";
-  return `[carve] tier=${sel.id} reason=${reason} vram=${mb(vramMB)} ram=${mb(ramMB)} numGpu=${numGpu} fnGen=${fnGen} provisional=${sel.provisional}`;
+  const mlx = sel.fnGenEnabled && rowOf(sel)?.appleSiliconModel === sel.fnGenModel ? " apple-silicon" : "";
+  return `[carve] tier=${sel.id} reason=${reason} vram=${mb(vramMB)} ram=${mb(ramMB)} numGpu=${numGpu} fnGen=${fnGen} provisional=${sel.provisional}${mlx}`;
 }
 
 /** Fold a tier into an FnGenConfig: the tier decides the model and the
@@ -233,12 +285,16 @@ export function applyTier(config: FnGenConfig, sel: TierSelection, explicitFnGen
   if (carve !== undefined) {
     out.numGpu = carve;
   }
-  // THE THINK FLAG RIDES THE ROW'S TAG, exactly as the carve does. A tier whose
-  // model reasons by default carries `fnGenThink: false`; if the user has
-  // overridden the model, the row's flag is about a model they are not running
-  // and must not follow them to it. Reasoning is billed to maxTokens, so a
-  // wrong value here is a model that thinks until its budget is gone.
-  if (model === sel.fnGenModel && sel.fnGenThink !== undefined) {
+  // THE THINK FLAG RIDES THE ROW'S MODEL. A tier whose model reasons by default
+  // carries `fnGenThink: false`; if the user has overridden the model, the row's
+  // flag is about a model they are not running and must not follow them to it.
+  // The row's model has two tags on a Mac, and an explicit GGUF tag there is the
+  // same model the flag was measured on: before the MLX tag existed it got
+  // `think: false` on every machine, and still must. Reasoning
+  // is billed to maxTokens, so a wrong value here is a model that thinks until
+  // its budget is gone.
+  const sameModel = model === sel.fnGenModel || model === appleSiliconFallback(sel);
+  if (sameModel && sel.fnGenThink !== undefined) {
     out.think = sel.fnGenThink;
   }
   return out;

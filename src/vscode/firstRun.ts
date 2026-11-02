@@ -9,7 +9,17 @@ import {
   probeHardware,
 } from "../core/hardware";
 import { hasModel, listModels, pullModel } from "../core/ollama";
-import { TIER_TABLE, TierId, TierRow, TierSelection, applyTier, computeTier, tierLogLine } from "../core/tiers";
+import {
+  TIER_TABLE,
+  TierId,
+  TierSelection,
+  appleSiliconFallback,
+  applyTier,
+  computeTier,
+  preferInstalledTag,
+  selectionForTier,
+  tierLogLine,
+} from "../core/tiers";
 import { isRemoteApiBase } from "../core/config";
 import { readCloudConfig, readConfig, readFnGenConfig, readTierConfig } from "./config";
 import { firstLine } from "./toastText";
@@ -42,6 +52,10 @@ export interface FirstRunDeps {
    *  spawn). Injected so the server-down consent path is testable without a host
    *  ollama and without a real process. */
   ollamaCheck?: ProbeCommandFn;
+  /** Told when the flow settles function generation on a model the running
+   *  session may not be using: a download landed, or the GGUF tag stands in for
+   *  an MLX build that is not there. The session re-resolves its tier on it. */
+  fnGenModelChanged?: () => void;
 }
 
 const FIRST_RUN_KEY = "column80.firstRunDone";
@@ -58,33 +72,36 @@ const TIER_DESCRIPTIONS: Record<TierId, string> = {
 // A tier forced by the hardwareTier setting: the row supplies the model
 // facts; the message names the SETTING as the reason, because the honest
 // explanation for a disabled override is the human's own choice, not a
-// hardware claim computeTier never made.
-function overrideSelection(id: TierId): TierSelection {
-  const row = TIER_TABLE.find((r) => r.id === id) as TierRow;
-  if (row.fnGenModel === undefined) {
-    return {
-      id: row.id,
-      fnGenEnabled: false,
-      provisional: row.provisional,
-      message: `Function generation is off: the hardware tier is set to ${id}. Run "Column 80: Select Hardware Tier" to change it.`,
-    };
+// hardware claim computeTier never made. The row's think flag and, on a Mac,
+// its MLX build come with it: a forced tier is still this machine.
+function overrideSelection(id: TierId, unifiedMemory: boolean | undefined): TierSelection {
+  const selection = selectionForTier(id, { unifiedMemory });
+  if (selection.fnGenEnabled) {
+    return selection;
   }
   return {
-    id: row.id,
-    fnGenEnabled: true,
-    fnGenModel: row.fnGenModel,
-    ...(row.fnGenNumGpu !== undefined ? { fnGenNumGpu: row.fnGenNumGpu } : {}),
-    provisional: row.provisional,
+    ...selection,
+    message: `Function generation is off: the hardware tier is set to ${id}. Run "Column 80: Select Hardware Tier" to change it.`,
   };
 }
 
+/** The channel line for a session that runs the GGUF tag because the MLX build
+ *  is not downloaded. */
+const ggufInUseLine = (gguf: string, mlx: string): string =>
+  `[carve] fn-gen uses ${gguf}: ${mlx} is not downloaded on this machine. Run "Column 80: Select Hardware Tier" to download it.`;
+
 /** Resolve the effective tier for this session: the hardwareTier setting when
  *  overridden, else computeTier over a fresh probe. Emits the [carve] probe
- *  and tier evidence lines. */
+ *  and tier evidence lines.
+ *
+ *  `list` reads the local catalogue, and only when the tier took an MLX build:
+ *  a Mac that has the GGUF tag and not the MLX one runs the GGUF tag rather than
+ *  a model that is not there. Without it the selection stands as computed. */
 export async function resolveTier(
   output: vscode.OutputChannel,
   probeOpts?: ProbeHardwareOptions,
-): Promise<{ probe: HardwareProbe; selection: TierSelection }> {
+  list?: (apiBase: string) => Promise<string[] | undefined>,
+): Promise<{ probe: HardwareProbe; selection: TierSelection; catalogueUnknown: boolean }> {
   // The probe always runs - it is one process spawn and its evidence line
   // renders real values even when an override skips it for selection.
   const probe = await probeHardware({ ...probeOpts, log: (line) => output.appendLine(line) });
@@ -95,11 +112,39 @@ export async function resolveTier(
     // carve on Metal.
     const selection = computeTier(probe.vramMB, probe.ramMB, { unifiedMemory: probe.unifiedMemory });
     output.appendLine(tierLogLine(selection, probe.vramMB, probe.ramMB, "auto"));
-    return { probe, selection };
+    return { probe, ...(await installedTag(selection, output, list)) };
   }
-  const selection = overrideSelection(tierConfig.hardwareTier);
+  const selection = overrideSelection(tierConfig.hardwareTier, probe.unifiedMemory);
   output.appendLine(tierLogLine(selection, probe.vramMB, probe.ramMB, "override"));
-  return { probe, selection };
+  return { probe, ...(await installedTag(selection, output, list)) };
+}
+
+/** `catalogueUnknown` is true only when the catalogue was asked and did not
+ *  answer: the MLX tag then stands on no evidence, and the caller checks again
+ *  before a model call. */
+async function installedTag(
+  selection: TierSelection,
+  output: vscode.OutputChannel,
+  list: ((apiBase: string) => Promise<string[] | undefined>) | undefined,
+): Promise<{ selection: TierSelection; catalogueUnknown: boolean }> {
+  if (list === undefined || appleSiliconFallback(selection) === undefined) {
+    return { selection, catalogueUnknown: false };
+  }
+  // The FIM host is the local server, the same catalogue the first-run flow
+  // reads to decide what is downloaded.
+  const models = await list(readConfig().apiBase);
+  const mlx = selection.fnGenModel as string;
+  if (models === undefined) {
+    output.appendLine(
+      `[carve] fn-gen model not checked: the Ollama server did not answer, so ${mlx} stands and Column 80 will check again shortly`,
+    );
+    return { selection, catalogueUnknown: true };
+  }
+  const out = preferInstalledTag(selection, models);
+  if (out.fnGenModel !== mlx) {
+    output.appendLine(ggufInUseLine(out.fnGenModel as string, mlx));
+  }
+  return { selection: out, catalogueUnknown: false };
 }
 
 /** Write the picked tier at Global. A workspace or folder value outranks
@@ -146,7 +191,7 @@ export async function runFirstRunFlow(
     // An explicit pick persists; accepting the computed default keeps
     // hardwareTier "auto" so a hardware change re-adapts.
     await writeTierSetting(picked, output);
-    selection = overrideSelection(picked);
+    selection = overrideSelection(picked, probe.unifiedMemory);
     output.appendLine(tierLogLine(selection, probe.vramMB, probe.ramMB, "override"));
   }
 
@@ -241,6 +286,25 @@ export async function runFirstRunFlow(
     // anywhere else answers a question nobody asked. On the local arm this is
     // byte-identical to the fn-gen base; on the remote arm it is the fix.
     const outcome = await offerPull(fimConfig.apiBase, need.model, output, need.why, deps);
+    if (outcome === "landed" && need.fnGen) {
+      // Only a Mac's tag depends on what is installed. Anywhere else the
+      // selection is already right, and a rebuild repeats the tier block.
+      if (appleSiliconFallback(selection) !== undefined) {
+        deps.fnGenModelChanged?.();
+      }
+      continue;
+    }
+    const gguf = need.fnGen && need.model === selection.fnGenModel ? appleSiliconFallback(selection) : undefined;
+    const standIn =
+      gguf === undefined ? "none" : await ggufStandsIn(gguf, need.model, outcome, models, fimConfig.apiBase, output, deps);
+    if (standIn === "landed") {
+      deps.fnGenModelChanged?.();
+    }
+    // A GGUF tag already on disk is the one the session resolved at activation
+    // from this same catalogue, so it needs no refresh.
+    if (standIn !== "none") {
+      continue;
+    }
     if (outcome !== "landed" && need.fnGen) {
       // Declining leaves the extension honest: what is missing, what that
       // disables, and the one-click that fixes it. A failed pull already
@@ -252,6 +316,32 @@ export async function runFirstRunFlow(
       }
     }
   }
+}
+
+/** The MLX build did not land. The GGUF tag of the same model stands in when it
+ *  is already on disk; when it is not and the MLX pull FAILED, it is offered
+ *  once, because the offer is the consent and an 18GB download never starts
+ *  without one. A declined MLX offer is not a reason to offer another 18GB. */
+async function ggufStandsIn(
+  gguf: string,
+  mlx: string,
+  outcome: PullOutcome,
+  models: string[],
+  apiBase: string,
+  output: vscode.OutputChannel,
+  deps: FirstRunDeps,
+): Promise<"on-disk" | "landed" | "none"> {
+  if (hasModel(models, gguf)) {
+    output.appendLine(ggufInUseLine(gguf, mlx));
+    return "on-disk";
+  }
+  if (outcome !== "failed") {
+    return "none";
+  }
+  // The pull-failed line above already names the MLX tag and why; this offer
+  // names it again only so the prompt reads on its own.
+  const why = `${mlx} did not download, so function generation can use ${gguf} instead`;
+  return (await offerPull(apiBase, gguf, output, why, deps)) === "landed" ? "landed" : "none";
 }
 
 // The computed tier leads as the preselected default; every tier stays

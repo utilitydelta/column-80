@@ -101,6 +101,7 @@ import { collectUsageWindows, renderUsageSection } from "../core/usageWindows";
 import { spanTypesInPlay, stopNamesFor } from "../core/repairTypes";
 import { PY_STDLIB_MODULES, pyOwnedImportEdit } from "../core/pyExtraction";
 import { placeGeneratedReply } from "../core/placeReply";
+import { keepSketchForPreview } from "../core/scaffoldKeep";
 import { fenceFor, fileLocalDefinitions } from "../core/instructPostprocess";
 import { QualifyEdit, ReferenceLocation, SourceCursor, SurfaceExtractor, renderMemberSignatures, semanticMembers } from "../core/extraction";
 import { ContextStop, budgetProfileFor } from "../core/budgetProfile";
@@ -943,12 +944,30 @@ async function executeSession(
       headerIndent: resolved.headerIndent ?? "",
       bodyIndent: resolved.bodyIndent ?? "",
     });
+    const sketch = keepSketchForPreview({
+      languageId: resolved.languageId ?? ctx.document.languageId,
+      originalSpan: code,
+      reply: result.text,
+      bodyOnly: resolved.bodyOnly,
+      bodyIndent: resolved.bodyIndent ?? "",
+      channelTag: "[repair]",
+      title: `${resolved.symbolName}: repair round ${round} (preview)`,
+    });
+    result.text = sketch.text;
+    if (sketch.refusal !== undefined) {
+      // Presenting a reply with no body would remove the developer's sketch on
+      // accept. Back to the table, exactly as an output-gate refusal below.
+      log(`[repair] round ${round} refused: ${sketch.refusal}`);
+      outcome("refused");
+      action = session.next(check, scope);
+      continue;
+    }
 
     // A repair that only reshuffles whitespace fixed nothing - it happens when
     // the model cannot actually fix the error (a missing Cargo.toml feature, an
     // unfixable path) and regenerates a near-identical body. Proposing it is a
     // pointless diff (the "blank line" surprise). Skip it and surface instead.
-    if (isNoOpRepair(code, result.text)) {
+    if (isNoOpRepair(code, result.text) || sketch.onlyCommentsDiffer) {
       log(`[repair] round ${round} made no meaningful change; not proposed`);
       outcome("no-change");
       if (ctx.manualRefine === true) {
@@ -982,12 +1001,15 @@ async function executeSession(
       continue;
     }
 
-    const fnName = resolved.symbolName;
+    // Here, not where the sketch is kept: a round that is not proposed placed nothing.
+    if (sketch.channelLine !== undefined) {
+      log(sketch.channelLine);
+    }
     const proposal = await ctx.presenter.present({
       document: ctx.document,
       span: resolved.span,
       versionAtResolve,
-      title: `${fnName}: repair round ${round} (preview)`,
+      title: sketch.title,
       discardNoun: "repair",
       text: result.text,
       service: ctx.service,
@@ -2076,7 +2098,27 @@ async function runTestLeg(
         headerIndent: resolved.headerIndent ?? "",
         bodyIndent: resolved.bodyIndent ?? "",
       });
-      if (isNoOpRepair(code, result.text)) {
+      const sketch = keepSketchForPreview({
+        languageId: resolved.languageId ?? ctx.document.languageId,
+        originalSpan: code,
+        reply: result.text,
+        bodyOnly: resolved.bodyOnly,
+        bodyIndent: resolved.bodyIndent ?? "",
+        channelTag: "[tests]",
+        title: `${symbolName}: repair from failing tests, round ${round} (preview)`,
+      });
+      result.text = sketch.text;
+      if (sketch.refusal !== undefined) {
+        log(`[tests] round ${round} refused: ${sketch.refusal}`);
+        outcome("refused");
+        void vscode.window.showWarningMessage(
+          foldBroke(
+            `Column 80: the repair left ${symbolName} unchanged, and ${coveringTests(stillRed)} still ${stillRed === 1 ? "fails" : "fail"}. See the output channel.`,
+          ),
+        );
+        return "ran";
+      }
+      if (isNoOpRepair(code, result.text) || sketch.onlyCommentsDiffer) {
         // MEASURED TWICE in the scout, on the blame cases: given a correct
         // function and one corrupted test, the model left the function
         // BYTE-IDENTICAL rather than bending it to satisfy the bad test. That is
@@ -2100,11 +2142,14 @@ async function runTestLeg(
       // The ONE write path. No second insertion route exists for this leg any more
       // than for a compiler round.
       shownRounds++;
+      if (sketch.channelLine !== undefined) {
+        log(sketch.channelLine);
+      }
       const proposal = await ctx.presenter.present({
         document: ctx.document,
         span: resolved.span,
         versionAtResolve,
-        title: `${symbolName}: repair from failing tests, round ${round} (preview)`,
+        title: sketch.title,
         discardNoun: "repair",
         text: result.text,
         service: ctx.service,
@@ -2613,11 +2658,32 @@ async function runRefine(
     headerIndent: resolved.headerIndent ?? "",
     bodyIndent: resolved.bodyIndent ?? "",
   });
+  const sketch = keepSketchForPreview({
+    languageId: resolved.languageId ?? ctx.document.languageId,
+    originalSpan: code,
+    reply: result.text,
+    bodyOnly: resolved.bodyOnly,
+    bodyIndent: resolved.bodyIndent ?? "",
+    channelTag: "[repair]",
+    title: `${resolved.symbolName}: match how the repo uses its calls (preview)`,
+  });
+  result.text = sketch.text;
+  if (sketch.refusal !== undefined) {
+    log(`[repair] refine round ${action.round} refused: ${sketch.refusal}`);
+    outcome("refused");
+    if (typeof vscode.window.setStatusBarMessage === "function") {
+      vscode.window.setStatusBarMessage(
+        `Column 80: the reply for ${resolved.symbolName} had no function body, so nothing was proposed.`,
+        8000,
+      );
+    }
+    return;
+  }
 
   // "If it already matches, reply with it unchanged" is a real outcome the
   // prompt asks for, not a politeness, and here is where it lands. Showing the
   // human a diff of nothing is the worst version of this gesture.
-  if (isNoOpRepair(code, result.text)) {
+  if (isNoOpRepair(code, result.text) || sketch.onlyCommentsDiffer) {
     log(`[repair] refine round ${action.round} returned the function unchanged; not proposed`);
     outcome("unchanged");
     // Defensive for headless stubs, the same guard every other status-bar call
@@ -2633,11 +2699,14 @@ async function runRefine(
 
   // The one write path. No second route exists for a refine any more than for a
   // repair: the human reads the diff and accepts or rejects it.
+  if (sketch.channelLine !== undefined) {
+    log(sketch.channelLine);
+  }
   const proposal = await ctx.presenter.present({
     document: ctx.document,
     span: resolved.span,
     versionAtResolve,
-    title: `${resolved.symbolName}: match how the repo uses its calls (preview)`,
+    title: sketch.title,
     discardNoun: "repair",
     text: result.text,
     service: ctx.service,

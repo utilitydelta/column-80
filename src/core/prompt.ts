@@ -738,14 +738,18 @@ function fnGenSections(input: FnGenPromptInput): PromptSection[] {
   // The developer's own sketch of the body, harvested from the comments at the
   // body's depth. It reads as instruction, not reference material, so it sits
   // above the injected surface and says where it came from - a bad harvest is
-  // then self-diagnosing to a human reading the prompt. Absent or empty keeps
-  // the prompt bytes exactly as they were.
+  // then self-diagnosing to a human reading the prompt. The closing sentence
+  // asks for the lines back in the reply, so regenerating from the result reads
+  // the same sketch; the sketch keeper restores any the model drops anyway.
+  // Absent or empty keeps the prompt bytes exactly as they were.
   if (input.scaffoldComments && input.scaffoldComments.length > 0) {
     sections.push({
       text:
         "The developer sketched the body as comments, in this order. They are the specification for what " +
         "the body must do; implement every one of them:\n" +
-        input.scaffoldComments.map((line) => `- ${line}`).join("\n"),
+        input.scaffoldComments.map((line) => `- ${line}`).join("\n") +
+        "\nKeep each of these lines in the body, word for word, as a comment at the body's own depth, " +
+        "in this order, directly above the code that does it.",
       part: "fixed",
     });
   }

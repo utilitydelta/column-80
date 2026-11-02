@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.9.0
+
+- **Your sketch comments survive Generate Function.** Sketch a body in comments, generate, and the
+  comments are still there, each above the code that does it, so you can edit the sketch and generate
+  again. When the model drops or rewords one, Column 80 puts your original line back and the diff
+  title says how many it restored. Your comments are never removed or reworded, and comments the
+  model adds stay for you to delete. Repair and refine rounds keep them too. A step the model writes
+  inside a loop can show up twice; delete the copy you do not want.
+- **A Mac with 20GB or more uses the MLX build of `qwen3.8:27b`.** Apple's own runtime writes code
+  about twice as fast as the regular build on short prompts. On long prompts, where most of the time
+  goes on reading the prompt, the two are close. If the MLX download fails you are offered the regular
+  build, and a Mac that already has the regular build keeps using it until you run Select Hardware Tier.
+- **Forcing the 24GB hardware tier keeps thinking off.** It used to turn it back on, on any machine.
+
 ## 3.8.0
 
 **A Tab is a Tab.** Accepting a ghost, typed or dictated, no longer saves the file, runs the

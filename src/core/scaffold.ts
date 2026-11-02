@@ -16,6 +16,7 @@
 
 import { BracketSyntax, endOfLiteral, scanBrackets } from "./brackets";
 import { CommentHit, CommentSyntax, commentSyntaxFor, nextComment } from "./fimComment";
+import { TS_LANGUAGE_IDS, TS_TYPE_GROUP_HEAD } from "./tsExtraction";
 
 export interface ScaffoldHarvest {
   /** The comment lines, verbatim and trimmed of leading indentation, in
@@ -42,17 +43,42 @@ export function harvestBodyComments(
   languageId: string,
   bodyIndent: string,
 ): ScaffoldHarvest {
+  const hits = bodyCommentHits(bodyText, languageId, bodyIndent);
+  const comments: string[] = [];
+  let considered = 0;
+  for (const { lines, atBodyDepth } of hits) {
+    considered += lines.length;
+    if (atBodyDepth) {
+      comments.push(...lines);
+    }
+  }
+  return { comments, considered };
+}
+
+export interface BodyCommentHit {
+  hit: CommentHit;
+  /** The comment as harvest renders it, one entry per non-empty line. */
+  lines: string[];
+  atBodyDepth: boolean;
+}
+
+/**
+ * Every non-doc comment in `bodyText`, with its rendering and the harvest's
+ * depth verdict. `harvestBodyComments` is this filtered to body depth; the
+ * sketch keeper needs the offsets too, so it reads the same list rather than
+ * re-deriving which comments the harvest would take.
+ */
+export function bodyCommentHits(bodyText: string, languageId: string, bodyIndent: string): BodyCommentHit[] {
   const syntax = commentSyntaxFor(languageId);
   if (syntax === undefined) {
-    return { comments: [], considered: 0 };
+    return [];
   }
   const atBodyDepth =
     languageId === "python"
       ? pyBodyDepthTest(bodyText, bodyIndent, syntax)
       : braceBodyDepthTest(bodyText, languageId, syntax);
 
-  const comments: string[] = [];
-  let considered = 0;
+  const hits: BodyCommentHit[] = [];
   let from = 0;
   for (;;) {
     const hit = nextComment(bodyText, syntax, from);
@@ -66,13 +92,9 @@ export function harvestBodyComments(
     if (hit.kind === "doc") {
       continue;
     }
-    const lines = commentLines(bodyText, hit, syntax);
-    considered += lines.length;
-    if (atBodyDepth(hit.index)) {
-      comments.push(...lines);
-    }
+    hits.push({ hit, lines: commentLines(bodyText, hit, syntax), atBodyDepth: atBodyDepth(hit.index) });
   }
-  return { comments, considered };
+  return hits;
 }
 
 /**
@@ -82,8 +104,10 @@ export function harvestBodyComments(
  * `span.start` past the preserved docstring, so there is no header left to cut
  * and looking for a `:` would cut at the first annotated local instead.
  *
- * Empty when the target has no body block at all - a C# expression-bodied
- * member, a bodyless interface signature - which harvests nothing, correctly.
+ * A C# expression-bodied member and a TypeScript concise arrow have no body
+ * block: their body is the expression after the `=>`, so sketch comments placed
+ * there harvest. Empty when the target has no body at all, such as a bodyless
+ * interface signature, which harvests nothing, correctly.
  */
 export function bodyTextOfSpan(spanText: string, languageId: string, spanStartsInBody = false): string {
   if (spanStartsInBody) {
@@ -98,16 +122,33 @@ export function bodyTextOfSpan(spanText: string, languageId: string, spanStartsI
   // language opens at the declaration's `{`; a `{` in a destructured parameter
   // or a generic argument sits at depth > 0 and is skipped for that reason.
   const opener = languageId === "python" ? ":" : "{";
-  const at = firstAtDepthZero(spanText, syntax, opener);
+  const at = firstAtDepthZero(spanText, syntax, opener, languageId);
   return at < 0 ? "" : spanText.slice(at + 1);
 }
 
 // The first `opener` the text reaches with no bracket left open, skipping string
 // literals and comments. `nextComment` is the comment scanner the FIM rules run
 // on, not a second copy, and `endOfLiteral` is `brackets`'s for the same reason.
-function firstAtDepthZero(text: string, syntax: CommentSyntax, opener: string): number {
+//
+// Language rules on top:
+// - A C# `=>` reached before any body `{` is an expression body. The body is the
+//   expression after it, so the index returned is the `>`. A `{` after it (a
+//   switch expression, an object initializer) sits inside that expression.
+// - A TypeScript `{` after a type-position token is a braced type
+//   (`Promise<{ ok: boolean }> {`), counted as depth like any bracket. The token
+//   test reads code only: `// TODO:` before an Allman brace is a comment, and
+//   its colon must not turn the body into a type group.
+// - A TypeScript span with no body `{` is a concise arrow (`(a) => a + 1;`),
+//   whose body starts after the LAST depth-0 `=>`, so a function-type annotation
+//   (`const f: (a: number) => number = ...`) is skipped.
+function firstAtDepthZero(text: string, syntax: CommentSyntax, opener: string, languageId: string): number {
+  const csharp = languageId === "csharp";
+  const typescript = TS_LANGUAGE_IDS.has(languageId);
   let hit = nextComment(text, syntax, 0);
   let depth = 0;
+  // Just past the last code character so far: not whitespace, not a comment.
+  let codeEnd = 0;
+  let lastArrow = -1;
   for (let i = 0; i < text.length; i++) {
     while (hit !== undefined && hit.index < i) {
       hit = nextComment(text, syntax, i);
@@ -119,8 +160,20 @@ function firstAtDepthZero(text: string, syntax: CommentSyntax, opener: string): 
     const ch = text[i];
     if (syntax.quotes.includes(ch)) {
       i = endOfLiteral(text, i);
-    } else if (ch === "(" || ch === "[" || ch === "{") {
-      if (ch === opener && depth === 0) {
+      codeEnd = i + 1;
+      continue;
+    }
+    if (depth === 0 && ch === "=" && text[i + 1] === ">") {
+      if (csharp) {
+        return i + 1;
+      }
+      lastArrow = i + 1;
+      i++;
+      codeEnd = i + 1;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") {
+      if (ch === opener && depth === 0 && !(typescript && TS_TYPE_GROUP_HEAD.test(text.slice(0, codeEnd)))) {
         return i;
       }
       depth++;
@@ -129,8 +182,11 @@ function firstAtDepthZero(text: string, syntax: CommentSyntax, opener: string): 
     } else if (ch === opener && depth === 0) {
       return i;
     }
+    if (ch.trim() !== "") {
+      codeEnd = i + 1;
+    }
   }
-  return -1;
+  return typescript ? lastArrow : -1;
 }
 
 // Brace languages count depth off the one bracket scan. `blockComment` is passed
@@ -149,7 +205,7 @@ function braceBodyDepthTest(
 // quotes, so the scan's syntax is that row rather than a fourth hand-written
 // list. The shortest line opener is the one that always matches first (`///`
 // starts with `//`), which is the rule `fimBound` uses too.
-function bracketSyntaxFrom(syntax: CommentSyntax, languageId: string): BracketSyntax {
+export function bracketSyntaxFrom(syntax: CommentSyntax, languageId: string): BracketSyntax {
   let shortestLine = "";
   for (const opener of syntax.line) {
     if (shortestLine === "" || opener.length < shortestLine.length) {
@@ -197,7 +253,7 @@ function pyBodyDepthTest(
  * are all there is (the pure scaffold, with a `pass` yet to be typed), the
  * shallowest of them is the level the human was writing at.
  */
-function pyBodyIndent(bodyText: string, syntax: CommentSyntax): string {
+export function pyBodyIndent(bodyText: string, syntax: CommentSyntax): string {
   let shallowestComment: string | undefined;
   for (const line of bodyText.split("\n")) {
     if (line.trim() === "") {
@@ -215,7 +271,7 @@ function pyBodyIndent(bodyText: string, syntax: CommentSyntax): string {
   return shallowestComment ?? "";
 }
 
-function leadingWhitespace(text: string): string {
+export function leadingWhitespace(text: string): string {
   return /^[ \t]*/.exec(text)?.[0] ?? "";
 }
 

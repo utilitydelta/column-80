@@ -181,7 +181,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ...modelGestures,
   });
   registerOracleSurface(context, output);
-  registerFirstRun(context, output);
+  registerFirstRun(context, output, { fnGenModelChanged: modelGestures.refreshTier });
   // Dictate-then-FIM: the resident recogniser starts here (after the model's ratified
   // download), and the gesture arms one intent on the provider per press.
   registerDictation(context, output, {

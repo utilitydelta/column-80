@@ -747,6 +747,13 @@ const TS_TOOL_DIRECTIVE = /^\/\/\s*(?:eslint|@ts-|prettier|biome)/;
  *  after `:`, `|`, `&`, or `extends` opens a braced TYPE group and is
  *  skipped; any other top-level `{` is the body. Dispatched on
  *  TS_LANGUAGE_IDS at the resolveFunctionAtCursor site. */
+/** The head before a `{` that makes the `{` a braced TYPE group rather than a
+ *  function body: after `:`, `|`, `&`, `extends`, and inside generic argument
+ *  positions (`Promise<{...}>`, `Record<K, {...}>`, `<T = {...}>`) where the
+ *  preceding token is `<`, a comma or `=`. Shared with the scaffold harvest's
+ *  body cut so the head fn-gen prompts with and the body it reads agree. */
+export const TS_TYPE_GROUP_HEAD = /(?:[:|&,<=]|\bextends)$/;
+
 export function tsSignatureFromSpanText(spanText: string): string {
   let depth = 0;
   for (let i = 0; i < spanText.length; i++) {
@@ -761,10 +768,7 @@ export function tsSignatureFromSpanText(spanText: string): string {
         continue;
       }
       const head = spanText.slice(0, i).replace(/\s+$/, "");
-      // A braced TYPE group, not the body: after :, |, &, extends, and also
-      // inside generic argument positions - `Promise<{...}>`, `Record<K, {...}>`,
-      // `<T = {...}>` - where the preceding token is <, a comma, or =.
-      if (/(?:[:|&,<=]|\bextends)$/.test(head)) {
+      if (TS_TYPE_GROUP_HEAD.test(head)) {
         depth++;
         continue;
       }

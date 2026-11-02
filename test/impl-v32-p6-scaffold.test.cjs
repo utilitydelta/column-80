@@ -559,9 +559,11 @@ test("assembleTestGenPrompt: the same harvest that changes the fn-gen prompt lea
 // Body slicing, on the shapes that have no body at all.
 // ---------------------------------------------------------------------------
 
-test("bodyTextOfSpan: a bodyless or expression-bodied member yields no body and harvests nothing", () => {
+// Superseded 2026-11-02 (session-v78, contract-p1 "Rule 9 revised"): a C# expression body IS the body,
+// so sketch comments the tool places after `=>` harvest on the next generation.
+test("bodyTextOfSpan: a bodyless member yields no body; an expression-bodied one yields the expression", () => {
   assert.strictEqual(bodyTextOfSpan("int Area();", "csharp"), "");
-  assert.strictEqual(bodyTextOfSpan("public int Area() => _w * _h;", "csharp"), "");
+  assert.strictEqual(bodyTextOfSpan("public int Area() => _w * _h;", "csharp"), " _w * _h;");
   assert.deepStrictEqual(harvest("int Area();", "csharp"), { comments: [], considered: 0 });
 });
 

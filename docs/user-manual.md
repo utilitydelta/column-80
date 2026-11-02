@@ -60,7 +60,7 @@ Any other language: FIM only, and only if you add its language id to `column80.f
 
 - [Ollama](https://ollama.com) on `http://localhost:11434`. FIM always runs against this box, so you need it here even if the big model lives elsewhere. `column80.apiBase` re-points function generation: another port on this machine takes both halves with it, another machine takes function generation only.
 - VS Code 1.85 or newer to install. **1.130 or newer** if you want the scoped-ghost gesture in C# and TypeScript: 1.124 never re-requests inline completions when the suggest selection changes, so the gesture is silently dead there.
-- An NVIDIA GPU for function generation. No GPU still gets you FIM, labelled honestly.
+- An NVIDIA GPU or an Apple Silicon Mac for function generation. No GPU still gets you FIM, labelled honestly.
 - Your language's own toolchain for the compiler check: `cargo`, `go`, a project-local `node_modules/typescript`, `dotnet`. Python needs no pyright install, it ships inside the extension, but it does want a `.venv` or `venv` beside your project root. Without one the check falls back to system python and you get a missing-imports storm.
 - **Your language's language server extension, installed and enabled**: rust-analyzer for Rust, the Go extension for Go, the C# extension for C#, Pylance for Python. TypeScript and JavaScript need nothing extra, VS Code ships theirs. Every gesture past FIM asks it for document symbols, so without one, generate, repair and TDD all refuse. FIM keeps working, which is what makes a missing server look like a working install.
 
@@ -80,12 +80,14 @@ FIM completion is **on by default** (`column80.enabled: true`). With no model pu
 
 | Tier | Hardware | Function-generation model | Notes |
 |---|---|---|---|
-| `24gb` | 20GB+ VRAM | `qwen3-coder:30b` | Both models fully on GPU, no carve. **Provisional**: never validated on real 24GB hardware, and the picker says so. |
+| `24gb` | 20GB+ VRAM | `qwen3.8:27b`, or `qwen3.8:27b-mlx` on Apple Silicon | Both models fully on GPU, no carve. **Provisional**: never validated on real 24GB hardware, and the picker says so. |
 | `16gb-large-ram` | 16GB VRAM, 32GB+ RAM | `qwen3-coder:30b`, layer-capped at `num_gpu=30` | The reference config and the only spike-proven row. FIM holds 102-109ms TTFT during alternation, the 30b holds 34.6 tok/s, zero model evictions. |
 | `16gb-low-ram` | 12-16GB VRAM, or 16GB VRAM with low RAM | `qwen2.5-coder:14b-instruct-q4_K_M` (~9GB) | Both models fit resident, no carve needed. Weaker than the 30b, and real. |
 | `below-12gb` | Under 12GB VRAM, or no usable GPU | disabled | FIM only, with an honest message instead of silent thrashing. |
 
 FIM always uses `qwen2.5-coder:1.5b-base` on every tier.
+
+**Apple Silicon.** A Mac reads its whole memory as the budget, so 20GB and up lands on `24gb`, and there it runs the MLX build `qwen3.8:27b-mlx`: about twice as fast on short prompts, about even on long ones, where reading the prompt takes most of the time. If that download fails, the flow offers `qwen3.8:27b` once instead. Already have `qwen3.8:27b` and decline the MLX one? It keeps running what you have, and the output channel names Select Hardware Tier as the way to the faster one. If Ollama was not up when VS Code started, Column 80 checks again in the background for about two minutes. With `column80.apiBase` pointed at a Mac from another machine, none of this applies, because the probe measures the machine VS Code runs on: set `column80.fnGenModel` to the tag you want.
 
 **Why the carve exists.** On a 16GB card, default Ollama scheduling thrashes when a small FIM model and a big instruct model alternate: 2 to 4.6 second reloads per swap, measured. Over-allocating the big model is worse, because it silently pushes the FIM model to CPU, which looks like it works while destroying the latency. The tier computes an explicit GPU layer cap so both stay resident. There is no `num_gpu` setting, deliberately: a manual knob is an invitation to the exact silent-CPU-spill failure the tiers exist to prevent.
 
@@ -339,7 +341,7 @@ fn parse_duration(input: &str) -> Result<u64, ParseError> {
 }
 ```
 
-A vague comment gets you a plausible body that does something. A comment naming edge cases, error behaviour and invariants gets you the function you meant. Whatever body was there is irrelevant, it is replaced.
+A vague comment gets you a plausible body that does something. A comment naming edge cases, error behaviour and invariants gets you the function you meant. Whatever code was in the body is replaced. Sketch comments at the body's own depth are the exception: they stay (below).
 
 Backtick a type name in any comment and Column 80 resolves its surface into the prompt. Without backticks it is prose and is left alone. `ParseError` is backticked above by convention, though the signature names it too, so it resolves either way. The backticks are what matter for a type you mention only in prose.
 
@@ -359,6 +361,17 @@ func mergeGaps(gaps []Gap) []Gap {
 
 Only comments at the function body's own depth are harvested. A comment inside an `if` or a `for` is commentary on code that already exists, at a different granularity, so it stays out. The channel names what it took: `[fngen] scaffold comments: harvested 3 of 4`.
 
+**The sketch survives the generation.** The model is asked to keep each line word for word, above the code that does it. When it drops one or rewords one, Column 80 puts your original line back, in order, before the next statement after the last sketch line the model did keep. When the model kept none, they all go back together at the top of the body, above the first statement. Your comments are never removed or reworded; comments the model adds stay too, and deleting those is up to you. Generate, edit the sketch, generate again: the second run reads the same steps. Repair and refine rounds keep the sketch the same way.
+
+What you see when that happens:
+
+- The diff tab title says it: `mergeGaps: generated body (preview, 2 sketch comments restored)`.
+- The channel line counts every write: `[fngen] sketch: 1 kept by the model, 2 placed by Column 80, 0 could not be placed`, followed by the placed lines. Compiler repair and refine log it as `[repair]`, test repair as `[tests]`.
+- A one-line reply such as `fn f() { a + b }` gets line breaks added after the `{` so the lines have somewhere to go. Nothing else in the reply changes.
+- A reply with no body at all (empty, or a signature only) is refused, and your function stays as you left it.
+
+One known wart. When the model keeps a step inside a loop or a `try`, next to the code that does it, that copy is no longer at body depth, so it does not count as kept. Column 80 restores the line at the top of the body as well, and you get it twice. It compiles and the next generation still reads every step; delete the copy you do not want.
+
 Backtick a type name in any comment and Column 80 resolves its surface into the prompt. Without backticks it is prose and is left alone. Name a type in one of these steps and backtick it: `GapRun`, not GapRun. The model then gets that type's real fields and methods instead of a guess at what a word in your sentence meant. Type names are read from every comment in the span, not only the ones at body depth, because a type mentioned inside an `if` is still a real type.
 
 Test generation never sees these. `// loop backwards to avoid index shift` is an algorithm note, and a test written from it couples to the algorithm instead of the behaviour.
@@ -371,7 +384,7 @@ A cursor **inside the doc comment** counts as being on the thing it documents. F
 
 ### Regeneration
 
-Run the command again and the old body is **not in the prompt**. Regeneration is a fresh ask from signature, doc comment and blocks. If the previous body matters as a starting point, select it and add it as a context block first. Your doc comments and attributes above the function are never part of the span, so regeneration can never eat them.
+Run the command again and the old body is **not in the prompt**. Regeneration is a fresh ask from signature, doc comment, sketch comments and blocks. If the previous body matters as a starting point, select it and add it as a context block first. Your doc comments and attributes above the function are never part of the span, so regeneration can never eat them.
 
 ### When it says no
 
@@ -1132,7 +1145,7 @@ Stated plainly. Most have the fix direction already recorded.
 **Hardware and setup**
 
 - **Total-VRAM probe.** Tier selection reads total card memory, never free. A contended card gets a carve sized for an empty one, and Ollama degrades with no warning from here.
-- **NVIDIA only.** AMD and Intel GPUs, and Apple Silicon, land on the FIM-only tier. Manual `hardwareTier` override is the workaround.
+- **NVIDIA and Apple Silicon only.** AMD and Intel GPUs land on the FIM-only tier. Manual `hardwareTier` override is the workaround.
 - **The 24GB tier is provisional.** Expected to work, never validated on real 24GB hardware.
 - **No landing-rate counter.** Nobody knows how often injection actually reaches the model on a given machine. The only signal is a channel line. On a slower box injection could be silently off forever and you would not know.
 
