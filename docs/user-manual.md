@@ -87,7 +87,7 @@ FIM completion is **on by default** (`column80.enabled: true`). With no model pu
 
 FIM always uses `qwen2.5-coder:1.5b-base` on every tier.
 
-**Apple Silicon.** A Mac reads its whole memory as the budget, so 20GB and up lands on `24gb`, and there it runs the MLX build `qwen3.8:27b-mlx`: about twice as fast on short prompts, about even on long ones, where reading the prompt takes most of the time. If that download fails, the flow offers `qwen3.8:27b` once instead. Already have `qwen3.8:27b` and decline the MLX one? It keeps running what you have, and the output channel names Select Hardware Tier as the way to the faster one. If Ollama was not up when VS Code started, Column 80 checks again in the background for about two minutes. With `column80.apiBase` pointed at a Mac from another machine, none of this applies, because the probe measures the machine VS Code runs on: set `column80.fnGenModel` to the tag you want.
+**Apple Silicon.** A Mac reads its whole memory as the budget, so 20GB and up lands on `24gb`, and there it runs the MLX build `qwen3.8:27b-mlx`: about twice as fast on short prompts, about even on long ones, where reading the prompt takes most of the time. If that download fails, the flow offers `qwen3.8:27b` once instead. Already have `qwen3.8:27b` and decline the MLX one? It keeps running what you have, and the output channel names Select Hardware Tier as the way to the faster one. If Ollama was not up when VS Code started, Column 80 checks again in the background for about two minutes. With `column80.apiBase` pointed at a Mac from another machine, none of this applies, because the probe measures the machine VS Code runs on: set `column80.fnGenModel` to the tag you want, and set `column80.fnGenThinking` to `off`, or `qwen3.8:27b` reasons before every answer (see [Reasoning and the local model](#reasoning-and-the-local-model)).
 
 **Why the carve exists.** On a 16GB card, default Ollama scheduling thrashes when a small FIM model and a big instruct model alternate: 2 to 4.6 second reloads per swap, measured. Over-allocating the big model is worse, because it silently pushes the FIM model to CPU, which looks like it works while destroying the latency. The tier computes an explicit GPU layer cap so both stay resident. There is no `num_gpu` setting, deliberately: a manual knob is an invitation to the exact silent-CPU-spill failure the tiers exist to prevent.
 
@@ -1093,6 +1093,10 @@ The gestures ship with no default keybindings. Bind the ones you use through **P
 Some local models reason before they answer. `column80.fnGenThinking` controls it and **the shipped
 answer is off**, which is measured rather than cautious.
 
+**Off is the hardware tier's choice, so it only holds when Ollama runs on this machine.** With
+`column80.apiBase` on another machine there is no tier, nothing is sent, and a model that reasons by
+default (`qwen3.8:27b` does) reasons. Set `column80.fnGenThinking` to `off` there.
+
 Twelve real C# functions generated and graded by `dotnet build`, `qwen3.8:27b`:
 
 | reasoning | token cap | compiled | per function | truncated |
@@ -1115,9 +1119,10 @@ accepts `on` and `low`, and OpenAI's 5.6 line accepts only `none` under a differ
 value this extension does not recognise is passed through verbatim, and if the model refuses it the
 output channel prints the model's own words.
 
-**It reaches the local (ollama) backend only.** Anthropic is sent no reasoning field on purpose: there
-is no single value valid across its models, and omitting it never errors. The Claude Code CLI offers
-no control at all - its model decides. Setting this while a cloud provider is selected does nothing.
+**It reaches Ollama and the OpenAI-compatible backends.** Those get it as `reasoning_effort`: `off`
+sends `none`, any other string goes through verbatim, and `on` sends nothing. Anthropic is sent no
+reasoning field on purpose: there is no single value valid across its models, and omitting it never
+errors. The Claude Code CLI offers no control at all - its model decides.
 
 ## Known limits
 
