@@ -34,3 +34,6 @@ native/**
 # dead weight; its dist is not.
 node_modules/pyright/README.md
 node_modules/pyright/*.md
+
+# README GIFs load from raw.githubusercontent.com, so the vsix never needs them.
+media/*.gif
