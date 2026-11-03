@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.9.1
+
+Docs only. No change to the extension.
+
+- **The extension page has a demo.** A doc comment becomes a Rust body, one more rule and a
+  regenerate, then tests with the expected values left for you to type.
+- **"What you need" is right now.** A 16GB Apple Silicon Mac runs function generation. An 8GB
+  card gets autocomplete only, and can send generation to a cloud key or Claude Code.
+- **The user manual reads in about fifteen minutes**, down from over an hour. Every gesture,
+  setting and command is still there.
+
 ## 3.9.0
 
 - **Your sketch comments survive Generate Function.** Sketch a body in comments, generate, and the

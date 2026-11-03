@@ -328,12 +328,13 @@ test("CUDA 24GB first run: a landed fn-gen pull does not trigger a tier rebuild"
 test("CHANGELOG and user manual do not give the MLX speed-up two different factors", () => {
   const root = path.join(__dirname, "..");
   const changelog = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
-  // The newest section, whatever its heading: "## Unreleased" during the build, "## 3.9.0" after release.
-  const top = changelog.indexOf("\n## ");
-  const unreleased = changelog.slice(top, changelog.indexOf("\n## ", top + 1));
+  // The newest section that states a factor, whatever its heading. A docs-only patch release
+  // says nothing about MLX speed, and that is not a disagreement with the manual.
+  const factor = (s) => (/about (twice|two times|three times)/.exec(s) || [])[1];
+  const sections = changelog.split("\n## ").slice(1);
+  const unreleased = sections.find((s) => factor(s) !== undefined) ?? "";
   const manual = fs.readFileSync(path.join(root, "docs/user-manual.md"), "utf8");
   const apple = manual.slice(manual.indexOf("**Apple Silicon.**"), manual.indexOf("\n\n", manual.indexOf("**Apple Silicon.**")));
-  const factor = (s) => (/about (twice|two times|three times)/.exec(s) || [])[1];
   const a = factor(unreleased);
   const b = factor(apple);
   assert.ok(a !== undefined || b !== undefined, "neither states a factor (the case never fired)");
